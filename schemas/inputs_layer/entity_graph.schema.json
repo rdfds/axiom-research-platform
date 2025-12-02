@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EntityGraphRecord",
+  "type": "object",
+  "description": "Entity relationship and ID mapping graph.",
+  "properties": {
+    "edge_id": { "type": "string" },
+    "entity_id": { "type": "string" },
+    "entity_id_type": { "type": "string" },
+    "related_id": { "type": "string" },
+    "related_id_type": { "type": "string" },
+    "relationship": { "type": "string" },
+    "valid_from": { "type": ["string", "null"], "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time" },
+    "source_id": { "type": "string" },
+    "source_type": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "raw_pointer": { "type": "string" }
+  },
+  "required": [
+    "edge_id",
+    "entity_id",
+    "entity_id_type",
+    "related_id",
+    "related_id_type",
+    "relationship",
+    "source_id",
+    "source_type",
+    "published_at",
+    "ingested_at",
+    "confidence_score",
+    "raw_pointer"
+  ],
+  "additionalProperties": true
+}
