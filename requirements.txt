@@ -1,0 +1,15 @@
+# Axiom V1 Dependencies
+
+# WRDS data access
+wrds>=3.1.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=12.0.0  # For parquet files
+duckdb>=0.10.0   # As-of querying of warehouse parquet
+
+# For later: analysis and visualization
+# scipy>=1.10.0
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
