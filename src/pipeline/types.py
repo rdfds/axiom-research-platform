@@ -65,3 +65,69 @@ class ImpactDistribution:
         }
 
 
+@dataclass
+class SimilarityScore:
+    precedent_id: str
+    score: float
+    state_similarity: float
+    regime_similarity: float
+    parameter_similarity: float
+    action_match_score: float
+    sector_similarity: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "precedent_id": self.precedent_id,
+            "score": self.score,
+            "state_similarity": self.state_similarity,
+            "regime_similarity": self.regime_similarity,
+            "parameter_similarity": self.parameter_similarity,
+            "action_match_score": self.action_match_score,
+            "sector_similarity": self.sector_similarity,
+        }
+
+
+@dataclass
+class DistributionStats:
+    mean: Optional[float]
+    median: Optional[float]
+    p10: Optional[float]
+    p25: Optional[float]
+    p75: Optional[float]
+    p90: Optional[float]
+    sample_size: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "mean": self.mean,
+            "median": self.median,
+            "p10": self.p10,
+            "p25": self.p25,
+            "p75": self.p75,
+            "p90": self.p90,
+            "sample_size": self.sample_size,
+        }
+
+
+@dataclass
+class MetricDistributionSet:
+    valuation_multiple_change: DistributionStats
+    equity_return_vs_sector: DistributionStats
+    credit_spread_change: DistributionStats
+    rating_migration: DistributionStats
+    leverage_change: DistributionStats
+    fcf_change: DistributionStats
+    volatility_change: DistributionStats
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "valuation_multiple_change": self.valuation_multiple_change.to_dict(),
+            "equity_return_vs_sector": self.equity_return_vs_sector.to_dict(),
+            "credit_spread_change": self.credit_spread_change.to_dict(),
+            "rating_migration": self.rating_migration.to_dict(),
+            "leverage_change": self.leverage_change.to_dict(),
+            "fcf_change": self.fcf_change.to_dict(),
+            "volatility_change": self.volatility_change.to_dict(),
+        }
+
+
