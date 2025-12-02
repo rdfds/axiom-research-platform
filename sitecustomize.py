@@ -22,3 +22,5 @@ def _running_pytest(argv: list[str]) -> bool:
     )
 
 
+if "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in os.environ and _running_pytest(sys.argv):
+    os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
