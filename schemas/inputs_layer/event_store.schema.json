@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CanonicalEventStore",
+  "type": "object",
+  "description": "Canonical typed corporate action events with lifecycle.",
+  "properties": {
+    "event_id": { "type": "string" },
+    "company_id": { "type": "string" },
+    "event_type": { "type": "string" },
+    "event_subtype": { "type": ["string", "null"] },
+    "params": { "type": ["object", "null"] },
+    "status": { "type": ["string", "null"] },
+    "announced_at": { "type": ["string", "null"], "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "closed_at": { "type": ["string", "null"], "format": "date-time" },
+    "withdrawn_at": { "type": ["string", "null"], "format": "date-time" },
+    "evidence": { "type": ["array", "null"], "items": { "type": "string" } },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["event_id", "company_id", "event_type", "created_at"],
+  "additionalProperties": true
+}
