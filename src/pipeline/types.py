@@ -25,3 +25,23 @@ class CompanyStateSnapshot:
         }
 
 
+@dataclass
+class ActionCandidate:
+    action_type: str
+    params: Dict[str, Any]
+    action_subtype: Optional[str] = None
+    action_id: Optional[str] = None
+    assumed_preconditions: List[str] = field(default_factory=list)
+    rationale_refs: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "action_type": self.action_type,
+            "action_subtype": self.action_subtype,
+            "action_id": self.action_id,
+            "params": self.params,
+            "assumed_preconditions": self.assumed_preconditions,
+            "rationale_refs": self.rationale_refs,
+        }
+
+

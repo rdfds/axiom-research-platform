@@ -115,3 +115,5 @@ def main() :
     print(f"Wrote enriched EventRegistry -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
