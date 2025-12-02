@@ -45,3 +45,23 @@ class ActionCandidate:
         }
 
 
+@dataclass
+class ImpactDistribution:
+    metric: str
+    horizon_months: int
+    p25: Optional[float]
+    p50: Optional[float]
+    p75: Optional[float]
+    n: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "metric": self.metric,
+            "horizon_months": self.horizon_months,
+            "p25": self.p25,
+            "p50": self.p50,
+            "p75": self.p75,
+            "n": self.n,
+        }
+
+
