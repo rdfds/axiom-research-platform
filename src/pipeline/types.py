@@ -147,3 +147,67 @@ class OutcomeDistributions:
         }
 
 
+@dataclass
+class PrecedentCase:
+    precedent_id: str
+    company_id: str
+    decision_time: str
+    action_id: str
+    parameters: Dict[str, Any]
+    regime: Dict[str, Any]
+    similarity_score: float
+    key_state_features: Dict[str, Any]
+    source_event_id: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "precedent_id": self.precedent_id,
+            "company_id": self.company_id,
+            "decision_time": self.decision_time,
+            # Step-8 schema alias
+            "event_time": self.decision_time,
+            "action_id": self.action_id,
+            "parameters": self.parameters,
+            "regime": self.regime,
+            "similarity_score": self.similarity_score,
+            "key_state_features": self.key_state_features,
+            "source_event_id": self.source_event_id,
+        }
+
+
+@dataclass
+class RegimeDistribution:
+    regime_label: str
+    outcome_distributions: OutcomeDistributions
+    sample_size: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "regime_label": self.regime_label,
+            "outcome_distributions": self.outcome_distributions.to_dict(),
+            "sample_size": self.sample_size,
+        }
+
+
+@dataclass
+class TailEvent:
+    precedent_id: str
+    outcome_metric: str
+    outcome_value: float
+    horizon: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "precedent_id": self.precedent_id,
+            "outcome_metric": self.outcome_metric,
+            "outcome_value": self.outcome_value,
+            "horizon": self.horizon,
+            "explanation": self.explanation,
+            # Step-8 schema aliases
+            "metric": self.outcome_metric,
+            "value": self.outcome_value,
+            "description": self.explanation,
+        }
+
+
