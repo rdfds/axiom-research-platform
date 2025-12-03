@@ -131,3 +131,19 @@ class MetricDistributionSet:
         }
 
 
+@dataclass
+class OutcomeDistributions:
+    horizon_1m: MetricDistributionSet
+    horizon_6m: MetricDistributionSet
+    horizon_12m: MetricDistributionSet
+    horizon_24m: MetricDistributionSet
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "horizon_1m": self.horizon_1m.to_dict(),
+            "horizon_6m": self.horizon_6m.to_dict(),
+            "horizon_12m": self.horizon_12m.to_dict(),
+            "horizon_24m": self.horizon_24m.to_dict(),
+        }
+
+
