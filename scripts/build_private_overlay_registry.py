@@ -53,3 +53,5 @@ def main() -> None:
     print(f"Saved PrivateOverlayRegistry -> {out_path} (0 rows)")
 
 
+if __name__ == "__main__":
+    main()
