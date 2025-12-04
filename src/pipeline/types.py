@@ -211,3 +211,24 @@ class TailEvent:
         }
 
 
+@dataclass
+class FollowOnOutcome:
+    follow_on_action_id: str
+    frequency: float
+    average_time_to_follow_on: Optional[float]
+    median_time_to_follow_on: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "follow_on_action_id": self.follow_on_action_id,
+            "frequency": self.frequency,
+            "average_time_to_follow_on": self.average_time_to_follow_on,
+            # Step-8 schema name
+            "median_time_to_follow_on": (
+                self.median_time_to_follow_on
+                if self.median_time_to_follow_on is not None
+                else self.average_time_to_follow_on
+            ),
+        }
+
+

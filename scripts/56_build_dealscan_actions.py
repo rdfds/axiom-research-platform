@@ -192,3 +192,5 @@ def main() -> None:
     log(f"Saved {n:,} loan actions -> {OUT_PATH}")
 
 
+if __name__ == "__main__":
+    main()
