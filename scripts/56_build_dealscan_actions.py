@@ -24,7 +24,7 @@ CIQ_PATH = DATA_DIR / "wrds" / "ciq" / "ciq_identifiers_map.parquet"
 OUT_PATH = DATA_DIR / "curated" / "loan_actions_dealscan.parquet"
 
 
-def log(msg: str) :
+def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 

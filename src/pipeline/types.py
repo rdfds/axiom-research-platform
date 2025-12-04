@@ -232,3 +232,93 @@ class FollowOnOutcome:
         }
 
 
+@dataclass
+class FeatureMismatch:
+    feature_name: str
+    candidate_value: Any
+    cohort_range: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "feature_name": self.feature_name,
+            "candidate_value": self.candidate_value,
+            "cohort_range": self.cohort_range,
+            "explanation": self.explanation,
+        }
+
+
+@dataclass
+class MismatchDiagnostics:
+    feature_mismatches: List[FeatureMismatch] = field(default_factory=list)
+    regime_mismatch: bool = False
+    parameter_scale_mismatch: bool = False
+    narrative_mismatch: bool = False
+    out_of_sample_flag: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "feature_mismatches": [m.to_dict() for m in self.feature_mismatches],
+            "regime_mismatch": self.regime_mismatch,
+            "parameter_scale_mismatch": self.parameter_scale_mismatch,
+            "narrative_mismatch": self.narrative_mismatch,
+            "out_of_sample_flag": self.out_of_sample_flag,
+        }
+
+
+@dataclass
+class PrecedentPack:
+    # Legacy fields (kept for backward compatibility)
+    matches: List[Dict[str, Any]] = field(default_factory=list)
+    distributions: List[ImpactDistribution] = field(default_factory=list)
+
+    # Precedent Brain v2 fields
+    candidate_id: str = ""
+    run_id: str = ""
+    retrieved_cohorts: List[PrecedentCase] = field(default_factory=list)
+    similarity_scores: List[SimilarityScore] = field(default_factory=list)
+    outcome_distributions: Optional[OutcomeDistributions] = None
+    regime_splits: List[RegimeDistribution] = field(default_factory=list)
+    tail_events: List[TailEvent] = field(default_factory=list)
+    second_order_effects: List[FollowOnOutcome] = field(default_factory=list)
+    mismatch_diagnostics: Dict[str, Any] = field(default_factory=dict)
+    calibration_confidence: float = 0.0
+    profiling: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) :
+        mismatch = self.mismatch_diagnostics
+        if isinstance(mismatch, MismatchDiagnostics):
+            mismatch = mismatch.to_dict()
+        cohorts = [c.to_dict() for c in self.retrieved_cohorts]
+        dists_obj = (
+            self.outcome_distributions.to_dict()
+            if isinstance(self.outcome_distributions, OutcomeDistributions)
+            else self.outcome_distributions
+        )
+        tails = [t.to_dict() for t in self.tail_events]
+        second_order = [s.to_dict() for s in self.second_order_effects]
+        legacy_dists = [d.to_dict() for d in self.distributions]
+        return {
+            "candidate_id": self.candidate_id,
+            "run_id": self.run_id,
+            "retrieved_cohorts": cohorts,
+            # Step-8 schema alias
+            "cohorts": cohorts,
+            "similarity_scores": [s.to_dict() for s in self.similarity_scores],
+            "outcome_distributions": dists_obj,
+            # Step-8 schema alias
+            "distributions": dists_obj,
+            "regime_splits": [r.to_dict() for r in self.regime_splits],
+            "tail_events": tails,
+            # Step-8 schema alias
+            "tails": tails,
+            "second_order_effects": second_order,
+            "calibration_confidence": float(self.calibration_confidence),
+            # Step-8 schema alias
+            "precedent_confidence": float(self.calibration_confidence),
+            "profiling": dict(self.profiling or {}),
+            # Legacy keys consumed by existing downstream modules
+            "matches": self.matches,
+            "legacy_distributions": legacy_dists,
+            "mismatch_diagnostics": mismatch,
+        }
