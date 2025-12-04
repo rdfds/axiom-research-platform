@@ -68,3 +68,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _selected_metrics(skip_market_cap: bool) -> tuple[str, ...]:
+    if not skip_market_cap:
+        return tuple(audit_core.METRICS)
+    return tuple(metric for metric in audit_core.METRICS if metric != "market.market_cap_provider_direct")
+
+

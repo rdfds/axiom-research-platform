@@ -60,3 +60,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
+def _pct_gap(left: float | None, right: float | None) :
+    if left is None or right is None:
+        return None
+    denom = max(abs(float(right)), 1.0)
+    return abs(float(left) - float(right)) / denom
+
+
