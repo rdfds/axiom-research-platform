@@ -41,3 +41,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _ticker_to_entity_map(entity_identifier_path: Path) -> pd.DataFrame:
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "ticker"].copy()
+    ids["ticker"] = ids["identifier_value"].astype(str).str.upper().str.strip()
+    return ids[["entity_id", "ticker"]].drop_duplicates()
+
+
