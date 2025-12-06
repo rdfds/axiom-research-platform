@@ -74,3 +74,11 @@ def _selected_metrics(skip_market_cap: bool) -> tuple[str, ...]:
     return tuple(metric for metric in audit_core.METRICS if metric != "market.market_cap_provider_direct")
 
 
+def _iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+

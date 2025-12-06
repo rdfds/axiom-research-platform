@@ -76,3 +76,14 @@ def _pct_gap(left: float | None, right: float | None) :
     return abs(float(left) - float(right)) / denom
 
 
+def _artifact_view(node: Dict[str, Any] | None) -> Dict[str, Any]:
+    node = node or {}
+    return {
+        "value": node.get("value"),
+        "support_mode": node.get("support_mode"),
+        "primary_source_basis": node.get("primary_source_basis"),
+        "missing_reason": node['missing_reason'],
+        "quality_flags": node.get("quality_flags"),
+    }
+
+
