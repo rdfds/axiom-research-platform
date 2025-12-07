@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+"""
+Map Refinitiv RICs to identifiers via Symbology (Discovery Convert Symbols).
+===========================================================================
+Builds a RIC -> CUSIP/ISIN/Ticker map using Refinitiv Symbology.
+
+Outputs:
+  data/refinitiv/ric_to_cusip_map.parquet
+
+Run:
+  python -u scripts/24_map_refinitiv_ric_to_cusip.py
+"""
+
+import os
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import List
+
+import pandas as pd
+import refinitiv.data as rd
+import refinitiv.data.discovery as disc
+from refinitiv.data.content import symbol_conversion as sc
+
+
+DATA_DIR = Path(__file__).parent.parent / "data" / "refinitiv"
+MAP_PATH = DATA_DIR / "ric_to_cusip_map.parquet"
+PARTS_DIR = DATA_DIR / "ric_map_parts"
+PARTS_DIR.mkdir(parents=True, exist_ok=True)
+
+BATCH_SIZE = int(os.getenv("RIC_MAP_BATCH", "200"))
+SLEEP_SECONDS = float(os.getenv("RIC_MAP_SLEEP", "0.2"))
+SAVE_PARTS = os.getenv("RIC_MAP_SAVE_PARTS", "1") == "1"
+SKIP_EXISTING = os.getenv("RIC_MAP_SKIP_EXISTING", "1") == "1"
+RETRIES = int(os.getenv("RIC_MAP_RETRIES", "3"))
+RETRY_SLEEP = float(os.getenv("RIC_MAP_RETRY_SLEEP", "1.5"))
+US_ONLY = os.getenv("RIC_MAP_US_ONLY", "1") == "1"
+ASSET_STATE = os.getenv("RIC_MAP_ASSET_STATE", "ACTIVE").upper()
+APPEND = os.getenv("RIC_MAP_APPEND", "1") == "1"
+
+
+def log(msg: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def ensure_session() :
+    try:
+        _ = rd.get_data(universe="0#.SPX", fields=["TR.CommonName"])
+        return True
+    except Exception as e:
+        log(f"Refinitiv session check failed: {e}")
+        return False
+
+

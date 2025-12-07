@@ -90,3 +90,67 @@ def ingest_ma_deals(lake: DataLake, data_dir: Path) -> int:
     return 0
 
 
+def ingest_dividends(lake: DataLake, data_dir: Path) -> int:
+    """Ingest dividend records into the lake."""
+    print("\n--- Ingesting Dividends ---")
+
+    file_path = data_dir / 'dividends_complete.parquet'
+    if not file_path.exists():
+        print("Dividends file not found")
+        return 0
+
+    df = pd.read_parquet(file_path)
+    print(f"Loaded {len(df):,} dividend records")
+
+    records = []
+    for _, row in df.iterrows():
+        try:
+            # Try multiple date column naming conventions
+            ex_date = pd.to_datetime(
+                row.get('Dividend Ex Date') or row.get('Ex-Date') or row.get('Ex Date')
+            )
+            if pd.isna(ex_date):
+                continue
+
+            # Declaration date is when it became knowable (use ex_date as fallback)
+            decl_date = pd.to_datetime(
+                row.get('Declaration Date') or row.get('Announcement Date')
+            )
+            if pd.isna(decl_date):
+                decl_date = ex_date  # Fallback
+
+            entity_id = str(row.get('Instrument', 'unknown'))
+
+            record = CanonicalRecord(
+                record_id=CanonicalRecord.generate_id(
+                    'refinitiv', 'corporate_action', entity_id, ex_date.to_pydatetime(),
+                    action_type='dividend'
+                ),
+                record_type=RecordType.CORPORATE_ACTION,
+                source='refinitiv',
+                entity_id=entity_id,
+                entity_name=row.get('Company Name'),
+                event_time=ex_date.to_pydatetime(),
+                available_time=decl_date.to_pydatetime(),
+                data={
+                    'action_type': ActionType.DIVIDEND_REGULAR.value,
+                    'dividend_amount': row.get('Dividend Amount') or row.get('Gross Amount'),
+                    'dividend_type': row.get('Dividend Type'),
+                    'payment_date': str(row.get('Dividend Pay Date') or row.get('Payment Date', '')),
+                    'record_date': str(row.get('Dividend Record Date') or row.get('Record Date', '')),
+                    'currency': row.get('Currency'),
+                    'frequency': row.get('Frequency'),
+                }
+            )
+            records.append(record)
+        except Exception as e:
+            continue
+
+    if records:
+        published = lake.publish(records)
+        print(f"Published {published:,} dividend records")
+        return published
+
+    return 0
+
+
