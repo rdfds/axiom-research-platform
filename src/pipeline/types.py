@@ -285,7 +285,7 @@ class PrecedentPack:
     calibration_confidence: float = 0.0
     profiling: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) :
+    def to_dict(self) -> Dict[str, Any]:
         mismatch = self.mismatch_diagnostics
         if isinstance(mismatch, MismatchDiagnostics):
             mismatch = mismatch.to_dict()

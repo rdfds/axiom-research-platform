@@ -142,3 +142,41 @@ def _safe_params(params: Dict[str, object]) -> Dict[str, object]:
     return safe
 
 
+def _request_json(url: str, params: Dict[str, object], session: requests.Session) -> Optional[List[Dict]]:
+    for attempt in range(FMP_RETRIES + 1):
+        try:
+            if FMP_DEBUG:
+                log(f"[debug] GET {url} params={_safe_params(params)}")
+            resp = session.get(url, params=params, timeout=FMP_TIMEOUT)
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                try:
+                    wait = float(retry_after) if retry_after else max(FMP_RETRY_SLEEP, FMP_SLEEP * 5)
+                except Exception:
+                    wait = max(FMP_RETRY_SLEEP, FMP_SLEEP * 5)
+                log(f"Rate limited (429). Sleeping {wait:.1f}s before retrying.")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            text = resp.text
+            # FMP bulk endpoints often return CSV; fall back if JSON parse fails.
+            try:
+                data = resp.json()
+            except ValueError:
+                text = text.lstrip("\ufeff").strip()
+                if not text:
+                    return []
+                reader = csv.DictReader(io.StringIO(text))
+                data = list(reader)
+            if FMP_SLEEP:
+                time.sleep(FMP_SLEEP)
+            return data
+        except requests.RequestException as exc:
+            if attempt < FMP_RETRIES:
+                time.sleep(max(FMP_RETRY_SLEEP, FMP_SLEEP, 0.2))
+                continue
+            log(f"Request failed: {url} {exc}")
+            return None
+    return None
+
+
