@@ -106,3 +106,16 @@ def _company_id_series(series: pd.Series) -> pd.Series:
     return series.astype(str).str.extract(r"(\d+)")[0].str.zfill(10)
 
 
+def _tokens(value: object) -> list[str]:
+    text = "" if pd.isna(value) else str(value).upper()
+    text = text.replace("&", " AND ")
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    out: list[str] = []
+    for token in text.split():
+        token = ABBREVIATIONS.get(token, token)
+        if len(token) < 3 or token in STOPWORDS or token.isdigit():
+            continue
+        out.append(token)
+    return out
+
+
