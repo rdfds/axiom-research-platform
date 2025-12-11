@@ -192,3 +192,12 @@ def _build_metric_node(
     )
 
 
+def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
