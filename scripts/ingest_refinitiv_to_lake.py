@@ -154,3 +154,79 @@ def ingest_dividends(lake: DataLake, data_dir: Path) -> int:
     return 0
 
 
+def ingest_fundamentals(lake: DataLake, data_dir: Path) -> int:
+    """Ingest fundamental data into the lake."""
+    print("\n--- Ingesting Fundamentals ---")
+
+    files = [
+        data_dir / 'fundamentals_all.parquet',
+        data_dir / 'fundamentals_quarterly.parquet',
+    ]
+
+    total_records = []
+
+    for file_path in files:
+        if not file_path.exists():
+            continue
+
+        df = pd.read_parquet(file_path)
+        print(f"Loaded {len(df):,} from {file_path.name}")
+
+        for _, row in df.iterrows():
+            try:
+                entity_id = str(row.get('Instrument', 'unknown'))
+
+                # For current fundamentals, use today as event_time
+                # For quarterly, use fiscal period end
+                fiscal_end = pd.to_datetime(row.get('Fiscal Period End Date'))
+                if pd.isna(fiscal_end):
+                    fiscal_end = datetime.now()
+
+                # Filing date is when it became knowable
+                filing_date = pd.to_datetime(row['Filing Date'])
+                if pd.isna(filing_date):
+                    filing_date = fiscal_end
+
+                record = CanonicalRecord(
+                    record_id=CanonicalRecord.generate_id(
+                        'refinitiv', 'fundamental', entity_id, fiscal_end.to_pydatetime() if hasattr(fiscal_end, 'to_pydatetime') else fiscal_end
+                    ),
+                    record_type=RecordType.FUNDAMENTAL,
+                    source='refinitiv',
+                    entity_id=entity_id,
+                    entity_name=row.get('Company Common Name') or row.get('Company Name'),
+                    event_time=fiscal_end.to_pydatetime() if hasattr(fiscal_end, 'to_pydatetime') else fiscal_end,
+                    available_time=filing_date.to_pydatetime() if hasattr(filing_date, 'to_pydatetime') else filing_date,
+                    data={
+                        'revenue': row.get('Revenue'),
+                        'net_income': row.get('Net Income'),
+                        'ebitda': row.get('EBITDA'),
+                        'total_assets': row.get('Total Assets'),
+                        'total_debt': row.get('Total Debt'),
+                        'market_cap': row.get('Company Market Cap'),
+                        'pe_ratio': row.get('PE'),
+                        'ev_ebitda': row.get('EV/EBITDA'),
+                        'sector': row.get('GICS Sector') or row.get('TRBC Economic Sector'),
+                        'industry': row.get('GICS Industry') or row.get('TRBC Industry'),
+                    }
+                )
+                total_records.append(record)
+            except Exception as e:
+                continue
+
+    if total_records:
+        # Dedupe
+        seen = set()
+        unique_records = []
+        for r in total_records:
+            if r.record_id not in seen:
+                seen.add(r.record_id)
+                unique_records.append(r)
+
+        published = lake.publish(unique_records)
+        print(f"Published {published:,} fundamental records")
+        return published
+
+    return 0
+
+
