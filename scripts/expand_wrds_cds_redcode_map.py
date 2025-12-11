@@ -119,3 +119,69 @@ def _tokens(value: object) -> list[str]:
     return out
 
 
+def _build_additions(broad: pd.DataFrame, unresolved: pd.DataFrame) -> pd.DataFrame:
+    broad = broad.copy()
+    unresolved = unresolved.copy()
+    broad["tokens"] = broad["shortname"].map(_tokens)
+    unresolved["tokens"] = unresolved["company_name"].map(_tokens)
+
+    additions = []
+    for _, row in unresolved.iterrows():
+        query = set(row["tokens"])
+        if not query:
+            continue
+
+        candidates = []
+        for _, candidate in broad.iterrows():
+            cand_tokens = set(candidate["tokens"])
+            if not cand_tokens:
+                continue
+            if query == cand_tokens:
+                candidates.append(("token_exact_abbrev", 0, candidate))
+            else:
+                extra = cand_tokens - query
+                if query.issubset(cand_tokens) and len(extra) == 1 and all(
+                    token in ALLOWED_EXTRA_TOKENS for token in extra
+                ):
+                    candidates.append(("token_subset_one_extra", 1, candidate))
+
+        if not candidates:
+            continue
+
+        redcodes = {item[2]["redcode"] for item in candidates}
+        if len(redcodes) != 1:
+            continue
+
+        candidates.sort(key=lambda item: (item[1], item[2]["shortname"]))
+        best = candidates[0]
+        additions.append(
+            {
+                "company_id": row["company_id"],
+                "company_name": row["company_name"],
+                "equity_ticker": row["equity_ticker"],
+                "cds_ticker": best[2]["ticker"],
+                "redcode": best[2]["redcode"],
+                "shortname": best[2]["shortname"],
+                "match_type": best[0],
+                "company_tokens": " ".join(row["tokens"]),
+                "shortname_tokens": " ".join(best[2]["tokens"]),
+            }
+        )
+
+    if not additions:
+        return pd.DataFrame(
+            columns=[
+                "company_id",
+                "company_name",
+                "equity_ticker",
+                "cds_ticker",
+                "redcode",
+                "shortname",
+                "match_type",
+                "company_tokens",
+                "shortname_tokens",
+            ]
+        )
+    return pd.DataFrame(additions).drop_duplicates(subset=["company_id", "redcode"])
+
+
