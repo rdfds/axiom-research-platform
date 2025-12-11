@@ -132,3 +132,63 @@ def _feature_template(
     }
 
 
+def _build_metric_node(
+    metric_name: str,
+    spec: Dict[str, Any],
+    provider_row: pd.Series | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> Dict[str, Any]:
+    if provider_row is None:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=spec["unit"],
+            missing_reason="provider_row_unavailable",
+            component_breakdown={"source_column": spec["source_column"]},
+            quality_flags=["provider_row_unavailable"],
+        )
+
+    raw_value = provider_row.get(spec["source_column"])
+    if pd.isna(raw_value):
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=spec["unit"],
+            missing_reason="provider_field_unavailable",
+            component_breakdown={
+                "source_column": spec["source_column"],
+                "reference_instrument": provider_row.get("Instrument"),
+            },
+            quality_flags=["provider_field_unavailable"],
+        )
+
+    value = float(raw_value)
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode="exact",
+        value=value,
+        unit=spec["unit"],
+        missing_reason=None,
+        component_breakdown={
+            "provider_field": spec["source_column"],
+            "reference_instrument": provider_row.get("Instrument"),
+            "provider_company_name": provider_row.get("Company Common Name"),
+            "formula": "provider_direct_field",
+        },
+        quality_flags=spec.get("quality_flags"),
+    )
+
+

@@ -87,3 +87,86 @@ def _artifact_view(node: Dict[str, Any] | None) -> Dict[str, Any]:
     }
 
 
+def _reconstructed_nodes(
+    *,
+    row: Dict[str, Any],
+    provider_row: Dict[str, Any] | None,
+    companyfacts: dict | None,
+    companyfacts_path: Path | None,
+    price_history: pd.DataFrame | None,
+    raw_timeseries_path: Path,
+) -> Dict[str, Dict[str, Any]]:
+    as_of_time = row["as_of_time"]
+    as_of_date = as_of_time[:10]
+    computed_at = row["as_of_time"]
+    nodes: Dict[str, Dict[str, Any]] = {}
+    for metric_name in METRICS:
+        if metric_name == "market.market_cap_provider_direct":
+            provider_node = core._build_legacy_provider_metric(
+                metric_name=metric_name,
+                provider_row=provider_row,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source="provider_reference",
+                unit="usd",
+            )
+            market_node = None
+            if companyfacts is not None and companyfacts_path is not None and price_history is not None:
+                price_metrics = market_macro._build_price_metrics(
+                    permno=None,
+                    price_history=price_history,
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                    provenance_source=str(raw_timeseries_path),
+                )
+                market_node = market_macro._build_market_cap_metric_from_companyfacts(
+                    companyfacts=companyfacts,
+                    price_node=price_metrics["market.price_spot"],
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                    companyfacts_path=companyfacts_path,
+                )
+            nodes[metric_name] = {
+                "provider": _artifact_view(provider_node),
+                "reconstructed": _artifact_view(market_node),
+            }
+            continue
+
+        provider_node = core._build_legacy_provider_metric(
+            metric_name=metric_name,
+            provider_row=provider_row,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source="provider_reference",
+            unit=core.DIRECT_METRIC_SPECS[metric_name]["unit"],
+        )
+        if companyfacts is not None:
+            value, support_mode, missing_reason, component_breakdown, quality_flags = core._build_sec_core_metric(
+                metric_name,
+                companyfacts,
+                as_of_date,
+            )
+            reconstructed_node = core._build_metric_from_value(
+                metric_name=metric_name,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=str(companyfacts_path),
+                unit=core.DIRECT_METRIC_SPECS[metric_name]["unit"],
+                value=value,
+                support_mode=support_mode,
+                missing_reason=missing_reason,
+                component_breakdown=component_breakdown,
+                quality_flags=quality_flags,
+                primary_source_basis="sec_companyfacts",
+                provenance_artifact_type="SecCompanyFacts",
+                input_layer_bucket_reason="sec_companyfacts_asof",
+            )
+        else:
+            reconstructed_node = None
+        nodes[metric_name] = {
+            "provider": _artifact_view(provider_node),
+            "reconstructed": _artifact_view(reconstructed_node),
+        }
+    return nodes
+
+
