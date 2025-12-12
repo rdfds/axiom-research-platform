@@ -125,3 +125,26 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
+def _fetch_url(url: str, session: requests.Session, sleep_seconds: float) :
+    last_exc: Optional[Exception] = None
+    for attempt in range(SEC_BACKFILL_RETRIES + 1):
+        try:
+            resp = session.get(url, timeout=SEC_BACKFILL_TIMEOUT)
+            resp.raise_for_status()
+            if sleep_seconds:
+                time.sleep(sleep_seconds)
+            text = resp.text
+            if "<html" in text.lower():
+                return html_to_text(text)
+            return text
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < SEC_BACKFILL_RETRIES:
+                time.sleep(max(sleep_seconds, 0.2))
+                continue
+            return None
+    if last_exc:
+        return None
+    return None
+
+
