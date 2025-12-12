@@ -231,3 +231,17 @@ def normalize_payload(payload: Dict) -> Dict:
     return cleaned
 
 
+def normalize_value(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
