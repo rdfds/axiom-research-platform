@@ -278,3 +278,178 @@ def fetch_bulk(statement: str, year: int, period: str, session: requests.Session
     return []
 
 
+def main() -> None:
+    require_api_key()
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    log(
+        "Starting FMP bulk financials: years "
+        f"{FMP_BULK_START_YEAR}-{FMP_BULK_END_YEAR} | "
+        f"periods={','.join(FMP_BULK_PERIODS)} | "
+        f"statements={','.join(FMP_BULK_STATEMENTS)}"
+    )
+    if FMP_SKIP_GVKEY:
+        log("GVKEY mapping disabled (FMP_SKIP_GVKEY=1); using symbol as company_id.")
+    log("Loading CRSP mapping tables (gvkey <-> ticker)...")
+    names, link = load_mappings()
+    log(f"Loaded mappings: names={len(names):,} | links={len(link):,}")
+    checkpoint = load_checkpoint()
+    if checkpoint:
+        log(f"Loaded checkpoint entries: {len(checkpoint):,}")
+
+    if FMP_BULK_USE_PARTITIONED:
+        warehouse_dir = DATA_DIR / "warehouse"
+        table_dir = warehouse_dir / "warehouse_financials"
+        file_path = warehouse_dir / "warehouse_financials.parquet"
+        if not table_dir.exists():
+            table_dir.mkdir(parents=True, exist_ok=True)
+        if file_path.exists() and FMP_BULK_MIGRATE_FILE:
+            dest = table_dir / f"part_legacy_{int(datetime.utcnow().timestamp())}.parquet"
+            file_path.replace(dest)
+            log("Moved existing warehouse_financials.parquet into partitioned directory.")
+
+    session = requests.Session()
+    ingestion_time = datetime.utcnow()
+
+    raw_buffer: List[Dict] = []
+    canonical_buffer: List[Dict] = []
+    total_records = 0
+
+    for year in range(FMP_BULK_START_YEAR, FMP_BULK_END_YEAR + 1):
+        for period in FMP_BULK_PERIODS:
+            for statement in FMP_BULK_STATEMENTS:
+                key = f"{statement}|{year}|{period}"
+                if key in checkpoint:
+                    continue
+
+                log(f"Fetching {statement} {year} {period}...")
+                rows = fetch_bulk(statement, year, period, session)
+                if rows is None:
+                    log(f"Skipping checkpoint for {statement} {year} {period} due to request failure.")
+                    continue
+                if not rows:
+                    checkpoint.add(key)
+                    save_checkpoint([key])
+                    continue
+
+                line_map = LINE_ITEM_MAP[statement]
+
+                for row in rows:
+                    symbol = row['symbol']
+                    if not symbol:
+                        continue
+                    symbol_norm = str(symbol).upper().strip().replace("-", ".")
+
+                    date_str = row.get("date")
+                    if not date_str:
+                        continue
+                    event_time = pd.to_datetime(date_str, errors="coerce")
+                    if pd.isna(event_time):
+                        continue
+
+                    if FMP_SKIP_GVKEY:
+                        company_id = symbol_norm
+                        quality_flags = ["missing_gvkey"]
+                    else:
+                        company_id = map_symbol_to_gvkey(symbol_norm, event_time, names, link)
+                        if not company_id:
+                            company_id = row.get("cik") or symbol_norm
+                            quality_flags = ["missing_gvkey"]
+                        else:
+                            quality_flags = []
+
+                    available_time = pd.to_datetime(
+                        row.get("acceptedDate") or row.get("filingDate"), errors="coerce"
+                    )
+                    if pd.isna(available_time):
+                        lag_days = 45 if period.upper().startswith("Q") else 90
+                        available_time = event_time + pd.Timedelta(days=lag_days)
+                        quality_flags.append("estimated_available_time")
+                    if available_time < event_time:
+                        available_time = event_time
+                        if "estimated_available_time" not in quality_flags:
+                            quality_flags.append("estimated_available_time")
+
+                    fiscal_year = row.get("calendarYear") or event_time.year
+                    fiscal_quarter = None
+                    fp = row.get("period") or period
+                    if isinstance(fp, str) and fp.upper().startswith("Q"):
+                        fiscal_quarter = fp.upper().replace("Q", "")
+
+                    raw_payload = normalize_payload(row)
+                    raw_payload_hash = compute_raw_payload_hash(raw_payload)
+                    raw_version_id = compute_version_id(
+                        source_system="fmp_financials",
+                        entity_id=str(company_id),
+                        event_time=event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=raw_payload_hash,
+                    )
+
+                    raw_buffer.append(
+                        {
+                            "entity_id": str(company_id),
+                            "company_id": str(company_id),
+                            "security_id": None,
+                            "event_time": event_time,
+                            "available_time": available_time,
+                            "payload": raw_payload,
+                        }
+                    )
+
+                    for field, (statement_type, line_item) in line_map.items():
+                        value = normalize_value(row.get(field))
+                        if value is None:
+                            continue
+                        canonical_buffer.append(
+                            {
+                                "source_system": "fmp_financials",
+                                "entity_id": str(company_id),
+                                "company_id": str(company_id),
+                                "security_id": None,
+                                "event_time": event_time,
+                                "available_time": available_time,
+                                "ingestion_time": ingestion_time,
+                                "version_id": compute_version_id(
+                                    source_system="fmp_financials",
+                                    entity_id=f"{company_id}:{statement_type}:{line_item}",
+                                    event_time=event_time.to_pydatetime(),
+                                    available_time=available_time.to_pydatetime(),
+                                    raw_payload_hash=raw_payload_hash,
+                                ),
+                                "raw_payload_hash": raw_payload_hash,
+                                "upstream_version_ids": [raw_version_id],
+                                "quality_flags": quality_flags,
+                                "fiscal_period_end": event_time,
+                                "fiscal_year": int(fiscal_year) if fiscal_year else None,
+                                "fiscal_quarter": int(fiscal_quarter) if fiscal_quarter else None,
+                                "statement_type": statement_type,
+                                "line_item": line_item,
+                                "value": value,
+                                "currency": row.get("reportedCurrency"),
+                                "units": None,
+                                "restatement_flag": False,
+                            }
+                        )
+
+                    if len(canonical_buffer) >= FMP_FLUSH_EVERY:
+                        if raw_buffer:
+                            write_raw_records(source_system="fmp_financials", records=raw_buffer)
+                            raw_buffer = []
+                        append_canonical_records("warehouse_financials", canonical_buffer)
+                        total_records += len(canonical_buffer)
+                        log(f"Ingested {len(canonical_buffer):,} records (total {total_records:,})")
+                        canonical_buffer = []
+
+                checkpoint.add(key)
+                save_checkpoint([key])
+                log(f"Completed {statement} {year} {period}: {len(rows):,} rows")
+
+    if raw_buffer:
+        write_raw_records(source_system="fmp_financials", records=raw_buffer)
+    if canonical_buffer:
+        append_canonical_records("warehouse_financials", canonical_buffer)
+        total_records += len(canonical_buffer)
+    log(f"Done. Total FMP financial records: {total_records:,}")
+
+

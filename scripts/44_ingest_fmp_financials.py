@@ -209,3 +209,20 @@ def load_symbol_list() -> List[str]:
     return symbols
 
 
+def load_mappings() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not names_path.exists() or not link_path.exists():
+        return pd.DataFrame(), pd.DataFrame()
+    names = pd.read_parquet(names_path, columns=["permno", "namedt", "nameendt", "ticker"])
+    try:
+        link = pd.read_parquet(link_path, columns=["permno", "gvkey", "linkdt", "linkenddt"])
+    except Exception:
+        link = pd.read_parquet(link_path, columns=["lpermno", "gvkey", "linkdt", "linkenddt"])
+        link = link.rename(columns={"lpermno": "permno"})
+    link["permno"] = pd.to_numeric(link["permno"], errors="coerce")
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce")
+    return names, link
+
+
