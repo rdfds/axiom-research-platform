@@ -201,3 +201,44 @@ def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
             yield json.loads(line)
 
 
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    taxonomy_reference_path = Path(args.taxonomy_reference_path)
+    entity_identifier_path = Path(args.entity_identifier_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    provider = _provider_reference_map(taxonomy_reference_path, entity_identifier_path)
+    provider_by_entity = provider.set_index("entity_id").to_dict(orient="index")
+    computed_at = _now_iso()
+    counters: Counter[str] = Counter()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_snapshot_rows(snapshot_path):
+            entity_id = row['company_id']
+            provider_row = provider_by_entity.get(entity_id)
+            features = row.setdefault("features", {})
+            for metric_name, spec in METRIC_SPECS.items():
+                node = _build_metric_node(
+                    metric_name=metric_name,
+                    spec=spec,
+                    provider_row=provider_row,
+                    as_of_time=row.get("as_of_time"),
+                    computed_at=computed_at,
+                    provenance_source=str(taxonomy_reference_path),
+                )
+                features[metric_name] = node
+                counters[f"{metric_name}:{node['support_mode']}"] += 1
+            out_handle.write(json.dumps(row) + "\n")
+
+    print(f"Wrote augmented snapshots -> {out_path}")
+    print(f"provider_rows={len(provider_by_entity)}")
+    for metric_name in METRIC_SPECS:
+        exact = counters[f"{metric_name}:exact"]
+        unsupported = counters[f"{metric_name}:unsupported"]
+        print(f"{metric_name}: exact={exact} unsupported={unsupported}")
+
+
+if __name__ == "__main__":
+    main()

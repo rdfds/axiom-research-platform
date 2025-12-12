@@ -170,3 +170,138 @@ def _reconstructed_nodes(
     return nodes
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    taxonomy_reference_path = Path(args.taxonomy_reference_path)
+    entity_identifier_path = Path(args.entity_identifier_path)
+    companyfacts_root = Path(args.companyfacts_root)
+    raw_timeseries_path = Path(args.raw_timeseries_path)
+    out_path = Path(args.out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    snapshot_rows = list(iter_snapshot_rows(artifact_path))
+    snapshot_company_ids = {str(row.get("company_id")) for row in snapshot_rows if row.get("company_id")}
+
+    provider = core._provider_reference_map(taxonomy_reference_path, entity_identifier_path)
+    if snapshot_company_ids:
+        provider = provider[provider["entity_id"].astype(str).isin(snapshot_company_ids)].copy()
+    provider_by_entity = provider.set_index("entity_id").to_dict(orient="index")
+    permnos = market_macro._permno_map(entity_identifier_path)
+    if snapshot_company_ids:
+        permnos = permnos[permnos["entity_id"].astype(str).isin(snapshot_company_ids)].copy()
+    permno_by_entity = permnos.set_index("entity_id")["permno"].to_dict()
+    price_history = market_macro._load_price_history(raw_timeseries_path, permnos["permno"].tolist())
+    price_by_permno = {permno: frame.reset_index(drop=True) for permno, frame in price_history.groupby("permno")}
+
+    summaries: Dict[str, Any] = {}
+    metric_counters = {
+        metric_name: {
+            "artifact_support": Counter(),
+            "artifact_basis": Counter(),
+            "reconstructed_support": Counter(),
+            "provider_support": Counter(),
+            "artifact_vs_provider_gap": [],
+            "artifact_vs_reconstructed_gap": [],
+            "largest_provider_gaps": [],
+            "largest_reconstructed_gaps": [],
+        }
+        for metric_name in METRICS
+    }
+
+    row_count = 0
+    for row in snapshot_rows:
+        row_count += 1
+        entity_id = row.get("company_id")
+        provider_row = provider_by_entity.get(entity_id)
+        companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+        companyfacts = core._load_companyfacts(companyfacts_path)
+        price_df = price_by_permno.get(permno_by_entity.get(entity_id))
+        reconstructed = _reconstructed_nodes(
+            row=row,
+            provider_row=provider_row,
+            companyfacts=companyfacts,
+            companyfacts_path=companyfacts_path if companyfacts is not None else None,
+            price_history=price_df,
+            raw_timeseries_path=raw_timeseries_path,
+        )
+        features = row.get("features") or {}
+
+        for metric_name in METRICS:
+            artifact_node = _artifact_view(features.get(metric_name))
+            provider_node = reconstructed[metric_name]["provider"]
+            reconstructed_node = reconstructed[metric_name]["reconstructed"]
+            counters = metric_counters[metric_name]
+
+            counters["artifact_support"][artifact_node.get("support_mode") or "missing_metric"] += 1
+            counters["artifact_basis"][artifact_node.get("primary_source_basis") or "missing_basis"] += 1
+            counters["provider_support"][provider_node.get("support_mode") or "missing_metric"] += 1
+            counters["reconstructed_support"][reconstructed_node.get("support_mode") or "missing_metric"] += 1
+
+            gap_vs_provider = _pct_gap(artifact_node.get("value"), provider_node.get("value"))
+            gap_vs_reconstructed = _pct_gap(artifact_node.get("value"), reconstructed_node.get("value"))
+            if gap_vs_provider is not None:
+                counters["artifact_vs_provider_gap"].append(gap_vs_provider)
+                counters["largest_provider_gaps"].append(
+                    {
+                        "company_id": entity_id,
+                        "artifact_value": artifact_node.get("value"),
+                        "artifact_support_mode": artifact_node.get("support_mode"),
+                        "artifact_primary_source_basis": artifact_node.get("primary_source_basis"),
+                        "provider_value": provider_node.get("value"),
+                        "gap_pct": gap_vs_provider,
+                    }
+                )
+            if gap_vs_reconstructed is not None:
+                counters["artifact_vs_reconstructed_gap"].append(gap_vs_reconstructed)
+                counters["largest_reconstructed_gaps"].append(
+                    {
+                        "company_id": entity_id,
+                        "artifact_value": artifact_node.get("value"),
+                        "artifact_support_mode": artifact_node.get("support_mode"),
+                        "artifact_primary_source_basis": artifact_node.get("primary_source_basis"),
+                        "reconstructed_value": reconstructed_node.get("value"),
+                        "reconstructed_support_mode": reconstructed_node.get("support_mode"),
+                        "gap_pct": gap_vs_reconstructed,
+                    }
+                )
+
+    for metric_name, counters in metric_counters.items():
+        summaries[metric_name] = {
+            "artifact_support_counts": dict(counters["artifact_support"]),
+            "artifact_primary_source_basis_counts": dict(counters["artifact_basis"]),
+            "provider_support_counts": dict(counters["provider_support"]),
+            "reconstructed_support_counts": dict(counters["reconstructed_support"]),
+            "artifact_vs_provider_gap_stats": {
+                "count": len(counters["artifact_vs_provider_gap"]),
+                "median_abs_pct_gap": median(counters["artifact_vs_provider_gap"]) if counters["artifact_vs_provider_gap"] else None,
+                "max_abs_pct_gap": max(counters["artifact_vs_provider_gap"]) if counters["artifact_vs_provider_gap"] else None,
+            },
+            "artifact_vs_reconstructed_gap_stats": {
+                "count": len(counters["artifact_vs_reconstructed_gap"]),
+                "median_abs_pct_gap": median(counters["artifact_vs_reconstructed_gap"]) if counters["artifact_vs_reconstructed_gap"] else None,
+                "max_abs_pct_gap": max(counters["artifact_vs_reconstructed_gap"]) if counters["artifact_vs_reconstructed_gap"] else None,
+            },
+            "largest_provider_gaps": sorted(
+                counters["largest_provider_gaps"],
+                key=lambda item: item["gap_pct"],
+                reverse=True,
+            )[:10],
+            "largest_reconstructed_gaps": sorted(
+                counters["largest_reconstructed_gaps"],
+                key=lambda item: item["gap_pct"],
+                reverse=True,
+            )[:10],
+        }
+
+    report = {
+        "artifact_path": str(artifact_path),
+        "row_count": row_count,
+        "metrics": summaries,
+    }
+    out_path.write_text(json.dumps(report, indent=2))
+    print(out_path)
+
+
+if __name__ == "__main__":
+    main()
