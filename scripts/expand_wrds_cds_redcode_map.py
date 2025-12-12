@@ -185,3 +185,40 @@ def _build_additions(broad: pd.DataFrame, unresolved: pd.DataFrame) -> pd.DataFr
     return pd.DataFrame(additions).drop_duplicates(subset=["company_id", "redcode"])
 
 
+def expand_map(
+    broad_cds_path: Path,
+    partial_map_path: Path,
+    unresolved_path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    broad = pd.read_csv(broad_cds_path, usecols=["ticker", "shortname", "redcode"]).drop_duplicates()
+    partial = pd.read_csv(partial_map_path)
+    unresolved = pd.read_csv(unresolved_path)
+
+    partial["company_id"] = _company_id_series(partial["company_id"])
+    unresolved["company_id"] = _company_id_series(unresolved["company_id"])
+
+    additions = _build_additions(broad, unresolved)
+    additions["company_id"] = _company_id_series(additions["company_id"])
+
+    expanded = pd.concat(
+        [
+            partial,
+            additions[
+                ["company_id", "company_name", "equity_ticker", "cds_ticker", "redcode", "shortname", "match_type"]
+            ],
+        ],
+        ignore_index=True,
+    ).drop_duplicates(subset=["company_id", "redcode"])
+
+    remaining = unresolved[~unresolved["company_id"].isin(set(expanded["company_id"]))].copy()
+
+    summary = {
+        "partial_rows": int(len(partial)),
+        "new_safe_alias_rows": int(len(additions)),
+        "expanded_rows": int(len(expanded)),
+        "remaining_unresolved": int(len(remaining)),
+        "new_match_types": additions["match_type"].value_counts().to_dict(),
+    }
+    return additions, expanded, remaining, summary
+
+
