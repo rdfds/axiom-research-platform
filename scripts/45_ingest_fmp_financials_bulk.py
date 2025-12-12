@@ -180,7 +180,7 @@ def _request_json(url: str, params: Dict[str, object], session: requests.Session
     return None
 
 
-def load_mappings() :
+def load_mappings() -> Tuple[pd.DataFrame, pd.DataFrame]:
     names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
     link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
     if not names_path.exists() or not link_path.exists():
