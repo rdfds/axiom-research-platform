@@ -116,3 +116,5 @@ def main() -> None:
     print(f"Saved CitationIndex -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
