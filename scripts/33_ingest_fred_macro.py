@@ -94,3 +94,31 @@ def normalize_value(value: Any) -> Any:
     return value
 
 
+def fetch_fred_series(session: requests.Session, series_id: str, start: str, end: str) -> pd.DataFrame:
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+    params = {"id": series_id, "cosd": start, "coed": end}
+    resp = session.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    df = pd.read_csv(io.StringIO(resp.text))
+    if df.empty:
+        return df
+    # FRED responses can use either DATE or observation_date
+    if "DATE" in df.columns:
+        date_col = "DATE"
+    elif "observation_date" in df.columns:
+        date_col = "observation_date"
+    else:
+        raise ValueError(f"Unexpected FRED response columns for {series_id}: {list(df.columns)}")
+
+    value_col = series_id
+    if value_col not in df.columns:
+        # Fallback: assume second column is the value
+        value_col = df.columns[1] if len(df.columns) > 1 else series_id
+
+    df = df.rename(columns={date_col: "date", value_col: "value"})
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    return df
+
+

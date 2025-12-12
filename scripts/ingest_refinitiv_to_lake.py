@@ -183,7 +183,7 @@ def ingest_fundamentals(lake: DataLake, data_dir: Path) -> int:
                     fiscal_end = datetime.now()
 
                 # Filing date is when it became knowable
-                filing_date = pd.to_datetime(row['Filing Date'])
+                filing_date = pd.to_datetime(row.get('Filing Date'))
                 if pd.isna(filing_date):
                     filing_date = fiscal_end
 
