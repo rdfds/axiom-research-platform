@@ -94,3 +94,34 @@ def ensure_list(value) -> List:
     return [value]
 
 
+def normalize_flags(value) -> List[str]:
+    flat: List[str] = []
+    for item in ensure_list(value):
+        if item is None:
+            continue
+        if isinstance(item, (list, tuple, pd.Series)):
+            for sub in ensure_list(item):
+                if sub is None:
+                    continue
+                flat.append(str(sub))
+            continue
+        # numpy arrays or pandas arrays
+        if hasattr(item, "tolist") and not isinstance(item, str):
+            try:
+                for sub in item.tolist():
+                    if sub is None:
+                        continue
+                    flat.append(str(sub))
+                continue
+            except Exception:
+                pass
+        flat.append(str(item))
+    return flat
+
+
+def html_to_text(html: str) -> str:
+    text = re.sub(r"(?s)<[^>]+>", " ", html)
+    text = re.sub(r"\\s+", " ", text)
+    return text.strip()
+
+
