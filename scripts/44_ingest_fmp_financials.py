@@ -142,3 +142,23 @@ def _safe_params(params: Dict[str, object]) -> Dict[str, object]:
     return safe
 
 
+def _request_json(url: str, params: Dict[str, object], session: requests.Session) -> Optional[List[Dict]]:
+    for attempt in range(FMP_RETRIES + 1):
+        try:
+            if FMP_DEBUG:
+                log(f"[debug] GET {url} params={_safe_params(params)}")
+            resp = session.get(url, params=params, timeout=FMP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            if FMP_SLEEP:
+                time.sleep(FMP_SLEEP)
+            return data
+        except requests.RequestException as exc:
+            if attempt < FMP_RETRIES:
+                time.sleep(max(FMP_SLEEP, 0.2))
+                continue
+            log(f"Request failed: {url} {exc}")
+            return None
+    return None
+
+
