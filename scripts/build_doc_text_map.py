@@ -98,3 +98,5 @@ def main() -> None:
     print(f"Saved doc text map -> {out_root}")
 
 
+if __name__ == "__main__":
+    main()

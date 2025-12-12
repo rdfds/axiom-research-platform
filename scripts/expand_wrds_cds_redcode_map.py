@@ -222,3 +222,28 @@ def expand_map(
     return additions, expanded, remaining, summary
 
 
+def main() :
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--broad-cds-path", type=Path, required=True)
+    parser.add_argument("--partial-map-path", type=Path, required=True)
+    parser.add_argument("--unresolved-path", type=Path, required=True)
+    parser.add_argument("--out-additions", type=Path, required=True)
+    parser.add_argument("--out-expanded-map", type=Path, required=True)
+    parser.add_argument("--out-remaining-unresolved", type=Path, required=True)
+    parser.add_argument("--summary-out", type=Path, required=True)
+    args = parser.parse_args()
+
+    additions, expanded, remaining, summary = expand_map(
+        broad_cds_path=args.broad_cds_path,
+        partial_map_path=args.partial_map_path,
+        unresolved_path=args.unresolved_path,
+    )
+
+    args.out_additions.parent.mkdir(parents=True, exist_ok=True)
+    additions.to_csv(args.out_additions, index=False)
+    expanded.to_csv(args.out_expanded_map, index=False)
+    remaining.to_csv(args.out_remaining_unresolved, index=False)
+    args.summary_out.write_text(json.dumps(summary, indent=2))
+    print(f"Wrote expanded RED map -> {args.out_expanded_map}")
+
+
