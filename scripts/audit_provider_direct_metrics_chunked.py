@@ -82,3 +82,8 @@ def _iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
+def _chunk_rows(rows: List[Dict[str, Any]], chunk_size: int) -> Iterable[List[Dict[str, Any]]]:
+    for start in range(0, len(rows), chunk_size):
+        yield rows[start : start + chunk_size]
+
+

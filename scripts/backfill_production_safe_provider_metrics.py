@@ -216,7 +216,7 @@ def main() -> None:
 
     with out_path.open("w") as out_handle:
         for row in iter_snapshot_rows(snapshot_path):
-            entity_id = row['company_id']
+            entity_id = row.get("company_id")
             provider_row = provider_by_entity.get(entity_id)
             features = row.setdefault("features", {})
             for metric_name, spec in METRIC_SPECS.items():

@@ -69,7 +69,7 @@ def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
             yield json.loads(line)
 
 
-def _pct_gap(left: float | None, right: float | None) :
+def _pct_gap(left: float | None, right: float | None) -> float | None:
     if left is None or right is None:
         return None
     denom = max(abs(float(right)), 1.0)
