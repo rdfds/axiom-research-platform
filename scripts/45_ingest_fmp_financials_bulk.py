@@ -245,3 +245,12 @@ def normalize_value(value) -> Optional[float]:
         return None
 
 
+def load_checkpoint() -> set:
+    if not FMP_BULK_RESUME:
+        return set()
+    checkpoint_path = FMP_DIR / "fmp_financials_bulk_checkpoint.txt"
+    if not checkpoint_path.exists():
+        return set()
+    return set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
+
+

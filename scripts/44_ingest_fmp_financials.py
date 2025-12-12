@@ -135,3 +135,10 @@ def require_api_key() -> str:
     return FMP_API_KEY
 
 
+def _safe_params(params: Dict[str, object]) -> Dict[str, object]:
+    safe = dict(params)
+    if "apikey" in safe:
+        safe["apikey"] = "***REDACTED***"
+    return safe
+
+
