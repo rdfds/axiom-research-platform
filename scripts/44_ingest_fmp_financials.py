@@ -182,3 +182,30 @@ def load_universe_tickers() :
     return tickers
 
 
+def normalize_symbol(symbol: str) -> str:
+    symbol = str(symbol).upper().strip()
+    # FMP uses dashes for share classes (e.g., BRK-B)
+    symbol = symbol.replace(".", "-")
+    return symbol
+
+
+def load_symbol_list() -> List[str]:
+    symbols: List[str] = []
+    if FMP_TARGET_SYMBOL:
+        symbols = [normalize_symbol(FMP_TARGET_SYMBOL)]
+    elif FMP_USE_UNIVERSE:
+        symbols = [normalize_symbol(s) for s in load_universe_tickers()]
+        if symbols:
+            log(f"Using universe tickers: {len(symbols):,}")
+    if not symbols:
+        # fallback to financial statement symbol list
+        session = requests.Session()
+        data = _request_json(f"{FMP_BASE_URL}/financial-statement-symbol-list", {"apikey": FMP_API_KEY}, session)
+        if data:
+            symbols = [normalize_symbol(row.get("symbol")) for row in data if row.get("symbol")]
+    symbols = sorted(set([s for s in symbols if s]))
+    if FMP_LIMIT_SYMBOLS and FMP_LIMIT_SYMBOLS > 0:
+        symbols = symbols[:FMP_LIMIT_SYMBOLS]
+    return symbols
+
+

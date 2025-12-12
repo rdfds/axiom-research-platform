@@ -262,3 +262,19 @@ def save_checkpoint(entries: Iterable[str]) -> None:
             f.write(entry + "\n")
 
 
+def fetch_bulk(statement: str, year: int, period: str, session: requests.Session) -> Optional[List[Dict]]:
+    endpoint = STATEMENT_ENDPOINTS[statement]
+    url = f"{FMP_BASE_URL}/{endpoint}"
+    params = {"year": year, "period": period, "apikey": FMP_API_KEY}
+    data = _request_json(url, params=params, session=session)
+    if data is None:
+        return None
+    if not data:
+        return []
+    if isinstance(data, dict) and data.get("Error Message"):
+        return []
+    if isinstance(data, list):
+        return data
+    return []
+
+

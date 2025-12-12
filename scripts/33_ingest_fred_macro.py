@@ -122,3 +122,11 @@ def fetch_fred_series(session: requests.Session, series_id: str, start: str, end
     return df
 
 
+def iter_chunks(df: pd.DataFrame, chunk_size: int) -> Iterable[pd.DataFrame]:
+    if chunk_size <= 0:
+        yield df
+        return
+    for start in range(0, len(df), chunk_size):
+        yield df.iloc[start : start + chunk_size]
+
+
