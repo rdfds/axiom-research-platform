@@ -230,3 +230,61 @@ def ingest_fundamentals(lake: DataLake, data_dir: Path) -> int:
     return 0
 
 
+def ingest_estimates(lake: DataLake, data_dir: Path) -> int:
+    """Ingest analyst estimates into the lake."""
+    print("\n--- Ingesting Analyst Estimates ---")
+
+    file_path = data_dir / 'analyst_estimates_all.parquet'
+    if not file_path.exists():
+        print("Estimates file not found")
+        return 0
+
+    df = pd.read_parquet(file_path)
+    print(f"Loaded {len(df):,} estimate records")
+
+    records = []
+    for _, row in df.iterrows():
+        try:
+            entity_id = str(row.get('Instrument', 'unknown'))
+
+            # For estimates, event_time is the target period
+            # available_time is when the estimate was made
+            target_date = pd.to_datetime(row.get('Target Period End Date'))
+            if pd.isna(target_date):
+                target_date = datetime.now()
+
+            record = CanonicalRecord(
+                record_id=CanonicalRecord.generate_id(
+                    'refinitiv', 'estimate', entity_id, target_date.to_pydatetime() if hasattr(target_date, 'to_pydatetime') else target_date
+                ),
+                record_type=RecordType.ESTIMATE,
+                source='refinitiv',
+                entity_id=entity_id,
+                entity_name=row.get('Company Common Name'),
+                event_time=target_date.to_pydatetime() if hasattr(target_date, 'to_pydatetime') else target_date,
+                available_time=datetime.now(),  # Current estimates
+                data={
+                    'eps_mean': row.get('EPS Mean'),
+                    'eps_high': row.get('EPS High'),
+                    'eps_low': row.get('EPS Low'),
+                    'revenue_mean': row.get('Revenue Mean'),
+                    'num_analysts': row.get('Number of Analysts'),
+                    'target_price_mean': row.get('Target Price Mean'),
+                    'recommendation_mean': row.get('Recommendation Mean'),
+                    'num_buy': row.get('Number of Buys'),
+                    'num_hold': row.get('Number of Holds'),
+                    'num_sell': row.get('Number of Sells'),
+                }
+            )
+            records.append(record)
+        except Exception as e:
+            continue
+
+    if records:
+        published = lake.publish(records)
+        print(f"Published {published:,} estimate records")
+        return published
+
+    return 0
+
+
