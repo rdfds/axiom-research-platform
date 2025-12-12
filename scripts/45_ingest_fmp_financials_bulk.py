@@ -216,3 +216,18 @@ def map_symbol_to_gvkey(symbol: str, asof: pd.Timestamp, names: pd.DataFrame, li
     return str(gvkey) if pd.notna(gvkey) else None
 
 
+def normalize_payload(payload: Dict) -> Dict:
+    cleaned = {}
+    for k, v in payload.items():
+        if isinstance(v, pd.Timestamp):
+            cleaned[k] = None if pd.isna(v) else v.isoformat()
+        elif isinstance(v, (np.integer, np.floating, np.bool_)):
+            cleaned[k] = v.item()
+        else:
+            try:
+                cleaned[k] = None if pd.isna(v) else v
+            except Exception:
+                cleaned[k] = v
+    return cleaned
+
+

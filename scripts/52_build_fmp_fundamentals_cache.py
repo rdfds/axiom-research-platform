@@ -134,3 +134,5 @@ def main() :
         print(f"[build_fmp_cache] Saved -> {out_path} in {time.time() - t0:.1f}s")
 
 
+if __name__ == "__main__":
+    main()
