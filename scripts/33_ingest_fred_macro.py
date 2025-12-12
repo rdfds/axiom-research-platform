@@ -79,3 +79,18 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def normalize_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (pd.Timestamp, datetime)):
+        return value.isoformat()
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        return value.item()
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    return value
+
+
