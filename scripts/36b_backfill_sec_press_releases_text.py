@@ -148,3 +148,71 @@ def _fetch_url(url: str, session: requests.Session, sleep_seconds: float) :
     return None
 
 
+def _find_exhibit_doc(cik: str, accession_clean: str, session: requests.Session, sleep_seconds: float) -> Optional[str]:
+    index_url = f"{SEC_ARCHIVES_BASE}/{int(cik)}/{accession_clean}/index.json"
+    try:
+        resp = session.get(index_url, timeout=SEC_BACKFILL_TIMEOUT)
+        resp.raise_for_status()
+        if sleep_seconds:
+            time.sleep(sleep_seconds)
+        data = resp.json()
+    except Exception:
+        return None
+
+    items = data.get("directory", {}).get("item", [])
+    if not isinstance(items, list):
+        return None
+
+    def _score(name: str) -> int:
+        lname = name.lower()
+        if "ex99" in lname or "ex-99" in lname or "exhibit99" in lname:
+            return 3
+        if "press" in lname or "release" in lname:
+            return 2
+        if lname.endswith((".htm", ".html", ".txt")):
+            return 1
+        return 0
+
+    candidates = [item.get("name") for item in items if isinstance(item, dict) and item.get("name")]
+    candidates = [c for c in candidates if _score(c) > 0]
+    if not candidates:
+        return None
+
+    candidates.sort(key=_score, reverse=True)
+    return candidates[0]
+
+
+def fetch_filing_text(
+    cik: str, accession: str, primary_doc: str, session: requests.Session, sleep_seconds: float
+) -> Optional[str]:
+    accession_clean = accession.replace("-", "")
+    url = f"{SEC_ARCHIVES_BASE}/{int(cik)}/{accession_clean}/{primary_doc}"
+
+    text = _fetch_url(url, session, sleep_seconds)
+    if text and len(text) >= SEC_BACKFILL_MIN_TEXT:
+        return text
+
+    if SEC_BACKFILL_ALLOW_EXHIBIT_SEARCH:
+        exhibit = _find_exhibit_doc(cik, accession_clean, session, sleep_seconds)
+        if exhibit and exhibit != primary_doc:
+            ex_url = f"{SEC_ARCHIVES_BASE}/{int(cik)}/{accession_clean}/{exhibit}"
+            ex_text = _fetch_url(ex_url, session, sleep_seconds)
+            if ex_text and len(ex_text) >= SEC_BACKFILL_MIN_TEXT:
+                return ex_text
+
+    if SEC_BACKFILL_ALLOW_FULL_SUBMISSION:
+        full_url = f"{SEC_ARCHIVES_BASE}/{int(cik)}/{accession_clean}/{accession_clean}.txt"
+        full_text = _fetch_url(full_url, session, sleep_seconds)
+        if full_text and len(full_text) >= SEC_BACKFILL_MIN_TEXT:
+            return full_text
+
+    return None
+
+
+def iter_press_release_files() -> List[Path]:
+    base = WAREHOUSE_DIR / "warehouse_press_releases"
+    if SEC_BACKFILL_COMPACT_ONLY:
+        return sorted(base.rglob("part_compact.parquet"))
+    return sorted(base.rglob("part_*.parquet"))
+
+
