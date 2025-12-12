@@ -197,3 +197,22 @@ def load_mappings() :
     return names, link
 
 
+def map_symbol_to_gvkey(symbol: str, asof: pd.Timestamp, names: pd.DataFrame, link: pd.DataFrame) -> Optional[str]:
+    if names.empty or link.empty or symbol is None or pd.isna(symbol):
+        return None
+    symbol = str(symbol).upper().strip().replace("-", ".")
+    active = names[names["ticker"].astype("string").str.upper() == symbol]
+    if active.empty:
+        return None
+    active = active.sort_values("nameendt").tail(1)
+    permno = active.iloc[0]["permno"]
+    link_rows = link[link["permno"] == permno]
+    if link_rows.empty:
+        return None
+    link_active = link_rows[(link_rows["linkdt"] <= asof) & (link_rows["linkenddt"] >= asof)]
+    if link_active.empty:
+        link_active = link_rows.sort_values("linkenddt").tail(1)
+    gvkey = link_active.iloc[0]["gvkey"]
+    return str(gvkey) if pd.notna(gvkey) else None
+
+
