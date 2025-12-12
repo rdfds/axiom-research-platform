@@ -125,7 +125,7 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
-def _fetch_url(url: str, session: requests.Session, sleep_seconds: float) :
+def _fetch_url(url: str, session: requests.Session, sleep_seconds: float) -> Optional[str]:
     last_exc: Optional[Exception] = None
     for attempt in range(SEC_BACKFILL_RETRIES + 1):
         try:
