@@ -37,7 +37,7 @@ CASH_ITEMS = [
 ]
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--in-path",
