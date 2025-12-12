@@ -82,3 +82,15 @@ def require_user_agent() -> str:
     return user_agent
 
 
+def ensure_list(value) -> List:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, pd.Series):
+        return value.tolist()
+    return [value]
+
+
