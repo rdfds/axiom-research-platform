@@ -242,3 +242,34 @@ def write_partitioned(records: List[Dict[str, object]]) -> int:
     return rows
 
 
+def _read_parquet_with_progress(path: Path, columns: Optional[List[str]] = None) -> pd.DataFrame:
+    if SEC_BACKFILL_MAX_MB and path.stat().st_size > SEC_BACKFILL_MAX_MB * 1024 * 1024:
+        log(f"Skipping large parquet (> {SEC_BACKFILL_MAX_MB} MB): {path.name}")
+        return pd.DataFrame()
+
+    result: Dict[str, object] = {}
+    done = threading.Event()
+
+    def _run() -> None:
+        try:
+            if columns is None:
+                result["df"] = pd.read_parquet(path)
+            else:
+                result["df"] = pd.read_parquet(path, columns=columns)
+        except Exception as exc:
+            result["error"] = exc
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    start = time.perf_counter()
+    while not done.wait(timeout=SEC_BACKFILL_SLOW_LOG_SECONDS):
+        elapsed = time.perf_counter() - start
+        log(f"  still reading {path.name}... {elapsed:.0f}s")
+    t.join()
+    if "error" in result:
+        raise result["error"]  # type: ignore[arg-type]
+    return result.get("df", pd.DataFrame())  # type: ignore[return-value]
+
+
