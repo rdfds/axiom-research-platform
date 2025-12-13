@@ -130,3 +130,120 @@ def iter_chunks(df: pd.DataFrame, chunk_size: int) -> Iterable[pd.DataFrame]:
         yield df.iloc[start : start + chunk_size]
 
 
+def main() -> None:
+    series_list = SERIES_DEFAULT
+    if FRED_SERIES:
+        requested = {s.strip().upper() for s in FRED_SERIES.split(",") if s.strip()}
+        series_list = [s for s in SERIES_DEFAULT if s["series_id"].upper() in requested]
+        if not series_list:
+            log("No valid series selected; nothing to do.")
+            return
+
+    source_system = "fred"
+    ingestion_time = datetime.utcnow()
+
+    session = requests.Session()
+    total_rows = 0
+
+    total_series = len(series_list)
+    for idx, spec in enumerate(series_list, start=1):
+        series_id = spec["series_id"]
+        instrument_type = spec.get("instrument_type")
+        tenor = spec.get("tenor")
+        units = spec.get("units")
+
+        log(f"Pulling FRED series {series_id} ({idx}/{total_series})...")
+        t0 = time.time()
+        try:
+            df = fetch_fred_series(session, series_id, FRED_START, FRED_END)
+        except requests.RequestException as exc:
+            log(f"  Failed to fetch {series_id}: {exc}")
+            continue
+        elapsed = time.time() - t0
+        if df.empty:
+            log(f"  No rows for {series_id} (elapsed {elapsed:.1f}s)")
+            continue
+        log(f"  Fetched {len(df):,} rows for {series_id} in {elapsed:.1f}s")
+
+        raw_records: List[Dict[str, Any]] = []
+        canonical_records: List[Dict[str, Any]] = []
+
+        for _, row in df.iterrows():
+            event_time = pd.to_datetime(row["date"])
+            # FRED publication time is not explicit; use next-day availability.
+            available_time = event_time + timedelta(days=1)
+
+            value = row['value']
+            if value is None or pd.isna(value):
+                continue
+
+            entity_id = series_id
+            instrument_id = series_id
+
+            payload = {
+                "series_id": series_id,
+                "date": normalize_value(event_time),
+                "value": normalize_value(value),
+                "instrument_type": instrument_type,
+                "tenor": tenor,
+                "units": units,
+            }
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            raw_version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=entity_id,
+                event_time=event_time.to_pydatetime(),
+                available_time=available_time.to_pydatetime(),
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            raw_records.append(
+                {
+                    "entity_id": entity_id,
+                    "company_id": None,
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "payload": payload,
+                }
+            )
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": entity_id,
+                    "company_id": None,
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingestion_time,
+                    "version_id": raw_version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [raw_version_id],
+                    "quality_flags": ["estimated_available_time"],
+                    "instrument_id": instrument_id,
+                    "instrument_type": instrument_type,
+                    "tenor": tenor,
+                    "value": float(value),
+                    "units": units,
+                }
+            )
+
+        if raw_records:
+            log(f"  Writing raw records for {series_id}...")
+            t1 = time.time()
+            write_raw_records(source_system=source_system, records=raw_records)
+            log(f"  Wrote raw records for {series_id} in {time.time() - t1:.1f}s")
+        if canonical_records:
+            log(f"  Appending canonical records for {series_id}...")
+            t2 = time.time()
+            append_canonical_records("warehouse_macro", canonical_records)
+            log(f"  Appended canonical records for {series_id} in {time.time() - t2:.1f}s")
+            total_rows += len(canonical_records)
+            log(f"  Ingested {len(canonical_records):,} rows for {series_id}")
+
+        time.sleep(FRED_SLEEP)
+
+    log(f"Done. Total rows ingested: {total_rows:,}")
+
+
