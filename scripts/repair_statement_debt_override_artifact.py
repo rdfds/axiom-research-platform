@@ -158,3 +158,49 @@ def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
+def _timeout_handler(signum, frame):  # noqa: ANN001, ARG001
+    raise _CompanyProcessingTimeoutError("company processing timed out")
+
+
+@contextmanager
+def _company_processing_timeout(seconds: int | None):
+    if not seconds or seconds <= 0 or os.name == "nt":
+        yield
+        return
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, float(seconds))
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer != (0.0, 0.0):
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+
+
+def _parse_date(value: Any) -> date | None:
+    if value in (None, "", "None"):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        pass
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _node_value(node: dict[str, Any] | None) -> float | None:
+    if not node:
+        return None
+    value = node.get("value")
+    return None if value is None else float(value)
+
+
