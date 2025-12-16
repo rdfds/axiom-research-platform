@@ -222,7 +222,7 @@ def expand_map(
     return additions, expanded, remaining, summary
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--broad-cds-path", type=Path, required=True)
     parser.add_argument("--partial-map-path", type=Path, required=True)
