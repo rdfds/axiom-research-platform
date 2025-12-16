@@ -247,3 +247,5 @@ def main() :
     print(f"Wrote expanded RED map -> {args.out_expanded_map}")
 
 
+if __name__ == "__main__":
+    main()
