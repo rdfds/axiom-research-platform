@@ -72,3 +72,12 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def require_user_agent() -> str:
+    user_agent = os.getenv("SEC_USER_AGENT")
+    if not user_agent:
+        raise RuntimeError(
+            "SEC_USER_AGENT not set. Example: export SEC_USER_AGENT='Axiom Research (you@example.com)'"
+        )
+    return user_agent
+
+
