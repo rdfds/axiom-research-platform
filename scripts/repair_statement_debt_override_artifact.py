@@ -204,3 +204,7 @@ def _node_value(node: dict[str, Any] | None) -> float | None:
     return None if value is None else float(value)
 
 
+def _is_exact(node: dict[str, Any] | None) -> bool:
+    return node is not None and node.get("support_mode") == "exact" and _node_value(node) is not None
+
+

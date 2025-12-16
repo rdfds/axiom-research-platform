@@ -20,3 +20,8 @@ class _OfflineSession:
         raise requests.ConnectionError(f"offline: {url}")
 
 
+def test_load_sec_submissions_returns_none_when_network_unavailable(tmp_path):
+    payload = _load_sec_submissions("0000001750", session=_OfflineSession(), cache_dir=tmp_path)
+    assert payload is None
+
+
