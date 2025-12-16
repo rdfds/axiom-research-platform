@@ -200,3 +200,5 @@ def main():
     print("  3. If no M&A data, plan to use SDC Platinum at JHU library")
 
 
+if __name__ == "__main__":
+    main()
