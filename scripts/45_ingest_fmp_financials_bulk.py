@@ -453,3 +453,5 @@ def main() -> None:
     log(f"Done. Total FMP financial records: {total_records:,}")
 
 
+if __name__ == "__main__":
+    main()

@@ -162,7 +162,7 @@ def _request_json(url: str, params: Dict[str, object], session: requests.Session
     return None
 
 
-def load_universe_tickers() :
+def load_universe_tickers() -> List[str]:
     universe_path = DATA_DIR / "curated" / "universe_r3000_proxy.parquet"
     names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
     if not universe_path.exists() or not names_path.exists():
