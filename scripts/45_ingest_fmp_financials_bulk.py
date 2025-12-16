@@ -335,7 +335,7 @@ def main() -> None:
                 line_map = LINE_ITEM_MAP[statement]
 
                 for row in rows:
-                    symbol = row['symbol']
+                    symbol = row.get("symbol")
                     if not symbol:
                         continue
                     symbol_norm = str(symbol).upper().strip().replace("-", ".")
