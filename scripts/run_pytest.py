@@ -28,3 +28,5 @@ def main() -> int:
     return subprocess.call(cmd, cwd=repo_root, env=env)
 
 
+if __name__ == "__main__":
+    raise SystemExit(main())
