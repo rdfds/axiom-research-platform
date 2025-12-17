@@ -228,3 +228,5 @@ def main() -> None:
     print(f"[chunk_lookup] done in {elapsed:.1f}s")
 
 
+if __name__ == "__main__":
+    main()
