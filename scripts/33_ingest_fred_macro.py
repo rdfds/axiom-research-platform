@@ -173,7 +173,7 @@ def main() -> None:
             # FRED publication time is not explicit; use next-day availability.
             available_time = event_time + timedelta(days=1)
 
-            value = row['value']
+            value = row.get("value")
             if value is None or pd.isna(value):
                 continue
 

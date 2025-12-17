@@ -274,3 +274,17 @@ def normalize_value(value) -> Optional[float]:
         return None
 
 
+def fetch_statement(symbol: str, period: str, statement: str, session: requests.Session) -> List[Dict]:
+    endpoint = STATEMENT_ENDPOINTS[statement]
+    url = f"{FMP_BASE_URL}/{endpoint}"
+    params = {"symbol": symbol, "period": period, "apikey": FMP_API_KEY}
+    data = _request_json(url, params=params, session=session)
+    if not data:
+        return []
+    if isinstance(data, dict) and data.get("Error Message"):
+        return []
+    if isinstance(data, list):
+        return data
+    return []
+
+
