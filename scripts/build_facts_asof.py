@@ -23,3 +23,14 @@ def _is_readable(path: Path) -> bool:
         return False
 
 
+def parse_years(arg: Optional[str]) -> List[int]:
+    if not arg:
+        return []
+    out = []
+    for part in arg.split(","):
+        part = part.strip()
+        if part:
+            out.append(int(part))
+    return out
+
+
