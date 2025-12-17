@@ -50,3 +50,24 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## Rates / Spreads / Volatility
+
+```sql
+CREATE OR REPLACE VIEW asof_rates AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_rates
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY instrument_id, event_time, tenor
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+
