@@ -111,3 +111,14 @@ def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
             yield json.loads(line)
 
 
+def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) :
+    batch: list[Dict[str, Any]] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+

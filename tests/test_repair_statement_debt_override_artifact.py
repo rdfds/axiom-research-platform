@@ -145,3 +145,11 @@ def test_extract_filing_table_debt_candidate_ignores_vehicle_program_available_f
     assert candidate is None
 
 
+def test_filing_candidate_does_not_override_exact_current_debt_when_it_is_materially_smaller():
+    assert not _should_override_total_debt_with_filing_candidate(
+        current_value=131_574_000_000.0,
+        current_support="exact",
+        parsed_value=46_913_000_000.0,
+    )
+
+

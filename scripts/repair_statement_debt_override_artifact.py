@@ -453,3 +453,98 @@ def _load_sec_submissions(cik: str, *, session: requests.Session, cache_dir: Pat
     return payload
 
 
+def _latest_sec_filing(
+    *,
+    cik: str,
+    as_of_date: date,
+    session: requests.Session,
+    cache_dir: Path | None,
+) -> dict[str, Any] | None:
+    submissions = _load_sec_submissions(cik, session=session, cache_dir=cache_dir)
+    if not submissions:
+        return None
+    recent = (submissions.get("filings") or {}).get("recent") or {}
+    best: tuple[date, int, dict[str, Any]] | None = None
+    forms = {"10-Q": 2, "10-K": 1}
+    for filing_date, form, accession, primary_document in zip(
+        recent.get("filingDate", []),
+        recent.get("form", []),
+        recent.get("accessionNumber", []),
+        recent.get("primaryDocument", []),
+    ):
+        if form not in forms:
+            continue
+        filed_dt = _parse_date(filing_date)
+        if filed_dt is None or filed_dt > as_of_date:
+            continue
+        record = {
+            "cik": cik,
+            "filing_date": filing_date,
+            "form": form,
+            "accession_number": accession,
+            "primary_document": primary_document,
+        }
+        score = (filed_dt, forms[form], record)
+        if best is None or score > best:
+            best = score
+    return None if best is None else best[2]
+
+
+def _fetch_sec_primary_document(
+    filing: dict[str, Any],
+    *,
+    session: requests.Session,
+    cache_dir: Path | None,
+) -> str | None:
+    accession = str(filing["accession_number"])
+    accession_nodash = accession.replace("-", "")
+    cik_no_zeros = str(int(filing["cik"]))
+    primary_document = str(filing["primary_document"])
+    cache_path = None
+    if cache_dir is not None:
+        safe_name = f"{filing['cik']}_{accession_nodash}_{Path(primary_document).name}"
+        cache_path = cache_dir / safe_name
+        if cache_path.exists():
+            return cache_path.read_text(errors="ignore")
+    if os.environ.get("AXIOM_DISABLE_SEC_NETWORK_FALLBACK") == "1":
+        return None
+    url = f"{SEC_ARCHIVES_BASE}/{cik_no_zeros}/{accession_nodash}/{primary_document}"
+    try:
+        response = session.get(url, timeout=60)
+        response.raise_for_status()
+        html = response.text
+    except requests.RequestException:
+        return None
+    if cache_path is not None:
+        cache_path.write_text(html)
+    return html
+
+
+def _table_multiplier(table_text: str) -> float:
+    lower = table_text.lower()
+    if "in billions" in lower or "($ in billions)" in lower or "(billions)" in lower:
+        return 1_000_000_000.0
+    if "in millions" in lower or "($ in millions)" in lower or "(millions)" in lower:
+        return 1_000_000.0
+    if "in thousands" in lower or "($ in thousands)" in lower or "(thousands)" in lower:
+        return 1_000.0
+    return 1.0
+
+
+def _document_multiplier(document_text: str) -> float:
+    lower = document_text.lower()
+    if "all amounts are presented in billions" in lower or "all dollar amounts are in billions" in lower:
+        return 1_000_000_000.0
+    if "all amounts are presented in millions" in lower or "all dollar amounts are in millions" in lower:
+        return 1_000_000.0
+    if "all amounts are presented in thousands" in lower or "all dollar amounts are in thousands" in lower:
+        return 1_000.0
+    if "in billions" in lower or "(billions)" in lower:
+        return 1_000_000_000.0
+    if "in millions" in lower or "(millions)" in lower:
+        return 1_000_000.0
+    if "in thousands" in lower or "(thousands)" in lower:
+        return 1_000.0
+    return 1.0
+
+
