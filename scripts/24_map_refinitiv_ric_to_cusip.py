@@ -90,3 +90,13 @@ class Progress:
         sys.stdout.flush()
 
 
+def _pick_col(df: pd.DataFrame, *names):
+    for name in names:
+        if name in df.columns:
+            return name
+        for col in df.columns:
+            if col.lower() == name.lower():
+                return col
+    return None
+
+

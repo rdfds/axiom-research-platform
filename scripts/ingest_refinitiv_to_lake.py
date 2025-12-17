@@ -288,3 +288,41 @@ def ingest_estimates(lake: DataLake, data_dir: Path) -> int:
     return 0
 
 
+def main():
+    print("=" * 60)
+    print("Refinitiv Data → Canonical Lake Ingestion")
+    print("=" * 60)
+
+    # Setup paths
+    data_dir = Path('data/refinitiv')
+    lake_dir = Path('data/lake')
+
+    if not data_dir.exists():
+        print(f"Error: Data directory not found: {data_dir}")
+        return
+
+    # Create lake
+    lake = DataLake(lake_dir)
+    print(f"Data Lake initialized at: {lake_dir}")
+
+    # Ingest all data types
+    total = 0
+    total += ingest_ma_deals(lake, data_dir)
+    total += ingest_dividends(lake, data_dir)
+    total += ingest_fundamentals(lake, data_dir)
+    total += ingest_estimates(lake, data_dir)
+
+    # Print stats
+    print("\n" + "=" * 60)
+    print("INGESTION COMPLETE")
+    print("=" * 60)
+
+    stats = lake.get_stats()
+    print("\nLake Statistics:")
+    for rt, count in stats['record_counts'].items():
+        print(f"  {rt}: {count:,} records")
+    print(f"  Total Size: {stats['total_size_mb']:.2f} MB")
+
+    print(f"\nTotal records published: {total:,}")
+
+
