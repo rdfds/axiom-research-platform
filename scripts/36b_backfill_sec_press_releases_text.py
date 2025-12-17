@@ -484,3 +484,5 @@ def main() -> None:
     log(f"Done. Backfilled {total_backfilled:,} press release records.")
 
 
+if __name__ == "__main__":
+    main()

@@ -81,3 +81,8 @@ def require_user_agent() -> str:
     return user_agent
 
 
+def ensure_dirs() -> None:
+    SEC_DIR.mkdir(parents=True, exist_ok=True)
+    (SEC_DIR / "submissions").mkdir(parents=True, exist_ok=True)
+
+
