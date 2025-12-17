@@ -288,3 +288,12 @@ def fetch_statement(symbol: str, period: str, statement: str, session: requests.
     return []
 
 
+def load_checkpoint() -> set:
+    if not FMP_RESUME:
+        return set()
+    checkpoint_path = FMP_DIR / "fmp_financials_checkpoint.txt"
+    if not checkpoint_path.exists():
+        return set()
+    return set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
+
+
