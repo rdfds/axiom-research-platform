@@ -425,3 +425,10 @@ def _sec_session() -> requests.Session:
     return session
 
 
+def _ensure_cache_dir(cache_dir: Path | None) -> Path | None:
+    if cache_dir is None:
+        return None
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
