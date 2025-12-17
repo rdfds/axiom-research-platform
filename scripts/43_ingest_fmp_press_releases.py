@@ -82,7 +82,7 @@ PR_CHUNK_MIN = int(os.getenv("PR_CHUNK_MIN", "300"))
 PR_CHUNK_MAX = int(os.getenv("PR_CHUNK_MAX", "500"))
 
 
-def log(msg: str) :
+def log(msg: str) -> None:
     now = datetime.now().strftime("%H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 

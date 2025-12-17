@@ -297,3 +297,11 @@ def load_checkpoint() -> set:
     return set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
 
 
+def save_checkpoint(entries: Iterable[str]) -> None:
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = FMP_DIR / "fmp_financials_checkpoint.txt"
+    with checkpoint_path.open("a", encoding="utf-8") as f:
+        for entry in entries:
+            f.write(entry + "\n")
+
+
