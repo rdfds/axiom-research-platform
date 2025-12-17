@@ -92,3 +92,24 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## Corporate Actions
+
+```sql
+CREATE OR REPLACE VIEW asof_corp_actions AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_corp_actions
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY company_id, action_type, event_time, announcement_date
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+
