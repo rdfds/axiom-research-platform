@@ -113,3 +113,24 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## M&A Deals
+
+```sql
+CREATE OR REPLACE VIEW asof_mna_deals AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_mna_deals
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY deal_id, announcement_date
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+

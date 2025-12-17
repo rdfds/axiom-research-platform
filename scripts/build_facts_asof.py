@@ -103,3 +103,5 @@ def main() :
         print(f"[year {y}] wrote {out_file} in {time.time()-t0:.1f}s", flush=True)
 
 
+if __name__ == "__main__":
+    main()
