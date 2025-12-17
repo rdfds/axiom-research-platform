@@ -93,3 +93,55 @@ def test_extract_filing_table_debt_candidate_handles_securitized_and_long_term_b
     assert candidate["value"] == 62_479_000_000.0
 
 
+def test_extract_filing_table_debt_candidate_captures_vehicle_program_debt_from_balance_sheet():
+    html = """
+    <html>
+      <body>
+        <h1>Consolidated Balance Sheets (in millions)</h1>
+        <table>
+          <tr><th>Liabilities and stockholders' equity</th><th>Amount</th></tr>
+          <tr><td>Short-term debt and current portion of long-term debt</td><td>540</td></tr>
+          <tr><td>Long-term debt</td><td>5,465</td></tr>
+          <tr><td>Liabilities under vehicle programs:</td></tr>
+          <tr><td>Debt</td><td>4,056</td></tr>
+          <tr><td>Debt due to Avis Budget Rental Car Funding (AESOP) LLC-related party</td><td>13,837</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    candidate = _extract_filing_table_debt_candidate(
+        filing={"filing_date": "2024-11-01"},
+        html=html,
+        as_of_date=date(2024, 12, 31),
+    )
+
+    assert candidate is not None
+    assert candidate["mode"] == "balance_sheet_current_plus_long_plus_vehicle_program_debt"
+    assert candidate["value"] == 23_898_000_000.0
+    assert sum(1 for row in candidate["matched_rows"] if row["bucket"] == "vehicle_program_debt") == 2
+
+
+def test_extract_filing_table_debt_candidate_ignores_vehicle_program_available_funding_table():
+    html = """
+    <html>
+      <body>
+        <h1>Available funding under our debt arrangements related to our vehicle programs (in millions)</h1>
+        <table>
+          <tr><th>Arrangement</th><th>Total</th><th>Outstanding</th><th>Available</th></tr>
+          <tr><td>Americas - Debt due to Avis Budget Rental Car Funding (AESOP) LLC-related party</td><td>17,695</td><td>13,525</td><td>4,170</td></tr>
+          <tr><td>Americas - Debt borrowings</td><td>7,730</td><td>4,356</td><td>3,374</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    candidate = _extract_filing_table_debt_candidate(
+        filing={"filing_date": "2024-11-01"},
+        html=html,
+        as_of_date=date(2024, 12, 31),
+    )
+
+    assert candidate is None
+
+

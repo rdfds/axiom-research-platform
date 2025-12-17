@@ -432,3 +432,24 @@ def _ensure_cache_dir(cache_dir: Path | None) -> Path | None:
     return cache_dir
 
 
+def _load_sec_submissions(cik: str, *, session: requests.Session, cache_dir: Path | None) -> dict[str, Any] | None:
+    cache_path = None if cache_dir is None else cache_dir / f"CIK{cik}.json"
+    if cache_path is not None and cache_path.exists():
+        try:
+            return json.loads(cache_path.read_text())
+        except Exception:
+            pass
+    if os.environ.get("AXIOM_DISABLE_SEC_NETWORK_FALLBACK") == "1":
+        return None
+    url = SEC_SUBMISSIONS_URL.format(cik=cik)
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException:
+        return None
+    if cache_path is not None:
+        cache_path.write_text(json.dumps(payload))
+    return payload
+
+
