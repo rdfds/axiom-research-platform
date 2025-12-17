@@ -382,3 +382,46 @@ def _load_candidates(
     return out
 
 
+def _best_pair(
+    current_candidates: list[dict[str, Any]],
+    long_term_candidates: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
+    best: tuple[Any, ...] | None = None
+    best_current = None
+    best_long_term = None
+    best_gap = None
+    for current in current_candidates:
+        current_end = current.get("end_dt")
+        current_source = (current.get("meta") or {}).get("source_type")
+        if current_end is None or not current_source:
+            continue
+        for long_term in long_term_candidates:
+            long_term_end = long_term.get("end_dt")
+            long_term_source = (long_term.get("meta") or {}).get("source_type")
+            if long_term_end is None or current_source != long_term_source:
+                continue
+            gap_days = abs((current_end - long_term_end).days)
+            if gap_days > MAX_ALIGNMENT_GAP_DAYS:
+                continue
+            latest_end = max(current_end, long_term_end)
+            score = (latest_end, -gap_days, current_source == "sec_edgar_xbrl")
+            if best is None or score > best:
+                best = score
+                best_current = current
+                best_long_term = long_term
+                best_gap = gap_days
+    return best_current, best_long_term, best_gap
+
+
+def _latest_fact(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (item.get("end_dt") or date.min, (item.get("value") or 0.0)))
+
+
+def _sec_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"User-Agent": SEC_USER_AGENT})
+    return session
+
+

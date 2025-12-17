@@ -38,3 +38,58 @@ def test_fetch_sec_primary_document_returns_none_when_network_unavailable(tmp_pa
     assert html is None
 
 
+def test_extract_filing_table_debt_candidate_sums_segmented_current_and_long_term_debt_rows():
+    html = """
+    <html>
+      <body>
+        <h1>Consolidated Balance Sheets (in millions)</h1>
+        <table>
+          <tr><th>Liabilities and stockholders' equity</th><th>Amount</th></tr>
+          <tr><td>Company excluding Ford Credit debt payable within one year</td><td>21,919</td></tr>
+          <tr><td>Ford Credit debt payable within one year</td><td>51,752</td></tr>
+          <tr><td>Company excluding Ford Credit long-term debt</td><td>21,919</td></tr>
+          <tr><td>Ford Credit long-term debt</td><td>67,665</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    candidate = _extract_filing_table_debt_candidate(
+        filing={"filing_date": "2026-02-11"},
+        html=html,
+        as_of_date=date(2026, 3, 28),
+    )
+
+    assert candidate is not None
+    assert candidate["mode"] == "balance_sheet_current_plus_long"
+    assert candidate["value"] == 163_255_000_000.0
+    assert sum(1 for row in candidate["matched_rows"] if row["bucket"] == "long_total") == 2
+
+
+def test_extract_filing_table_debt_candidate_handles_securitized_and_long_term_borrowings_table():
+    html = """
+    <html>
+      <body>
+        <h1>Condensed Consolidated Balance Sheets (in millions)</h1>
+        <table>
+          <tr><th>Current liabilities</th><th>Amount</th></tr>
+          <tr><td>Short-term borrowings</td><td>14,392</td></tr>
+          <tr><td>Short-term securitization borrowings</td><td>6,283</td></tr>
+          <tr><td>Long-term borrowings</td><td>41,804</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    candidate = _extract_filing_table_debt_candidate(
+        filing={"filing_date": "2026-02-19"},
+        html=html,
+        as_of_date=date(2026, 3, 28),
+    )
+
+    assert candidate is not None
+    assert candidate["mode"] == "balance_sheet_current_plus_long"
+    assert candidate["current_mode"] == "current_total_plus_extras"
+    assert candidate["value"] == 62_479_000_000.0
+
+
