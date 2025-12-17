@@ -208,3 +208,177 @@ def _is_exact(node: dict[str, Any] | None) -> bool:
     return node is not None and node.get("support_mode") == "exact" and _node_value(node) is not None
 
 
+def _is_supported(node: dict[str, Any] | None) -> bool:
+    return node is not None and node.get("support_mode") != "unsupported" and _node_value(node) is not None
+
+
+def _set_metric(
+    template: dict[str, Any] | None,
+    *,
+    value: float | None,
+    support_mode: str,
+    missing_reason: str | None,
+    component_breakdown: dict[str, Any],
+    computed_at: str,
+    provenance_source: str,
+    unit: str | None = None,
+    quality_flags: list[str] | None = None,
+) -> dict[str, Any]:
+    node = dict(template or {})
+    node["value"] = value
+    node["support_mode"] = support_mode
+    node["missing_reason"] = missing_reason
+    node["component_breakdown"] = component_breakdown
+    node["computed_at"] = computed_at
+    node["provenance_source"] = provenance_source
+    if unit is not None:
+        node["unit"] = unit
+    if quality_flags:
+        node["quality_flags"] = quality_flags
+    else:
+        node["quality_flags"] = []
+    return node
+
+
+def _metric_support_from_components(*nodes: dict[str, Any] | None) -> str:
+    if any(not _is_supported(node) for node in nodes):
+        return "unsupported"
+    if all(_is_exact(node) for node in nodes):
+        return "exact"
+    return "proxy_missing_component"
+
+
+def _collect_target_ids(artifact_path: Path) -> tuple[list[str], str | None]:
+    entity_ids: list[str] = []
+    as_of_time: str | None = None
+    with artifact_path.open() as src:
+        for line in src:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if as_of_time is None:
+                as_of_time = row.get("as_of_time")
+            total_debt = (row.get("features") or {}).get("capital_structure.total_debt_provider_direct") or {}
+            mode = (total_debt.get("component_breakdown") or {}).get("mode")
+            if mode == TARGET_MODE or (
+                mode == "partial_debt_stack"
+                and (total_debt.get("component_breakdown") or {}).get("current")
+                and not (total_debt.get("component_breakdown") or {}).get("noncurrent")
+            ) or total_debt.get("missing_reason") in {
+                "debt_component_missing",
+                "long_term_debt_components_missing",
+                "debt_component_period_mismatch",
+                "statement_debt_pair_stale",
+                "statement_debt_pair_unresolved",
+            }:
+                entity_ids.append(str(row["company_id"]))
+    return sorted(set(entity_ids)), as_of_time
+
+
+def _load_company_ids_file(path: Path | None) -> list[str]:
+    if path is None or not path.exists():
+        return []
+    company_ids: list[str] = []
+    with path.open() as handle:
+        for line in handle:
+            text = line.strip()
+            if text:
+                company_ids.append(text.zfill(10))
+    return company_ids
+
+
+def _load_completed_company_ids(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    completed: set[str] = set()
+    with path.open() as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            company_id = str(row.get("company_id", "")).zfill(10)
+            if company_id:
+                completed.add(company_id)
+    return completed
+
+
+def _load_candidates(
+    *,
+    facts_path: Path,
+    entity_ids: list[str],
+    as_of_time: str,
+) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    if not entity_ids:
+        return {}
+    entity_sql = ",".join(f"'{entity_id}'" for entity_id in entity_ids)
+    as_of_sql = as_of_time.replace("'", "''")
+    query = f"""
+        SELECT
+            entity_id,
+            fact_type,
+            fact_id,
+            source_id,
+            source_type,
+            raw_pointer,
+            unit,
+            fact_value,
+            CAST(effective_at AS VARCHAR) AS effective_at,
+            CAST(fact_time AS VARCHAR) AS fact_time
+        FROM parquet_scan('{facts_path.as_posix()}')
+        WHERE entity_id IN ({entity_sql})
+          AND fact_type IN ('{CURRENT_DEBT_FACT}', '{LONG_TERM_DEBT_FACT}', '{TOTAL_DEBT_FACT}')
+          AND fact_value IS NOT NULL
+          AND (
+                valid_from IS NULL
+                OR COALESCE(
+                    TRY_CAST(valid_from AS TIMESTAMP),
+                    CAST(TRY_CAST(valid_from AS DATE) AS TIMESTAMP)
+                ) <= TIMESTAMP '{as_of_sql.replace('Z', '')}'
+          )
+          AND (
+                valid_to IS NULL
+                OR COALESCE(
+                    TRY_CAST(valid_to AS TIMESTAMP),
+                    CAST(TRY_CAST(valid_to AS DATE) AS TIMESTAMP)
+                ) > TIMESTAMP '{as_of_sql.replace('Z', '')}'
+          )
+    """
+    rows = duckdb.connect().execute(query).fetchall()
+    out: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        (
+            entity_id,
+            fact_type,
+            fact_id,
+            source_id,
+            source_type,
+            raw_pointer,
+            unit,
+            fact_value,
+            effective_at,
+            fact_time,
+        ) = row
+        out[str(entity_id)][str(fact_type)].append(
+            {
+                "value": float(fact_value),
+                "end_dt": _parse_date(effective_at) or _parse_date(fact_time),
+                "meta": {
+                    "fact_type": fact_type,
+                    "fact_id": fact_id,
+                    "source_id": source_id,
+                    "source_type": source_type,
+                    "raw_pointer": raw_pointer,
+                    "registry_unit": unit,
+                    "effective_at": effective_at,
+                    "end": effective_at,
+                    "fact_time": fact_time,
+                    "formula": "statement_direct_fact",
+                },
+            }
+        )
+    return out
+
+

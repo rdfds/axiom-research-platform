@@ -25,3 +25,16 @@ def test_load_sec_submissions_returns_none_when_network_unavailable(tmp_path):
     assert payload is None
 
 
+def test_fetch_sec_primary_document_returns_none_when_network_unavailable(tmp_path):
+    html = _fetch_sec_primary_document(
+        {
+            "cik": "0000001750",
+            "accession_number": "0000001750-24-000001",
+            "primary_document": "form10k.htm",
+        },
+        session=_OfflineSession(),
+        cache_dir=tmp_path,
+    )
+    assert html is None
+
+
