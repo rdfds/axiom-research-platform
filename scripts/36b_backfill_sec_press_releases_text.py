@@ -437,7 +437,7 @@ def main() -> None:
                     "quality_flags": quality_flags,
                     "document_id": accession,
                     "release_date": row.get("release_date"),
-                    "headline": row['headline'],
+                    "headline": row.get("headline"),
                     "text": text,
                     "form_type": row.get("form_type") or "8-K",
                     "cik": cik,
