@@ -134,3 +134,152 @@ class AsOfWarehouse:
         return "[" + ", ".join(f"'{item.as_posix()}'" for item in query_paths) + "]"
 
 
+def _partition_year(path: Path) -> Optional[int]:
+    name = path.name
+    if not name.startswith("year="):
+        return None
+    try:
+        return int(name.split("=", 1)[1])
+    except Exception:
+        return None
+
+    def latest_by_entity(
+        self,
+        table_name: str,
+        as_of: datetime,
+        entity_col: str = "entity_id",
+        order_cols: Optional[List[str]] = None,
+        prefer_gvkey: bool = False,
+    ) -> pd.DataFrame:
+        path = self.table_path(table_name)
+        if not path.exists():
+            return pd.DataFrame()
+
+        if order_cols is None:
+            order_cols = ["event_time", "available_time", "ingestion_time", "version_id"]
+
+        if duckdb:
+            order_expr = ", ".join([f"{col} DESC" for col in order_cols])
+            query = f"""
+                SELECT * FROM (
+                    SELECT *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY {entity_col}
+                            ORDER BY {order_expr}
+                        ) AS rn
+                    FROM read_parquet('{path.as_posix()}')
+                    WHERE available_time <= ?
+                ) WHERE rn = 1
+            """
+            df = self._conn.execute(query, [as_of]).df()
+            if prefer_gvkey and "company_id" in df.columns:
+                df = self.annotate_company_ids(df)
+            return df
+
+        df = pd.read_parquet(path)
+        df["available_time"] = pd.to_datetime(df["available_time"])
+        df = df[df["available_time"] <= as_of]
+        df = df.sort_values(order_cols, ascending=[False] * len(order_cols))
+        df = df.groupby(entity_col).head(1).reset_index(drop=True)
+        if prefer_gvkey and "company_id" in df.columns:
+            df = self.annotate_company_ids(df)
+        return df
+
+    @staticmethod
+    def _annotate_company_id(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds:
+          - company_id_type: gvkey | cik | symbol | unknown
+          - company_id_canonical: gvkey if available, else company_id
+        """
+        out = df.copy()
+        out["company_id"] = out["company_id"].astype("string")
+        numeric = out["company_id"].str.fullmatch(r"[0-9]+")
+        # GVKEYs are typically <= 6 digits; CIKs are often 8-10 digits.
+        gvkey_mask = numeric & (out["company_id"].str.len() <= 6)
+        cik_mask = numeric & (out["company_id"].str.len() > 6)
+
+        out["company_id_type"] = "symbol"
+        out.loc[gvkey_mask, "company_id_type"] = "gvkey"
+        out.loc[cik_mask, "company_id_type"] = "cik"
+        out.loc[out["company_id"].isna(), "company_id_type"] = "unknown"
+
+        out["company_id_canonical"] = out["company_id"]
+        out.loc[gvkey_mask, "company_id_canonical"] = out.loc[gvkey_mask, "company_id"]
+        return out
+
+    def _load_cik_gvkey_map(self) -> dict:
+        if self._cik_gvkey_map is not None:
+            return self._cik_gvkey_map
+        path = DATA_DIR / "wrds" / "compustat" / "cik_gvkey.csv.gz"
+        if not path.exists():
+            self._cik_gvkey_map = {}
+            return self._cik_gvkey_map
+        df = pd.read_csv(path, dtype=str)
+        df.columns = [c.lower() for c in df.columns]
+        if "cik" not in df.columns or "gvkey" not in df.columns:
+            self._cik_gvkey_map = {}
+            return self._cik_gvkey_map
+        df["cik"] = df["cik"].astype(str).str.replace(r"^0+", "", regex=True)
+        df["gvkey"] = df["gvkey"].astype(str).str.strip()
+        self._cik_gvkey_map = dict(zip(df["cik"], df["gvkey"]))
+        return self._cik_gvkey_map
+
+    def annotate_company_ids(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds company_id_type + company_id_canonical, and maps CIK -> GVKEY when possible.
+        """
+        out = self._annotate_company_id(df)
+        cik_map = self._load_cik_gvkey_map()
+        if not cik_map or "company_id_type" not in out.columns:
+            return out
+        cik_mask = out["company_id_type"] == "cik"
+        if cik_mask.any():
+            mapped = out.loc[cik_mask, "company_id"].str.replace(r"^0+", "", regex=True).map(cik_map)
+            out.loc[cik_mask & mapped.notna(), "company_id_canonical"] = mapped[mapped.notna()]
+        return out
+
+    def query_prices_entity(self, permno: int, as_of: datetime) -> pd.DataFrame:
+        """
+        Fast path for warehouse_prices entity lookups using DuckDB or PyArrow dataset.
+        """
+        def _query_path(path: Path) -> pd.DataFrame:
+            if not path.exists():
+                return pd.DataFrame()
+            permno_str = str(permno)
+            if duckdb:
+                query = """
+                    SELECT * FROM read_parquet(?)
+                    WHERE entity_id = ?
+                      AND available_time <= ?
+                      AND event_time <= ?
+                """
+                return self._conn.execute(query, [path.as_posix(), permno_str, as_of, as_of]).df()
+            if ds is not None:
+                dataset = ds.dataset(path.as_posix(), format="parquet")
+                filt = (
+                    (ds.field("entity_id") == permno_str) &
+                    (ds.field("available_time") <= as_of) &
+                    (ds.field("event_time") <= as_of)
+                )
+                table = dataset.to_table(filter=filt)
+                return table.to_pandas()
+            df = pd.read_parquet(path)
+            df["available_time"] = pd.to_datetime(df["available_time"])
+            df["event_time"] = pd.to_datetime(df["event_time"])
+            return df[(df["entity_id"] == permno_str) & (df["available_time"] <= as_of) & (df["event_time"] <= as_of)]
+
+        # Prefer RDP daily dataset, then CRSP daily, then monthly (fallback if empty)
+        rdp_daily = self.warehouse_dir / "warehouse_prices_daily_rdp"
+        crsp_daily = self.warehouse_dir / "warehouse_prices_daily"
+        monthly = self.table_path("warehouse_prices")
+
+        if rdp_daily.exists():
+            df = _query_path(rdp_daily)
+            if not df.empty:
+                return df
+        if crsp_daily.exists():
+            df = _query_path(crsp_daily)
+            if not df.empty:
+                return df
+        return _query_path(monthly)

@@ -155,3 +155,24 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## Document Chunks
+
+```sql
+CREATE OR REPLACE VIEW asof_doc_chunks AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_doc_chunks
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY chunk_id
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+

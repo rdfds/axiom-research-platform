@@ -129,3 +129,22 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}")
 
 
+def missingness(df: pd.DataFrame, fields: List[str]) -> Dict[str, float]:
+    stats = {}
+    total = len(df)
+    if total == 0:
+        return {f"missing_{f}_pct": 1.0 for f in fields}
+    for field in fields:
+        if field not in df.columns:
+            stats[f"missing_{field}_pct"] = 1.0
+        else:
+            stats[f"missing_{field}_pct"] = float(df[field].isna().mean())
+    return stats
+
+
+def months_between(start: pd.Timestamp, end: pd.Timestamp) -> int:
+    if pd.isna(start) or pd.isna(end):
+        return 0
+    return (end.year - start.year) * 12 + (end.month - start.month) + 1
+
+
