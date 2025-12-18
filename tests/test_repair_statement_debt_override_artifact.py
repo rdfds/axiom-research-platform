@@ -182,3 +182,34 @@ def test_filing_candidate_can_still_override_partial_current_debt_when_modestly_
     )
 
 
+def test_process_repair_row_fail_opens_on_timeout():
+    row = {
+        "company_id": "0000723612",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {
+                "value": 5_995_000_000.0,
+                "support_mode": "proxy_missing_component",
+            }
+        },
+    }
+    original = dict(row["features"]["capital_structure.total_debt_provider_direct"])
+    with patch(
+        "scripts.repair_statement_debt_override_artifact._repair_total_debt_node",
+        side_effect=_CompanyProcessingTimeoutError("boom"),
+    ):
+        row_repaired, sec_row_repaired, failure_reason = _process_repair_row(
+            row=row,
+            candidates={},
+            computed_at="2026-03-31T00:00:00Z",
+            provenance_source="test",
+            sec_session=None,
+            sec_cache_dir=Path("/tmp"),
+            timeout_seconds=1,
+            skip_fact_registry_repair=False,
+        )
+    assert not row_repaired
+    assert not sec_row_repaired
+    assert failure_reason == "company_processing_timeout"
+    assert row["features"]["capital_structure.total_debt_provider_direct"] == original
+
+

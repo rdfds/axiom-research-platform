@@ -554,3 +554,6 @@ def _normalize_label(text: str) -> str:
     return label.strip(" :")
 
 
+_NUMBER_RE = re.compile(r"^\(?\s*[\$]?\s*-?\d[\d,]*(?:\.\d+)?\s*\)?$")
+
+
