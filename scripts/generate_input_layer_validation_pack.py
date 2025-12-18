@@ -74,3 +74,23 @@ def _approx_equal(a: float | None, b: float | None, tol: float = 1e-6) -> bool:
     return abs(a - b) <= tol * scale
 
 
+def _company_ref(row: dict[str, Any]) -> dict[str, Any]:
+    feats = row.get("features") or {}
+    provider_metrics = [
+        "market.market_cap_provider_direct",
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        "capital_structure.total_debt_provider_direct",
+    ]
+    company_name = None
+    instrument = None
+    for metric in provider_metrics:
+        breakdown = (feats.get(metric) or {}).get("component_breakdown") or {}
+        company_name = company_name or breakdown.get("provider_company_name")
+        instrument = instrument or breakdown.get("reference_instrument")
+    return {
+        "company_id": row['company_id'],
+        "company_name": company_name,
+        "reference_instrument": instrument,
+    }
+
+
