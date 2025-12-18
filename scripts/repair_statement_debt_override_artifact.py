@@ -557,3 +557,26 @@ def _normalize_label(text: str) -> str:
 _NUMBER_RE = re.compile(r"^\(?\s*[\$]?\s*-?\d[\d,]*(?:\.\d+)?\s*\)?$")
 
 
+def _parse_numeric_cell(text: str, *, multiplier: float) -> float | None:
+    cleaned = _normalize_label(text)
+    if not cleaned or cleaned in {"$", "—", "-", "nm", "n/m"}:
+        return None
+    if not _NUMBER_RE.match(cleaned):
+        return None
+    negative = "(" in cleaned and ")" in cleaned
+    stripped = cleaned.replace("$", "").replace(",", "").replace("(", "").replace(")", "").strip()
+    try:
+        value = float(stripped)
+    except ValueError:
+        return None
+    return (-value if negative else value) * multiplier
+
+
+def _row_first_numeric(cells: list[str], *, multiplier: float) -> float | None:
+    for cell in cells[1:]:
+        value = _parse_numeric_cell(cell, multiplier=multiplier)
+        if value is not None:
+            return value
+    return None
+
+
