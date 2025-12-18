@@ -134,3 +134,24 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## Documents
+
+```sql
+CREATE OR REPLACE VIEW asof_documents AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_documents
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY document_id
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+

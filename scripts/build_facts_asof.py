@@ -34,7 +34,7 @@ def parse_years(arg: Optional[str]) -> List[int]:
     return out
 
 
-def main() :
+def main() -> None:
     ap = argparse.ArgumentParser(description="Build as-of fact registry (filtered) by year.")
     ap.add_argument("--asof", required=True, help="As-of timestamp (e.g., 2026-02-28)")
     ap.add_argument("--in-path", default="data/inputs_layer/extracted_fact_registry_validity")
