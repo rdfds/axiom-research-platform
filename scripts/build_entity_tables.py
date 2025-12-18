@@ -21,3 +21,7 @@ def utc_now() :
     return datetime.now(timezone.utc).isoformat()
 
 
+def parse_dt(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce", utc=True)
+
+
