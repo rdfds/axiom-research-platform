@@ -55,3 +55,21 @@ priority order:
 3. `cusip` → `gvkey` (via permno or issuer mapping)
 4. `ticker + exchange` → `gvkey`
 
+## As-Of Matching
+
+All mappings must be time-valid:
+
+- Join with `valid_from <= event_time <= valid_to`
+- If multiple matches exist, prefer:
+  1. Exact source_system match
+  2. Most recent `valid_from`
+  3. Highest priority identifier rule
+
+## Conflict Handling
+
+When two mappings disagree:
+
+- Emit `source_conflict` quality flag
+- Prefer earliest `available_time` unless overridden by an authoritative source
+  (e.g., CRSP for permno mappings)
+
