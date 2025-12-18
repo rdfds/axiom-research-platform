@@ -326,3 +326,5 @@ def main():
     print(f"\nTotal records published: {total:,}")
 
 
+if __name__ == '__main__':
+    main()
