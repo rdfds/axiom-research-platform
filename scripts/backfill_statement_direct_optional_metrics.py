@@ -122,3 +122,37 @@ def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) :
         yield batch
 
 
+def _fact_parquet_source_arg(facts_path: Path, as_of_time: str) -> str:
+    if facts_path.is_file():
+        return f"'{facts_path.as_posix()}'"
+
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    lookback_start = (as_of_date - pd.Timedelta(days=MAX_SEC_FACT_AGE_DAYS + 365)).year
+    candidate_paths: list[Path] = []
+    for year in range(int(lookback_start), int(as_of_date.year) + 1):
+        part = facts_path / f"year={year}" / "part.parquet"
+        if part.exists():
+            candidate_paths.append(part)
+    if not candidate_paths:
+        fallback = sorted(facts_path.glob("year=*/part.parquet"))
+        candidate_paths = fallback if fallback else [facts_path]
+    quoted = ",".join(f"'{path.as_posix()}'" for path in candidate_paths)
+    return f"[{quoted}]"
+
+
+def _parse_iso_date(value: Any):
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        text = str(value)
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        return None
+
+

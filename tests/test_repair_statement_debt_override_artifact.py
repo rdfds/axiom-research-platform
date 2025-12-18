@@ -153,3 +153,32 @@ def test_filing_candidate_does_not_override_exact_current_debt_when_it_is_materi
     )
 
 
+def test_filing_candidate_still_overrides_when_current_debt_is_missing_or_partial():
+    assert _should_override_total_debt_with_filing_candidate(
+        current_value=None,
+        current_support="unsupported",
+        parsed_value=62_479_000_000.0,
+    )
+    assert _should_override_total_debt_with_filing_candidate(
+        current_value=20_675_000_000.0,
+        current_support="proxy_missing_component",
+        parsed_value=62_479_000_000.0,
+    )
+
+
+def test_filing_candidate_does_not_override_partial_current_debt_when_it_is_implausibly_smaller():
+    assert not _should_override_total_debt_with_filing_candidate(
+        current_value=11_211_618_000.0,
+        current_support="proxy_missing_component",
+        parsed_value=11_786_562.0,
+    )
+
+
+def test_filing_candidate_can_still_override_partial_current_debt_when_modestly_smaller():
+    assert _should_override_total_debt_with_filing_candidate(
+        current_value=7_677_000_000.0,
+        current_support="proxy_missing_component",
+        parsed_value=7_603_000_000.0,
+    )
+
+

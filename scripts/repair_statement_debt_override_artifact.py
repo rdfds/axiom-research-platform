@@ -548,3 +548,9 @@ def _document_multiplier(document_text: str) -> float:
     return 1.0
 
 
+def _normalize_label(text: str) -> str:
+    label = " ".join(str(text or "").replace("\xa0", " ").replace("\u200b", " ").split())
+    label = label.replace("’", "'").replace("–", "-").replace("—", "-")
+    return label.strip(" :")
+
+
