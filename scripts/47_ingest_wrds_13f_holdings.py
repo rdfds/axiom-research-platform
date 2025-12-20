@@ -61,3 +61,15 @@ def normalize_value(value: Any) -> Any:
     return value
 
 
+def coerce_date(value: Any) -> pd.Timestamp | None:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    try:
+        ts = pd.to_datetime(value, errors="coerce")
+        if pd.isna(ts):
+            return None
+        return ts
+    except Exception:
+        return None
+
+
