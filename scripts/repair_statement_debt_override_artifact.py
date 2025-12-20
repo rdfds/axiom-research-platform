@@ -580,3 +580,7 @@ def _row_first_numeric(cells: list[str], *, multiplier: float) -> float | None:
     return None
 
 
+def _matches_any(label: str, patterns: list[re.Pattern[str]]) -> bool:
+    return any(pattern.search(label) for pattern in patterns)
+
+
