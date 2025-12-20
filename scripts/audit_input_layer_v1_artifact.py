@@ -145,3 +145,16 @@ def _value(node: dict[str, Any] | None) -> float | None:
     return None if value is None else float(value)
 
 
+def _support(node: dict[str, Any] | None) -> str:
+    if not node:
+        return "missing_metric"
+    return node.get("support_mode") or "missing_metric"
+
+
+def _approx_equal(a: float | None, b: float | None, tolerance: float = 1e-6) -> bool:
+    if a is None or b is None:
+        return a is b
+    scale = max(1.0, abs(a), abs(b))
+    return abs(a - b) <= tolerance * scale
+
+
