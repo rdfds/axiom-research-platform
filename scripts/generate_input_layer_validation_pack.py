@@ -229,3 +229,5 @@ def main() -> None:
     print(out_md)
 
 
+if __name__ == "__main__":
+    main()

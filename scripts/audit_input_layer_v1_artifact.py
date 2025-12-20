@@ -191,3 +191,30 @@ def _iter_component_ends(component_breakdown: Any) -> list[str]:
     return ends
 
 
+def _latest_end_age_days(as_of_date: date, component_breakdown: Any) -> int | None:
+    ends = []
+    for end_text in _iter_component_ends(component_breakdown):
+        try:
+            ends.append(date.fromisoformat(end_text))
+        except ValueError:
+            continue
+    if not ends:
+        return None
+    latest_end = max(ends)
+    return (as_of_date - latest_end).days
+
+
+def _iter_component_concepts(component_breakdown: Any) -> list[str]:
+    concepts: list[str] = []
+    if isinstance(component_breakdown, dict):
+        concept = component_breakdown.get("concept")
+        if concept:
+            concepts.append(str(concept))
+        for value in component_breakdown.values():
+            concepts.extend(_iter_component_concepts(value))
+    elif isinstance(component_breakdown, list):
+        for item in component_breakdown:
+            concepts.extend(_iter_component_concepts(item))
+    return concepts
+
+
