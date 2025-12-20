@@ -51,3 +51,27 @@ def _metric_node(*, value, support_mode, primary_source_basis, missing_reason=No
     }
 
 
+def test_selection_prefers_sec_revenue_over_provider_direct():
+    sec_node = _metric_node(
+        value=258_805_000_000.0,
+        support_mode="exact",
+        primary_source_basis="sec_companyfacts",
+    )
+    provider_node = _metric_node(
+        value=275_235_000_000.0,
+        support_mode="exact",
+        primary_source_basis="provider_direct",
+    )
+
+    selected = _select_preferred_direct_metric(
+        metric_name="operating.revenue_ttm_provider_direct",
+        sec_or_market_node=sec_node,
+        provider_node=provider_node,
+    )
+
+    assert selected["primary_source_basis"] == "sec_companyfacts"
+    assert selected["value"] == 258_805_000_000.0
+    assert "provider_direct_superseded_by_sec_companyfacts" in (selected.get("quality_flags") or [])
+    assert selected["component_breakdown"]["selection_policy"] == "prefer_sec_companyfacts_reconstruction"
+
+

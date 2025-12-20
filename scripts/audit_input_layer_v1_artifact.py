@@ -158,3 +158,36 @@ def _approx_equal(a: float | None, b: float | None, tolerance: float = 1e-6) -> 
     return abs(a - b) <= tolerance * scale
 
 
+def _company_label(row: dict[str, Any]) -> dict[str, Any]:
+    features = row.get("features") or {}
+    provider_fields = [
+        "market.market_cap_provider_direct",
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        "capital_structure.total_debt_provider_direct",
+    ]
+    company_name = None
+    reference_instrument = None
+    for metric_name in provider_fields:
+        breakdown = (features.get(metric_name) or {}).get("component_breakdown") or {}
+        company_name = company_name or breakdown.get("provider_company_name")
+        reference_instrument = reference_instrument or breakdown.get("reference_instrument")
+    return {
+        "company_id": row.get("company_id"),
+        "company_name": company_name,
+        "reference_instrument": reference_instrument,
+    }
+
+
+def _iter_component_ends(component_breakdown: Any) -> list[str]:
+    ends: list[str] = []
+    if isinstance(component_breakdown, dict):
+        if "end" in component_breakdown and component_breakdown["end"]:
+            ends.append(component_breakdown["end"])
+        for value in component_breakdown.values():
+            ends.extend(_iter_component_ends(value))
+    elif isinstance(component_breakdown, list):
+        for item in component_breakdown:
+            ends.extend(_iter_component_ends(item))
+    return ends
+
+
