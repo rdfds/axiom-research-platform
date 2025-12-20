@@ -73,3 +73,14 @@ def coerce_date(value: Any) -> pd.Timestamp | None:
         return None
 
 
+def coerce_numeric(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    return pd.to_numeric(value, errors="coerce")
+
+
