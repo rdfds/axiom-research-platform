@@ -85,3 +85,16 @@ Secondary sources:
 - Vendor-specific reference data
 - Manual overrides (must include `source_system = "manual_override"`)
 
+## Example Resolution
+
+Given a record with:
+
+- `ric = "AAPL.O"`
+- `event_time = 2025-03-31`
+
+Resolve:
+
+1. Lookup `ric` in mapping table with `valid_from <= event_time <= valid_to`
+2. If multiple matches, choose highest priority mapping
+3. Set `security_id = permno`, `company_id = gvkey`
+4. Record `upstream_version_ids` referencing the mapping row(s)
