@@ -256,7 +256,7 @@ class FeatureBuilder:
         company_id: str,
         as_of: datetime,
         macro_series: Optional[Dict[str, str]] = None,
-    ) :
+    ) -> CompanyStateSnapshot:
         fin = self._compute_financial_metrics(company_id, as_of)
         val = self._compute_valuation_metrics(company_id, as_of)
         features = {**fin, **val}
