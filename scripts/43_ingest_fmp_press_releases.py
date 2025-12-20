@@ -148,3 +148,15 @@ def load_universe_tickers() -> List[str]:
     return sorted(set(tickers))
 
 
+def load_symbol_list() -> List[str]:
+    if FMP_TARGET_SYMBOL:
+        symbols = [FMP_TARGET_SYMBOL.upper()]
+    elif FMP_USE_UNIVERSE:
+        symbols = load_universe_tickers()
+    else:
+        symbols = []
+    if FMP_LIMIT_SYMBOLS and FMP_LIMIT_SYMBOLS > 0:
+        symbols = symbols[:FMP_LIMIT_SYMBOLS]
+    return symbols
+
+

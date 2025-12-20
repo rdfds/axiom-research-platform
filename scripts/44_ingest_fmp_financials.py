@@ -305,3 +305,152 @@ def save_checkpoint(entries: Iterable[str]) -> None:
             f.write(entry + "\n")
 
 
+def main() -> None:
+    require_api_key()
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    symbols = load_symbol_list()
+    if not symbols:
+        raise RuntimeError("No symbols resolved for FMP financials.")
+    log(f"Symbols to pull: {len(symbols):,}")
+
+    names, link = load_mappings()
+    checkpoint = load_checkpoint()
+
+    session = requests.Session()
+    total_records = 0
+    raw_buffer: List[Dict] = []
+    canonical_buffer: List[Dict] = []
+    ingestion_time = datetime.utcnow()
+
+    for idx, symbol in enumerate(symbols, start=1):
+        for period in FMP_PERIODS:
+            for statement in FMP_STATEMENTS:
+                key = f"{symbol}|{period}|{statement}"
+                if key in checkpoint:
+                    continue
+
+                rows = fetch_statement(symbol, period, statement, session)
+                if not rows:
+                    checkpoint.add(key)
+                    save_checkpoint([key])
+                    continue
+
+                for row in rows:
+                    date_str = row['date']
+                    if not date_str:
+                        continue
+                    event_time = pd.to_datetime(date_str, errors="coerce")
+                    if pd.isna(event_time):
+                        continue
+                    if event_time.year < FMP_START_YEAR or event_time.year > FMP_END_YEAR:
+                        continue
+
+                    company_id = map_symbol_to_gvkey(symbol, event_time, names, link)
+                    if not company_id:
+                        company_id = row.get("cik") or symbol
+                        quality_flags = ["missing_gvkey"]
+                    else:
+                        quality_flags = []
+
+                    available_time = pd.to_datetime(
+                        row.get("acceptedDate") or row.get("fillingDate"), errors="coerce"
+                    )
+                    if pd.isna(available_time):
+                        # Estimate availability window
+                        lag_days = 45 if period == "quarter" else 90
+                        available_time = event_time + pd.Timedelta(days=lag_days)
+                        quality_flags.append("estimated_available_time")
+                    if available_time < event_time:
+                        available_time = event_time
+                        if "estimated_available_time" not in quality_flags:
+                            quality_flags.append("estimated_available_time")
+
+                    fiscal_year = row.get("calendarYear") or event_time.year
+                    fiscal_quarter = None
+                    fp = row.get("period")
+                    if isinstance(fp, str) and fp.upper().startswith("Q"):
+                        fiscal_quarter = fp.upper().replace("Q", "")
+
+                    raw_payload = normalize_payload(row)
+                    raw_payload_hash = compute_raw_payload_hash(raw_payload)
+                    raw_version_id = compute_version_id(
+                        source_system="fmp_financials",
+                        entity_id=str(company_id),
+                        event_time=event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=raw_payload_hash,
+                    )
+
+                    raw_buffer.append(
+                        {
+                            "entity_id": str(company_id),
+                            "company_id": str(company_id),
+                            "security_id": None,
+                            "event_time": event_time,
+                            "available_time": available_time,
+                            "payload": raw_payload,
+                        }
+                    )
+
+                    line_map = LINE_ITEM_MAP[statement]
+                    for field, (statement_type, line_item) in line_map.items():
+                        value = normalize_value(row.get(field))
+                        if value is None:
+                            continue
+                        canonical_buffer.append(
+                            {
+                                "source_system": "fmp_financials",
+                                "entity_id": str(company_id),
+                                "company_id": str(company_id),
+                                "security_id": None,
+                                "event_time": event_time,
+                                "available_time": available_time,
+                                "ingestion_time": ingestion_time,
+                                "version_id": compute_version_id(
+                                    source_system="fmp_financials",
+                                    entity_id=f"{company_id}:{statement_type}:{line_item}",
+                                    event_time=event_time.to_pydatetime(),
+                                    available_time=available_time.to_pydatetime(),
+                                    raw_payload_hash=raw_payload_hash,
+                                ),
+                                "raw_payload_hash": raw_payload_hash,
+                                "upstream_version_ids": [raw_version_id],
+                                "quality_flags": quality_flags,
+                                "fiscal_period_end": event_time,
+                                "fiscal_year": int(fiscal_year) if fiscal_year else None,
+                                "fiscal_quarter": int(fiscal_quarter) if fiscal_quarter else None,
+                                "statement_type": statement_type,
+                                "line_item": line_item,
+                                "value": value,
+                                "currency": row.get("reportedCurrency"),
+                                "units": None,
+                                "restatement_flag": False,
+                            }
+                        )
+
+                checkpoint.add(key)
+                save_checkpoint([key])
+
+                if len(canonical_buffer) >= FMP_FLUSH_EVERY:
+                    if raw_buffer:
+                        write_raw_records(source_system="fmp_financials", records=raw_buffer)
+                        raw_buffer = []
+                    append_canonical_records("warehouse_financials", canonical_buffer)
+                    total_records += len(canonical_buffer)
+                    log(f"Ingested {len(canonical_buffer):,} records (total {total_records:,})")
+                    canonical_buffer = []
+
+        if idx % 50 == 0:
+            log(f"Symbols processed: {idx}/{len(symbols)}")
+
+    if raw_buffer:
+        write_raw_records(source_system="fmp_financials", records=raw_buffer)
+    if canonical_buffer:
+        append_canonical_records("warehouse_financials", canonical_buffer)
+        total_records += len(canonical_buffer)
+    log(f"Done. Total FMP financial records: {total_records:,}")
+
+
+if __name__ == "__main__":
+    main()
