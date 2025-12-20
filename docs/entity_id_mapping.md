@@ -73,3 +73,15 @@ When two mappings disagree:
 - Prefer earliest `available_time` unless overridden by an authoritative source
   (e.g., CRSP for permno mappings)
 
+## Mapping Sources (MVP)
+
+Primary sources (authoritative):
+
+- CRSP `msenames` + `ccmxpf_lnkhist` (permno/gvkey linkage)
+- Refinitiv Symbology (RIC ↔ CUSIP/ISIN)
+
+Secondary sources:
+
+- Vendor-specific reference data
+- Manual overrides (must include `source_system = "manual_override"`)
+

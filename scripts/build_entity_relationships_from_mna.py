@@ -81,3 +81,5 @@ def main() :
     print(f"Wrote EntityRelationship (M&A) -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
