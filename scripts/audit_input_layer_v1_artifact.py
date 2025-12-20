@@ -218,3 +218,33 @@ def _iter_component_concepts(component_breakdown: Any) -> list[str]:
     return concepts
 
 
+def _restricted_cash_breakdown_is_semantically_valid(component_breakdown: Any) -> bool:
+    if not isinstance(component_breakdown, dict):
+        return False
+    mode = component_breakdown.get("mode")
+    concepts = _iter_component_concepts(component_breakdown)
+    if not concepts:
+        concept = component_breakdown.get("concept")
+        return concept in RESTRICTED_CASH_EXACT_CONCEPTS
+
+    if mode in {
+        "cash_plus_restricted_total_minus_cash_equivalents",
+        "cash_plus_restricted_total_minus_grouped_cash_cash_only_proxy",
+    }:
+        return (
+            RESTRICTED_CASH_TOTAL_RECONCILIATION_CONCEPT in concepts
+            and (
+                "cash_and_equivalents_statement_direct" in component_breakdown
+                or "cash_and_short_term_investments_provider_direct_cash_only_proxy" in component_breakdown
+            )
+        )
+
+    if mode == "mixed_total_restricted_cash_fallback":
+        return all(
+            found in RESTRICTED_CASH_MIXED_FALLBACK_CONCEPTS
+            for found in concepts
+        )
+
+    return all(found in RESTRICTED_CASH_EXACT_CONCEPTS for found in concepts)
+
+

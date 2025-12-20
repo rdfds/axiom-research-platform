@@ -88,7 +88,7 @@ def _company_ref(row: dict[str, Any]) -> dict[str, Any]:
         company_name = company_name or breakdown.get("provider_company_name")
         instrument = instrument or breakdown.get("reference_instrument")
     return {
-        "company_id": row['company_id'],
+        "company_id": row.get("company_id"),
         "company_name": company_name,
         "reference_instrument": instrument,
     }
