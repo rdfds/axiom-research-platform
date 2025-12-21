@@ -48,3 +48,42 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def load_mappings() -> tuple[pd.DataFrame, pd.DataFrame]:
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not names_path.exists() or not link_path.exists():
+        raise FileNotFoundError("Missing CRSP mapping files for gvkey backfill.")
+
+    names = pd.read_parquet(names_path, columns=["permno", "namedt", "nameendt", "ticker"])
+    try:
+        link = pd.read_parquet(link_path, columns=["permno", "gvkey", "linkdt", "linkenddt"])
+    except Exception:
+        link = pd.read_parquet(link_path, columns=["lpermno", "gvkey", "linkdt", "linkenddt"])
+        link = link.rename(columns={"lpermno": "permno"})
+
+    names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+    names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce")
+
+    names["ticker_norm"] = names["ticker"].astype("string").str.upper().str.replace("-", ".", regex=False)
+    link["permno"] = pd.to_numeric(link["permno"], errors="coerce")
+    return names, link
+
+
+def load_cik_gvkey() -> pd.DataFrame:
+    path = COMP_DIR / "cik_gvkey.csv.gz"
+    if not path.exists():
+        raise FileNotFoundError("Missing Compustat CIK-GVKEY file at data/wrds/compustat/cik_gvkey.csv.gz")
+    df = pd.read_csv(path, dtype=str)
+    df.columns = [c.lower() for c in df.columns]
+    # Normalize
+    df["cik"] = df["cik"].astype(str).str.replace(r"^0+", "", regex=True)
+    df["gvkey"] = df["gvkey"].astype(str).str.strip()
+    if "link_start_date" in df.columns:
+        df["link_start_date"] = pd.to_datetime(df["link_start_date"], errors="coerce")
+    if "link_end_date" in df.columns:
+        df["link_end_date"] = pd.to_datetime(df["link_end_date"], errors="coerce")
+    return df
+
+

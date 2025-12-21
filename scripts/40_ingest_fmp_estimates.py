@@ -78,3 +78,9 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def require_api_key() -> str:
+    if not FMP_API_KEY:
+        raise RuntimeError("FMP_API_KEY not set. Export your FMP API key.")
+    return FMP_API_KEY
+
+

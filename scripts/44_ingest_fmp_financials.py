@@ -337,7 +337,7 @@ def main() -> None:
                     continue
 
                 for row in rows:
-                    date_str = row['date']
+                    date_str = row.get("date")
                     if not date_str:
                         continue
                     event_time = pd.to_datetime(date_str, errors="coerce")
