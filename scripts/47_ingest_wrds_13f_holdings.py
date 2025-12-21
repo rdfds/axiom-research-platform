@@ -84,3 +84,14 @@ def coerce_numeric(value: Any) -> Any:
     return pd.to_numeric(value, errors="coerce")
 
 
+def iter_chunks(path: Path, chunksize: int) -> Iterable[pd.DataFrame]:
+    reader = pd.read_csv(
+        path,
+        compression="infer",
+        chunksize=chunksize,
+        low_memory=False,
+    )
+    for chunk in reader:
+        yield chunk
+
+
