@@ -584,3 +584,399 @@ def _matches_any(label: str, patterns: list[re.Pattern[str]]) -> bool:
     return any(pattern.search(label) for pattern in patterns)
 
 
+def _extract_filing_table_debt_candidate(
+    *,
+    filing: dict[str, Any],
+    html: str,
+    as_of_date: date,
+) -> dict[str, Any] | None:
+    soup = BeautifulSoup(html, "html.parser")
+    document_multiplier = _document_multiplier(" ".join(soup.get_text(" ", strip=True).split()[:20000]))
+    best: tuple[tuple[int, float], dict[str, Any]] | None = None
+    for table_index, table in enumerate(soup.find_all("table")):
+        table_text = " ".join(table.get_text(" ", strip=True).split())
+        lower_table_text = table_text.lower()
+        table_multiplier = _table_multiplier(table_text)
+        rows: list[tuple[str, float, list[str]]] = []
+        for tr in table.find_all("tr"):
+            cells = [_normalize_label(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+            cells = [cell for cell in cells if cell]
+            if len(cells) < 2:
+                continue
+            label = cells[0]
+            value = _row_first_numeric(cells, multiplier=1.0)
+            if value is None:
+                continue
+            rows.append((label, value, cells))
+        if not rows:
+            continue
+
+        sample_max_raw = max(abs(value) for _, value, _ in rows)
+        multiplier = table_multiplier
+        if multiplier == 1.0 and document_multiplier != 1.0:
+            multiplier = 1.0 if sample_max_raw > 1_000_000.0 else document_multiplier
+
+        balance_sheet_cue = any(cue in lower_table_text for cue in BALANCE_SHEET_CUES)
+        fair_value_cue = any(cue in lower_table_text for cue in FAIR_VALUE_CUES)
+        vehicle_program_table_cue = any(cue in lower_table_text for cue in VEHICLE_PROGRAM_TABLE_CUES)
+
+        current_total = None
+        current_extras = []
+        current_components = []
+        long_total = None
+        total_row = None
+        vehicle_program_components = []
+        matched_rows: list[dict[str, Any]] = []
+
+        for label, raw_value, cells in rows:
+            value = raw_value * multiplier
+            lower_label = label.lower()
+            if _matches_any(label, CURRENT_TOTAL_LABEL_PATTERNS):
+                current_total = value if current_total is None else current_total + value
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "current_total"})
+            elif _matches_any(label, CURRENT_EXTRA_LABEL_PATTERNS):
+                current_extras.append(value)
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "current_extra"})
+            elif _matches_any(label, CURRENT_COMPONENT_LABEL_PATTERNS):
+                current_components.append(value)
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "current_component"})
+            elif _matches_any(label, LONG_TOTAL_LABEL_PATTERNS):
+                long_total = value if long_total is None else long_total + value
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "long_total"})
+            elif _matches_any(label, TOTAL_LABEL_PATTERNS):
+                total_row = value
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "total_row"})
+            elif vehicle_program_table_cue and _matches_any(label, VEHICLE_PROGRAM_DEBT_LABEL_PATTERNS):
+                vehicle_program_components.append(value)
+                matched_rows.append({"label": label, "value": value, "cells": cells, "bucket": "vehicle_program_debt"})
+
+        current_value = None
+        current_mode = None
+        if current_total is not None:
+            current_value = current_total + sum(current_extras)
+            current_mode = "current_total_plus_extras" if current_extras else "current_total"
+        elif current_components:
+            current_value = sum(current_components)
+            current_mode = "current_components"
+
+        candidate_value = None
+        candidate_mode = None
+        if current_value is not None and long_total is not None and vehicle_program_components:
+            candidate_value = current_value + long_total + sum(vehicle_program_components)
+            candidate_mode = "balance_sheet_current_plus_long_plus_vehicle_program_debt"
+        elif current_value is not None and long_total is not None:
+            candidate_value = current_value + long_total
+            candidate_mode = "balance_sheet_current_plus_long"
+        elif total_row is not None and not fair_value_cue:
+            candidate_value = total_row
+            candidate_mode = "table_total_debt_row"
+        elif long_total is not None and current_value is None and total_row is None and balance_sheet_cue:
+            candidate_value = long_total
+            candidate_mode = "long_term_only"
+
+        if candidate_value is None or candidate_value <= 0:
+            continue
+
+        filing_dt = _parse_date(filing.get("filing_date"))
+        age_days = None if filing_dt is None else (as_of_date - filing_dt).days
+        score = 0
+        if balance_sheet_cue:
+            score += 10
+        if candidate_mode == "balance_sheet_current_plus_long_plus_vehicle_program_debt":
+            score += 12
+        elif candidate_mode == "balance_sheet_current_plus_long":
+            score += 8
+        elif candidate_mode == "table_total_debt_row":
+            score += 5
+        elif candidate_mode == "long_term_only":
+            score += 1
+        if current_extras:
+            score += 2
+        if vehicle_program_components:
+            score += 3
+        if fair_value_cue:
+            score -= 8
+        if age_days is not None and age_days <= SEC_EXACT_MAX_AGE_DAYS:
+            score += 2
+
+        candidate = {
+            "value": float(candidate_value),
+            "mode": candidate_mode,
+            "current_mode": current_mode,
+            "balance_sheet_cue": balance_sheet_cue,
+            "fair_value_cue": fair_value_cue,
+            "table_index": table_index,
+            "table_excerpt": table_text[:4000],
+            "matched_rows": matched_rows,
+            "filing": filing,
+            "age_days": age_days,
+        }
+        rank = (score, candidate_value)
+        if best is None or rank > best[0]:
+            best = (rank, candidate)
+    return None if best is None else best[1]
+
+
+def _finance_lease_adjustment_from_lease_node(lease_node: dict[str, Any] | None) -> tuple[float, dict[str, Any] | None]:
+    if not lease_node or _node_value(lease_node) is None:
+        return 0.0, None
+    breakdown = lease_node.get("component_breakdown") or {}
+    finance_ref = breakdown.get("finance_reference") or {}
+    direct = (finance_ref.get("direct_total_reference") or {}).get("value")
+    if direct is not None:
+        return float(direct), {"mode": "finance_lease_direct_total", "source": finance_ref.get("direct_total_reference")}
+    partial = finance_ref.get("partial_component_reference") or {}
+    current_value = partial.get("current_value")
+    noncurrent_value = partial.get("noncurrent_value")
+    if current_value is not None or noncurrent_value is not None:
+        return float((current_value or 0.0) + (noncurrent_value or 0.0)), {
+            "mode": "finance_lease_partial_components",
+            "source": partial,
+        }
+    return 0.0, None
+
+
+def _should_override_total_debt_with_filing_candidate(
+    *,
+    current_value: float | None,
+    current_support: str | None,
+    parsed_value: float,
+) -> bool:
+    if current_value is None:
+        return True
+    if current_support != "exact":
+        if parsed_value >= float(current_value):
+            return True
+        return parsed_value >= float(current_value) * PARTIAL_TOTAL_DEBT_MAX_DOWNWARD_REPLACEMENT
+    return parsed_value > float(current_value) * PARTIAL_TOTAL_DEBT_MIN_LIFT
+
+
+def _repair_total_debt_from_sec_filing(
+    *,
+    row: dict[str, Any],
+    computed_at: str,
+    provenance_source: str,
+    session: requests.Session,
+    cache_dir: Path | None,
+    companyfacts: dict[str, Any] | None = None,
+) -> bool:
+    features = row["features"]
+    total_debt = features.get("capital_structure.total_debt_provider_direct")
+    if not total_debt:
+        return False
+    current_value = _node_value(total_debt)
+    current_support = total_debt.get("support_mode")
+    current_missing = total_debt.get("missing_reason")
+    breakdown = total_debt.get("component_breakdown") or {}
+
+    as_of_date = _parse_date(row.get("as_of_time"))
+    if as_of_date is None:
+        return False
+    cik = str(row["company_id"]).zfill(10)
+    filing = _latest_sec_filing(cik=cik, as_of_date=as_of_date, session=session, cache_dir=cache_dir)
+    if filing is None:
+        return False
+    html = _fetch_sec_primary_document(filing, session=session, cache_dir=cache_dir)
+    if not html:
+        return False
+    candidate = _extract_filing_table_debt_candidate(filing=filing, html=html, as_of_date=as_of_date)
+    if candidate is None:
+        return False
+
+    market_cap_node = features.get("market.market_cap_provider_direct")
+    revenue_node = features.get("operating.revenue_ttm_provider_direct")
+    market_cap_value = _node_value(market_cap_node)
+    revenue_value = _node_value(revenue_node)
+
+    def _plausible_debt_value(value: float) -> bool:
+        if value <= 0 or value < 1_000_000.0 or value > 1_000_000_000_000.0:
+            return False
+        if market_cap_value is not None and revenue_value is not None:
+            if value > market_cap_value * 10.0 and value > revenue_value * 10.0:
+                return False
+        elif market_cap_value is not None:
+            if value > market_cap_value * 50.0:
+                return False
+        elif revenue_value is not None:
+            if value > revenue_value * 20.0:
+                return False
+        elif current_value is not None and current_value > 0:
+            if value > current_value * 100.0 and value > 10_000_000_000.0:
+                return False
+        return True
+
+    parsed_value = float(candidate["value"])
+    unit_rescale_divisor = 1.0
+    if not _plausible_debt_value(parsed_value):
+        for divisor in (1_000.0, 1_000_000.0):
+            rescaled = parsed_value / divisor
+            if _plausible_debt_value(rescaled):
+                parsed_value = rescaled
+                unit_rescale_divisor = divisor
+                break
+    if not _plausible_debt_value(parsed_value):
+        return False
+    should_override = _should_override_total_debt_with_filing_candidate(
+        current_value=current_value,
+        current_support=current_support,
+        parsed_value=parsed_value,
+    )
+    if not should_override:
+        return False
+
+    lease = features.get("capital_structure.lease_liabilities_sec_exact")
+    if lease is None and companyfacts is not None and _extract_lease_liabilities is not None:
+        lease_value, lease_meta = _extract_lease_liabilities(companyfacts, row.get("as_of_time", "")[:10])
+        if lease_value is not None and lease_meta is not None:
+            lease = {
+                "value": lease_value,
+                "component_breakdown": lease_meta,
+            }
+    finance_lease_adjustment, finance_lease_meta = _finance_lease_adjustment_from_lease_node(lease)
+    adjusted_value = parsed_value
+    support_mode = "proxy_missing_component"
+    missing_reason = "filing_table_total_debt_repair"
+    quality_flags = ["filing_table_total_debt_repair"]
+    if candidate["mode"] in {
+        "balance_sheet_current_plus_long",
+        "balance_sheet_current_plus_long_plus_vehicle_program_debt",
+    } and not candidate["fair_value_cue"] and candidate["balance_sheet_cue"]:
+        support_mode = "exact"
+        missing_reason = None
+    if candidate.get("age_days") is not None and candidate["age_days"] > SEC_EXACT_MAX_AGE_DAYS:
+        support_mode = "proxy_missing_component"
+        missing_reason = "filing_table_total_debt_stale"
+        quality_flags.append("filing_table_total_debt_stale")
+    if unit_rescale_divisor != 1.0:
+        support_mode = "proxy_missing_component"
+        missing_reason = "filing_table_total_debt_unit_rescaled"
+        quality_flags.append(f"filing_table_total_debt_unit_rescaled_{int(unit_rescale_divisor)}")
+    if finance_lease_adjustment:
+        adjusted_value -= finance_lease_adjustment
+        quality_flags.append("finance_lease_adjusted")
+    if adjusted_value <= 0:
+        return False
+
+    repaired = _set_metric(
+        total_debt,
+        value=float(adjusted_value),
+        support_mode=support_mode,
+        missing_reason=missing_reason,
+        component_breakdown={
+            "mode": "sec_filing_table_total_debt",
+            "selected_filing": filing,
+            "selected_table_index": candidate["table_index"],
+            "selected_table_mode": candidate["mode"],
+            "matched_rows": candidate["matched_rows"],
+            "unit_rescale_divisor": unit_rescale_divisor,
+            "finance_lease_adjustment": finance_lease_meta,
+            "finance_lease_adjustment_value": finance_lease_adjustment,
+            "source_table_excerpt": candidate["table_excerpt"],
+            "prior_total_debt_breakdown": breakdown,
+            "formula": "filing_table_debt_components - exact_finance_lease_if_available",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit=total_debt.get("unit", "usd"),
+        quality_flags=quality_flags,
+    )
+    repaired["input_source_classification"] = "sec_filing_table_repair"
+    repaired["input_layer_bucket_reason"] = "sec_filing_table_total_debt_repair"
+    repaired["primary_source_basis"] = "sec_filing_table"
+    repaired["provenance_artifact_type"] = "SecFilingHtml"
+    features["capital_structure.total_debt_provider_direct"] = repaired
+    return True
+
+
+def _repair_partial_total_debt_node(
+    *,
+    row: dict[str, Any],
+    candidates: dict[str, dict[str, list[dict[str, Any]]]],
+    computed_at: str,
+    provenance_source: str,
+) -> bool:
+    features = row["features"]
+    total_debt = features.get("capital_structure.total_debt_provider_direct")
+    if not total_debt:
+        return False
+    breakdown = total_debt.get("component_breakdown") or {}
+    if not (
+        breakdown.get("mode") == "partial_debt_stack"
+        and breakdown.get("current")
+        and not breakdown.get("noncurrent")
+    ):
+        return False
+
+    entity_id = str(row["company_id"])
+    entity_candidates = candidates.get(entity_id, {})
+    total_candidates = entity_candidates.get(TOTAL_DEBT_FACT, [])
+    current_fact_candidates = entity_candidates.get(CURRENT_DEBT_FACT, [])
+    latest_total = _latest_fact(total_candidates)
+    latest_current = _latest_fact(current_fact_candidates)
+    if latest_total is None:
+        return False
+
+    current_value = _node_value(total_debt)
+    if current_value is None:
+        return False
+
+    current_end = _parse_date((breakdown.get("current") or {}).get("end"))
+    selected_fact = None
+    repair_reason = None
+    latest_total_value = float(latest_total["value"])
+
+    if (
+        current_end is not None
+        and latest_total.get("end_dt") is not None
+        and latest_total["end_dt"] >= current_end
+        and latest_total_value > current_value * PARTIAL_TOTAL_DEBT_MIN_LIFT
+    ):
+        selected_fact = latest_total
+        repair_reason = "total_debt_fact_override"
+    elif (
+        latest_current is not None
+        and abs(latest_total_value - float(latest_current["value"])) <= 1.0
+    ):
+        max_total = max(total_candidates, key=lambda item: float(item["value"]))
+        max_total_value = float(max_total["value"])
+        if max_total_value > latest_total_value * TOTAL_DEBT_REGRESSION_THRESHOLD:
+            selected_fact = max_total
+            repair_reason = "total_debt_fact_regression_detected"
+
+    if selected_fact is None or repair_reason is None:
+        return False
+
+    as_of_date = _parse_date(row.get("as_of_time"))
+    selected_end = selected_fact.get("end_dt")
+    age_days = None if as_of_date is None or selected_end is None else (as_of_date - selected_end).days
+    quality_flags = [repair_reason]
+    if age_days is not None and age_days > MAX_EXACT_AGE_DAYS:
+        quality_flags.append("stale_total_debt_fact")
+
+    repaired = _set_metric(
+        total_debt,
+        value=float(selected_fact["value"]),
+        support_mode="proxy_missing_component",
+        missing_reason=repair_reason,
+        component_breakdown={
+            "mode": "fact_registry_total_debt_override",
+            "selected_total_debt_fact": selected_fact["meta"],
+            "latest_total_debt_fact": latest_total["meta"],
+            "latest_debt_current_fact": None if latest_current is None else latest_current["meta"],
+            "original_partial_debt_stack": breakdown,
+            "age_days": age_days,
+            "formula": "override_total_debt_from_fact_registry",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit=total_debt.get("unit", "usd"),
+        quality_flags=quality_flags,
+    )
+    repaired["input_source_classification"] = "fact_registry_repair"
+    repaired["input_layer_bucket_reason"] = "fact_registry_total_debt_repair"
+    repaired["primary_source_basis"] = "fact_registry"
+    repaired["provenance_artifact_type"] = "FactRegistry"
+    features["capital_structure.total_debt_provider_direct"] = repaired
+    return True
+
+
