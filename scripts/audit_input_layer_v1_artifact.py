@@ -248,3 +248,45 @@ def _restricted_cash_breakdown_is_semantically_valid(component_breakdown: Any) -
     return all(found in RESTRICTED_CASH_EXACT_CONCEPTS for found in concepts)
 
 
+def _selected_lease_component_ends(component_breakdown: Any) -> list[str]:
+    ends: list[str] = []
+    if not isinstance(component_breakdown, dict):
+        return ends
+    for key in (
+        "components",
+        "current_components",
+        "noncurrent_components",
+        "payments_due_component",
+        "undiscounted_excess_component",
+        "operating_component",
+        "finance_component",
+    ):
+        value = component_breakdown.get(key)
+        if value is not None:
+            ends.extend(_iter_component_ends(value))
+    return ends
+
+
+def _selected_lease_support_overrides(component_breakdown: Any) -> set[str]:
+    overrides: set[str] = set()
+    if not isinstance(component_breakdown, dict):
+        return overrides
+    for key in ("operating_component", "finance_component"):
+        value = component_breakdown.get(key)
+        if isinstance(value, dict):
+            support_override = value.get("support_override")
+            if support_override:
+                overrides.add(str(support_override))
+    return overrides
+
+
+def _grouped_cash_age_days(as_of_date: date, component_breakdown: Any) -> int | None:
+    if not isinstance(component_breakdown, dict):
+        return None
+    mode = component_breakdown.get("mode")
+    if mode in GROUPED_CASH_APPROVED_REPAIR_MODES:
+        statement_component = component_breakdown.get("cash_and_equivalents_statement_direct")
+        return _latest_end_age_days(as_of_date, statement_component)
+    return _latest_end_age_days(as_of_date, component_breakdown)
+
+

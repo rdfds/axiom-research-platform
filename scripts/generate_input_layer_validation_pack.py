@@ -94,7 +94,7 @@ def _company_ref(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _record_issue(container: dict[str, Any], category: str, metric: str, example: dict[str, Any]) :
+def _record_issue(container: dict[str, Any], category: str, metric: str, example: dict[str, Any]) -> None:
     bucket = container.setdefault(category, {}).setdefault(metric, {"count": 0, "examples": []})
     bucket["count"] += 1
     if len(bucket["examples"]) < 5:
