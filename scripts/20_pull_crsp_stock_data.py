@@ -52,3 +52,7 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+def parse_int_list(value: str) -> List[int]:
+    return [int(x.strip()) for x in value.split(",") if x.strip()]
+
+

@@ -128,3 +128,80 @@ def detect_splits_for_ticker(ticker: str, start_date: str = '2000-01-01') -> lis
     return splits
 
 
+def main():
+    print("=" * 60)
+    print("Stock Splits Detection via Shares Outstanding Analysis")
+    print("=" * 60)
+
+    # Initialize Refinitiv
+    rd.open_session()
+
+    # Load universe
+    universe_path = Path('data/refinitiv/universe.parquet')
+    if not universe_path.exists():
+        print("Error: universe.parquet not found")
+        return
+
+    universe = pd.read_parquet(universe_path)
+    tickers = universe['ticker'].tolist()
+    print(f"\nAnalyzing {len(tickers)} companies for stock splits...")
+
+    all_splits = []
+    processed = 0
+    errors = 0
+
+    # Process in batches to avoid rate limits
+    batch_size = 50
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        print(f"\nProcessing batch {i//batch_size + 1} ({i+1}-{min(i+batch_size, len(tickers))} of {len(tickers)})...")
+
+        for ticker in batch:
+            try:
+                splits = detect_splits_for_ticker(ticker)
+                if splits:
+                    all_splits.extend(splits)
+                    for s in splits:
+                        print(f"  {s['ticker']}: {s['split_date'].date()} - {s['split_ratio']} ({s['split_type']})")
+                processed += 1
+            except Exception as e:
+                errors += 1
+
+        # Small delay between batches
+        if i + batch_size < len(tickers):
+            time.sleep(1)
+
+    # Close Refinitiv session
+    rd.close_session()
+
+    # Save results
+    if all_splits:
+        df = pd.DataFrame(all_splits)
+        df['split_date'] = pd.to_datetime(df['split_date'])
+        df = df.sort_values('split_date')
+
+        output_path = Path('data/refinitiv/stock_splits.parquet')
+        df.to_parquet(output_path, index=False)
+
+        print("\n" + "=" * 60)
+        print("STOCK SPLITS DETECTION COMPLETE")
+        print("=" * 60)
+        print(f"\nTotal splits detected: {len(df)}")
+        print(f"Forward splits: {len(df[df['split_type'] == 'forward'])}")
+        print(f"Reverse splits: {len(df[df['split_type'] == 'reverse'])}")
+        print(f"Companies processed: {processed}")
+        print(f"Errors: {errors}")
+        print(f"\nSaved to: {output_path}")
+
+        # Show sample
+        print("\nSample splits:")
+        print(df.head(20).to_string())
+
+        # Most common ratios
+        print("\nSplit ratio distribution:")
+        print(df['split_ratio'].value_counts().head(10))
+    else:
+        print("\nNo splits detected!")
+
+
