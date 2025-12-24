@@ -87,3 +87,103 @@ def load_cik_gvkey() -> pd.DataFrame:
     return df
 
 
+def load_symbol_to_cik() -> dict:
+    path = SEC_DIR / "company_tickers.json"
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    mapping = {}
+    for _, row in data.items():
+        ticker = str(row.get("ticker", "")).upper().strip().replace("-", ".")
+        cik = str(row.get("cik_str", "")).lstrip("0")
+        if ticker and cik:
+            mapping[ticker] = cik
+    return mapping
+
+
+def load_checkpoint() -> set[str]:
+    if not BACKFILL_RESUME:
+        return set()
+    path = DATA_DIR / "fmp" / "fmp_financials_gvkey_backfill_checkpoint.txt"
+    if not path.exists():
+        return set()
+    return set([line.strip() for line in path.read_text().splitlines() if line.strip()])
+
+
+def save_checkpoint(entries: Iterable[str]) -> None:
+    path = DATA_DIR / "fmp" / "fmp_financials_gvkey_backfill_checkpoint.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        for entry in entries:
+            f.write(entry + "\n")
+
+
+def filter_target(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    df = df[df["source_system"] == "fmp_financials"]
+    # Only symbol-based company_id (contains letters)
+    mask = df["company_id"].astype("string").str.contains(r"[A-Za-z]", regex=True, na=False)
+    return df[mask]
+
+
+def map_gvkey(
+    df: pd.DataFrame,
+    names: pd.DataFrame,
+    link: pd.DataFrame,
+    cik_gvkey: pd.DataFrame,
+    symbol_to_cik: dict,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+    df = df.copy()
+    df["symbol_norm"] = df["company_id"].astype("string").str.upper().str.replace("-", ".", regex=False)
+
+    # First try CIK -> GVKEY using SEC mapping + Compustat link table
+    if symbol_to_cik:
+        df["cik"] = df["symbol_norm"].map(symbol_to_cik)
+        merged_cik = df.merge(cik_gvkey, on="cik", how="left")
+        if "link_start_date" in merged_cik.columns:
+            merged_cik = merged_cik[
+                (merged_cik["event_time"] >= merged_cik["link_start_date"]) &
+                (merged_cik["event_time"] <= merged_cik["link_end_date"])
+            ]
+        merged_cik = merged_cik[merged_cik["gvkey"].notna()]
+    else:
+        merged_cik = pd.DataFrame()
+
+    # Fallback to CRSP ticker -> permno -> gvkey
+    merged = df.merge(
+        names[["permno", "namedt", "nameendt", "ticker_norm"]],
+        left_on="symbol_norm",
+        right_on="ticker_norm",
+        how="left",
+    )
+    merged = merged[
+        (merged["event_time"] >= merged["namedt"]) & (merged["event_time"] <= merged["nameendt"])
+    ]
+    merged = merged.sort_values("nameendt").groupby("version_id", as_index=False).tail(1)
+    merged = merged.merge(
+        link[["permno", "gvkey", "linkdt", "linkenddt"]],
+        on="permno",
+        how="left",
+    )
+    active = merged[
+        (merged["event_time"] >= merged["linkdt"]) & (merged["event_time"] <= merged["linkenddt"])
+    ]
+    if active.empty:
+        merged = merged.sort_values("linkenddt").groupby("version_id", as_index=False).tail(1)
+    else:
+        merged = active.sort_values("linkenddt").groupby("version_id", as_index=False).tail(1)
+
+    if merged_cik.empty:
+        return merged
+
+    # Prefer CIK-based gvkey where available, else CRSP fallback
+    merged_cik = merged_cik.rename(columns={"gvkey": "gvkey_cik"})
+    merged = merged.rename(columns={"gvkey": "gvkey_crsp"})
+    out = merged.merge(merged_cik[["version_id", "gvkey_cik"]], on="version_id", how="left")
+    out["gvkey"] = out["gvkey_cik"].combine_first(out["gvkey_crsp"])
+    return out
+
+
