@@ -980,3 +980,91 @@ def _repair_partial_total_debt_node(
     return True
 
 
+def _repair_total_debt_node(
+    *,
+    row: dict[str, Any],
+    candidates: dict[str, dict[str, list[dict[str, Any]]]],
+    computed_at: str,
+    provenance_source: str,
+) -> bool:
+    features = row["features"]
+    total_debt = features.get("capital_structure.total_debt_provider_direct")
+    if not total_debt:
+        return False
+    breakdown = total_debt.get("component_breakdown") or {}
+    if breakdown.get("mode") != TARGET_MODE:
+        return False
+
+    entity_id = str(row["company_id"])
+    entity_candidates = candidates.get(entity_id, {})
+    current_candidates = entity_candidates.get(CURRENT_DEBT_FACT, [])
+    long_term_candidates = entity_candidates.get(LONG_TERM_DEBT_FACT, [])
+    current_fact, long_term_fact, gap_days = _best_pair(current_candidates, long_term_candidates)
+    if current_fact is None or long_term_fact is None:
+        cur_src = ((breakdown.get("current_statement_debt") or {}).get("source_type"))
+        lt_src = ((breakdown.get("long_term_statement_debt") or {}).get("source_type"))
+        if total_debt.get("support_mode") == "exact" and cur_src != lt_src:
+            downgraded = _set_metric(
+                total_debt,
+                value=_node_value(total_debt),
+                support_mode="proxy_missing_component",
+                missing_reason="statement_debt_pair_unresolved",
+                component_breakdown={
+                    **breakdown,
+                    "repair_status": "unresolved_source_mismatch",
+                },
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                unit=total_debt.get("unit", "usd"),
+                quality_flags=["statement_debt_pair_unresolved"],
+            )
+            features["capital_structure.total_debt_provider_direct"] = downgraded
+            return True
+        return False
+
+    total_value = float(current_fact["value"] + long_term_fact["value"])
+    as_of_date = _parse_date(row.get("as_of_time"))
+    latest_end = max(current_fact["end_dt"], long_term_fact["end_dt"])
+    age_days = None if as_of_date is None else (as_of_date - latest_end).days
+    prior_has_capital_lease_overlap = bool(breakdown.get("capital_lease_overlap_detected"))
+
+    support_mode = "exact"
+    missing_reason = None
+    quality_flags: list[str] = []
+    if prior_has_capital_lease_overlap:
+        support_mode = "proxy_missing_component"
+        missing_reason = "finance_lease_adjustment_unavailable"
+        quality_flags.append("finance_lease_adjustment_unavailable")
+    elif age_days is not None and age_days > MAX_EXACT_AGE_DAYS:
+        support_mode = "proxy_missing_component"
+        missing_reason = "statement_debt_pair_stale"
+        quality_flags.append("statement_debt_pair_stale")
+
+    repaired = _set_metric(
+        total_debt,
+        value=total_value,
+        support_mode=support_mode,
+        missing_reason=missing_reason,
+        component_breakdown={
+            "mode": TARGET_MODE,
+            "current_statement_debt": current_fact["meta"],
+            "long_term_statement_debt": long_term_fact["meta"],
+            "repaired_prior_breakdown": breakdown,
+            "capital_lease_overlap_detected": prior_has_capital_lease_overlap,
+            "alignment_gap_days": gap_days,
+            "age_days": age_days,
+            "formula": "current_debt_statement_direct + long_term_debt_statement_direct",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit=total_debt.get("unit", "usd"),
+        quality_flags=quality_flags,
+    )
+    repaired["input_source_classification"] = "statement_direct_repair"
+    repaired["input_layer_bucket_reason"] = "statement_direct_debt_repair"
+    repaired["primary_source_basis"] = "statement_direct"
+    repaired["provenance_artifact_type"] = "StatementFact"
+    features["capital_structure.total_debt_provider_direct"] = repaired
+    return True
+
+
