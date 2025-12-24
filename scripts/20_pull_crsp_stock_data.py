@@ -56,3 +56,20 @@ def parse_int_list(value: str) -> List[int]:
     return [int(x.strip()) for x in value.split(",") if x.strip()]
 
 
+def year_chunks(start: str, end: str, chunk_years: int) -> Iterable[Tuple[str, str]]:
+    start_date = datetime.strptime(start, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end, "%Y-%m-%d").date()
+
+    year = start_date.year
+    while year <= end_date.year:
+        chunk_start = date(year, 1, 1)
+        chunk_end_year = min(year + chunk_years - 1, end_date.year)
+        chunk_end = date(chunk_end_year, 12, 31)
+        if year == start_date.year:
+            chunk_start = start_date
+        if chunk_end_year == end_date.year:
+            chunk_end = end_date
+        yield chunk_start.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")
+        year += chunk_years
+
+
