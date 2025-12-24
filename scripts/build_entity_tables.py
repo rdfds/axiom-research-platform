@@ -131,3 +131,9 @@ def empty_entity_relationship() -> pd.DataFrame:
     )
 
 
+def empty_correction_log() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=["correction_id", "entity_id", "previous_value", "new_value", "timestamp", "reason", "author"]
+    )
+
+

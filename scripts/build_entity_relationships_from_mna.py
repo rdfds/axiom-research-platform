@@ -14,7 +14,7 @@ import duckdb
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mna-path", default="data/warehouse/warehouse_mna_deals.parquet")
     parser.add_argument("--out", default="data/inputs_layer/entity_relationship.parquet")
