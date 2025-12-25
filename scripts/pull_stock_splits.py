@@ -205,3 +205,5 @@ def main():
         print("\nNo splits detected!")
 
 
+if __name__ == '__main__':
+    main()

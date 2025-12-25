@@ -73,3 +73,17 @@ def year_chunks(start: str, end: str, chunk_years: int) -> Iterable[Tuple[str, s
         year += chunk_years
 
 
+def build_permno_cte(common_only: bool, shrcd: List[int], exchcd: List[int]) -> str:
+    where = "nameendt >= %(start_date)s AND namedt <= %(end_date)s"
+    if common_only:
+        where += f" AND shrcd IN ({','.join(str(x) for x in shrcd)})"
+        where += f" AND exchcd IN ({','.join(str(x) for x in exchcd)})"
+    return f"""
+    WITH permnos AS (
+        SELECT DISTINCT permno
+        FROM crsp.msenames
+        WHERE {where}
+    )
+    """
+
+
