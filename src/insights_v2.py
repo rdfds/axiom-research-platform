@@ -31,3 +31,22 @@ class WhyNowBullet:
     source: Optional[str] = None  # "fundamentals", "precedent", "regime", "transcript"
 
 
+@dataclass
+class IdeaV2:
+    """Enhanced capital allocation idea with full evidence."""
+    name: str
+    score: int  # 0-100
+    priority: str  # HIGH, MEDIUM-HIGH, MEDIUM, LOW-MEDIUM, LOW
+    status: str  # NEWLY_ACTIONABLE, PERSISTENT, WINDOW_OPEN
+    active_since: Optional[str] = None  # "Q2 2025 (6 months)"
+    value_lever: str = ""
+    economic_impact: str = ""
+    why_now: List[WhyNowBullet] = field(default_factory=list)
+    share_price_impact: Optional[str] = None  # "+8-12%"
+    share_price_basis: Optional[str] = None  # "Based on 8 precedent transactions..."
+    precedent_n: int = 0  # Number of similar cases
+    tsr_p25: Optional[float] = None
+    tsr_p50: Optional[float] = None
+    tsr_p75: Optional[float] = None
+
+
