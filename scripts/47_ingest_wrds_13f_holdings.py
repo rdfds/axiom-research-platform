@@ -138,7 +138,7 @@ def main() -> None:
                 "titleofclass": normalize_value(row.get("titleofclass")),
                 "cusip": cusip or None,
                 "value": coerce_numeric(row.get("value")),
-                "sshprnamt": coerce_numeric(row['sshprnamt']),
+                "sshprnamt": coerce_numeric(row.get("sshprnamt")),
                 "sshprnamttype": normalize_value(row.get("sshprnamttype")),
                 "putcall": normalize_value(row.get("putcall")),
                 "investmentdiscretion": normalize_value(row.get("investmentdiscretion")),
