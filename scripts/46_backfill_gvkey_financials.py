@@ -187,3 +187,53 @@ def map_gvkey(
     return out
 
 
+def build_records(mapped: pd.DataFrame, ingestion_time: datetime) -> List[Dict]:
+    if mapped.empty:
+        return []
+    records: List[Dict] = []
+    for _, row in mapped.iterrows():
+        gvkey = row.get("gvkey")
+        if pd.isna(gvkey):
+            continue
+        gvkey = str(gvkey)
+
+        quality_flags = []
+        if isinstance(row.get("quality_flags"), list):
+            quality_flags = [f for f in row["quality_flags"] if f != "missing_gvkey"]
+
+        raw_payload_hash = row["raw_payload_hash"]
+        version_id = compute_version_id(
+            source_system="fmp_financials",
+            entity_id=f"{gvkey}:{row['statement_type']}:{row['line_item']}",
+            event_time=row["event_time"].to_pydatetime(),
+            available_time=row["available_time"].to_pydatetime(),
+            raw_payload_hash=raw_payload_hash,
+        )
+
+        records.append(
+            {
+                "source_system": "fmp_financials",
+                "entity_id": gvkey,
+                "company_id": gvkey,
+                "security_id": None,
+                "event_time": row["event_time"],
+                "available_time": row["available_time"],
+                "ingestion_time": ingestion_time,
+                "version_id": version_id,
+                "raw_payload_hash": raw_payload_hash,
+                "upstream_version_ids": [row["version_id"]],
+                "quality_flags": quality_flags,
+                "fiscal_period_end": row["fiscal_period_end"],
+                "fiscal_year": row.get("fiscal_year"),
+                "fiscal_quarter": row.get("fiscal_quarter"),
+                "statement_type": row["statement_type"],
+                "line_item": row["line_item"],
+                "value": row["value"],
+                "currency": row.get("currency"),
+                "units": row['units'],
+                "restatement_flag": row.get("restatement_flag", False),
+            }
+        )
+    return records
+
+

@@ -1068,3 +1068,373 @@ def _repair_total_debt_node(
     return True
 
 
+def _recompute_standardized(features: dict[str, Any], *, row: dict[str, Any], computed_at: str, provenance_source: str) -> None:
+    total_debt = features.get("capital_structure.total_debt_provider_direct")
+    cash = features.get("liquidity.cash_and_short_term_investments_provider_direct")
+    ebitda = features.get("operating.ebitda_ltm_provider_direct")
+    total_debt_value = _node_value(total_debt)
+    cash_value = _node_value(cash)
+    ebitda_value = _node_value(ebitda)
+    as_of_time = row["as_of_time"]
+
+    net_debt_value = None if total_debt_value is None or cash_value is None else total_debt_value - cash_value
+    standardized_support = _metric_support_from_components(total_debt, cash)
+    features["capital_structure.net_debt_standardized"] = _set_metric(
+        features.get("capital_structure.net_debt_standardized"),
+        value=net_debt_value,
+        support_mode=standardized_support if net_debt_value is not None else "unsupported",
+        missing_reason=None if net_debt_value is not None else "component_unavailable",
+        component_breakdown={
+            "total_debt_provider_direct": total_debt_value,
+            "cash_and_short_term_investments_provider_direct": cash_value,
+            "formula": "total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+    )
+
+    if total_debt_value is None or ebitda_value is None:
+        gross_value = None
+        gross_support = "unsupported"
+        gross_missing = "component_unavailable"
+    elif ebitda_value <= 0:
+        gross_value = None
+        gross_support = "unsupported"
+        gross_missing = "non_positive_denominator"
+    else:
+        gross_value = total_debt_value / ebitda_value
+        gross_support = _metric_support_from_components(total_debt, ebitda)
+        gross_missing = None
+    features["capital_structure.gross_leverage_standardized"] = _set_metric(
+        features.get("capital_structure.gross_leverage_standardized"),
+        value=gross_value,
+        support_mode=gross_support,
+        missing_reason=gross_missing,
+        component_breakdown={
+            "total_debt_provider_direct": total_debt_value,
+            "ebitda_ltm_provider_direct": ebitda_value,
+            "formula": "total_debt_provider_direct / ebitda_ltm_provider_direct",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+    )
+
+    if net_debt_value is None or ebitda_value is None:
+        net_lev_value = None
+        net_lev_support = "unsupported"
+        net_lev_missing = "component_unavailable"
+    elif ebitda_value <= 0:
+        net_lev_value = None
+        net_lev_support = "unsupported"
+        net_lev_missing = "non_positive_denominator"
+    else:
+        net_lev_value = net_debt_value / ebitda_value
+        net_lev_support = _metric_support_from_components(features["capital_structure.net_debt_standardized"], ebitda)
+        net_lev_missing = None
+    features["capital_structure.net_leverage_standardized"] = _set_metric(
+        features.get("capital_structure.net_leverage_standardized"),
+        value=net_lev_value,
+        support_mode=net_lev_support,
+        missing_reason=net_lev_missing,
+        component_breakdown={
+            "net_debt_standardized": net_debt_value,
+            "ebitda_ltm_provider_direct": ebitda_value,
+            "formula": "net_debt_standardized / ebitda_ltm_provider_direct",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+    )
+
+
+def _recompute_smart(features: dict[str, Any], *, row: dict[str, Any], computed_at: str, provenance_source: str) -> None:
+    total_debt = features.get("capital_structure.total_debt_provider_direct")
+    lease = features.get("capital_structure.lease_liabilities_sec_exact")
+    liquidity = features['liquidity.available_liquidity_normalized']
+    earnings = features.get("operating.operating_earnings_normalized")
+    total_debt_value = _node_value(total_debt)
+    raw_lease_value = _node_value(lease)
+    lease_value = raw_lease_value if raw_lease_value is None or raw_lease_value >= 0 else None
+    liquidity_value = _node_value(liquidity)
+    earnings_value = _node_value(earnings)
+
+    if total_debt_value is None:
+        debt_like_value = None
+        debt_like_support = "unsupported"
+        debt_like_missing = "component_unavailable"
+    else:
+        debt_like_value = total_debt_value + (lease_value or 0.0)
+        if _is_exact(total_debt) and _is_exact(lease):
+            debt_like_support = "exact"
+        elif _is_supported(total_debt):
+            debt_like_support = "proxy_missing_component"
+        else:
+            debt_like_support = "unsupported"
+        if raw_lease_value is not None and raw_lease_value < 0 and debt_like_support == "exact":
+            debt_like_support = "proxy_missing_component"
+        debt_like_missing = None if debt_like_support != "unsupported" else "component_unavailable"
+        if debt_like_value < total_debt_value:
+            debt_like_value = total_debt_value
+            if debt_like_support == "exact":
+                debt_like_support = "proxy_missing_component"
+    features["capital_structure.debt_like_obligations_normalized"] = _set_metric(
+        features.get("capital_structure.debt_like_obligations_normalized"),
+        value=debt_like_value,
+        support_mode=debt_like_support,
+        missing_reason=debt_like_missing,
+        component_breakdown={
+            "baseline_source_metric": "capital_structure.total_debt_provider_direct",
+            "baseline_value": total_debt_value,
+            "lease_liabilities_sec_exact": lease_value,
+            "lease_liabilities_raw_input_value": raw_lease_value,
+            "lease_negative_input_ignored": bool(raw_lease_value is not None and raw_lease_value < 0),
+            "formula": "total_debt_provider_direct + lease_liabilities_sec_exact",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+    )
+
+    if debt_like_value is None or liquidity_value is None:
+        net_debt_value = None
+        net_debt_support = "unsupported"
+        net_debt_missing = "component_unavailable"
+    else:
+        net_debt_value = debt_like_value - liquidity_value
+        if _is_exact(features["capital_structure.debt_like_obligations_normalized"]) and _is_exact(liquidity):
+            net_debt_support = "exact"
+        elif _is_supported(features["capital_structure.debt_like_obligations_normalized"]) and _is_supported(liquidity):
+            net_debt_support = "proxy_missing_component"
+        else:
+            net_debt_support = "unsupported"
+        net_debt_missing = None if net_debt_support != "unsupported" else "component_unavailable"
+    features["capital_structure.net_debt_normalized"] = _set_metric(
+        features.get("capital_structure.net_debt_normalized"),
+        value=net_debt_value,
+        support_mode=net_debt_support,
+        missing_reason=net_debt_missing,
+        component_breakdown={
+            "debt_like_obligations_normalized": debt_like_value,
+            "available_liquidity_normalized": liquidity_value,
+            "formula": "debt_like_obligations_normalized - available_liquidity_normalized",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+    )
+
+    if debt_like_value is None or earnings_value is None:
+        gross_value = None
+        gross_support = "unsupported"
+        gross_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        gross_value = None
+        gross_support = "unsupported"
+        gross_missing = "non_positive_denominator"
+    else:
+        gross_value = debt_like_value / earnings_value
+        if _is_exact(features["capital_structure.debt_like_obligations_normalized"]) and _is_exact(earnings):
+            gross_support = "exact"
+        elif _is_supported(features["capital_structure.debt_like_obligations_normalized"]) and _is_supported(earnings):
+            gross_support = "proxy_missing_component"
+        else:
+            gross_support = "unsupported"
+        gross_missing = None
+    features["capital_structure.gross_leverage_normalized"] = _set_metric(
+        features.get("capital_structure.gross_leverage_normalized"),
+        value=gross_value,
+        support_mode=gross_support,
+        missing_reason=gross_missing,
+        component_breakdown={
+            "debt_like_obligations_normalized": debt_like_value,
+            "operating_earnings_normalized": earnings_value,
+            "formula": "debt_like_obligations_normalized / operating_earnings_normalized",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+    )
+
+    if net_debt_value is None or earnings_value is None:
+        net_value = None
+        net_support = "unsupported"
+        net_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        net_value = None
+        net_support = "unsupported"
+        net_missing = "non_positive_denominator"
+    else:
+        net_value = net_debt_value / earnings_value
+        if _is_exact(features["capital_structure.net_debt_normalized"]) and _is_exact(earnings):
+            net_support = "exact"
+        elif _is_supported(features["capital_structure.net_debt_normalized"]) and _is_supported(earnings):
+            net_support = "proxy_missing_component"
+        else:
+            net_support = "unsupported"
+        net_missing = None
+    features["capital_structure.net_leverage_normalized"] = _set_metric(
+        features.get("capital_structure.net_leverage_normalized"),
+        value=net_value,
+        support_mode=net_support,
+        missing_reason=net_missing,
+        component_breakdown={
+            "net_debt_normalized": net_debt_value,
+            "operating_earnings_normalized": earnings_value,
+            "formula": "net_debt_normalized / operating_earnings_normalized",
+        },
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+    )
+
+
+def _process_repair_row(
+    *,
+    row: dict[str, Any],
+    candidates: dict[str, dict[str, list[dict[str, Any]]]],
+    computed_at: str,
+    provenance_source: str,
+    sec_session: requests.Session | None,
+    sec_cache_dir: Path,
+    timeout_seconds: int | None,
+    skip_fact_registry_repair: bool,
+) -> tuple[bool, bool, str | None]:
+    original_row = copy.deepcopy(row)
+    working_row = copy.deepcopy(row)
+    working_row.setdefault("features", {})
+    row_repaired = False
+    sec_row_repaired = False
+    try:
+        with _company_processing_timeout(timeout_seconds):
+            if not skip_fact_registry_repair:
+                if _repair_total_debt_node(
+                    row=working_row,
+                    candidates=candidates,
+                    computed_at=computed_at,
+                    provenance_source=provenance_source,
+                ):
+                    row_repaired = True
+                elif _repair_partial_total_debt_node(
+                    row=working_row,
+                    candidates=candidates,
+                    computed_at=computed_at,
+                    provenance_source=provenance_source,
+                ):
+                    row_repaired = True
+            if sec_session is not None and _repair_total_debt_from_sec_filing(
+                row=working_row,
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                session=sec_session,
+                cache_dir=sec_cache_dir,
+            ):
+                sec_row_repaired = True
+                row_repaired = True
+            if row_repaired:
+                _recompute_standardized(
+                    working_row["features"],
+                    row=working_row,
+                    computed_at=computed_at,
+                    provenance_source=provenance_source,
+                )
+                _recompute_smart(
+                    working_row["features"],
+                    row=working_row,
+                    computed_at=computed_at,
+                    provenance_source=provenance_source,
+                )
+    except _CompanyProcessingTimeoutError:
+        row.clear()
+        row.update(original_row)
+        return False, False, "company_processing_timeout"
+    except Exception:  # noqa: BLE001
+        row.clear()
+        row.update(original_row)
+        return False, False, "company_processing_failed"
+
+    row.clear()
+    row.update(working_row)
+    return row_repaired, sec_row_repaired, None
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    computed_at = _now_iso()
+    provenance_source = f"{artifact_path}:statement_debt_override_repair"
+
+    entity_ids, as_of_time = _collect_target_ids(artifact_path)
+    requested_company_ids = {str(company_id).zfill(10) for company_id in (args.company_ids or [])}
+    requested_company_ids.update(_load_company_ids_file(Path(args.company_ids_file)) if args.company_ids_file else [])
+    if requested_company_ids:
+        entity_ids = [entity_id for entity_id in entity_ids if str(entity_id).zfill(10) in requested_company_ids]
+    if args.batch_size and args.batch_size > 0:
+        start = max(args.batch_index, 0) * args.batch_size
+        end = start + args.batch_size
+        entity_ids = entity_ids[start:end]
+    if args.skip_fact_registry_repair:
+        candidates = {}
+    else:
+        candidates = _load_candidates(
+            facts_path=Path(args.facts_path),
+            entity_ids=entity_ids,
+            as_of_time=as_of_time or "2024-12-31T00:00:00Z",
+        )
+
+    repaired_count = 0
+    sec_repaired_count = 0
+    fail_open_counts = {"company_processing_timeout": 0, "company_processing_failed": 0}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_root = _ensure_cache_dir(Path(args.sec_cache_dir)) if args.sec_cache_dir else None
+    completed_company_ids = _load_completed_company_ids(out_path) if args.resume else set()
+    if args.resume:
+        write_mode = "a"
+    else:
+        out_path.write_text("")
+        write_mode = "a"
+
+    with TemporaryDirectory() as temp_cache_dir:
+        sec_cache_dir = cache_root or Path(temp_cache_dir)
+        sec_session = _sec_session() if args.enable_sec_filing_fallback else None
+        with artifact_path.open() as src, out_path.open(write_mode, buffering=1) as dst:
+            for line in src:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                company_id = str(row.get("company_id", "")).zfill(10)
+                if company_id in completed_company_ids:
+                    continue
+                if entity_ids and company_id not in entity_ids and (not requested_company_ids or company_id not in requested_company_ids):
+                    dst.write(json.dumps(row) + "\n")
+                    continue
+                row_repaired, sec_row_repaired, failure_reason = _process_repair_row(
+                    row=row,
+                    candidates=candidates,
+                    computed_at=computed_at,
+                    provenance_source=provenance_source,
+                    sec_session=sec_session,
+                    sec_cache_dir=sec_cache_dir,
+                    timeout_seconds=args.company_processing_timeout_seconds,
+                    skip_fact_registry_repair=args.skip_fact_registry_repair,
+                )
+                if failure_reason:
+                    fail_open_counts[failure_reason] += 1
+                if row_repaired:
+                    repaired_count += 1
+                if sec_row_repaired:
+                    sec_repaired_count += 1
+                dst.write(json.dumps(row) + "\n")
+
+    print(f"Repaired statement debt overrides ({repaired_count} rows, sec_filing={sec_repaired_count}) -> {out_path}")
+    print(
+        "row_fail_open:"
+        f" company_processing_timeout={fail_open_counts['company_processing_timeout']}"
+        f" company_processing_failed={fail_open_counts['company_processing_failed']}"
+    )
+
+
+if __name__ == "__main__":
+    main()
