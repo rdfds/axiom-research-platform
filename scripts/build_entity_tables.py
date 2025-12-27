@@ -137,3 +137,47 @@ def empty_correction_log() -> pd.DataFrame:
     )
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--map-path", default="data/mappings/entity_id_map.parquet")
+    parser.add_argument("--out-entity", default="data/inputs_layer/entity.parquet")
+    parser.add_argument("--out-identifiers", default="data/inputs_layer/entity_identifier.parquet")
+    parser.add_argument("--out-relationships", default="data/inputs_layer/entity_relationship.parquet")
+    parser.add_argument("--out-corrections", default="data/inputs_layer/entity_correction_log.parquet")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+
+    map_path = ROOT / args.map_path
+    out_entity = ROOT / args.out_entity
+    out_identifiers = ROOT / args.out_identifiers
+    out_relationships = ROOT / args.out_relationships
+    out_corrections = ROOT / args.out_corrections
+
+    for p in [out_entity, out_identifiers, out_relationships, out_corrections]:
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+    if not map_path.exists():
+        raise FileNotFoundError(f"Missing mapping file: {map_path}")
+
+    if any(p.exists() for p in [out_entity, out_identifiers, out_relationships, out_corrections]) and not args.overwrite:
+        print("Outputs exist; use --overwrite to rebuild.")
+        return
+
+    df = pd.read_parquet(map_path)
+
+    entity = build_entity_table(df)
+    identifiers = build_identifier_table(df, map_path)
+    relationships = empty_entity_relationship()
+    corrections = empty_correction_log()
+
+    entity.to_parquet(out_entity, index=False)
+    identifiers.to_parquet(out_identifiers, index=False)
+    relationships.to_parquet(out_relationships, index=False)
+    corrections.to_parquet(out_corrections, index=False)
+
+    print(f"Wrote Entity -> {out_entity} ({len(entity):,} rows)")
+    print(f"Wrote EntityIdentifier -> {out_identifiers} ({len(identifiers):,} rows)")
+    print(f"Wrote EntityRelationship -> {out_relationships} ({len(relationships):,} rows)")
+    print(f"Wrote EntityCorrectionLog -> {out_corrections} ({len(corrections):,} rows)")
+
+
