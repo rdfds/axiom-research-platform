@@ -87,3 +87,9 @@ def build_permno_cte(common_only: bool, shrcd: List[int], exchcd: List[int]) -> 
     """
 
 
+def write_manifest(entry: dict) -> None:
+    manifest_path = DATA_DIR / "manifest.jsonl"
+    with open(manifest_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
