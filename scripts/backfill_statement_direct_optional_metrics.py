@@ -156,3 +156,16 @@ def _parse_iso_date(value: Any):
         return None
 
 
+def _iter_component_ends(component_breakdown: Any) -> list[str]:
+    ends: list[str] = []
+    if isinstance(component_breakdown, dict):
+        if component_breakdown.get("end"):
+            ends.append(component_breakdown["end"])
+        for child in component_breakdown.values():
+            ends.extend(_iter_component_ends(child))
+    elif isinstance(component_breakdown, list):
+        for child in component_breakdown:
+            ends.extend(_iter_component_ends(child))
+    return ends
+
+
