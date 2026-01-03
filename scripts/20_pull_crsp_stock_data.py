@@ -328,3 +328,5 @@ def main():
         log("WRDS connection closed.")
 
 
+if __name__ == "__main__":
+    main()
