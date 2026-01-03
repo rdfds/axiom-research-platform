@@ -224,3 +224,107 @@ def pull_table_by_year(
     log(f"Total {label} rows: {total_rows:,}")
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Pull CRSP Stock data from WRDS")
+    parser.add_argument("username", nargs="?", default=None, help="WRDS username (optional)")
+    parser.add_argument("--start", default="2000-01-01", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD); default today")
+    parser.add_argument("--daily", action="store_true", help="Include daily stock file (dsf)")
+    parser.add_argument("--no-monthly", action="store_true", help="Skip monthly stock file (msf)")
+    parser.add_argument("--no-distributions", action="store_true", help="Skip distributions (msedist)")
+    parser.add_argument("--no-delistings", action="store_true", help="Skip delistings (msedelist)")
+    parser.add_argument("--no-names", action="store_true", help="Skip msenames pull")
+    parser.add_argument("--no-link", action="store_true", help="Skip ccmxpf_lnkhist pull")
+    parser.add_argument("--all-shares", action="store_true", help="Do not filter by shrcd/exchcd")
+    parser.add_argument("--shrcd", default="10,11", help="Share codes to include (comma-separated)")
+    parser.add_argument("--exchcd", default="1,2,3", help="Exchange codes to include (comma-separated)")
+    parser.add_argument("--chunk-years", type=int, default=1, help="Year chunk size")
+    parser.add_argument("--chunksize", type=int, default=0, help="DB fetch chunk size (rows)")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing output files")
+
+    args = parser.parse_args()
+    end_date = args.end or datetime.utcnow().strftime("%Y-%m-%d")
+
+    common_only = not args.all_shares
+    shrcd = parse_int_list(args.shrcd)
+    exchcd = parse_int_list(args.exchcd)
+
+    log("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=args.username) if args.username else wrds.Connection()
+    log("Connected.")
+
+    try:
+        if not args.no_names:
+            pull_msenames(db, args.start, end_date, common_only, shrcd, exchcd, args.chunksize, args.force)
+
+        if not args.no_link:
+            pull_linktable(db, args.start, end_date, common_only, shrcd, exchcd, args.chunksize, args.force)
+
+        if not args.no_monthly:
+            pull_table_by_year(
+                db,
+                table="crsp.msf",
+                date_col="date",
+                label="msf",
+                start_date=args.start,
+                end_date=end_date,
+                common_only=common_only,
+                shrcd=shrcd,
+                exchcd=exchcd,
+                chunksize=args.chunksize,
+                chunk_years=args.chunk_years,
+                force=args.force,
+            )
+
+        if args.daily:
+            pull_table_by_year(
+                db,
+                table="crsp.dsf",
+                date_col="date",
+                label="dsf",
+                start_date=args.start,
+                end_date=end_date,
+                common_only=common_only,
+                shrcd=shrcd,
+                exchcd=exchcd,
+                chunksize=args.chunksize,
+                chunk_years=args.chunk_years,
+                force=args.force,
+            )
+
+        if not args.no_distributions:
+            pull_table_by_year(
+                db,
+                table="crsp.msedist",
+                date_col="exdt",
+                label="msedist",
+                start_date=args.start,
+                end_date=end_date,
+                common_only=common_only,
+                shrcd=shrcd,
+                exchcd=exchcd,
+                chunksize=args.chunksize,
+                chunk_years=args.chunk_years,
+                force=args.force,
+            )
+
+        if not args.no_delistings:
+            pull_table_by_year(
+                db,
+                table="crsp.msedelist",
+                date_col="dlstdt",
+                label="msedelist",
+                start_date=args.start,
+                end_date=end_date,
+                common_only=common_only,
+                shrcd=shrcd,
+                exchcd=exchcd,
+                chunksize=args.chunksize,
+                chunk_years=args.chunk_years,
+                force=args.force,
+            )
+    finally:
+        db.close()
+        log("WRDS connection closed.")
+
+
