@@ -148,3 +148,27 @@ def months_between(start: pd.Timestamp, end: pd.Timestamp) -> int:
     return (end.year - start.year) * 12 + (end.month - start.month) + 1
 
 
+def audit_prices(df: pd.DataFrame) -> Dict[str, float]:
+    df = df.copy()
+    df["event_time"] = pd.to_datetime(df["event_time"])
+    coverage = df.groupby("entity_id")["event_time"].agg(["min", "max", "nunique"]).reset_index()
+    coverage["expected_months"] = coverage.apply(lambda r: months_between(r["min"], r["max"]), axis=1)
+    coverage["missing_months"] = coverage["expected_months"] - coverage["nunique"]
+    coverage["missing_months"] = coverage["missing_months"].clip(lower=0)
+
+    total_missing = coverage["missing_months"].sum()
+    avg_missing = coverage["missing_months"].mean()
+    coverage_pct = (coverage["nunique"].sum() / coverage["expected_months"].sum()) if coverage["expected_months"].sum() else 0
+    pct_with_gaps = (coverage["missing_months"] > 0).mean()
+
+    coverage_path = WAREHOUSE_DIR / "coverage_prices_missing_months.csv"
+    coverage.to_csv(coverage_path, index=False)
+
+    return {
+        "price_missing_months_total": float(total_missing),
+        "price_missing_months_avg": float(avg_missing),
+        "price_coverage_pct": float(coverage_pct),
+        "price_entities_with_gaps_pct": float(pct_with_gaps),
+    }
+
+

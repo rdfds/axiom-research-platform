@@ -82,7 +82,7 @@ def _artifact_view(node: Dict[str, Any] | None) -> Dict[str, Any]:
         "value": node.get("value"),
         "support_mode": node.get("support_mode"),
         "primary_source_basis": node.get("primary_source_basis"),
-        "missing_reason": node['missing_reason'],
+        "missing_reason": node.get("missing_reason"),
         "quality_flags": node.get("quality_flags"),
     }
 
