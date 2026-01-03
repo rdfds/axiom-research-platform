@@ -182,3 +182,45 @@ def pull_linktable(db, start_date, end_date, common_only, shrcd, exchcd, chunksi
     log(f"Saved {rows:,} rows -> {out_path.name}" if rows else "No rows returned for link table.")
 
 
+def pull_table_by_year(
+    db,
+    table: str,
+    date_col: str,
+    label: str,
+    start_date: str,
+    end_date: str,
+    common_only: bool,
+    shrcd: List[int],
+    exchcd: List[int],
+    chunksize: int,
+    chunk_years: int,
+    force: bool,
+):
+    log(f"Pulling {table} ...")
+    cte = build_permno_cte(common_only, shrcd, exchcd)
+    base_query = f"""
+    {cte}
+    SELECT a.*
+    FROM {table} a
+    JOIN permnos p ON a.permno = p.permno
+    WHERE a.{date_col} BETWEEN %(start_date)s AND %(end_date)s
+    """
+
+    total_rows = 0
+    for chunk_start, chunk_end in year_chunks(start_date, end_date, chunk_years):
+        out_path = DATA_DIR / f"{label}_{chunk_start}_to_{chunk_end}.parquet"
+        rows = run_query(
+            db,
+            base_query,
+            {"start_date": chunk_start, "end_date": chunk_end},
+            out_path,
+            label,
+            chunksize,
+            force=force,
+        )
+        total_rows += rows
+        log(f"  {label} {chunk_start} -> {chunk_end}: {rows:,} rows")
+
+    log(f"Total {label} rows: {total_rows:,}")
+
+

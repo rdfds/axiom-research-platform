@@ -172,3 +172,67 @@ def pull_acquisitions():
     return df
 
 
+def pull_bankruptcies():
+    """
+    Pull bankruptcy data from CRSP delistings.
+
+    Delisting codes 400-499 indicate distress/bankruptcy.
+    """
+    print("\n" + "=" * 60)
+    print("PULLING CRSP BANKRUPTCY DATA")
+    print("=" * 60)
+
+    conn = psycopg2.connect(
+        host='wrds-pgdata.wharton.upenn.edu',
+        port=9737,
+        database='wrds',
+        user='rvarian1'
+    )
+
+    query = """
+    SELECT
+        d.permno,
+        d.permco,
+        d.dlstdt as action_date,
+        d.dlstcd as delist_code,
+        d.dlret as delist_return,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedelist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.dlstdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.dlstdt >= %(start_date)s
+      AND d.dlstcd BETWEEN 400 AND 499  -- Bankruptcy/liquidation codes
+    ORDER BY d.dlstdt DESC
+    """
+
+    print("Pulling bankruptcies from CRSP...")
+    df = pd.read_sql(query, conn, params={'start_date': START_DATE})
+    print(f"  Retrieved {len(df):,} bankruptcies/liquidations")
+
+    # Classify
+    def classify_bankruptcy(code):
+        if code == 450:
+            return 'bankruptcy'
+        elif code in [460, 470]:
+            return 'bankruptcy_chapter'
+        elif code == 400:
+            return 'liquidation_voluntary'
+        else:
+            return 'distress_other'
+
+    df['action_type'] = df['delist_code'].apply(classify_bankruptcy)
+    df['source'] = 'crsp_delist'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+
+    # Save
+    output_path = DATA_DIR / 'bankruptcies_clean.parquet'
+    df.to_parquet(output_path)
+    print(f"  Saved to {output_path}")
+
+    conn.close()
+    return df
+
+
