@@ -99,3 +99,76 @@ def pull_buybacks():
     return buybacks
 
 
+def pull_acquisitions():
+    """
+    Pull acquisition data from CRSP delistings.
+
+    Delisting codes 200-299 indicate company was acquired/merged.
+    This is definitive - the company ceased trading due to acquisition.
+    """
+    print("\n" + "=" * 60)
+    print("PULLING CRSP ACQUISITION DATA (DELISTINGS)")
+    print("=" * 60)
+
+    conn = psycopg2.connect(
+        host='wrds-pgdata.wharton.upenn.edu',
+        port=9737,
+        database='wrds',
+        user='rvarian1'
+    )
+
+    # Pull delistings that are acquisitions
+    query = """
+    SELECT
+        d.permno,
+        d.permco,
+        d.dlstdt as action_date,
+        d.dlstcd as delist_code,
+        d.dlamt as deal_amount,
+        d.dlret as delist_return,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedelist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.dlstdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.dlstdt >= %(start_date)s
+      AND d.dlstcd BETWEEN 200 AND 299  -- Acquisition codes
+    ORDER BY d.dlstdt DESC
+    """
+
+    print("Pulling acquisition delistings from CRSP...")
+    df = pd.read_sql(query, conn, params={'start_date': START_DATE})
+    print(f"  Retrieved {len(df):,} acquisitions")
+
+    # Classify acquisition type
+    def classify_acquisition(code):
+        if code in [231, 241]:
+            return 'acquisition_tender'
+        elif code in [232, 242]:
+            return 'acquisition_exchange'
+        elif code == 233:
+            return 'acquisition_lbo'
+        elif code == 244:
+            return 'acquisition_reverse'
+        else:
+            return 'acquisition_merger'
+
+    df['action_type'] = df['delist_code'].apply(classify_acquisition)
+    df['source'] = 'crsp_delist'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+
+    # Save
+    output_path = DATA_DIR / 'acquisitions_clean.parquet'
+    df.to_parquet(output_path)
+    print(f"  Saved to {output_path}")
+
+    # Summary by type
+    print("\n  Acquisitions by type:")
+    print(df['action_type'].value_counts().to_string())
+
+    conn.close()
+    return df
+
+

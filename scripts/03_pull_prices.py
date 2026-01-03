@@ -67,3 +67,43 @@ def get_crsp_prices(db):
     return df
 
 
+def get_monthly_prices(db):
+    """
+    Alternative: Pull monthly prices (smaller dataset).
+    Good for initial testing.
+    """
+
+    query = """
+    SELECT
+        a.permno,
+        a.permco,
+        a.date,
+        a.prc,
+        a.ret,
+        a.retx,
+        a.shrout,
+        a.cfacpr,
+        a.cfacshr,
+        b.gvkey,
+        b.linkprim
+
+    FROM crsp.msf a
+    LEFT JOIN crsp.ccmxpf_lnkhist b
+        ON a.permno = b.lpermno
+        AND a.date >= b.linkdt
+        AND (a.date <= b.linkenddt OR b.linkenddt IS NULL)
+        AND b.linktype IN ('LU', 'LC')
+        AND b.linkprim IN ('P', 'C')
+
+    WHERE a.date >= %(start_date)s
+
+    ORDER BY a.permno, a.date
+    """
+
+    print("Executing query...")
+    df = db.raw_sql(query, params={'start_date': START_DATE})
+    print(f"Retrieved {len(df):,} rows")
+
+    return df
+
+

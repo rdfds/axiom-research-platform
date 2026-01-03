@@ -67,3 +67,32 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def normalize_cik(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    if not digits:
+        return None
+    return digits.zfill(10)
+
+
+def load_cik_map(path: Path) -> Dict[str, str]:
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path, dtype={"cik": "string", "gvkey": "string", "source": "string"})
+    df = df[df["cik"].notna() & df["gvkey"].notna()].copy()
+    df["cik"] = df["cik"].apply(normalize_cik)
+
+    # Prefer Compustat Company, then Security, then CRSP/Compustat, then Capital IQ
+    priority = {
+        "Compustat Company": 0,
+        "Compustat Security": 1,
+        "CRSP/Compustat Merged": 2,
+        "Capital IQ": 3,
+    }
+    df["priority"] = df["source"].map(priority).fillna(99)
+    df = df.sort_values(["cik", "priority"])
+    df = df.drop_duplicates("cik", keep="first")
+    return dict(zip(df["cik"], df["gvkey"]))
+
+

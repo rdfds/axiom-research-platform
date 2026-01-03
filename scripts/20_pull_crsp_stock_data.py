@@ -93,3 +93,92 @@ def write_manifest(entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def run_query(
+    db: wrds.Connection,
+    query: str,
+    params: dict,
+    out_path: Path,
+    table_label: str,
+    chunksize: int,
+    force: bool,
+) -> int:
+    if force:
+        if out_path.exists():
+            out_path.unlink()
+        for part in out_path.parent.glob(out_path.stem + "_part_*.parquet"):
+            part.unlink()
+    elif out_path.exists():
+        return 0
+
+    result = db.raw_sql(query, params=params, chunksize=chunksize if chunksize and chunksize > 0 else None)
+
+    # Some WRDS setups ignore chunksize and return a full DataFrame
+    if isinstance(result, pd.DataFrame):
+        if result is None or len(result) == 0:
+            return 0
+        result.to_parquet(out_path, index=False)
+        write_manifest({"file": out_path.name, "rows": len(result), "table": table_label, "timestamp": datetime.now().isoformat()})
+        return len(result)
+
+    rows = 0
+    if result is None:
+        return 0
+
+    for idx, chunk in enumerate(result):
+        if not isinstance(chunk, pd.DataFrame):
+            raise TypeError(f"Unexpected chunk type from WRDS: {type(chunk)}")
+        part_path = out_path.with_name(out_path.stem + f"_part_{idx:04d}" + out_path.suffix)
+        chunk.to_parquet(part_path, index=False)
+        rows += len(chunk)
+
+    if rows > 0:
+        write_manifest({"file": out_path.name, "rows": rows, "table": table_label, "timestamp": datetime.now().isoformat()})
+    return rows
+
+
+def pull_msenames(db, start_date, end_date, common_only, shrcd, exchcd, chunksize, force):
+    log("Pulling crsp.msenames ...")
+    where = "namedt <= %(end_date)s AND nameendt >= %(start_date)s"
+    if common_only:
+        where += f" AND shrcd IN ({','.join(str(x) for x in shrcd)})"
+        where += f" AND exchcd IN ({','.join(str(x) for x in exchcd)})"
+    query = f"""
+    SELECT *
+    FROM crsp.msenames
+    WHERE {where}
+    """
+    out_path = DATA_DIR / f"msenames_{start_date}_to_{end_date}.parquet"
+    rows = run_query(
+        db,
+        query,
+        {"start_date": start_date, "end_date": end_date},
+        out_path,
+        "msenames",
+        chunksize,
+        force=force,
+    )
+    log(f"Saved {rows:,} rows -> {out_path.name}" if rows else "No rows returned for msenames.")
+
+
+def pull_linktable(db, start_date, end_date, common_only, shrcd, exchcd, chunksize, force):
+    log("Pulling crsp.ccmxpf_lnkhist ...")
+    cte = build_permno_cte(common_only, shrcd, exchcd)
+    query = f"""
+    {cte}
+    SELECT l.*
+    FROM crsp.ccmxpf_lnkhist l
+    JOIN permnos p ON l.lpermno = p.permno
+    """
+    out_path = DATA_DIR / "ccmxpf_lnkhist.parquet"
+    rows = run_query(
+        db,
+        query,
+        {"start_date": start_date, "end_date": end_date},
+        out_path,
+        "ccmxpf_lnkhist",
+        chunksize,
+        force=force,
+    )
+    log(f"Saved {rows:,} rows -> {out_path.name}" if rows else "No rows returned for link table.")
+
+
