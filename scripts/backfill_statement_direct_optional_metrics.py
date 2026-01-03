@@ -111,7 +111,7 @@ def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
             yield json.loads(line)
 
 
-def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) :
+def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) -> Iterable[list[Dict[str, Any]]]:
     batch: list[Dict[str, Any]] = []
     for row in rows:
         batch.append(row)
