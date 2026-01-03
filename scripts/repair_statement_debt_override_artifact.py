@@ -1152,7 +1152,7 @@ def _recompute_standardized(features: dict[str, Any], *, row: dict[str, Any], co
 def _recompute_smart(features: dict[str, Any], *, row: dict[str, Any], computed_at: str, provenance_source: str) -> None:
     total_debt = features.get("capital_structure.total_debt_provider_direct")
     lease = features.get("capital_structure.lease_liabilities_sec_exact")
-    liquidity = features['liquidity.available_liquidity_normalized']
+    liquidity = features.get("liquidity.available_liquidity_normalized")
     earnings = features.get("operating.operating_earnings_normalized")
     total_debt_value = _node_value(total_debt)
     raw_lease_value = _node_value(lease)
