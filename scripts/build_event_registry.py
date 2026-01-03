@@ -29,3 +29,18 @@ def parse_dt(s: pd.Series) -> pd.Series:
     return pd.to_datetime(s, errors="coerce", utc=True)
 
 
+def coalesce(series_list: Iterable[pd.Series]) -> pd.Series:
+    out = None
+    for s in series_list:
+        if s is None:
+            continue
+        out = s if out is None else out.combine_first(s)
+    return out
+
+
+def prefixed_str(s: pd.Series, prefix: str) -> pd.Series:
+    s = s.astype("string")
+    s = s.where(s.notna(), pd.NA)
+    return prefix + s
+
+
