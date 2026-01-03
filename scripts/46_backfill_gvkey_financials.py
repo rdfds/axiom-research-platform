@@ -237,3 +237,89 @@ def build_records(mapped: pd.DataFrame, ingestion_time: datetime) -> List[Dict]:
     return records
 
 
+def main() -> None:
+    log("Loading mappings for gvkey backfill...")
+    names, link = load_mappings()
+    cik_gvkey = load_cik_gvkey()
+    symbol_to_cik = load_symbol_to_cik()
+    log(f"Loaded CIK-GVKEY rows: {len(cik_gvkey):,} | SEC ticker map: {len(symbol_to_cik):,}")
+    checkpoint = load_checkpoint()
+    ingestion_time = datetime.utcnow()
+
+    table_dir = WAREHOUSE_DIR / "warehouse_financials"
+    if not table_dir.exists():
+        raise FileNotFoundError("warehouse_financials partitioned directory not found.")
+
+    total_backfilled = 0
+    buffer: List[Dict] = []
+
+    for year in range(BACKFILL_START_YEAR, BACKFILL_END_YEAR + 1):
+        year_dir = table_dir / f"year={year}"
+        if not year_dir.exists():
+            continue
+        files = sorted(year_dir.glob("part_*.parquet"))
+        for fpath in files:
+            key = str(fpath)
+            if key in checkpoint:
+                continue
+            if BACKFILL_DEBUG:
+                log(f"Scanning {fpath.name}")
+            try:
+                df = pd.read_parquet(
+                    fpath,
+                    columns=[
+                        "source_system",
+                        "company_id",
+                        "entity_id",
+                        "event_time",
+                        "available_time",
+                        "ingestion_time",
+                        "version_id",
+                        "raw_payload_hash",
+                        "upstream_version_ids",
+                        "quality_flags",
+                        "fiscal_period_end",
+                        "fiscal_year",
+                        "fiscal_quarter",
+                        "statement_type",
+                        "line_item",
+                        "value",
+                        "currency",
+                        "units",
+                        "restatement_flag",
+                    ],
+                )
+            except Exception:
+                save_checkpoint([key])
+                continue
+
+            df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+            df["available_time"] = pd.to_datetime(df["available_time"], errors="coerce")
+
+            target = filter_target(df)
+            if target.empty:
+                save_checkpoint([key])
+                continue
+
+            mapped = map_gvkey(target, names, link, cik_gvkey, symbol_to_cik)
+            if mapped.empty:
+                save_checkpoint([key])
+                continue
+
+            records = build_records(mapped, ingestion_time)
+            if records:
+                buffer.extend(records)
+            if len(buffer) >= BACKFILL_FLUSH_EVERY:
+                append_canonical_records("warehouse_financials", buffer)
+                total_backfilled += len(buffer)
+                log(f"Backfilled {len(buffer):,} records (total {total_backfilled:,})")
+                buffer = []
+
+            save_checkpoint([key])
+
+    if buffer:
+        append_canonical_records("warehouse_financials", buffer)
+        total_backfilled += len(buffer)
+    log(f"Done. Total backfilled records: {total_backfilled:,}")
+
+
