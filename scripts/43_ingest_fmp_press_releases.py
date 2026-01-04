@@ -201,3 +201,51 @@ def map_symbol_to_gvkey(symbol: str, event_time: pd.Timestamp, names: pd.DataFra
     return str(gvkey) if pd.notna(gvkey) else None
 
 
+def iter_batches(items: List[str], batch_size: int) -> Iterable[List[str]]:
+    if batch_size <= 0:
+        yield items
+        return
+    for idx in range(0, len(items), batch_size):
+        yield items[idx : idx + batch_size]
+
+
+def parse_press_release(item: Dict) -> Tuple[Optional[str], Optional[pd.Timestamp], Optional[str], Optional[str], Optional[str]]:
+    symbol = item.get("symbol") or item.get("ticker")
+    if symbol:
+        symbol = str(symbol).upper().strip()
+    date_raw = item.get("date") or item.get("publishedDate") or item.get("published_date")
+    headline = item.get("title") or item.get("headline")
+    text = item.get("text") or item.get("content") or item.get("body") or item.get("description")
+    url = item.get("url") or item.get("link")
+    event_time = pd.to_datetime(date_raw, errors="coerce")
+    if pd.isna(event_time):
+        return symbol, None, headline, text, url
+    return symbol, event_time, headline, text, url
+
+
+def write_press_release_partitioned(records: List[Dict[str, object]]) -> int:
+    if not records:
+        return 0
+    df = pd.DataFrame(records)
+    df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+    df["available_time"] = pd.to_datetime(df["available_time"], errors="coerce")
+    df["ingestion_time"] = pd.to_datetime(df["ingestion_time"], errors="coerce")
+    for col in ["quality_flags", "upstream_version_ids"]:
+        if col in df.columns:
+            df[col] = df[col].apply(ensure_list)
+    df["year"] = df["event_time"].dt.year.astype("Int64")
+
+    out_dir = WAREHOUSE_DIR / "warehouse_press_releases"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = 0
+    for year, ydf in df.groupby("year"):
+        if pd.isna(year):
+            continue
+        year_dir = out_dir / f"year={int(year)}"
+        year_dir.mkdir(parents=True, exist_ok=True)
+        part_path = year_dir / f"part_{int(datetime.utcnow().timestamp())}_{os.getpid()}.parquet"
+        ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+        rows += len(ydf)
+    return rows
+
+

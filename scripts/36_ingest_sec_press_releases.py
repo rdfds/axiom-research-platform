@@ -86,3 +86,23 @@ def ensure_dirs() -> None:
     (SEC_DIR / "submissions").mkdir(parents=True, exist_ok=True)
 
 
+def fetch_json(url: str, session: requests.Session, sleep_seconds: float) -> Dict:
+    last_exc: Optional[Exception] = None
+    for attempt in range(SEC_RETRIES + 1):
+        try:
+            resp = session.get(url, timeout=SEC_TIMEOUT)
+            resp.raise_for_status()
+            if sleep_seconds:
+                time.sleep(sleep_seconds)
+            return resp.json()
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < SEC_RETRIES:
+                time.sleep(max(sleep_seconds, 0.2))
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Unknown SEC request error")
+
+
