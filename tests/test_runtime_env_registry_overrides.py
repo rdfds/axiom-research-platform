@@ -32,3 +32,18 @@ def test_input_source_registry_honors_late_env_override(tmp_path, monkeypatch):
     assert registry.registry_id == "input_override"
 
 
+def test_metric_policy_engine_honors_late_env_override(tmp_path, monkeypatch):
+    policy_path = tmp_path / "policy.json"
+    methodology_path = tmp_path / "methodology.json"
+    policy_path.write_text(json.dumps({"policy_id": "policy_override", "taxonomy": {"archetypes": {}}, "metrics": {}}))
+    methodology_path.write_text(json.dumps({"registry_id": "methodology_override", "metrics": {}}))
+    monkeypatch.setenv("AXIOM_METRIC_POLICY_PATH", str(policy_path))
+    monkeypatch.setenv("AXIOM_METHODOLOGY_REGISTRY_PATH", str(methodology_path))
+
+    engine = MetricPolicyEngine()
+
+    assert engine.policy_path == policy_path
+    assert engine.policy_id == "policy_override"
+    assert engine.methodology_registry.registry_path == methodology_path
+
+
