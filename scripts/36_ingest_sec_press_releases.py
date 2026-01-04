@@ -128,3 +128,27 @@ def load_sec_tickers(session: requests.Session, sleep_seconds: float) -> pd.Data
     return pd.DataFrame(rows).drop_duplicates()
 
 
+def load_universe_tickers(universe_date: Optional[str]) -> pd.DataFrame:
+    universe_path = DATA_DIR / "curated" / "universe_r3000_proxy.parquet"
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    if not universe_path.exists():
+        raise FileNotFoundError(f"Missing universe file: {universe_path}")
+    if not names_path.exists():
+        raise FileNotFoundError(f"Missing CRSP names file: {names_path}")
+
+    universe = pd.read_parquet(universe_path)
+    universe["date"] = pd.to_datetime(universe["date"])
+    asof_date = pd.to_datetime(universe_date) if universe_date else universe["date"].max()
+    universe = universe[universe["date"] == asof_date][["permno", "permco"]]
+
+    names = pd.read_parquet(names_path, columns=["permno", "namedt", "nameendt", "ticker", "cusip", "comnam"])
+    names["namedt"] = pd.to_datetime(names["namedt"])
+    names["nameendt"] = pd.to_datetime(names["nameendt"])
+    active = names[(names["namedt"] <= asof_date) & (names["nameendt"] >= asof_date)]
+    active = active.sort_values(["permno", "nameendt"])
+    latest = active.drop_duplicates(subset=["permno"], keep="last")
+    merged = universe.merge(latest, on="permno", how="left")
+    merged["ticker"] = merged["ticker"].str.upper().str.strip()
+    return merged
+
+

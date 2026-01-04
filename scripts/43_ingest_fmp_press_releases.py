@@ -563,3 +563,5 @@ def main() -> None:
     log(f"Done. Ingested {total_pr:,} FMP press releases.")
 
 
+if __name__ == "__main__":
+    main()
