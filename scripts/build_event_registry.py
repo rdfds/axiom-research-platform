@@ -44,3 +44,45 @@ def prefixed_str(s: pd.Series, prefix: str) -> pd.Series:
     return prefix + s
 
 
+def build_source_id(df: pd.DataFrame) -> pd.Series:
+    source_id = pd.Series(pd.NA, index=df.index, dtype="string")
+
+    for prefix, col in [
+        ("deal_id:", "deal_id"),
+        ("issue_id:", "ISSUE_ID"),
+        ("issuer_id:", "ISSUER_ID"),
+        ("facilityid:", "facilityid"),
+        ("action_code:", "action_code"),
+        ("distcd:", "distcd"),
+    ]:
+        if col in df.columns:
+            s = prefixed_str(df[col], prefix)
+            source_id = source_id.combine_first(s)
+
+    # Fallback: hash a small stable key
+    missing = source_id.isna()
+    if missing.any():
+        key_cols = [
+            c
+            for c in [
+                "source",
+                "source_table",
+                "action_type",
+                "action_subtype",
+                "action_date",
+                "permno",
+                "gvkey",
+            ]
+            if c in df.columns
+        ]
+        key_df = df.loc[missing, key_cols].copy()
+        for c in key_df.columns:
+            if pd.api.types.is_datetime64_any_dtype(key_df[c]):
+                key_df[c] = key_df[c].dt.strftime("%Y-%m-%d")
+            key_df[c] = key_df[c].astype("string").fillna("")
+        hashes = pd.util.hash_pandas_object(key_df, index=False).astype("uint64").astype("string")
+        source_id.loc[missing] = "rowhash:" + hashes
+
+    return source_id
+
+

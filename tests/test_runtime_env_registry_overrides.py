@@ -21,3 +21,14 @@ def test_metric_methodology_registry_honors_late_env_override(tmp_path, monkeypa
     assert registry.registry_id == "late_override"
 
 
+def test_input_source_registry_honors_late_env_override(tmp_path, monkeypatch):
+    registry_path = tmp_path / "input_sources.json"
+    registry_path.write_text(json.dumps({"registry_id": "input_override", "owners": {}, "metrics": {}}))
+    monkeypatch.setenv("AXIOM_INPUT_SOURCE_REGISTRY_PATH", str(registry_path))
+
+    registry = CompanyStateInputSourceRegistry()
+
+    assert registry.registry_path == registry_path
+    assert registry.registry_id == "input_override"
+
+
