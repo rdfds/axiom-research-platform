@@ -76,3 +76,38 @@ def _audit_ts(audit_log: List[Dict[str, Any]], event_type: str) -> Optional[date
     return None
 
 
+def _duration_seconds(
+    audit_log: List[Dict[str, Any]],
+    event_start: str,
+    event_end: str,
+) -> Optional[float]:
+    start = _audit_ts(audit_log, event_start)
+    end = _audit_ts(audit_log, event_end)
+    if start is None or end is None:
+        return None
+    return round((end - start).total_seconds(), 6)
+
+
+def _quantile(xs: List[float], q: float) :
+    if not xs:
+        return None
+    ordered = sorted(float(x) for x in xs)
+    idx = int(round((len(ordered) - 1) * float(q)))
+    idx = min(max(idx, 0), len(ordered) - 1)
+    return float(ordered[idx])
+
+
+def _summary_stats(rows: List[float]) -> Dict[str, Optional[float]]:
+    vals = [float(x) for x in rows]
+    if not vals:
+        return {"mean": None, "p10": None, "p50": None, "p90": None, "min": None, "max": None}
+    return {
+        "mean": round(sum(vals) / len(vals), 6),
+        "p10": round(float(_quantile(vals, 0.10) or 0.0), 6),
+        "p50": round(float(_quantile(vals, 0.50) or 0.0), 6),
+        "p90": round(float(_quantile(vals, 0.90) or 0.0), 6),
+        "min": round(min(vals), 6),
+        "max": round(max(vals), 6),
+    }
+
+
