@@ -249,3 +249,317 @@ def write_press_release_partitioned(records: List[Dict[str, object]]) -> int:
     return rows
 
 
+def main() -> None:
+    require_api_key()
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+    session = requests.Session()
+
+    names, link = load_mappings()
+    symbols = load_symbol_list()
+    if not symbols:
+        log("No symbols provided (empty universe).")
+        return
+
+    log(f"Symbols to pull: {len(symbols):,}")
+
+    checkpoint_path = FMP_DIR / "fmp_press_releases_checkpoint.txt"
+    processed = set()
+    if FMP_RESUME and checkpoint_path.exists():
+        processed = set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
+
+    raw_records: List[Dict[str, object]] = []
+    pr_records: List[Dict[str, object]] = []
+    doc_buffer: List[Dict[str, object]] = []
+    chunk_buffer: List[Dict[str, object]] = []
+    signal_buffer: List[Dict[str, object]] = []
+
+    total_docs = 0
+    total_chunks = 0
+    total_signals = 0
+    total_pr = 0
+    start_ts = time.perf_counter()
+    ingestion_time = datetime.utcnow()
+    start_dt = pd.to_datetime(FMP_START_DATE, errors="coerce")
+    end_dt = pd.to_datetime(FMP_END_DATE, errors="coerce")
+
+    for batch_idx, batch in enumerate(iter_batches(symbols, FMP_SYMBOL_BATCH), start=1):
+        batch_symbols = ",".join(batch)
+        for page in range(FMP_MAX_PAGES):
+            url = f"{FMP_BASE_URL}/news/press-releases"
+            params = {"symbols": batch_symbols, "apikey": FMP_API_KEY}
+            if FMP_PAGE_LIMIT > 0:
+                params["limit"] = FMP_PAGE_LIMIT
+            params["page"] = page
+            data = _request_json(url, params=params, session=session)
+            if not data:
+                break
+            if isinstance(data, dict) and data.get("Error Message"):
+                break
+            if isinstance(data, list) and not data:
+                break
+
+            for item in data if isinstance(data, list) else []:
+                symbol, event_time, headline, text, url = parse_press_release(item)
+                if event_time is None or pd.isna(event_time):
+                    continue
+                if pd.notna(start_dt) and event_time < start_dt:
+                    continue
+                if pd.notna(end_dt) and event_time > end_dt:
+                    continue
+
+                if not text and FMP_PR_REQUIRE_TEXT:
+                    continue
+
+                title_key = headline or ""
+                title_hash = hashlib.sha256(title_key.encode("utf-8")).hexdigest()[:8]
+                doc_key = item.get("id") or item['newsId']
+                if doc_key:
+                    document_id = f"fmp_pr:{doc_key}"
+                else:
+                    document_id = f"fmp_pr:{symbol}:{event_time.strftime('%Y%m%d')}:{title_hash}"
+
+                if FMP_RESUME and document_id in processed:
+                    continue
+
+                quality_flags: List[str] = ["estimated_available_time"]
+                if not symbol:
+                    quality_flags.append("missing_data")
+                if not text:
+                    quality_flags.append("partial_coverage")
+
+                gvkey = map_symbol_to_gvkey(symbol, event_time, names, link) if symbol else None
+                if gvkey is None:
+                    entity_id = symbol or "unknown"
+                    company_id = None
+                    quality_flags.append("estimated_company_id")
+                else:
+                    entity_id = gvkey
+                    company_id = gvkey
+
+                available_time = event_time
+                payload = {
+                    "symbol": symbol,
+                    "headline": headline,
+                    "text": text,
+                    "date": event_time.isoformat(),
+                    "url": url,
+                    "raw": item,
+                }
+
+                raw_records.append(
+                    {
+                        "entity_id": str(entity_id),
+                        "company_id": str(company_id) if company_id is not None else None,
+                        "security_id": None,
+                        "event_time": event_time,
+                        "available_time": available_time,
+                        "payload": payload,
+                    }
+                )
+
+                raw_payload_hash = compute_raw_payload_hash(payload)
+                version_id = compute_version_id(
+                    source_system="fmp_press_releases",
+                    entity_id=str(entity_id),
+                    event_time=event_time.to_pydatetime(),
+                    available_time=available_time.to_pydatetime(),
+                    raw_payload_hash=raw_payload_hash,
+                )
+
+                pr_records.append(
+                    {
+                        "source_system": "fmp_press_releases",
+                        "entity_id": str(entity_id),
+                        "company_id": str(company_id) if company_id is not None else None,
+                        "security_id": None,
+                        "event_time": event_time,
+                        "available_time": available_time,
+                        "ingestion_time": ingestion_time,
+                        "version_id": version_id,
+                        "raw_payload_hash": raw_payload_hash,
+                        "upstream_version_ids": [version_id],
+                        "quality_flags": quality_flags,
+                        "document_id": document_id,
+                        "release_date": event_time,
+                        "headline": headline,
+                        "text": text,
+                        "form_type": "PRESS_RELEASE",
+                        "cik": None,
+                        "accession": None,
+                        "primary_document": None,
+                        "source_url": url,
+                    }
+                )
+                total_pr += 1
+
+                if FMP_PR_PROCESS_DOCS and text:
+                    doc_payload = {
+                        "document_id": document_id,
+                        "document_type": "press_release",
+                        "title": headline,
+                        "release_date": event_time.isoformat(),
+                        "text": text,
+                    }
+                    doc_raw_hash = compute_raw_payload_hash(doc_payload)
+                    doc_version_id = compute_version_id(
+                        source_system="fmp_press_releases",
+                        entity_id=str(entity_id),
+                        event_time=event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=doc_raw_hash,
+                    )
+                    doc_buffer.append(
+                        {
+                            "source_system": "fmp_press_releases",
+                            "entity_id": str(entity_id),
+                            "company_id": str(company_id) if company_id is not None else None,
+                            "security_id": None,
+                            "event_time": event_time,
+                            "available_time": available_time,
+                            "ingestion_time": ingestion_time,
+                            "version_id": doc_version_id,
+                            "raw_payload_hash": doc_raw_hash,
+                            "upstream_version_ids": [doc_version_id],
+                            "quality_flags": quality_flags,
+                            "document_id": document_id,
+                            "document_type": "press_release",
+                            "title": headline,
+                            "publisher": "FMP",
+                            "analyst": None,
+                            "rating": None,
+                            "price_target": None,
+                            "call_date": None,
+                            "publish_date": available_time,
+                            "presentation_date": None,
+                            "release_date": event_time,
+                            "source_url": url,
+                        }
+                    )
+                    total_docs += 1
+
+                    chunks = chunk_text(text, PR_CHUNK_TOKENS, PR_CHUNK_MIN, PR_CHUNK_MAX)
+                    chunk_versions: Dict[str, str] = {}
+                    chunk_ids: List[Tuple[str, str]] = []
+                    for idx, chunk in enumerate(chunks):
+                        chunk_id = f"{document_id}::chunk{idx:04d}"
+                        token_count = len(chunk.split())
+                        chunk_payload = {
+                            "chunk_id": chunk_id,
+                            "document_id": document_id,
+                            "chunk_index": idx,
+                            "text": chunk,
+                        }
+                        chunk_raw_hash = compute_raw_payload_hash(chunk_payload)
+                        chunk_version_id = compute_version_id(
+                            source_system="fmp_press_releases",
+                            entity_id=str(entity_id),
+                            event_time=event_time.to_pydatetime(),
+                            available_time=available_time.to_pydatetime(),
+                            raw_payload_hash=chunk_raw_hash,
+                        )
+                        chunk_versions[chunk_id] = chunk_version_id
+                        chunk_ids.append((chunk_id, chunk))
+                        chunk_buffer.append(
+                            {
+                                "source_system": "fmp_press_releases",
+                                "entity_id": str(entity_id),
+                                "company_id": str(company_id) if company_id is not None else None,
+                                "security_id": None,
+                                "event_time": event_time,
+                                "available_time": available_time,
+                                "ingestion_time": ingestion_time,
+                                "version_id": chunk_version_id,
+                                "raw_payload_hash": chunk_raw_hash,
+                                "upstream_version_ids": [doc_version_id],
+                                "quality_flags": quality_flags,
+                                "chunk_id": chunk_id,
+                                "document_id": document_id,
+                                "chunk_index": idx,
+                                "slide_number": None,
+                                "text": chunk,
+                                "speaker": None,
+                                "speaker_role": None,
+                                "section_type": "press_release",
+                                "token_count": token_count,
+                            }
+                        )
+                    total_chunks += len(chunks)
+
+                    if chunk_ids:
+                        signal_defs = extract_signals(chunk_ids)
+                        for sig in signal_defs:
+                            supporting = sig.get("supporting_chunk_ids", [])
+                            supporting_versions = [chunk_versions[cid] for cid in supporting if cid in chunk_versions]
+                            sig_payload = {
+                                "signal_name": sig["signal_name"],
+                                "value": sig["value"],
+                                "confidence": sig["confidence"],
+                                "supporting_chunk_ids": supporting,
+                            }
+                            sig_raw_hash = compute_raw_payload_hash(sig_payload)
+                            sig_version_id = compute_version_id(
+                                source_system="fmp_press_releases",
+                                entity_id=str(entity_id),
+                                event_time=event_time.to_pydatetime(),
+                                available_time=available_time.to_pydatetime(),
+                                raw_payload_hash=sig_raw_hash,
+                            )
+                            signal_buffer.append(
+                                {
+                                    "source_system": "fmp_press_releases",
+                                    "entity_id": str(entity_id),
+                                    "company_id": str(company_id) if company_id is not None else None,
+                                    "security_id": None,
+                                    "event_time": event_time,
+                                    "available_time": available_time,
+                                    "ingestion_time": ingestion_time,
+                                    "version_id": sig_version_id,
+                                    "raw_payload_hash": sig_raw_hash,
+                                    "upstream_version_ids": [doc_version_id] + supporting_versions,
+                                    "quality_flags": quality_flags + ensure_list(sig.get("quality_flags")),
+                                    "signal_name": sig["signal_name"],
+                                    "value": sig["value"],
+                                    "confidence": sig["confidence"],
+                                    "supporting_chunk_ids": supporting,
+                                }
+                            )
+                        total_signals += len(signal_defs)
+
+                processed.add(document_id)
+                if FMP_RESUME:
+                    with checkpoint_path.open("a") as f:
+                        f.write(f"{document_id}\n")
+
+                if FMP_PR_FLUSH_EVERY and (total_pr % FMP_PR_FLUSH_EVERY == 0):
+                    write_raw_records(source_system="fmp_press_releases", records=raw_records)
+                    write_press_release_partitioned(pr_records)
+                    raw_records.clear()
+                    pr_records.clear()
+                    if FMP_PR_PROCESS_DOCS:
+                        write_partitioned("warehouse_documents", doc_buffer)
+                        write_partitioned("warehouse_doc_chunks", chunk_buffer)
+                        write_partitioned("warehouse_text_signals", signal_buffer)
+                        doc_buffer.clear()
+                        chunk_buffer.clear()
+                        signal_buffer.clear()
+                    elapsed = time.perf_counter() - start_ts
+                    log(
+                        f"Progress: {total_pr:,} press releases | {total_docs:,} docs | {total_chunks:,} chunks | {total_signals:,} signals | elapsed {elapsed/60:.1f}m"
+                    )
+
+        if batch_idx % 10 == 0:
+            elapsed = time.perf_counter() - start_ts
+            log(f"Batch {batch_idx} processed | total press releases: {total_pr:,} | elapsed {elapsed/60:.1f}m")
+
+    if raw_records:
+        write_raw_records(source_system="fmp_press_releases", records=raw_records)
+    if pr_records:
+        write_press_release_partitioned(pr_records)
+    if FMP_PR_PROCESS_DOCS:
+        write_partitioned("warehouse_documents", doc_buffer)
+        write_partitioned("warehouse_doc_chunks", chunk_buffer)
+        write_partitioned("warehouse_text_signals", signal_buffer)
+
+    log(f"Done. Ingested {total_pr:,} FMP press releases.")
+
+
