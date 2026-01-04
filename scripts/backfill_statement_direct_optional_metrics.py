@@ -169,3 +169,30 @@ def _iter_component_ends(component_breakdown: Any) -> list[str]:
     return ends
 
 
+def _selected_debt_component_gap_days(component_breakdown: dict[str, Any] | None) -> int | None:
+    if not isinstance(component_breakdown, dict):
+        return None
+    ends = []
+    for key in (
+        "combined_debt",
+        "current",
+        "noncurrent",
+        "short_term_borrowings",
+        "current_statement_debt",
+        "long_term_statement_debt",
+    ):
+        for end_text in _iter_component_ends(component_breakdown.get(key)):
+            parsed = _parse_iso_date(end_text)
+            if parsed is not None:
+                ends.append(parsed)
+    if len(ends) < 2:
+        return 0 if ends else None
+    return (max(ends) - min(ends)).days
+
+
+def _statement_fact_end_date(component_breakdown: dict[str, Any] | None):
+    if not isinstance(component_breakdown, dict):
+        return None
+    return _parse_iso_date(component_breakdown.get("end")) or _parse_iso_date(component_breakdown.get("effective_at"))
+
+
