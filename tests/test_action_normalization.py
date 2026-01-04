@@ -101,3 +101,29 @@ def test_normalize_mna_backfills_canonical_action_ids_by_scale():
     assert tender["normalized_action_id"] == "mna.platform_acquisition"
 
 
+def test_normalize_divestiture_backfills_portfolio_action_ids():
+    full = normalize_action_record(
+        {
+            "action_type": "divestiture",
+            "action_subtype": "asset sale",
+            "percent_divested": 1.0,
+        }
+    )
+    partial = normalize_action_record(
+        {
+            "action_type": "divestiture",
+            "action_subtype": "asset sale",
+            "percent_divested": 0.4,
+        }
+    )
+    fallback = normalize_action_record(
+        {
+            "action_type": "divestiture",
+            "action_subtype": "asset sale",
+        }
+    )
+    assert full["normalized_action_id"] == "portfolio.divestiture_full"
+    assert partial["normalized_action_id"] == "portfolio.divestiture_partial"
+    assert fallback["normalized_action_id"] == "portfolio.asset_sale"
+
+

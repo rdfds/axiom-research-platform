@@ -230,7 +230,7 @@ def build_records(mapped: pd.DataFrame, ingestion_time: datetime) -> List[Dict]:
                 "line_item": row["line_item"],
                 "value": row["value"],
                 "currency": row.get("currency"),
-                "units": row['units'],
+                "units": row.get("units"),
                 "restatement_flag": row.get("restatement_flag", False),
             }
         )
