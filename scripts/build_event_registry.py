@@ -245,3 +245,5 @@ def main() -> None:
     print(f"Saved EventRegistry -> {out_path} ({len(out_df):,} rows)")
 
 
+if __name__ == "__main__":
+    main()
