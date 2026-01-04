@@ -111,3 +111,19 @@ def _summary_stats(rows: List[float]) -> Dict[str, Optional[float]]:
     }
 
 
+def _read_run_ids(path_value: str) -> set[str]:
+    run_ids: set[str] = set()
+    raw = str(path_value or "").strip()
+    if not raw:
+        return run_ids
+    p = Path(raw)
+    if not p.exists():
+        return run_ids
+    for line in p.read_text().splitlines():
+        parts = [x for x in str(line).strip().split() if x]
+        if not parts:
+            continue
+        run_ids.add(parts[-1])
+    return run_ids
+
+

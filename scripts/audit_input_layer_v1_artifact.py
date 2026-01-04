@@ -332,3 +332,18 @@ def _expected_available_liquidity_from_breakdown(component_breakdown: Any) -> fl
     return max(0.0, float(base))
 
 
+def _expected_debt_like_from_breakdown(component_breakdown: Any) -> float | None:
+    if not isinstance(component_breakdown, dict):
+        return None
+    baseline = component_breakdown.get("baseline_value")
+    if baseline is None:
+        return None
+    expected = float(baseline)
+    lease_value = component_breakdown.get("lease_liabilities_sec_exact")
+    if not component_breakdown.get("lease_liabilities_inferred_zero") and lease_value is not None:
+        expected += float(lease_value)
+    if component_breakdown.get("debt_like_floored_to_total_debt"):
+        expected = max(expected, float(baseline))
+    return expected
+
+

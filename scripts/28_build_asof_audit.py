@@ -196,3 +196,32 @@ def audit_mna(df: pd.DataFrame) -> None:
     summary.to_csv(WAREHOUSE_DIR / "coverage_mna_missing_value_by_status.csv", index=False)
 
 
+def audit_financials(df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    line_summary = (
+        df.groupby(["statement_type", "line_item"])["value"]
+        .apply(lambda s: float(s.isna().mean()))
+        .reset_index()
+        .rename(columns={"value": "missing_value_pct"})
+    )
+    line_summary["count"] = (
+        df.groupby(["statement_type", "line_item"]).size().values
+    )
+    line_summary.to_csv(WAREHOUSE_DIR / "coverage_financials_line_items.csv", index=False)
+
+def get_table_columns(path: Path) -> List[str]:
+    if duckdb is None:
+        # fallback: read only schema
+        try:
+            return list(pd.read_parquet(path, engine="pyarrow", columns=[]).columns)
+        except Exception:
+            return list(pd.read_parquet(path).columns)
+    con = duckdb.connect(database=":memory:")
+    try:
+        df = con.execute(f"SELECT * FROM read_parquet('{path.as_posix()}') LIMIT 0").df()
+        return list(df.columns)
+    finally:
+        con.close()
+
+
