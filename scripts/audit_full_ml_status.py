@@ -127,3 +127,12 @@ def _read_run_ids(path_value: str) -> set[str]:
     return run_ids
 
 
+def _iter_run_paths(roots: Iterable[Path]) -> Iterable[Path]:
+    for root in roots:
+        runs_dir = root / "runs"
+        if not runs_dir.exists():
+            continue
+        for run_path in runs_dir.glob("run_id=*.json"):
+            yield run_path
+
+
