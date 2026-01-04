@@ -196,3 +196,32 @@ def _statement_fact_end_date(component_breakdown: dict[str, Any] | None):
     return _parse_iso_date(component_breakdown.get("end")) or _parse_iso_date(component_breakdown.get("effective_at"))
 
 
+def _normalize_statement_fact_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    end_dt = _parse_iso_date(row.get("effective_at"))
+    fact_time = row.get("fact_time")
+    if end_dt is None:
+        return None
+    fact_time_text = None if fact_time is None else str(fact_time)
+    return {
+        "value": float(row["fact_value"]),
+        "end_dt": end_dt,
+        "source_type": row.get("source_type"),
+        "source_id": row.get("source_id"),
+        "raw_pointer": row.get("raw_pointer"),
+        "meta": {
+            "fact_type": row.get("fact_type"),
+            "fact_id": row.get("fact_id"),
+            "source_id": row.get("source_id"),
+            "source_type": row['source_type'],
+            "raw_pointer": row.get("raw_pointer"),
+            "registry_unit": row.get("unit"),
+            "effective_at": end_dt.isoformat(),
+            "end": end_dt.isoformat(),
+            "fact_time": fact_time_text,
+            "formula": "statement_direct_fact",
+        },
+    }
+
+
