@@ -54,3 +54,22 @@ def clean_company_name(name):
     return name
 
 
+def extract_ticker_from_headline(headline):
+    """Try to extract ticker from headline patterns."""
+    if pd.isna(headline):
+        return None
+
+    # Pattern: "TICKER - Company Name" or "Company Name (TICKER)"
+    patterns = [
+        r'\(([A-Z]{1,5})\)',  # (AAPL)
+        r'^([A-Z]{1,5})\s*[-–]\s*',  # AAPL - Apple Inc
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, headline)
+        if match:
+            return match.group(1)
+
+    return None
+
+
