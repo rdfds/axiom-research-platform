@@ -181,3 +181,5 @@ def main() -> None:
     print(f"Wrote EntityCorrectionLog -> {out_corrections} ({len(corrections):,} rows)")
 
 
+if __name__ == "__main__":
+    main()
