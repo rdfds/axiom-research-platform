@@ -36,3 +36,7 @@ def _safe_ratio(num: float, den: float) -> float:
     return float(num) / den_f
 
 
+def _load_json(path: Path) -> Dict[str, Any]:
+    return dict(json.loads(path.read_text()) or {})
+
+

@@ -290,3 +290,45 @@ def _grouped_cash_age_days(as_of_date: date, component_breakdown: Any) -> int | 
     return _latest_end_age_days(as_of_date, component_breakdown)
 
 
+def _expected_available_liquidity_from_breakdown(component_breakdown: Any) -> float | None:
+    if not isinstance(component_breakdown, dict):
+        return None
+    source_metric = component_breakdown.get("cash_basis_source_metric")
+    grouped_cash = component_breakdown.get("grouped_cash_provider_direct")
+    cash_eq = component_breakdown.get("cash_and_equivalents_statement_direct")
+    marketable = component_breakdown.get("marketable_securities_sec_exact")
+    restricted = component_breakdown.get("restricted_cash_sec_exact")
+    restricted_already_excluded = bool(
+        component_breakdown.get("restricted_cash_already_excluded_from_cash_basis")
+    )
+    revolver = component_breakdown.get("revolver_undrawn_exact")
+    not_freely_transferable = component_breakdown.get("not_freely_transferable_cash_disclosed")
+
+    if source_metric in {
+        "liquidity.cash_and_equivalents_statement_direct",
+        "liquidity.cash_and_equivalents_companyfacts_exact",
+    }:
+        base = cash_eq
+        if base is None:
+            return None
+        base = float(base) + float(marketable or 0.0)
+    elif source_metric == "liquidity.cash_and_short_term_investments_provider_direct_cash_component":
+        if grouped_cash is None:
+            return None
+        base = float(grouped_cash) + float(marketable or 0.0)
+    elif source_metric == "liquidity.cash_and_short_term_investments_provider_direct":
+        if grouped_cash is None:
+            return None
+        base = float(grouped_cash)
+    else:
+        return None
+
+    if not restricted_already_excluded and restricted is not None:
+        base -= float(restricted)
+    if not_freely_transferable is not None:
+        base -= float(not_freely_transferable)
+    if revolver is not None:
+        base += float(revolver)
+    return max(0.0, float(base))
+
+

@@ -172,3 +172,15 @@ def audit_prices(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
+def audit_corp_actions(df: pd.DataFrame) -> None:
+    if "action_type" not in df.columns or "size" not in df.columns:
+        return
+    summary = (
+        df.groupby("action_type")["size"]
+        .apply(lambda s: float(s.isna().mean()))
+        .reset_index()
+        .rename(columns={"size": "missing_size_pct"})
+    )
+    summary.to_csv(WAREHOUSE_DIR / "coverage_corp_actions_missing_size_by_type.csv", index=False)
+
+
