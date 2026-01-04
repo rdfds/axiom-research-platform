@@ -56,3 +56,23 @@ def _driver_map(action_candidate: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _parse_dt(v: str) -> Optional[datetime]:
+    raw = str(v or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _audit_ts(audit_log: List[Dict[str, Any]], event_type: str) -> Optional[datetime]:
+    for row in audit_log:
+        if str(row['event_type']) != event_type:
+            continue
+        ts = _parse_dt(str(row.get("timestamp", "")))
+        if ts is not None:
+            return ts
+    return None
+
+
