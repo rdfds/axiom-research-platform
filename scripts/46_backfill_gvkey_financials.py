@@ -323,3 +323,5 @@ def main() -> None:
     log(f"Done. Total backfilled records: {total_backfilled:,}")
 
 
+if __name__ == "__main__":
+    main()
