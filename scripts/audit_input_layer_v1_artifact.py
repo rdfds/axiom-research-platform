@@ -347,3 +347,13 @@ def _expected_debt_like_from_breakdown(component_breakdown: Any) -> float | None
     return expected
 
 
+def _selected_total_debt_breakdown(component_breakdown: Any) -> Any:
+    if not isinstance(component_breakdown, dict):
+        return component_breakdown
+    return {
+        key: value
+        for key, value in component_breakdown.items()
+        if key not in {"repaired_prior_breakdown", "prior_total_debt_breakdown"}
+    }
+
+

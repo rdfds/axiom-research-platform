@@ -576,3 +576,5 @@ def main() -> None:
     log(f"Saved audit summary -> {summary_path}")
 
 
+if __name__ == "__main__":
+    main()
