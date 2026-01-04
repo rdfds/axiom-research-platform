@@ -40,3 +40,19 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return dict(json.loads(path.read_text()) or {})
 
 
+def _driver_map(action_candidate: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    drivers = (
+        ((action_candidate.get("impact_distribution", {}) or {}).get("key_drivers"))
+        or []
+    )
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in drivers:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("driver_name", "")).strip()
+        if not name:
+            continue
+        out[name] = row
+    return out
+
+

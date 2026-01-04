@@ -184,3 +184,15 @@ def audit_corp_actions(df: pd.DataFrame) -> None:
     summary.to_csv(WAREHOUSE_DIR / "coverage_corp_actions_missing_size_by_type.csv", index=False)
 
 
+def audit_mna(df: pd.DataFrame) -> None:
+    if "status" not in df.columns:
+        return
+    summary = (
+        df.groupby("status")["deal_value"]
+        .apply(lambda s: float(s.isna().mean()))
+        .reset_index()
+        .rename(columns={"deal_value": "missing_deal_value_pct"})
+    )
+    summary.to_csv(WAREHOUSE_DIR / "coverage_mna_missing_value_by_status.csv", index=False)
+
+
