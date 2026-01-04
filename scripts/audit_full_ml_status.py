@@ -68,7 +68,7 @@ def _parse_dt(v: str) -> Optional[datetime]:
 
 def _audit_ts(audit_log: List[Dict[str, Any]], event_type: str) -> Optional[datetime]:
     for row in audit_log:
-        if str(row['event_type']) != event_type:
+        if str(row.get("event_type", "")) != event_type:
             continue
         ts = _parse_dt(str(row.get("timestamp", "")))
         if ts is not None:
