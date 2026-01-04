@@ -244,3 +244,37 @@ def test_process_repair_row_fail_opens_on_exception():
     assert row["features"]["capital_structure.total_debt_provider_direct"] == original
 
 
+def test_recompute_smart_ignores_negative_lease_input_when_building_debt_like():
+    features = {
+        "capital_structure.total_debt_provider_direct": {
+            "value": 100.0,
+            "support_mode": "exact",
+        },
+        "capital_structure.lease_liabilities_sec_exact": {
+            "value": -20.0,
+            "support_mode": "exact",
+        },
+        "liquidity.available_liquidity_normalized": {
+            "value": 10.0,
+            "support_mode": "exact",
+        },
+        "operating.operating_earnings_normalized": {
+            "value": 50.0,
+            "support_mode": "exact",
+        },
+    }
+
+    _recompute_smart(
+        features,
+        row={"as_of_time": "2024-12-31T00:00:00Z"},
+        computed_at="2026-04-01T00:00:00Z",
+        provenance_source="test",
+    )
+
+    debt_like = features["capital_structure.debt_like_obligations_normalized"]
+    assert debt_like["value"] == 100.0
+    assert debt_like["support_mode"] == "proxy_missing_component"
+    assert debt_like["component_breakdown"]["lease_negative_input_ignored"] is True
+    assert features["capital_structure.net_debt_normalized"]["value"] == 90.0
+    assert features["capital_structure.gross_leverage_normalized"]["value"] == 2.0
+    assert features["capital_structure.net_leverage_normalized"]["value"] == 1.8
