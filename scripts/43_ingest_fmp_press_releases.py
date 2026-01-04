@@ -312,7 +312,7 @@ def main() -> None:
 
                 title_key = headline or ""
                 title_hash = hashlib.sha256(title_key.encode("utf-8")).hexdigest()[:8]
-                doc_key = item.get("id") or item['newsId']
+                doc_key = item.get("id") or item.get("newsId")
                 if doc_key:
                     document_id = f"fmp_pr:{doc_key}"
                 else:
