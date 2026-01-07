@@ -132,3 +132,22 @@ def _repair_row(row: dict, companyfacts_root: Path, computed_at: str, provenance
     return row
 
 
+def main() :
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    companyfacts_root = Path(args.companyfacts_root)
+    computed_at = core._now_iso()
+    provenance_source = f"{artifact_path}:debt_stack_repair"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifact_path.open() as src, out_path.open("w") as dst:
+        for line in src:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            row = _repair_row(row, companyfacts_root, computed_at, provenance_source)
+            dst.write(json.dumps(row) + "\n")
+    print(f"Repaired debt stack -> {out_path}")
+
+
