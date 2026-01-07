@@ -265,3 +265,5 @@ def main():
     return matched_df
 
 
+if __name__ == "__main__":
+    main()
