@@ -357,3 +357,25 @@ def _selected_total_debt_breakdown(component_breakdown: Any) -> Any:
     }
 
 
+def _lease_selected_age_days(as_of_date: date, component_breakdown: Any) -> int | None:
+    ends = []
+    for end_text in _selected_lease_component_ends(component_breakdown):
+        parsed = _parse_iso_date(end_text)
+        if parsed is not None:
+            ends.append(parsed)
+    if not ends:
+        return None
+    return (as_of_date - max(ends)).days
+
+
+def _lease_selected_gap_days(component_breakdown: Any) -> int | None:
+    ends = []
+    for end_text in _selected_lease_component_ends(component_breakdown):
+        parsed = _parse_iso_date(end_text)
+        if parsed is not None:
+            ends.append(parsed)
+    if len(ends) < 2:
+        return 0 if ends else None
+    return (max(ends) - min(ends)).days
+
+

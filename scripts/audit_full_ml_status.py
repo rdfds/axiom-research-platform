@@ -88,7 +88,7 @@ def _duration_seconds(
     return round((end - start).total_seconds(), 6)
 
 
-def _quantile(xs: List[float], q: float) :
+def _quantile(xs: List[float], q: float) -> Optional[float]:
     if not xs:
         return None
     ordered = sorted(float(x) for x in xs)
