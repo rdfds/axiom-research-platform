@@ -225,3 +225,35 @@ def _normalize_statement_fact_candidate(row: dict[str, Any]) -> dict[str, Any] |
     }
 
 
+def _best_statement_debt_pair(
+    current_candidates: list[dict[str, Any]] | None,
+    long_term_candidates: list[dict[str, Any]] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int | None]:
+    best_pair = None
+    best_key = None
+    for current_row in current_candidates or []:
+        current = _normalize_statement_fact_candidate(current_row)
+        if current is None:
+            continue
+        for long_term_row in long_term_candidates or []:
+            long_term = _normalize_statement_fact_candidate(long_term_row)
+            if long_term is None:
+                continue
+            if current["source_type"] != long_term["source_type"]:
+                continue
+            gap_days = abs((current["end_dt"] - long_term["end_dt"]).days)
+            if gap_days > STATEMENT_DEBT_REPAIR_MAX_GAP_DAYS:
+                continue
+            pair_key = (
+                max(current["end_dt"], long_term["end_dt"]),
+                -gap_days,
+                1 if current["source_type"] == "sec_edgar_xbrl" else 0,
+            )
+            if best_key is None or pair_key > best_key:
+                best_key = pair_key
+                best_pair = (current, long_term, gap_days)
+    if best_pair is None:
+        return None, None, None
+    return best_pair
+
+
