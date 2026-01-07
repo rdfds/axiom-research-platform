@@ -425,7 +425,7 @@ def main() -> None:
             t.join()
             if "error" in result:
                 raise result["error"]  # type: ignore[arg-type]
-            return result['df']  # type: ignore[return-value]
+            return result.get("df")  # type: ignore[return-value]
 
         for idx, fpath in enumerate(files, start=1):
             if verbose or (file_log_every and idx % file_log_every == 0):

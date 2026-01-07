@@ -176,3 +176,23 @@ ranked AS (
 SELECT * FROM ranked WHERE rn = 1;
 ```
 
+## Extracted Signals
+
+```sql
+CREATE OR REPLACE VIEW asof_extracted_signals AS
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_extracted_signals
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY signal_id, chunk_id
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
