@@ -127,3 +127,20 @@ def test_normalize_divestiture_backfills_portfolio_action_ids():
     assert fallback["normalized_action_id"] == "portfolio.asset_sale"
 
 
+def test_normalize_divestiture_subtype_backfills_partial_and_full_action_ids():
+    stake_sale = normalize_action_record(
+        {
+            "action_type": "divestiture",
+            "action_subtype": "Stake Purchases Deal",
+        }
+    )
+    acquired_business_sale = normalize_action_record(
+        {
+            "action_type": "divestiture",
+            "action_subtype": "acquisition_tender",
+        }
+    )
+    assert stake_sale["normalized_action_id"] == "portfolio.divestiture_partial"
+    assert acquired_business_sale["normalized_action_id"] == "portfolio.divestiture_full"
+
+
