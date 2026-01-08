@@ -164,3 +164,21 @@ def test_augment_action_outcomes_df_adds_columns():
     assert out.loc[0, "normalized_action_id"] == "capital_structure.revolver_draw_or_resize"
 
 
+def test_augment_action_outcomes_df_backfills_mna_action_ids():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {
+                "action_type": "acquisition",
+                "action_subtype": "acquisition_tender",
+                "action_size": 900_000_000.0,
+                "base_market_cap": 9_000_000_000.0,
+            }
+        ]
+    )
+    out = augment_action_outcomes_df(df)
+    assert out.loc[0, "normalized_action_family"] == "mna"
+    assert out.loc[0, "normalized_action_id"] == "mna.platform_acquisition"
+
+

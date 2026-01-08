@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load(path: str) :
+def load(path: str) -> dict:
     return json.loads((ROOT / path).read_text())
 
 
