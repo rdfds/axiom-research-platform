@@ -50,3 +50,26 @@ def test_repair_total_debt_from_single_statement_component_promotes_exact_long_t
     assert repaired["component_breakdown"]["inferred_zero_component"] == "capital_structure.current_debt_statement_direct"
 
 
+def test_repair_total_debt_from_single_statement_component_marks_stale_match_as_proxy():
+    repaired = _repair_total_debt_from_single_statement_component(
+        current_node={
+            "support_mode": "proxy_missing_component",
+            "value": 76_402_000.0,
+            "missing_reason": "debt_component_missing",
+            "component_breakdown": {
+                "mode": "partial_debt_stack",
+                "formula": "partial_debt_stack_with_short_term_borrowings",
+            },
+        },
+        current_debt_statement_node=_statement_node(76_402_000.0, "exact", end="2024-01-31"),
+        long_term_debt_statement_node=_statement_node(None, "unsupported"),
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-22T00:00:00+00:00",
+        provenance_source="/tmp/facts.parquet",
+    )
+
+    assert repaired is not None
+    assert repaired["support_mode"] == "proxy_missing_component"
+    assert repaired["missing_reason"] == "statement_debt_pair_stale"
+
+

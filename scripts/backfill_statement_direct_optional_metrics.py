@@ -214,7 +214,7 @@ def _normalize_statement_fact_candidate(row: dict[str, Any]) -> dict[str, Any] |
             "fact_type": row.get("fact_type"),
             "fact_id": row.get("fact_id"),
             "source_id": row.get("source_id"),
-            "source_type": row['source_type'],
+            "source_type": row.get("source_type"),
             "raw_pointer": row.get("raw_pointer"),
             "registry_unit": row.get("unit"),
             "effective_at": end_dt.isoformat(),
