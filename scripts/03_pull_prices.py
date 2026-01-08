@@ -107,3 +107,24 @@ def get_monthly_prices(db):
     return df
 
 
+def validate_data(df):
+    """Basic validation checks."""
+    print("\n--- Data Validation ---")
+
+    print(f"Date range: {df['date'].min()} to {df['date'].max()}")
+
+    n_permnos = df['permno'].nunique()
+    print(f"Unique securities (permno): {n_permnos:,}")
+
+    # Check gvkey linkage (how many have Compustat link)
+    linked = df['gvkey'].notna().sum()
+    linked_pct = linked / len(df) * 100
+    print(f"Linked to Compustat: {linked_pct:.1f}%")
+
+    # Check return coverage
+    ret_coverage = (1 - df['ret'].isna().sum() / len(df)) * 100
+    print(f"Return coverage: {ret_coverage:.1f}%")
+
+    return True
+
+
