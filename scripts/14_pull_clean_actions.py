@@ -236,3 +236,86 @@ def pull_bankruptcies():
     return df
 
 
+def link_to_compustat():
+    """
+    Link CRSP permno to Compustat gvkey for acquisitions/bankruptcies.
+    """
+    print("\n" + "=" * 60)
+    print("LINKING CRSP TO COMPUSTAT")
+    print("=" * 60)
+
+    conn = psycopg2.connect(
+        host='wrds-pgdata.wharton.upenn.edu',
+        port=9737,
+        database='wrds',
+        user='rvarian1'
+    )
+
+    # Get the linking table
+    query = """
+    SELECT lpermno as permno, gvkey, linkdt, linkenddt
+    FROM crsp.ccmxpf_lnkhist
+    WHERE linktype IN ('LU', 'LC', 'LS')
+      AND linkprim IN ('P', 'C')
+    """
+
+    print("Pulling CRSP-Compustat link...")
+    link = pd.read_sql(query, conn)
+    link['linkdt'] = pd.to_datetime(link['linkdt'])
+    link['linkenddt'] = pd.to_datetime(link['linkenddt'].fillna('2099-12-31'))
+    print(f"  Link table: {len(link):,} rows")
+
+    # Load acquisitions and bankruptcies
+    acq = pd.read_parquet(DATA_DIR / 'acquisitions_clean.parquet')
+    bk = pd.read_parquet(DATA_DIR / 'bankruptcies_clean.parquet')
+
+    def add_gvkey(df):
+        merged = df.merge(link, on='permno', how='left')
+        # Filter to valid link dates
+        merged = merged[
+            (merged['action_date'] >= merged['linkdt']) &
+            (merged['action_date'] <= merged['linkenddt'])
+        ]
+        # Take first match if multiple
+        merged = merged.drop_duplicates('permno', keep='first')
+        return merged
+
+    acq_linked = add_gvkey(acq)
+    bk_linked = add_gvkey(bk)
+
+    print(f"  Acquisitions with gvkey: {acq_linked['gvkey'].notna().sum():,} / {len(acq):,}")
+    print(f"  Bankruptcies with gvkey: {bk_linked['gvkey'].notna().sum():,} / {len(bk):,}")
+
+    # Save linked versions
+    acq_linked.to_parquet(DATA_DIR / 'acquisitions_linked.parquet')
+    bk_linked.to_parquet(DATA_DIR / 'bankruptcies_linked.parquet')
+
+    conn.close()
+    return acq_linked, bk_linked
+
+
+def main():
+    print("\n" + "=" * 70)
+    print("PULLING CLEAN CORPORATE ACTIONS DATA")
+    print("=" * 70)
+
+    # 1. Pull data
+    buybacks = pull_buybacks()
+    acquisitions = pull_acquisitions()
+    bankruptcies = pull_bankruptcies()
+
+    # 2. Link to Compustat
+    acq_linked, bk_linked = link_to_compustat()
+
+    # Summary
+    print("\n" + "=" * 70)
+    print("SUMMARY - CLEAN CORPORATE ACTIONS")
+    print("=" * 70)
+    print(f"Buybacks (Compustat prstkcy):     {len(buybacks):,}")
+    print(f"Acquisitions (CRSP delist):       {len(acquisitions):,} ({acq_linked['gvkey'].notna().sum():,} linked)")
+    print(f"Bankruptcies (CRSP delist):       {len(bankruptcies):,} ({bk_linked['gvkey'].notna().sum():,} linked)")
+    print(f"Dividends (already processed):    151,457")
+    print("-" * 70)
+    print(f"TOTAL CLEAN ACTIONS:              {len(buybacks) + len(acquisitions) + len(bankruptcies) + 151457:,}")
+
+
