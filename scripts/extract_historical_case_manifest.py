@@ -48,3 +48,13 @@ def _normalize_case(raw_case: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _case_key(case: Dict[str, Any]) -> str:
+    return "|".join(
+        [
+            str(case.get("company_id") or ""),
+            str(case.get("as_of_time") or ""),
+            str(case.get("anchor_action_id") or ""),
+        ]
+    )
+
+
