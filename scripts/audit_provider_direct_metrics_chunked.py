@@ -87,3 +87,19 @@ def _chunk_rows(rows: List[Dict[str, Any]], chunk_size: int) -> Iterable[List[Di
         yield rows[start : start + chunk_size]
 
 
+def _empty_metric_counters(selected_metrics: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    return {
+        metric_name: {
+            "artifact_support": Counter(),
+            "artifact_basis": Counter(),
+            "reconstructed_support": Counter(),
+            "provider_support": Counter(),
+            "artifact_vs_provider_gap": [],
+            "artifact_vs_reconstructed_gap": [],
+            "largest_provider_gaps": [],
+            "largest_reconstructed_gaps": [],
+        }
+        for metric_name in selected_metrics
+    }
+
+

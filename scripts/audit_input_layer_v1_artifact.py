@@ -379,3 +379,19 @@ def _lease_selected_gap_days(component_breakdown: Any) -> int | None:
     return (max(ends) - min(ends)).days
 
 
+def _selected_component_gap_days(component_breakdown: Any, keys: tuple[str, ...]) -> int | None:
+    if not isinstance(component_breakdown, dict):
+        return None
+    ends = []
+    for key in keys:
+        value = component_breakdown.get(key)
+        if value is not None:
+            for end_text in _iter_component_ends(value):
+                parsed = _parse_iso_date(end_text)
+                if parsed is not None:
+                    ends.append(parsed)
+    if len(ends) < 2:
+        return 0 if ends else None
+    return (max(ends) - min(ends)).days
+
+

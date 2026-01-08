@@ -391,3 +391,27 @@ def build_ml_status_audit(
     return out
 
 
+def main() -> None:
+    args = _parse_args()
+    include_run_ids = _read_run_ids(args.run_ids_file)
+    out = build_ml_status_audit(
+        runs_roots=args.runs_roots,
+        include_run_ids=include_run_ids,
+        min_action_rows=int(args.min_action_rows),
+    )
+
+    out_path = Path(args.out)
+    out_path.write_text(json.dumps(out, indent=2))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "out": str(out_path),
+                "runs_analyzed": int(out.get("runs_analyzed", 0)),
+                "actions_reported": int(out.get("actions_reported", 0)),
+                "status_counts": dict(out.get("status_counts", {}) or {}),
+            }
+        )
+    )
+
+
