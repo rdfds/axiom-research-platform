@@ -35,3 +35,18 @@ def test_effective_liquidity_components_infers_zero_restricted_cash_from_grouped
     assert resolved["restricted_cash_zero_reconciled"] is True
 
 
+def test_effective_liquidity_components_market_defaults_restricted_cash_when_grouped_cash_is_exact():
+    resolved = _effective_liquidity_component_values(
+        cash_grouped={"support_mode": "exact", "value": 120.0},
+        cash_exact={"support_mode": "unsupported", "value": None, "missing_reason": "statement_fact_unavailable"},
+        restricted_cash_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_unavailable"},
+        marketable_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_absent"},
+        restricted_cash={"support_mode": "unsupported", "value": None},
+        marketable={"support_mode": "unsupported", "value": None},
+    )
+
+    assert resolved["restricted_cash_value"] == 0.0
+    assert resolved["restricted_cash_inferred_zero"] is True
+    assert resolved["restricted_cash_market_default_zero"] is True
+
+
