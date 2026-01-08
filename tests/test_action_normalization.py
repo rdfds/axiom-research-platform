@@ -144,3 +144,23 @@ def test_normalize_divestiture_subtype_backfills_partial_and_full_action_ids():
     assert acquired_business_sale["normalized_action_id"] == "portfolio.divestiture_full"
 
 
+def test_augment_action_outcomes_df_adds_columns():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {
+                "action_type": "loan_issuance",
+                "action_subtype": "Revolver/Line >= 1 Yr.",
+                "action_size": 100.0,
+                "base_market_cap": 1_000.0,
+            }
+        ]
+    )
+    out = augment_action_outcomes_df(df)
+    assert "raw_action_type" in out.columns
+    assert out.loc[0, "normalized_action_family"] == "capital_structure"
+    assert out.loc[0, "normalized_action_subfamily"] == "revolver"
+    assert out.loc[0, "normalized_action_id"] == "capital_structure.revolver_draw_or_resize"
+
+

@@ -29,3 +29,15 @@ def _node(name, value, *, support_mode="unsupported", unit="ratio", provenance=N
     }
 
 
+def test_price_metrics_computes_volatility_and_drawdown():
+    dates = pd.date_range("2024-10-01", periods=70, freq="B", tz="UTC")
+    prices = pd.Series(range(100, 170), dtype=float)
+    frame = pd.DataFrame({"trade_date": dates, "price": prices})
+    metrics = _price_metrics(frame)
+    assert "market.volatility_30d" in metrics
+    assert "market.volatility_90d" in metrics
+    assert "market.drawdown_90d" in metrics
+    assert metrics["market.volatility_90d"]["value"] > 0
+    assert metrics["market.drawdown_90d"]["value"] <= 0
+
+
