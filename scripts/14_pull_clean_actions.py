@@ -319,3 +319,5 @@ def main():
     print(f"TOTAL CLEAN ACTIONS:              {len(buybacks) + len(acquisitions) + len(bankruptcies) + 151457:,}")
 
 
+if __name__ == "__main__":
+    main()
