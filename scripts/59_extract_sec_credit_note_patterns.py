@@ -62,3 +62,17 @@ def _quoted_paths(paths: Sequence[Path]) -> str:
     return "[" + ", ".join("'" + p.as_posix().replace("'", "''") + "'" for p in paths) + "]"
 
 
+def _parquet_columns(paths: Sequence[Path]) -> set[str]:
+    if not paths:
+        return set()
+    con = duckdb.connect()
+    try:
+        first_path = paths[0].as_posix().replace("'", "''")
+        df = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{first_path}')"
+        ).df()
+        return set(df["column_name"].astype(str))
+    except Exception:
+        return set()
+
+

@@ -58,3 +58,39 @@ def _case_key(case: Dict[str, Any]) -> str:
     )
 
 
+def main() -> None:
+    args = _parse_args()
+    selected: List[Dict[str, Any]] = []
+    seen = set()
+    max_cases = max(1, int(args.case_count)) if args.case_count else None
+
+    for report_path_str in args.source_report_json:
+        report_path = Path(report_path_str)
+        payload = json.loads(report_path.read_text())
+        for raw_case in payload.get("cases", []) or []:
+            case = _normalize_case(raw_case)
+            if case is None:
+                continue
+            case_key = _case_key(case)
+            if case_key in seen:
+                continue
+            seen.add(case_key)
+            selected.append(case)
+            if max_cases is not None and len(selected) >= max_cases:
+                break
+        if max_cases is not None and len(selected) >= max_cases:
+            break
+
+    manifest = {
+        "manifest_generated_at": datetime.now(timezone.utc).isoformat(),
+        "label": args.label or "",
+        "source_reports": [str(Path(path)) for path in args.source_report_json],
+        "case_count": len(selected),
+        "cases": selected,
+    }
+
+    out_path = Path(args.out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(manifest, indent=2))
+
+
