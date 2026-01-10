@@ -78,3 +78,5 @@ def main() -> None:
     print(f"Repaired smart-normalized metrics -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
