@@ -128,3 +128,44 @@ def validate_data(df):
     return True
 
 
+def main():
+    # Parse command line args
+    if len(sys.argv) < 2:
+        print("Usage: python 03_pull_prices.py USERNAME [monthly|daily]")
+        print("  Default is monthly if not specified")
+        sys.exit(1)
+
+    WRDS_USERNAME = sys.argv[1]
+    frequency = sys.argv[2] if len(sys.argv) > 2 else 'monthly'
+
+    print("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=WRDS_USERNAME)
+    print("Connected!\n")
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    if frequency == 'daily':
+        print("="*60)
+        print(f"PULLING DAILY PRICES FROM {START_DATE}")
+        print("="*60)
+        df = get_crsp_prices(db)
+        output_path = OUTPUT_DIR / 'prices_daily.parquet'
+    else:
+        print("="*60)
+        print(f"PULLING MONTHLY PRICES FROM {START_DATE}")
+        print("="*60)
+        df = get_monthly_prices(db)
+        output_path = OUTPUT_DIR / 'prices_monthly.parquet'
+
+    # Validate
+    validate_data(df)
+
+    # Save
+    print(f"\nSaving to {output_path}...")
+    df.to_parquet(output_path, index=False)
+    print(f"Saved! File size: {output_path.stat().st_size / 1e6:.1f} MB")
+
+    db.close()
+    print("\nDone!")
+
+
