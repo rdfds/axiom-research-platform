@@ -94,3 +94,5 @@ def main() -> None:
     out_path.write_text(json.dumps(manifest, indent=2))
 
 
+if __name__ == "__main__":
+    main()
