@@ -132,7 +132,7 @@ def _repair_row(row: dict, companyfacts_root: Path, computed_at: str, provenance
     return row
 
 
-def main() :
+def main() -> None:
     args = parse_args()
     artifact_path = Path(args.artifact_path)
     out_path = Path(args.out)

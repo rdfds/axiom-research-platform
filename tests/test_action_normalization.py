@@ -212,3 +212,59 @@ def test_normalize_buyback_and_bond_issuance_backfill_exact_action_ids():
     assert term_loan["normalized_action_id"] == "capital_structure.new_debt_issuance"
 
 
+def test_normalize_loan_refinancing_backfills_refinancing_action_id():
+    refinance = normalize_action_record(
+        {
+            "action_type": "loan_refinancing",
+            "action_subtype": "Term Loan B",
+            "action_size": 350_000_000.0,
+            "base_market_cap": 4_000_000_000.0,
+        }
+    )
+    assert refinance["normalized_action_family"] == "capital_structure"
+    assert refinance["normalized_action_subfamily"] == "refinancing_term_loan_family"
+    assert refinance["normalized_action_id"] == "capital_structure.refinancing"
+    assert refinance["normalization_level"] == "family_scale"
+
+
+def test_augment_action_outcomes_df_keeps_split_action_size_from_ratio():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {
+                "action_type": "stock_split",
+                "action_subtype": "stock_split",
+                "action_size": 2.0,
+            },
+            {
+                "action_type": "reverse_split",
+                "action_subtype": "reverse_split",
+                "action_size": 0.2,
+            },
+        ]
+    )
+    out = augment_action_outcomes_df(df)
+    assert out.loc[0, "normalized_action_id"] == "governance.stock_split"
+    assert out.loc[1, "normalized_action_id"] == "governance.reverse_split"
+
+
+def test_augment_action_outcomes_df_maps_loan_refinancing():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {
+                "action_type": "loan_refinancing",
+                "action_subtype": "Revolver/Line >= 1 Yr.",
+                "action_size": 150.0,
+                "base_market_cap": 1_500.0,
+            }
+        ]
+    )
+    out = augment_action_outcomes_df(df)
+    assert out.loc[0, "normalized_action_family"] == "capital_structure"
+    assert out.loc[0, "normalized_action_subfamily"] == "refinancing_revolver_family"
+    assert out.loc[0, "normalized_action_id"] == "capital_structure.refinancing"
+
+

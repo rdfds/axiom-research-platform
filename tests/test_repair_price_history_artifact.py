@@ -41,3 +41,68 @@ def test_price_metrics_computes_volatility_and_drawdown():
     assert metrics["market.drawdown_90d"]["value"] <= 0
 
 
+def test_load_market_cache_prefers_price_proxy(tmp_path: Path):
+    path = tmp_path / "market_cache.parquet"
+    df = pd.DataFrame(
+        {
+            "permno": [10001, 10001],
+            "trade_date": pd.to_datetime(["2024-12-30", "2024-12-31"]),
+            "price_proxy": [10.0, 11.0],
+            "close_price": [9.5, 10.5],
+        }
+    )
+    df.to_parquet(path, index=False)
+    loaded = _load_market_cache(path)
+    frame = loaded["10001"]
+    assert frame["price"].iloc[-1] == 11.0
+
+
+def test_repair_price_history_metrics_uses_total_return_provenance():
+    provenance = [
+        {
+            "artifact_type": "MarketTimeseries",
+            "artifact_id": "market_timeseries:test.parquet",
+            "source": "/tmp/test.parquet",
+            "published_at": "2024-12-31T00:00:00+00:00",
+            "ingested_at": "2026-03-23T00:00:00+00:00",
+            "hash": None,
+        }
+    ]
+    features = {
+        "market.total_return_3m_standardized": _node(
+            "market.total_return_3m_standardized",
+            0.1,
+            support_mode="exact",
+            provenance=provenance,
+        ),
+        "market.total_return_12m_standardized": _node(
+            "market.total_return_12m_standardized",
+            0.2,
+            support_mode="exact",
+            provenance=provenance,
+        ),
+        "market.volatility_30d": _node("market.volatility_30d", None, unit="annualized"),
+        "market.volatility_90d": _node("market.volatility_90d", None, unit="annualized"),
+        "market.drawdown_90d": _node("market.drawdown_90d", None),
+    }
+    metrics = {
+        "market.volatility_30d": {"value": 0.25, "component_breakdown": {"formula": "stddev(daily_returns_30d) * sqrt(252)"}},
+        "market.volatility_90d": {"value": 0.3, "component_breakdown": {"formula": "stddev(daily_returns_90d) * sqrt(252)"}},
+        "market.drawdown_90d": {"value": -0.15, "component_breakdown": {"formula": "min(price_window_90d) / max(price_window_90d) - 1"}},
+    }
+
+    changed = repair_price_history_metrics(
+        features=features,
+        price_metrics=metrics,
+        permno="12345",
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+
+    assert changed is True
+    assert features["market.volatility_30d"]["value"] == 0.25
+    assert features["market.volatility_30d"]["support_mode"] == "exact"
+    assert features["market.volatility_30d"]["fallback_used"] == "crsp_market_cache_price_history"
+    assert features["market.volatility_30d"]["provenance"] == provenance
+    assert features["market.volatility_30d"]["component_breakdown"]["selected_price_series"]["group_value"] == "12345"
+
+

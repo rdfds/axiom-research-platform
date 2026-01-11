@@ -442,3 +442,137 @@ def _recompute_smart_metrics(
     )
 
 
+def _repair_row(
+    row: dict,
+    companyfacts_root: Path,
+    companyfacts_cache: dict[str, dict | None],
+    statement_current_debt_candidates: dict[str, list[dict[str, object]]] | None,
+    statement_long_term_debt_candidates: dict[str, list[dict[str, object]]] | None,
+    computed_at: str,
+    provenance_source: str,
+    registry: dict[str, object] | None,
+    provenance_sources: list[str] | None,
+) -> dict:
+    features = row.setdefault("features", {})
+    entity_id = str(row["company_id"])
+    as_of_time = row["as_of_time"]
+    companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+    if entity_id not in companyfacts_cache:
+        companyfacts_cache[entity_id] = core._load_companyfacts(companyfacts_path)
+    companyfacts = companyfacts_cache[entity_id]
+    if companyfacts is None:
+        return row
+
+    for metric_name in CORE_METRICS_TO_REPAIR:
+        _rebuild_core_metric(
+            features=features,
+            metric_name=metric_name,
+            companyfacts=companyfacts,
+            companyfacts_path=companyfacts_path,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+        )
+
+    repaired_total_debt = statement._repair_total_debt_from_statement_split(
+        current_node=features['capital_structure.total_debt_provider_direct'],
+        current_debt_statement_node=features.get("capital_structure.current_debt_statement_direct"),
+        long_term_debt_statement_node=features.get("capital_structure.long_term_debt_statement_direct"),
+        current_debt_statement_candidates=(
+            None if statement_current_debt_candidates is None else statement_current_debt_candidates.get(entity_id)
+        ),
+        long_term_debt_statement_candidates=(
+            None if statement_long_term_debt_candidates is None else statement_long_term_debt_candidates.get(entity_id)
+        ),
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=str(companyfacts_path),
+    )
+    if repaired_total_debt is not None:
+        features["capital_structure.total_debt_provider_direct"] = repaired_total_debt
+
+    statement._recompute_standardized_debt_metrics(
+        features=features,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+    )
+    if registry is not None and provenance_sources is not None:
+        _recompute_smart_metrics(
+            features=features,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            registry=registry,
+            provenance_sources=provenance_sources,
+        )
+    return row
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    companyfacts_root = Path(args.companyfacts_root)
+    computed_at = core._now_iso()
+    provenance_source = f"{artifact_path}:cash_debt_alignment_repair"
+    companyfacts_cache: dict[str, dict | None] = {}
+    statement_current_debt_candidates: dict[str, list[dict[str, object]]] | None = None
+    statement_long_term_debt_candidates: dict[str, list[dict[str, object]]] | None = None
+    registry = None
+    provenance_sources = None
+    if args.metric_registry_path and args.component_policy_path and args.source_precedence_path:
+        registry = json.loads(Path(args.metric_registry_path).read_text())
+        json.loads(Path(args.component_policy_path).read_text())
+        json.loads(Path(args.source_precedence_path).read_text())
+        provenance_sources = [
+            str(Path(args.metric_registry_path)),
+            str(Path(args.component_policy_path)),
+            str(Path(args.source_precedence_path)),
+        ]
+
+    if args.facts_path:
+        entity_ids: list[str] = []
+        as_of_time: str | None = None
+        with artifact_path.open() as src:
+            for line in src:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                entity_ids.append(str(row["company_id"]))
+                if as_of_time is None:
+                    as_of_time = row["as_of_time"]
+        if entity_ids and as_of_time:
+            facts_path = Path(args.facts_path)
+            statement_current_debt_candidates = statement._load_statement_fact_candidates(
+                facts_path,
+                entity_ids,
+                [statement.STATEMENT_FACT_SPECS["current_debt"]["fact_type"]],
+                as_of_time,
+            )
+            statement_long_term_debt_candidates = statement._load_statement_fact_candidates(
+                facts_path,
+                entity_ids,
+                [statement.STATEMENT_FACT_SPECS["long_term_debt"]["fact_type"]],
+                as_of_time,
+            )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifact_path.open() as src, out_path.open("w") as dst:
+        for line in src:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            row = _repair_row(
+                row,
+                companyfacts_root,
+                companyfacts_cache,
+                statement_current_debt_candidates,
+                statement_long_term_debt_candidates,
+                computed_at,
+                provenance_source,
+                registry,
+                provenance_sources,
+            )
+            dst.write(json.dumps(row) + "\n")
+    print(f"Repaired cash/debt alignment -> {out_path}")
+
+
