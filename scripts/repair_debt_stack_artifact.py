@@ -151,3 +151,5 @@ def main() :
     print(f"Repaired debt stack -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()

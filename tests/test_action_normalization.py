@@ -182,3 +182,33 @@ def test_augment_action_outcomes_df_backfills_mna_action_ids():
     assert out.loc[0, "normalized_action_id"] == "mna.platform_acquisition"
 
 
+def test_normalize_buyback_and_bond_issuance_backfill_exact_action_ids():
+    buyback = normalize_action_record(
+        {
+            "action_type": "buyback",
+            "action_subtype": "buyback",
+            "action_size": 500_000_000.0,
+            "base_market_cap": 10_000_000_000.0,
+        }
+    )
+    bond = normalize_action_record(
+        {
+            "action_type": "bond_issuance",
+            "action_subtype": None,
+            "action_size": 750_000_000.0,
+            "base_market_cap": 12_000_000_000.0,
+        }
+    )
+    term_loan = normalize_action_record(
+        {
+            "action_type": "loan_issuance",
+            "action_subtype": "Term Loan",
+            "action_size": 200_000_000.0,
+            "base_market_cap": 5_000_000_000.0,
+        }
+    )
+    assert buyback["normalized_action_id"] == "capital_return.open_market_buyback"
+    assert bond["normalized_action_id"] == "capital_structure.new_debt_issuance"
+    assert term_loan["normalized_action_id"] == "capital_structure.new_debt_issuance"
+
+
