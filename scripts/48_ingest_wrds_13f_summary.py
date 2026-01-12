@@ -79,3 +79,26 @@ def normalize_value(value: Any) :
     return value
 
 
+def coerce_date(value: Any) -> pd.Timestamp | None:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    try:
+        ts = pd.to_datetime(value, errors="coerce")
+        if pd.isna(ts):
+            return None
+        return ts
+    except Exception:
+        return None
+
+
+def iter_chunks(path: Path, chunksize: int) -> Iterable[pd.DataFrame]:
+    reader = pd.read_csv(
+        path,
+        compression="infer",
+        chunksize=chunksize,
+        low_memory=False,
+    )
+    for chunk in reader:
+        yield chunk
+
+
