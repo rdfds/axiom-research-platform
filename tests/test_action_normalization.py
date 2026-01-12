@@ -268,3 +268,14 @@ def test_augment_action_outcomes_df_maps_loan_refinancing():
     assert out.loc[0, "normalized_action_id"] == "capital_structure.refinancing"
 
 
+def test_normalize_loan_refinancing_maps_bond_family():
+    refinance = normalize_action_record(
+        {
+            "action_type": "loan_refinancing",
+            "action_subtype": "Fixed-Rate Bond",
+            "action_size": 120_000_000.0,
+            "base_market_cap": 2_000_000_000.0,
+        }
+    )
+    assert refinance["normalized_action_subfamily"] == "refinancing_bond_family"
+    assert refinance["normalized_action_id"] == "capital_structure.refinancing"

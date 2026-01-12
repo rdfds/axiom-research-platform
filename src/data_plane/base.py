@@ -24,3 +24,37 @@ class RecordType(Enum):
     INSIDER = "insider"
 
 
+class ActionType(Enum):
+    """Standardized corporate action types."""
+    # M&A
+    ACQUISITION = "acquisition"
+    MERGER = "merger"
+    DIVESTITURE = "divestiture"
+    SPINOFF = "spinoff"
+    LBO = "lbo"
+    GOING_PRIVATE = "going_private"
+
+    # Capital Returns
+    DIVIDEND_REGULAR = "dividend_regular"
+    DIVIDEND_SPECIAL = "dividend_special"
+    DIVIDEND_INCREASE = "dividend_increase"
+    DIVIDEND_CUT = "dividend_cut"
+    DIVIDEND_INITIATE = "dividend_initiate"
+    DIVIDEND_SUSPEND = "dividend_suspend"
+    BUYBACK = "buyback"
+
+    # Equity
+    IPO = "ipo"
+    SECONDARY_OFFERING = "secondary_offering"
+    STOCK_SPLIT = "stock_split"
+    REVERSE_SPLIT = "reverse_split"
+
+    # Debt
+    DEBT_ISSUANCE = "debt_issuance"
+    DEBT_REFINANCE = "debt_refinance"
+
+    # Other
+    BANKRUPTCY = "bankruptcy"
+    OTHER = "other"
+
+
