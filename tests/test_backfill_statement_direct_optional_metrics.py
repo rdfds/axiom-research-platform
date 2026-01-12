@@ -73,3 +73,78 @@ def test_repair_total_debt_from_single_statement_component_marks_stale_match_as_
     assert repaired["missing_reason"] == "statement_debt_pair_stale"
 
 
+def test_parse_iso_date_accepts_datetime_objects():
+    value = datetime(2024, 9, 30, 0, 0, tzinfo=timezone.utc)
+
+    assert _parse_iso_date(value).isoformat() == "2024-09-30"
+
+
+def test_interest_expense_repair_from_companyfacts_builds_ttm_from_interest_expense_concept():
+    repaired = _interest_expense_repair_from_companyfacts(
+        current_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "statement_fact_unavailable",
+            "provenance": [],
+        },
+        companyfacts={
+            "facts": {
+                "us-gaap": {
+                    "InterestExpense": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "start": "2024-01-01",
+                                    "end": "2024-09-30",
+                                    "filed": "2024-10-31",
+                                    "val": 75.0,
+                                    "fy": 2024,
+                                    "fp": "Q3",
+                                    "form": "10-Q",
+                                },
+                                {
+                                    "start": "2023-01-01",
+                                    "end": "2023-12-31",
+                                    "filed": "2024-02-20",
+                                    "val": 110.0,
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                },
+                                {
+                                    "start": "2023-01-01",
+                                    "end": "2023-09-30",
+                                    "filed": "2023-11-01",
+                                    "val": 70.0,
+                                    "fy": 2023,
+                                    "fp": "Q3",
+                                    "form": "10-Q",
+                                },
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        companyfacts_path=Path("/tmp/companyfacts.json"),
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-22T00:00:00+00:00",
+    )
+
+    assert repaired is not None
+    assert repaired["support_mode"] == "exact"
+    assert repaired["value"] == 115.0
+    assert repaired["component_breakdown"]["concept"] == "InterestExpense"
+    assert repaired["component_breakdown"]["ttm_context"]["mode"] == "ytd_plus_prior_fy_minus_prior_ytd"
+
+
+def test_iter_row_batches_yields_incremental_batches():
+    rows = [{"company_id": str(i)} for i in range(5)]
+
+    batches = list(_iter_row_batches(rows, 2))
+
+    assert [len(batch) for batch in batches] == [2, 2, 1]
+    assert batches[0][0]["company_id"] == "0"
+    assert batches[-1][0]["company_id"] == "4"
+
+
