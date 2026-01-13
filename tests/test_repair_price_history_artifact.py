@@ -165,3 +165,11 @@ def test_repair_price_history_metrics_overwrites_monthly_proxy_values():
     assert features["market.volatility_30d"]["component_breakdown"]["selected_price_series"]["group_value"] == "12345"
 
 
+def test_needs_exact_price_history_repair_keeps_true_exact_daily_series():
+    node = _node("market.drawdown_90d", -0.1, support_mode="exact")
+    node["component_breakdown"] = {
+        "formula": "min(price_window_90d) / max(price_window_90d) - 1",
+        "source_kind": "crsp_market_cache",
+        "selected_price_series": {"source_kind": "crsp_market_cache"},
+    }
+    assert _needs_exact_price_history_repair(node) is False

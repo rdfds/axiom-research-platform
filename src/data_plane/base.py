@@ -163,3 +163,185 @@ class BatchWindow:
         return f"{self.source}[{self.start.date()} to {self.end.date()}]"
 
 
+class SourceAdapter(ABC):
+    """
+    Abstract base class for data source adapters.
+
+    Each source (Refinitiv, WRDS, etc.) implements this interface:
+    - fetch(): Pull raw data from source
+    - parse(): Convert to canonical records
+    - validate(): Check data quality
+    - publish(): Write to raw lake
+
+    The adapter is responsible for:
+    1. Setting event_time correctly (what date the data describes)
+    2. Setting available_time correctly (when it was knowable)
+    3. Deduplicating records
+    4. Handling source-specific quirks
+    """
+
+    source_name: str = "unknown"
+
+    @abstractmethod
+    def fetch(self, window: BatchWindow) -> List[Dict[str, Any]]:
+        """
+        Fetch raw payloads from the source.
+
+        Parameters
+        ----------
+        window : BatchWindow
+            Time window to fetch
+
+        Returns
+        -------
+        List of raw payloads (source-specific format)
+        """
+        pass
+
+    @abstractmethod
+    def parse(self, raw_payloads: List[Dict[str, Any]]) -> List[CanonicalRecord]:
+        """
+        Parse raw payloads into canonical records.
+
+        CRITICAL: This is where event_time and available_time must be set correctly.
+
+        Parameters
+        ----------
+        raw_payloads : list
+            Raw data from fetch()
+
+        Returns
+        -------
+        List of CanonicalRecord objects
+        """
+        pass
+
+    def validate(self, records: List[CanonicalRecord]) -> ValidationResult:
+        """
+        Validate canonical records.
+
+        Default implementation checks:
+        - Required fields present
+        - Timestamps are valid
+        - No future available_time
+        - event_time <= available_time
+
+        Override for source-specific validation.
+        """
+        result = ValidationResult(is_valid=True, records_in=len(records))
+        now = datetime.utcnow()
+
+        for record in records:
+            is_valid = True
+
+            # Check required fields
+            if not record.entity_id:
+                result.add_error(f"Record {record.record_id}: missing entity_id")
+                is_valid = False
+
+            if not record.event_time:
+                result.add_error(f"Record {record.record_id}: missing event_time")
+                is_valid = False
+
+            if not record.available_time:
+                result.add_error(f"Record {record.record_id}: missing available_time")
+                is_valid = False
+
+            # Check timestamp logic
+            if record.available_time and record.available_time > now:
+                result.add_warning(f"Record {record.record_id}: available_time in future")
+
+            if record.event_time and record.available_time:
+                if record.event_time > record.available_time:
+                    result.add_warning(
+                        f"Record {record.record_id}: event_time > available_time "
+                        f"({record.event_time} > {record.available_time})"
+                    )
+
+            if is_valid:
+                result.records_valid += 1
+            else:
+                result.records_invalid += 1
+
+        return result
+
+    @abstractmethod
+    def publish(self, records: List[CanonicalRecord], lake: 'DataLake') -> int:
+        """
+        Publish validated records to the data lake.
+
+        Parameters
+        ----------
+        records : list
+            Validated canonical records
+        lake : DataLake
+            Target data lake
+
+        Returns
+        -------
+        Number of records published
+        """
+        pass
+
+    def ingest(self, window: BatchWindow, lake: 'DataLake') -> Dict[str, Any]:
+        """
+        Full ingestion pipeline: fetch → parse → validate → publish.
+
+        Parameters
+        ----------
+        window : BatchWindow
+            Time window to ingest
+        lake : DataLake
+            Target data lake
+
+        Returns
+        -------
+        Ingestion summary with counts and any errors
+        """
+        summary = {
+            'source': self.source_name,
+            'window': str(window),
+            'started_at': datetime.utcnow().isoformat(),
+            'status': 'running',
+        }
+
+        try:
+            # Fetch
+            raw_payloads = self.fetch(window)
+            summary['fetched'] = len(raw_payloads)
+
+            # Parse
+            records = self.parse(raw_payloads)
+            summary['parsed'] = len(records)
+
+            # Validate
+            validation = self.validate(records)
+            summary['valid'] = validation.records_valid
+            summary['invalid'] = validation.records_invalid
+            summary['errors'] = validation.errors[:10]  # First 10 errors
+            summary['warnings'] = validation.warnings[:10]
+
+            # Publish (only valid records)
+            if validation.records_valid > 0:
+                valid_records = [r for r in records if self._is_record_valid(r, validation)]
+                published = self.publish(valid_records, lake)
+                summary['published'] = published
+            else:
+                summary['published'] = 0
+
+            summary['status'] = 'completed'
+
+        except Exception as e:
+            summary['status'] = 'failed'
+            summary['error'] = str(e)
+
+        summary['completed_at'] = datetime.utcnow().isoformat()
+        return summary
+
+    def _is_record_valid(self, record: CanonicalRecord, validation: ValidationResult) -> bool:
+        """Check if a specific record is valid."""
+        # Simple check - if record_id appears in any error, it's invalid
+        for error in validation.errors:
+            if record.record_id in error:
+                return False
+        return True
