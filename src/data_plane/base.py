@@ -151,3 +151,15 @@ class ValidationResult:
         self.warnings.append(msg)
 
 
+@dataclass
+class BatchWindow:
+    """Time window for batch fetching."""
+    start: datetime
+    end: datetime
+    source: str
+    record_type: Optional[RecordType] = None
+
+    def __str__(self):
+        return f"{self.source}[{self.start.date()} to {self.end.date()}]"
+
+

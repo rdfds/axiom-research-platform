@@ -106,3 +106,62 @@ def test_repair_price_history_metrics_uses_total_return_provenance():
     assert features["market.volatility_30d"]["component_breakdown"]["selected_price_series"]["group_value"] == "12345"
 
 
+def test_repair_price_history_metrics_overwrites_monthly_proxy_values():
+    provenance = [
+        {
+            "artifact_type": "MarketTimeseries",
+            "artifact_id": "market_timeseries:test.parquet",
+            "source": "/tmp/test.parquet",
+            "published_at": "2024-12-31T00:00:00+00:00",
+            "ingested_at": "2026-03-23T00:00:00+00:00",
+            "hash": None,
+        }
+    ]
+    features = {
+        "market.total_return_3m_standardized": _node(
+            "market.total_return_3m_standardized",
+            0.1,
+            support_mode="exact",
+            provenance=provenance,
+        ),
+        "market.total_return_12m_standardized": _node(
+            "market.total_return_12m_standardized",
+            0.2,
+            support_mode="exact",
+            provenance=provenance,
+        ),
+        "market.volatility_30d": _node(
+            "market.volatility_30d",
+            0.12,
+            support_mode="exact",
+            unit="annualized",
+        ),
+    }
+    features["market.volatility_30d"]["fallback_used"] = "monthly_price_history_proxy"
+    features["market.volatility_30d"]["quality_flags"] = ["monthly_price_history_proxy"]
+    features["market.volatility_30d"]["component_breakdown"] = {
+        "formula": "stddev(monthly_returns_6m) * sqrt(12)",
+        "source_kind": "monthly_price_proxy",
+    }
+    metrics = {
+        "market.volatility_30d": {
+            "value": 0.25,
+            "component_breakdown": {"formula": "stddev(daily_returns_30d) * sqrt(252)"},
+        },
+    }
+
+    changed = repair_price_history_metrics(
+        features=features,
+        price_metrics=metrics,
+        permno="12345",
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+
+    assert changed is True
+    assert features["market.volatility_30d"]["value"] == 0.25
+    assert features["market.volatility_30d"]["support_mode"] == "exact"
+    assert features["market.volatility_30d"]["fallback_used"] == "crsp_market_cache_price_history"
+    assert features["market.volatility_30d"]["quality_flags"] is None
+    assert features["market.volatility_30d"]["component_breakdown"]["selected_price_series"]["group_value"] == "12345"
+
+
