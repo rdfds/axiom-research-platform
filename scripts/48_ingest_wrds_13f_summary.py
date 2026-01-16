@@ -102,3 +102,82 @@ def iter_chunks(path: Path, chunksize: int) -> Iterable[pd.DataFrame]:
         yield chunk
 
 
+def main() -> None:
+    if not INPUT_PATH.exists():
+        raise FileNotFoundError(f"Missing WRDS 13F summary file: {INPUT_PATH}")
+
+    if PARTITIONED:
+        (DATA_DIR / "warehouse" / "warehouse_13f_filings").mkdir(parents=True, exist_ok=True)
+
+    source_system = "wrds_13f_summary"
+    total_rows = 0
+    total_chunks = 0
+
+    log(f"Loading WRDS 13F summary from {INPUT_PATH}...")
+
+    for chunk in iter_chunks(INPUT_PATH, CHUNK):
+        total_chunks += 1
+        chunk = chunk.rename(columns={c: c.strip().lower() for c in chunk.columns})
+
+        canonical_records: List[Dict[str, Any]] = []
+
+        available_cols = [c for c in PREFERRED_COLUMNS if c in chunk.columns]
+        if not available_cols:
+            available_cols = list(chunk.columns)
+
+        for _, row in chunk.iterrows():
+            cik = str(row.get("cik", "")).strip()
+            rdate = coerce_date(row.get("rdate") or row.get("reportdate") or row['report_period'])
+            fdate = coerce_date(row.get("fdate"))
+
+            if not cik:
+                continue
+            if rdate is None and fdate is None:
+                continue
+
+            event_time = rdate or fdate
+            available_time = fdate or rdate
+
+            entity_id = f"{cik}|{event_time.date().isoformat()}"
+
+            payload = {col: normalize_value(row.get(col)) for col in available_cols}
+            payload["cik"] = cik
+            payload["rdate"] = normalize_value(rdate)
+            payload["fdate"] = normalize_value(fdate)
+
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=entity_id,
+                event_time=event_time.to_pydatetime(),
+                available_time=available_time.to_pydatetime(),
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": entity_id,
+                    "company_id": cik,
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": datetime.utcnow(),
+                    "version_id": version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [],
+                    "quality_flags": [],
+                    "company_id_type": "cik",
+                }
+            )
+
+        if canonical_records:
+            append_canonical_records("warehouse_13f_filings", canonical_records)
+            total_rows += len(canonical_records)
+
+        if LOG_EVERY > 0 and total_chunks % LOG_EVERY == 0:
+            log(f"Ingested chunk {total_chunks} | total rows {total_rows:,}")
+
+    log(f"Done. Total 13F filings ingested: {total_rows:,}")
+
+

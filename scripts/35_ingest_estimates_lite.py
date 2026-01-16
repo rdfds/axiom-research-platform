@@ -151,3 +151,15 @@ def load_names() -> pd.DataFrame:
     return names[["permno", "permco", "namedt", "nameendt", "cusip8"]]
 
 
+def load_links() -> pd.DataFrame:
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not link_path.exists():
+        raise FileNotFoundError("Missing ccmxpf_lnkhist.parquet")
+    link = pd.read_parquet(link_path)
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce")
+    # Open-ended links
+    link["linkenddt"] = link["linkenddt"].fillna(pd.Timestamp("2099-12-31"))
+    return link
+
+
