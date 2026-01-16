@@ -103,3 +103,7 @@ def _empty_metric_counters(selected_metrics: Iterable[str]) -> Dict[str, Dict[st
     }
 
 
+def _top_gap_examples(examples: List[Dict[str, Any]], key: str = "gap_pct", limit: int = 10) -> List[Dict[str, Any]]:
+    return sorted(examples, key=lambda item: item[key], reverse=True)[:limit]
+
+

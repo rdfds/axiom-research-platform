@@ -148,3 +148,17 @@ def test_iter_row_batches_yields_incremental_batches():
     assert batches[-1][0]["company_id"] == "4"
 
 
+def test_fact_parquet_source_arg_prunes_partition_years(tmp_path: Path):
+    facts_root = tmp_path / "facts_asof_2026"
+    for year in (2021, 2022, 2023, 2024, 2025):
+        part = facts_root / f"year={year}" / "part.parquet"
+        part.parent.mkdir(parents=True, exist_ok=True)
+        part.write_text("placeholder")
+
+    source_arg = _fact_parquet_source_arg(facts_root, "2024-12-31T00:00:00+00:00")
+
+    assert "year=2022" in source_arg
+    assert "year=2023" in source_arg
+    assert "year=2024" in source_arg
+    assert "year=2021" not in source_arg
+    assert "year=2025" not in source_arg
