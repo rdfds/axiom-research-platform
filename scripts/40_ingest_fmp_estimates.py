@@ -167,3 +167,21 @@ def map_symbol_to_gvkey(symbol: str, asof: pd.Timestamp, names: pd.DataFrame, li
     return str(gvkey) if pd.notna(gvkey) else None
 
 
+def load_fy_end_map() -> Dict[str, Dict[str, int]]:
+    fin_path = WAREHOUSE_DIR / "warehouse_financials.parquet"
+    if not fin_path.exists():
+        return {}
+    cols = ["company_id", "fiscal_period_end"]
+    df = pd.read_parquet(fin_path, columns=cols)
+    df["fiscal_period_end"] = pd.to_datetime(df["fiscal_period_end"], errors="coerce")
+    df = df.dropna(subset=["company_id", "fiscal_period_end"])
+    df = df.sort_values(["company_id", "fiscal_period_end"])
+    last = df.groupby("company_id").tail(1)
+    out = {}
+    for _, row in last.iterrows():
+        company_id = str(row["company_id"])
+        date = row["fiscal_period_end"]
+        out[company_id] = {"month": int(date.month), "day": int(date.day)}
+    return out
+
+

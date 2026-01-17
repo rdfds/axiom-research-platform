@@ -181,3 +181,5 @@ def main() -> None:
     log(f"Done. Total 13F filings ingested: {total_rows:,}")
 
 
+if __name__ == "__main__":
+    main()
