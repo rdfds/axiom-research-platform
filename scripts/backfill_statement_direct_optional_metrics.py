@@ -285,7 +285,7 @@ def _collect_duration_entries(companyfacts: dict, concept_name: str, as_of_date:
             continue
         for entry in entries:
             start_dt = _parse_iso_date(entry.get("start"))
-            end_dt = _parse_iso_date(entry['end'])
+            end_dt = _parse_iso_date(entry.get("end"))
             filed_dt = _parse_iso_date(entry.get("filed"))
             value = entry.get("val")
             if start_dt is None or end_dt is None or value is None:
