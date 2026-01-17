@@ -393,3 +393,140 @@ def _compute_ttm_from_concept(companyfacts: dict, concept_name: str, as_of_date:
     }
 
 
+def _ebitda_repair_from_statement_ebit(
+    *,
+    current_node: dict[str, Any],
+    statement_ebit_node: dict[str, Any] | None,
+    companyfacts: dict | None,
+    companyfacts_path: Path | None,
+    as_of_time: str,
+    computed_at: str,
+) -> dict[str, Any] | None:
+    if current_node.get("support_mode") != "unsupported":
+        return None
+    if current_node.get("missing_reason") != "sec_operating_income_ttm_unavailable":
+        return None
+    if not statement_ebit_node or statement_ebit_node.get("support_mode") != "exact" or statement_ebit_node.get("value") is None:
+        return None
+    if companyfacts is None or companyfacts_path is None:
+        return None
+
+    depreciation_value = None
+    depreciation_meta = None
+    depreciation_support_mode = "exact"
+    quality_flags: list[str] = []
+    for concept_group in DEPRECIATION_TTM_CONCEPT_GROUPS:
+        if len(concept_group) == 1:
+            depreciation_value, depreciation_meta = _compute_ttm_from_concept(companyfacts, concept_group[0], as_of_time[:10])
+            if depreciation_value is not None:
+                if concept_group[0] == "Depreciation":
+                    depreciation_support_mode = "proxy_missing_component"
+                    quality_flags.append("partial_depreciation_without_full_amortization")
+                break
+        else:
+            parts = []
+            parts_meta = []
+            for concept_name in concept_group:
+                part_value, part_meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_time[:10])
+                if part_value is None:
+                    parts = []
+                    break
+                parts.append(part_value)
+                parts_meta.append(part_meta)
+            if parts:
+                depreciation_value = float(sum(parts))
+                depreciation_meta = {
+                    "mode": "sum_concepts",
+                    "components": parts_meta,
+                    "formula": "sum_component_ttm_values",
+                }
+                break
+
+    if depreciation_value is None:
+        return None
+
+    repaired = dict(current_node)
+    repaired["value"] = float(statement_ebit_node["value"] + depreciation_value)
+    repaired["computed_at"] = computed_at
+    repaired["confidence"] = 1.0
+    repaired["missing_reason"] = None
+    repaired["support_mode"] = depreciation_support_mode
+    repaired["primary_source_basis"] = "statement_direct_plus_sec_companyfacts"
+    repaired["input_source_classification"] = "statement_direct_plus_sec_companyfacts"
+    repaired["input_layer_bucket_reason"] = "statement_ebit_plus_sec_dna"
+    repaired["provenance"] = list(statement_ebit_node.get("provenance") or []) + [
+        {
+            "artifact_type": "SecCompanyFacts",
+            "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+            "source": str(companyfacts_path),
+            "published_at": as_of_time,
+            "ingested_at": computed_at,
+            "hash": None,
+        }
+    ]
+    repaired["component_breakdown"] = {
+        "mode": "statement_ebit_plus_depreciation_amortization",
+        "statement_ebit": statement_ebit_node.get("component_breakdown"),
+        "depreciation_amortization": depreciation_meta,
+        "formula": "statement_ebit + depreciation_amortization_ttm",
+    }
+    repaired["quality_flags"] = quality_flags or None
+    return repaired
+
+
+def _interest_expense_repair_from_companyfacts(
+    *,
+    current_node: dict[str, Any],
+    companyfacts: dict | None,
+    companyfacts_path: Path | None,
+    as_of_time: str,
+    computed_at: str,
+) -> dict[str, Any] | None:
+    if current_node.get("support_mode") != "unsupported":
+        return None
+    if current_node.get("missing_reason") != "statement_fact_unavailable":
+        return None
+    if companyfacts is None or companyfacts_path is None:
+        return None
+
+    repaired_value = None
+    repaired_meta = None
+    repaired_concept = None
+    for concept_name in INTEREST_EXPENSE_TTM_EXACT_CONCEPTS:
+        repaired_value, repaired_meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_time[:10])
+        if repaired_value is not None:
+            repaired_concept = concept_name
+            break
+
+    if repaired_value is None or repaired_meta is None or repaired_concept is None:
+        return None
+
+    repaired = dict(current_node)
+    repaired["value"] = float(repaired_value)
+    repaired["computed_at"] = computed_at
+    repaired["confidence"] = 1.0
+    repaired["missing_reason"] = None
+    repaired["support_mode"] = "exact"
+    repaired["primary_source_basis"] = "sec_companyfacts"
+    repaired["input_source_classification"] = "sec_companyfacts"
+    repaired["input_layer_bucket_reason"] = "sec_companyfacts_ttm_interest_expense"
+    repaired["provenance"] = [
+        {
+            "artifact_type": "SecCompanyFacts",
+            "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+            "source": str(companyfacts_path),
+            "published_at": as_of_time,
+            "ingested_at": computed_at,
+            "hash": None,
+        }
+    ]
+    repaired["component_breakdown"] = {
+        "mode": "companyfacts_ttm_interest_expense",
+        "concept": repaired_concept,
+        "ttm_context": repaired_meta,
+        "formula": "companyfacts_interest_expense_ttm",
+    }
+    repaired["quality_flags"] = None
+    return repaired
+
+
