@@ -377,3 +377,5 @@ def main() -> None:
     print(out_path)
 
 
+if __name__ == "__main__":
+    main()

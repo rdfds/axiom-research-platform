@@ -50,3 +50,36 @@ def test_effective_liquidity_components_market_defaults_restricted_cash_when_gro
     assert resolved["restricted_cash_market_default_zero"] is True
 
 
+def test_effective_liquidity_components_infers_zero_marketable_from_grouped_reconciliation():
+    resolved = _effective_liquidity_component_values(
+        cash_grouped={"support_mode": "proxy_missing_component", "value": 46_699_000.0},
+        cash_exact={"support_mode": "exact", "value": 45_300_000.0},
+        restricted_cash_sec={"support_mode": "exact", "value": 1_399_000.0},
+        marketable_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_unavailable"},
+        restricted_cash={"support_mode": "unsupported", "value": None},
+        marketable={"support_mode": "unsupported", "value": None},
+    )
+
+    assert resolved["marketable_value"] == 0.0
+    assert resolved["marketable_inferred_zero"] is True
+    assert resolved["marketable_zero_reconciled"] is True
+
+
+def test_effective_total_debt_baseline_promotes_single_statement_component_match():
+    resolved = _effective_total_debt_baseline(
+        total_debt={
+            "support_mode": "proxy_missing_component",
+            "value": 62_000_000.0,
+            "missing_reason": "debt_component_missing",
+            "component_breakdown": {"mode": "partial_debt_stack"},
+        },
+        current_debt={"support_mode": "unsupported", "value": None},
+        long_term_debt={"support_mode": "exact", "value": 62_000_000.0},
+    )
+
+    assert resolved["value"] == 62_000_000.0
+    assert resolved["exact"] is True
+    assert resolved["source_metric"] == "capital_structure.long_term_debt_statement_direct"
+    assert resolved["override_reason"] == "single_statement_component_matches_total_debt"
+
+

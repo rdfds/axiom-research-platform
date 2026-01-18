@@ -530,3 +530,198 @@ def _interest_expense_repair_from_companyfacts(
     return repaired
 
 
+def _feature_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+) -> Dict[str, Any]:
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": 1.0 if value is not None else None,
+        "provenance": [
+            {
+                "artifact_type": "StatementFact",
+                "artifact_id": f"statement_direct:{Path(provenance_source).name}",
+                "source": provenance_source,
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        ],
+        "missing_reason": missing_reason,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": "statement_direct",
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": None,
+        "input_source_owner_id": None,
+        "input_source_owner_name": None,
+        "input_source_classification": "statement_direct",
+        "input_source_formula_basis": None,
+        "input_source_alignment_status": "aligned",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": None,
+        "methodology_execution_reason": None,
+        "input_layer_bucket": "reference",
+        "input_layer_bucket_reason": "statement_fact_registry",
+        "strict_market_defined": None,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+        "view_type": None,
+    }
+
+
+def _is_mixed_period_exact_debt(node: dict[str, Any] | None) -> bool:
+    if not node or node.get("support_mode") != "exact":
+        return False
+    breakdown = node.get("component_breakdown") or {}
+    gap_days = _selected_debt_component_gap_days(breakdown)
+    return gap_days is not None and gap_days > DEBT_COMPONENT_ALIGNMENT_MAX_GAP_DAYS
+
+
+def _values_match(left: Any, right: Any, tolerance: float = STATEMENT_DEBT_MATCH_TOLERANCE) -> bool:
+    if left is None or right is None:
+        return False
+    return abs(float(left) - float(right)) <= tolerance
+
+
+def _repair_total_debt_from_single_statement_component(
+    *,
+    current_node: dict[str, Any] | None,
+    current_debt_statement_node: dict[str, Any] | None,
+    long_term_debt_statement_node: dict[str, Any] | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> dict[str, Any] | None:
+    if not current_node:
+        return None
+
+    prior_breakdown = current_node.get("component_breakdown") or {}
+    prior_mode = prior_breakdown.get("mode")
+    if prior_mode not in {
+        "partial_debt_stack",
+        "current_plus_noncurrent_debt",
+        "current_plus_noncurrent_debt_plus_short_term_borrowings",
+        "short_term_borrowings_only",
+    }:
+        return None
+
+    if current_node.get("missing_reason") not in {
+        "debt_component_missing",
+        "debt_component_period_mismatch",
+        "long_term_debt_components_missing",
+    }:
+        return None
+
+    total_debt_value = current_node.get("value")
+    if total_debt_value is None:
+        return None
+
+    current_exact = (
+        current_debt_statement_node is not None
+        and current_debt_statement_node.get("support_mode") == "exact"
+        and current_debt_statement_node.get("value") is not None
+    )
+    long_term_exact = (
+        long_term_debt_statement_node is not None
+        and long_term_debt_statement_node.get("support_mode") == "exact"
+        and long_term_debt_statement_node.get("value") is not None
+    )
+
+    matched_component = None
+    inferred_zero_component = None
+    matched_value = None
+
+    if (
+        current_exact
+        and (long_term_debt_statement_node is None or long_term_debt_statement_node.get("support_mode") == "unsupported")
+        and _values_match(total_debt_value, current_debt_statement_node.get("value"))
+    ):
+        matched_component = current_debt_statement_node
+        matched_value = float(current_debt_statement_node["value"])
+        inferred_zero_component = "capital_structure.long_term_debt_statement_direct"
+    elif (
+        long_term_exact
+        and (current_debt_statement_node is None or current_debt_statement_node.get("support_mode") == "unsupported")
+        and _values_match(total_debt_value, long_term_debt_statement_node.get("value"))
+    ):
+        matched_component = long_term_debt_statement_node
+        matched_value = float(long_term_debt_statement_node["value"])
+        inferred_zero_component = "capital_structure.current_debt_statement_direct"
+
+    if matched_component is None or inferred_zero_component is None or matched_value is None:
+        return None
+
+    as_of_date = _parse_iso_date(as_of_time)
+    matched_end = _statement_fact_end_date(matched_component.get("component_breakdown"))
+    age_days = None if as_of_date is None or matched_end is None else (as_of_date - matched_end).days
+    support_mode = "exact"
+    missing_reason = None
+    quality_flags = None
+    if age_days is not None and age_days > STATEMENT_DEBT_EXACT_MAX_AGE_DAYS:
+        support_mode = "proxy_missing_component"
+        missing_reason = "statement_debt_pair_stale"
+        quality_flags = ["statement_debt_pair_stale"]
+
+    repaired = core._build_metric_from_value(
+        metric_name="capital_structure.total_debt_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+        value=matched_value,
+        support_mode=support_mode,
+        missing_reason=missing_reason,
+        component_breakdown={
+            "mode": "statement_direct_single_component_total_debt",
+            "matched_statement_debt": matched_component.get("component_breakdown"),
+            "inferred_zero_component": inferred_zero_component,
+            "repaired_prior_breakdown": prior_breakdown,
+            "age_days": age_days,
+            "formula": (
+                "exact_current_debt_statement_direct + 0_inferred_long_term_debt"
+                if inferred_zero_component == "capital_structure.long_term_debt_statement_direct"
+                else "exact_long_term_debt_statement_direct + 0_inferred_current_debt"
+            ),
+        },
+        quality_flags=quality_flags,
+        primary_source_basis="statement_direct",
+        provenance_artifact_type="StatementFact",
+        input_layer_bucket_reason="statement_fact_registry",
+    )
+    repaired["input_source_classification"] = "statement_direct_repair"
+    repaired["input_layer_bucket_reason"] = "statement_direct_debt_repair"
+    return repaired
+
+
