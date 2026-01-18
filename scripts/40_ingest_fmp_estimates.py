@@ -185,3 +185,14 @@ def load_fy_end_map() -> Dict[str, Dict[str, int]]:
     return out
 
 
+def period_end_for_year(year: int, fy_end: Optional[Dict[str, int]]) -> pd.Timestamp:
+    if fy_end:
+        month = fy_end["month"]
+        day = fy_end["day"]
+        try:
+            return pd.Timestamp(year=year, month=month, day=day)
+        except Exception:
+            return pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
+    return pd.Timestamp(year=year, month=12, day=31)
+
+

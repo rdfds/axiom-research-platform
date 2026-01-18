@@ -64,7 +64,7 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
-def normalize_value(value: Any) :
+def normalize_value(value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, (pd.Timestamp, datetime)):

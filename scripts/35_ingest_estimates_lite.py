@@ -182,3 +182,23 @@ def load_fy_end_map() :
     return out
 
 
+def estimate_period_end(available_time: pd.Timestamp, fy_end: Optional[Dict[str, int]], period: str) -> pd.Timestamp:
+    if fy_end is None:
+        # Fallback: one year forward, end of month
+        return (available_time + pd.DateOffset(months=12)).to_period("M").to_timestamp("M")
+    month = fy_end["month"]
+    day = fy_end["day"]
+    year = available_time.year
+    try:
+        candidate = pd.Timestamp(year=year, month=month, day=day)
+    except Exception:
+        candidate = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
+    if candidate < available_time:
+        candidate = candidate + pd.DateOffset(years=1)
+    if period.upper() == "FY2":
+        candidate = candidate + pd.DateOffset(years=1)
+    if period.upper() == "NTM":
+        candidate = (available_time + pd.DateOffset(months=12)).to_period("M").to_timestamp("M")
+    return candidate
+
+
