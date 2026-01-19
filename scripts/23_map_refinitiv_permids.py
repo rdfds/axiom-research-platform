@@ -51,3 +51,12 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def ensure_session() :
+    try:
+        _ = rd.get_data(universe="0#.SPX", fields=["TR.CommonName"])
+        return True
+    except Exception as e:
+        log(f"Refinitiv session check failed: {e}")
+        return False
+
+
