@@ -5,7 +5,7 @@ from pathlib import Path
 from src.company_state_builder import CompanyStateBuilder
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser(description="Quick test for peer_context features.")
     parser.add_argument("--company-id", required=True)
     parser.add_argument("--asof", required=True)
