@@ -725,3 +725,163 @@ def _repair_total_debt_from_single_statement_component(
     return repaired
 
 
+def _repair_total_debt_from_statement_split(
+    *,
+    current_node: dict[str, Any] | None,
+    current_debt_statement_node: dict[str, Any] | None,
+    long_term_debt_statement_node: dict[str, Any] | None,
+    current_debt_statement_candidates: list[dict[str, Any]] | None,
+    long_term_debt_statement_candidates: list[dict[str, Any]] | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> dict[str, Any] | None:
+    current_is_mixed_period = _is_mixed_period_exact_debt(current_node)
+    prior_breakdown = (current_node or {}).get("component_breakdown") or {}
+    prior_has_capital_lease_overlap = bool(prior_breakdown.get("capital_lease_overlap_detected"))
+    as_of_date = _parse_iso_date(as_of_time)
+    aligned_current_fact, aligned_long_term_fact, aligned_gap_days = _best_statement_debt_pair(
+        current_debt_statement_candidates,
+        long_term_debt_statement_candidates,
+    )
+
+    if aligned_current_fact is not None and aligned_long_term_fact is not None:
+        total_value = float(aligned_current_fact["value"] + aligned_long_term_fact["value"])
+        latest_end_dt = max(aligned_current_fact["end_dt"], aligned_long_term_fact["end_dt"])
+        age_days = None if as_of_date is None else (as_of_date - latest_end_dt).days
+        support_mode = "exact"
+        missing_reason = None
+        quality_flags = None
+        if prior_has_capital_lease_overlap:
+            support_mode = "proxy_missing_component"
+            missing_reason = "finance_lease_adjustment_unavailable"
+            quality_flags = ["finance_lease_adjustment_unavailable"]
+        elif age_days is not None and age_days > STATEMENT_DEBT_EXACT_MAX_AGE_DAYS:
+            support_mode = "proxy_missing_component"
+            missing_reason = "statement_debt_pair_stale"
+            quality_flags = ["statement_debt_pair_stale"]
+        repaired = core._build_metric_from_value(
+            metric_name="capital_structure.total_debt_provider_direct",
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit="usd",
+            value=total_value,
+            support_mode=support_mode,
+            missing_reason=missing_reason,
+            component_breakdown={
+                "mode": "statement_direct_current_plus_noncurrent_debt",
+                "current_statement_debt": aligned_current_fact["meta"],
+                "long_term_statement_debt": aligned_long_term_fact["meta"],
+                "repaired_prior_breakdown": prior_breakdown,
+                "capital_lease_overlap_detected": prior_has_capital_lease_overlap,
+                "alignment_gap_days": aligned_gap_days,
+                "age_days": age_days,
+                "formula": "current_debt_statement_direct + long_term_debt_statement_direct",
+            },
+            quality_flags=quality_flags,
+            primary_source_basis="statement_direct",
+            provenance_artifact_type="StatementFact",
+            input_layer_bucket_reason="statement_fact_registry",
+        )
+        repaired["input_source_classification"] = "statement_direct_repair"
+        repaired["input_layer_bucket_reason"] = "statement_direct_debt_repair"
+        return repaired
+
+    repaired_single_component = _repair_total_debt_from_single_statement_component(
+        current_node=current_node,
+        current_debt_statement_node=current_debt_statement_node,
+        long_term_debt_statement_node=long_term_debt_statement_node,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+    )
+    if repaired_single_component is not None:
+        return repaired_single_component
+
+    if not current_debt_statement_node or not long_term_debt_statement_node:
+        if not current_is_mixed_period:
+            return None
+        downgraded = dict(current_node or {})
+        downgraded["support_mode"] = "proxy_missing_component"
+        downgraded["missing_reason"] = "debt_component_period_mismatch"
+        downgraded["computed_at"] = computed_at
+        flags = list(downgraded.get("quality_flags") or [])
+        if "debt_component_period_mismatch" not in flags:
+            flags.append("debt_component_period_mismatch")
+        downgraded["quality_flags"] = flags
+        return downgraded
+
+    if current_debt_statement_node.get("support_mode") != "exact" or long_term_debt_statement_node.get("support_mode") != "exact":
+        if not current_is_mixed_period:
+            return None
+        downgraded = dict(current_node or {})
+        downgraded["support_mode"] = "proxy_missing_component"
+        downgraded["missing_reason"] = "debt_component_period_mismatch"
+        downgraded["computed_at"] = computed_at
+        flags = list(downgraded.get("quality_flags") or [])
+        if "debt_component_period_mismatch" not in flags:
+            flags.append("debt_component_period_mismatch")
+        downgraded["quality_flags"] = flags
+        return downgraded
+
+    current_debt_value = current_debt_statement_node.get("value")
+    long_term_debt_value = long_term_debt_statement_node.get("value")
+    if current_debt_value is None or long_term_debt_value is None:
+        if not current_is_mixed_period:
+            return None
+        downgraded = dict(current_node or {})
+        downgraded["support_mode"] = "proxy_missing_component"
+        downgraded["missing_reason"] = "debt_component_period_mismatch"
+        downgraded["computed_at"] = computed_at
+        flags = list(downgraded.get("quality_flags") or [])
+        if "debt_component_period_mismatch" not in flags:
+            flags.append("debt_component_period_mismatch")
+        downgraded["quality_flags"] = flags
+        return downgraded
+
+    if current_node and current_node.get("support_mode") == "exact" and not current_is_mixed_period:
+        return None
+
+    current_end = _statement_fact_end_date(current_debt_statement_node.get("component_breakdown"))
+    long_term_end = _statement_fact_end_date(long_term_debt_statement_node.get("component_breakdown"))
+    age_days = None
+    if as_of_date is not None and current_end is not None and long_term_end is not None:
+        age_days = (as_of_date - max(current_end, long_term_end)).days
+
+    support_mode = "proxy_missing_component" if prior_has_capital_lease_overlap else "exact"
+    missing_reason = "finance_lease_adjustment_unavailable" if prior_has_capital_lease_overlap else None
+    quality_flags = ["finance_lease_adjustment_unavailable"] if prior_has_capital_lease_overlap else None
+    if age_days is not None and age_days > STATEMENT_DEBT_EXACT_MAX_AGE_DAYS:
+        support_mode = "proxy_missing_component"
+        missing_reason = "statement_debt_pair_stale"
+        quality_flags = ["statement_debt_pair_stale"]
+
+    repaired = core._build_metric_from_value(
+        metric_name="capital_structure.total_debt_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+        value=float(current_debt_value + long_term_debt_value),
+        support_mode=support_mode,
+        missing_reason=missing_reason,
+        component_breakdown={
+            "mode": "statement_direct_current_plus_noncurrent_debt",
+            "current_statement_debt": current_debt_statement_node.get("component_breakdown"),
+            "long_term_statement_debt": long_term_debt_statement_node.get("component_breakdown"),
+            "repaired_prior_breakdown": prior_breakdown,
+            "capital_lease_overlap_detected": prior_has_capital_lease_overlap,
+            "age_days": age_days,
+            "formula": "current_debt_statement_direct + long_term_debt_statement_direct",
+        },
+        quality_flags=quality_flags,
+        primary_source_basis="statement_direct",
+        provenance_artifact_type="StatementFact",
+        input_layer_bucket_reason="statement_fact_registry",
+    )
+    repaired["input_source_classification"] = "statement_direct_repair"
+    repaired["input_layer_bucket_reason"] = "statement_direct_debt_repair"
+    return repaired
+
+
