@@ -59,3 +59,59 @@ def _feature_value(raw: Any) -> Any:
     return raw
 
 
+def _support_mode(raw: Any) -> Optional[str]:
+    if isinstance(raw, dict):
+        value = raw.get("support_mode")
+        return str(value).strip().lower() if value is not None else None
+    return None
+
+
+def _applicability_status(raw: Any) -> Optional[str]:
+    if isinstance(raw, dict):
+        value = raw.get("applicability_status")
+        return str(value).strip().lower() if value is not None else None
+    return None
+
+
+def _quality_flags(raw: Any) -> set[str]:
+    if not isinstance(raw, dict):
+        return set()
+    return {
+        str(flag).strip().lower()
+        for flag in (raw.get("quality_flags") or [])
+        if flag is not None
+    }
+
+
+def _alias_source_supported(raw: Any) -> bool:
+    if raw is None:
+        return False
+    if _feature_value(raw) is None:
+        return False
+    if _support_mode(raw) == "unsupported":
+        return False
+    if _applicability_status(raw) in {"unsupported", "diagnostic"}:
+        return False
+    flags = _quality_flags(raw)
+    if "unsupported_metric" in flags or "sector_native_metrics_required" in flags:
+        return False
+    return True
+
+
+def _support_rank(raw: Any) -> int:
+    if not _alias_source_supported(raw):
+        return -1
+    support_mode = _support_mode(raw)
+    if support_mode in _EXACTISH_SUPPORT_MODES:
+        return 2
+    return 1
+
+
+def _direct_feature_value(features: Dict[str, Any], key: str, default: Any = None) -> Any:
+    if not isinstance(features, dict):
+        return default
+    if key not in features:
+        return default
+    return _feature_value(features.get(key))
+
+
