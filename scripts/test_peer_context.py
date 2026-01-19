@@ -33,3 +33,5 @@ def main() :
         print(k, feats.get(k))
 
 
+if __name__ == "__main__":
+    main()
