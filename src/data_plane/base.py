@@ -108,7 +108,7 @@ class CanonicalRecord:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict) :
+    def from_dict(cls, d: Dict) -> 'CanonicalRecord':
         """Create from dictionary."""
         return cls(
             record_id=d['record_id'],
