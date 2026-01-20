@@ -201,7 +201,7 @@ def _audit_chunk(
     companyfacts_root_path = Path(companyfacts_root)
 
     for row in rows:
-        entity_id = row['company_id']
+        entity_id = row.get("company_id")
         provider_row = provider_by_entity.get(entity_id)
         companyfacts_path = companyfacts_root_path / f"CIK{entity_id}.json"
         companyfacts = core._load_companyfacts(companyfacts_path)

@@ -885,3 +885,109 @@ def _repair_total_debt_from_statement_split(
     return repaired
 
 
+def _recompute_standardized_debt_metrics(
+    *,
+    features: dict[str, Any],
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> None:
+    total_debt = core._metric_value(features, "capital_structure.total_debt_provider_direct")
+    total_debt_support = core._metric_support(features, "capital_structure.total_debt_provider_direct")
+    cash_sti = core._metric_value(features, "liquidity.cash_and_short_term_investments_provider_direct")
+    cash_sti_support = core._metric_support(features, "liquidity.cash_and_short_term_investments_provider_direct")
+    ebitda = core._metric_value(features, "operating.ebitda_ltm_provider_direct")
+    ebitda_support = core._metric_support(features, "operating.ebitda_ltm_provider_direct")
+
+    net_debt = None if total_debt is None or cash_sti is None else total_debt - cash_sti
+
+    features["capital_structure.net_debt_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.net_debt_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+        numerator=net_debt,
+        denominator=None,
+        extra_components={
+            "total_debt_provider_direct": total_debt,
+            "cash_and_short_term_investments_provider_direct": cash_sti,
+        },
+        component_supports={
+            "total_debt_provider_direct": total_debt_support,
+            "cash_and_short_term_investments_provider_direct": cash_sti_support,
+        },
+        formula="total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+        allow_numerator_only=True,
+    )
+    features["capital_structure.gross_leverage_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.gross_leverage_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+        numerator=total_debt,
+        denominator=ebitda,
+        extra_components={
+            "total_debt_provider_direct": total_debt,
+            "ebitda_ltm_provider_direct": ebitda,
+        },
+        component_supports={
+            "total_debt_provider_direct": total_debt_support,
+            "ebitda_ltm_provider_direct": ebitda_support,
+        },
+        formula="total_debt_provider_direct / ebitda_ltm_provider_direct",
+    )
+    features["capital_structure.net_leverage_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.net_leverage_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+        numerator=net_debt,
+        denominator=ebitda,
+        extra_components={
+            "net_debt_standardized": net_debt,
+            "ebitda_ltm_provider_direct": ebitda,
+        },
+        component_supports={
+            "net_debt_standardized": features["capital_structure.net_debt_standardized"]["support_mode"],
+            "ebitda_ltm_provider_direct": ebitda_support,
+        },
+        formula="net_debt_standardized / ebitda_ltm_provider_direct",
+    )
+
+
+def _load_statement_fact_rows(
+    facts_path: Path,
+    entity_ids: list[str],
+    as_of_time: str,
+) -> list[dict[str, Any]]:
+    entity_sql = ",".join(f"'{entity_id}'" for entity_id in sorted(set(entity_ids)))
+    fact_types = sorted({spec["fact_type"] for spec in STATEMENT_FACT_SPECS.values()})
+    fact_sql = ",".join(f"'{fact_type}'" for fact_type in fact_types)
+    as_of_sql = as_of_time.replace("'", "''")
+    facts_source_arg = _fact_parquet_source_arg(facts_path, as_of_time)
+    query = f"""
+        SELECT
+            entity_id,
+            fact_type,
+            fact_value,
+            unit,
+            fact_id,
+            source_id,
+            source_type,
+            raw_pointer,
+            effective_at,
+            fact_time,
+            ingested_at
+        FROM read_parquet({facts_source_arg})
+        WHERE entity_id IN ({entity_sql})
+          AND fact_type IN ({fact_sql})
+          AND valid_from <= TIMESTAMPTZ '{as_of_sql}'
+          AND (valid_to IS NULL OR valid_to >= TIMESTAMPTZ '{as_of_sql}')
+        ORDER BY entity_id, fact_type, COALESCE(effective_at, fact_time) DESC, ingested_at DESC, fact_id DESC
+    """
+    return duckdb.sql(query).fetchdf().to_dict(orient="records")
+
+
