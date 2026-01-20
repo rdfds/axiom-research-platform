@@ -202,3 +202,43 @@ def estimate_period_end(available_time: pd.Timestamp, fy_end: Optional[Dict[str,
     return candidate
 
 
+def map_to_company(df: pd.DataFrame, ric_map: pd.DataFrame, names: pd.DataFrame, links: pd.DataFrame, as_of: pd.Timestamp) -> pd.DataFrame:
+    merged = df.merge(ric_map, on="ric", how="left")
+    if EST_DEBUG:
+        log(f"  map: after ric_map {len(merged):,} | cusip8 missing {merged['cusip8'].isna().mean():.2%}")
+    merged = merged.dropna(subset=["cusip8"])
+    merged = merged.merge(names, on="cusip8", how="left")
+    if EST_DEBUG:
+        log(f"  map: after names {len(merged):,} | permno missing {merged['permno'].isna().mean():.2%}")
+    # Prefer name-date match, but if it eliminates everything, fall back to latest name
+    merged_all = merged.copy()
+    name_mask = (as_of >= merged["namedt"]) & (as_of <= merged["nameendt"])
+    merged = merged[name_mask]
+    if merged.empty:
+        if EST_DEBUG:
+            log("  map: name-date filter removed all rows; falling back to latest nameendt")
+        merged = merged_all
+    merged = merged.sort_values(["ric", "nameendt"])
+    merged = merged.drop_duplicates(subset=["ric"], keep="last")
+    merged = merged.dropna(subset=["permno"])
+
+    # Prefer gvkey if link table provides it, but do NOT drop rows if link is missing.
+    merged = merged.merge(
+        links,
+        left_on="permno",
+        right_on="lpermno",
+        how="left",
+    )
+    if EST_DEBUG:
+        log(f"  map: after links merge {len(merged):,} | gvkey missing {merged['gvkey'].isna().mean():.2%}")
+
+    # Keep best row per ric (prefer primary links and latest linkenddt)
+    merged = merged.sort_values(["ric", "linkprim", "linkenddt"])
+    merged = merged.drop_duplicates(subset=["ric"], keep="last")
+
+    merged["permno"] = merged["permno"].astype("Int64")
+    merged["permco"] = merged["permco"].astype("Int64")
+    merged["gvkey"] = merged["gvkey"].astype("string")
+    return merged
+
+
