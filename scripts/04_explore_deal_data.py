@@ -188,3 +188,5 @@ For V1 M&A analog retrieval, your options are:
     """)
 
 
+if __name__ == "__main__":
+    main()
