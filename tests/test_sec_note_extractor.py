@@ -36,3 +36,32 @@ def test_extract_revolver_note_rows_derives_undrawn_from_capacity_and_outstandin
     assert metrics[("financial.revolver_undrawn", "capacity_minus_outstanding")] == 1_500_000_000.0
 
 
+def test_extract_lease_note_rows_captures_costs_liabilities_and_schedule():
+    module = _load_module()
+    doc = {
+        "document_id": "sec:abc:10q:2024",
+        "source_type": "sec_edgar_filing",
+        "doc_type": "10-Q",
+        "title": "Quarterly Report on Form 10-Q",
+        "raw_text": """
+        Leases
+        Operating lease cost was $125 million and finance lease cost was $20 million.
+        Lease liabilities current were $80 million. Lease liabilities noncurrent were $300 million.
+        Maturity analysis of lease liabilities
+        2025 $90 million
+        2026 $85 million
+        Thereafter $300 million
+        """,
+    }
+    rows = module.extract_lease_note_rows(doc)
+    df = pd.DataFrame(rows)
+    assert float(df.loc[df["metric_key"] == "financial.lease_expense_operating", "value"].iloc[0]) == 125_000_000.0
+    assert float(df.loc[df["metric_key"] == "financial.lease_expense_finance", "value"].iloc[0]) == 20_000_000.0
+    assert float(df.loc[df["metric_key"] == "financial.lease_liability_current", "value"].iloc[0]) == 80_000_000.0
+    assert float(df.loc[df["metric_key"] == "financial.lease_liability_noncurrent", "value"].iloc[0]) == 300_000_000.0
+    schedule = df[df["metric_key"] == "financial.lease_payment_due"].set_index("bucket_label")["value"].to_dict()
+    assert schedule["2025"] == 90_000_000.0
+    assert schedule["2026"] == 85_000_000.0
+    assert schedule["Thereafter"] == 300_000_000.0
+
+
