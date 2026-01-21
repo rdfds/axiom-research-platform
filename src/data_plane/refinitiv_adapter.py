@@ -151,7 +151,7 @@ class RefinitivAdapter(SourceAdapter):
                     }
                 )
                 for _, row in divs.iterrows():
-                    if pd.notna(row['Dividend Ex Date']):
+                    if pd.notna(row.get('Dividend Ex Date')):
                         all_actions.append(row.to_dict())
             except:
                 pass

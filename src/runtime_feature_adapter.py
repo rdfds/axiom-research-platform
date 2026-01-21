@@ -133,3 +133,20 @@ def _profile_name() -> Optional[str]:
     return _DEFAULT_PROFILE
 
 
+def _allowed_rules() -> Optional[set[str]]:
+    raw = str(os.environ.get(_RULES_ENV_KEY, "")).strip()
+    if not raw:
+        profile = _profile_name()
+        if profile is None:
+            return None
+        profile_rules = _PROFILE_RULES.get(profile)
+        if profile_rules is None:
+            return None
+        return set(profile_rules)
+    return {
+        token.strip()
+        for token in raw.split(",")
+        if token is not None and token.strip()
+    }
+
+

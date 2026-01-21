@@ -60,3 +60,32 @@ def ensure_session() :
         return False
 
 
+def _resolve_permid_format(sample_permid: str) -> str:
+    candidates = [
+        "{pid}",
+        "PermID:{pid}",
+        "PERMID:{pid}",
+    ]
+    for fmt in candidates:
+        try:
+            _ = rd.get_data(
+                universe=[fmt.format(pid=sample_permid)],
+                fields=["TR.CommonName"],
+            )
+            return fmt
+        except Exception:
+            continue
+    return ""
+
+
+def _probe_fields(universe_sample: List[str]) -> List[str]:
+    working = []
+    for field in FIELD_CANDIDATES:
+        try:
+            _ = rd.get_data(universe=universe_sample, fields=[field])
+            working.append(field)
+        except Exception as e:
+            log(f"Field not available: {field} ({e})")
+    return working
+
+
