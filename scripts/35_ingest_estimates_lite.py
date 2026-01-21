@@ -242,3 +242,203 @@ def map_to_company(df: pd.DataFrame, ric_map: pd.DataFrame, names: pd.DataFrame,
     return merged
 
 
+def main() -> None:
+    warnings.filterwarnings(
+        "ignore",
+        message="Downcasting behavior in `replace` is deprecated",
+        category=FutureWarning,
+    )
+    rics = load_universe()
+    log(f"Universe size: {len(rics):,}")
+
+    ric_map = load_ric_map()
+    names = load_names()
+    links = load_links()
+    fy_end_map = load_fy_end_map()
+
+    ingestion_time = datetime.utcnow()
+    available_time = pd.Timestamp(ingestion_time)
+    source_system = "refinitiv_estimates_lite"
+
+    existing_path = WAREHOUSE_DIR / "warehouse_estimates.parquet"
+    existing_latest = None
+    if existing_path.exists():
+        existing = pd.read_parquet(existing_path, columns=["entity_id", "metric", "period", "available_time", "consensus_value"])
+        existing["available_time"] = pd.to_datetime(existing["available_time"], errors="coerce")
+        existing = existing.sort_values(["entity_id", "metric", "period", "available_time"])
+        existing_latest = existing.groupby(["entity_id", "metric", "period"]).tail(1)
+        existing_latest = existing_latest.rename(columns={"consensus_value": "prev_value"})
+
+    rd.open_session()
+    try:
+        all_records: List[Dict] = []
+        all_raw: List[Dict] = []
+
+        total_batches = (len(rics) + EST_BATCH - 1) // EST_BATCH
+        for period in EST_PERIODS:
+            log(f"Pulling estimates for {period}...")
+            fields = REQUEST_FIELDS
+
+            batch_count = 0
+            for i in range(0, len(rics), EST_BATCH):
+                batch = rics[i:i+EST_BATCH]
+                batch_count += 1
+                try:
+                    df = rd.get_data(universe=batch, fields=fields, parameters={"Period": period})
+                except Exception as exc:
+                    log(f"  Batch error: {exc}")
+                    time.sleep(EST_SLEEP)
+                    continue
+
+                if df is None or df.empty or "Instrument" not in df.columns:
+                    if EST_DEBUG:
+                        log(f"  Batch {i//EST_BATCH + 1}: empty or missing Instrument")
+                    if batch_count % 10 == 0:
+                        log(f"  Progress {batch_count}/{total_batches} batches")
+                    time.sleep(EST_SLEEP)
+                    continue
+
+                df = df.rename(columns={"Instrument": "ric"})
+                df["ric"] = df["ric"].astype("string").str.upper().str.strip()
+                if EST_DEBUG and i == 0:
+                    log(f"  Columns: {list(df.columns)}")
+                    for metric, aliases in FIELD_ALIASES.items():
+                        for alias in aliases:
+                            if alias in df.columns:
+                                log(f"  {alias} non-null pct: {df[alias].notna().mean():.2%}")
+                                break
+                if batch_count % 10 == 0:
+                    log(f"  Progress {batch_count}/{total_batches} batches")
+
+                # Resolve actual column names present in this batch (RDP returns friendly names)
+                lower_cols = {str(c).lower(): c for c in df.columns}
+
+                def resolve_col(aliases: List[str]) -> Optional[str]:
+                    for alias in aliases:
+                        if alias in df.columns:
+                            return alias
+                        alt = lower_cols.get(alias.lower())
+                        if alt is not None:
+                            return alt
+                    return None
+
+                metric_cols = {metric: resolve_col(aliases) for metric, aliases in FIELD_ALIASES.items()}
+                num_col = resolve_col(NUM_FIELDS)
+
+                mapped = map_to_company(df, ric_map, names, links, available_time)
+                if mapped.empty:
+                    if EST_DEBUG:
+                        log(f"  Batch {i//EST_BATCH + 1}: mapped empty")
+                    time.sleep(EST_SLEEP)
+                    continue
+
+                for _, row in mapped.iterrows():
+                    company_id = row.get("gvkey")
+                    if company_id is None or pd.isna(company_id) or str(company_id) == "nan":
+                        company_id = str(row.get("permco")) if not pd.isna(row.get("permco")) else None
+                    quality_flags = ["partial_coverage", "estimated_available_time", "estimated_period_end"]
+                    if not company_id:
+                        company_id = str(row['permno']) if not pd.isna(row.get("permno")) else None
+                        if company_id:
+                            quality_flags.append("estimated_company_id")
+                    if not company_id:
+                        continue
+
+                    fy_end = fy_end_map.get(str(company_id))
+                    period_end = estimate_period_end(available_time, fy_end, period)
+                    event_time = period_end
+                    if event_time > available_time:
+                        # Enforce bitemporal rule: event_time <= available_time
+                        event_time = available_time
+                        quality_flags.append("estimated_event_time")
+
+                    for metric, field in metric_cols.items():
+                        if field is None:
+                            continue
+                        value = row.get(field)
+                        if value is None or pd.isna(value):
+                            continue
+
+                        payload = {
+                            "ric": row.get("ric"),
+                            "metric": metric,
+                            "period": period,
+                            "consensus_value": float(value),
+                            "num_estimates": row.get(num_col) if num_col else None,
+                            "period_end": period_end.isoformat() if hasattr(period_end, "isoformat") else str(period_end),
+                            "capture_time": available_time.isoformat(),
+                        }
+                        raw_payload_hash = compute_raw_payload_hash(payload)
+                        version_id = compute_version_id(
+                            source_system=source_system,
+                            entity_id=str(company_id),
+                            event_time=event_time.to_pydatetime(),
+                            available_time=available_time.to_pydatetime(),
+                            raw_payload_hash=raw_payload_hash,
+                        )
+
+                        all_raw.append(
+                            {
+                                "entity_id": str(company_id),
+                                "company_id": str(company_id),
+                                "security_id": str(row.get("permno")) if not pd.isna(row.get("permno")) else None,
+                                "event_time": event_time,
+                                "available_time": available_time,
+                                "payload": payload,
+                            }
+                        )
+
+                        all_records.append(
+                            {
+                                "source_system": source_system,
+                                "entity_id": str(company_id),
+                                "company_id": str(company_id),
+                                "security_id": str(row.get("permno")) if not pd.isna(row.get("permno")) else None,
+                                "event_time": event_time,
+                                "available_time": available_time,
+                                "ingestion_time": ingestion_time,
+                                "version_id": version_id,
+                                "raw_payload_hash": raw_payload_hash,
+                                "upstream_version_ids": [version_id],
+                                "quality_flags": quality_flags,
+                                "metric": metric,
+                                "period": period,
+                                "consensus_value": float(value),
+                                "num_estimates": row.get(num_col) if num_col else None,
+                                "revision_direction": None,
+                                "revision_magnitude": None,
+                                "period_end": period_end,
+                            }
+                        )
+
+                time.sleep(EST_SLEEP)
+
+        if not all_records:
+            log("No estimate records collected.")
+            return
+
+        records_df = pd.DataFrame(all_records)
+        if existing_latest is not None and not existing_latest.empty:
+            records_df = records_df.merge(
+                existing_latest[["entity_id", "metric", "period", "prev_value"]],
+                on=["entity_id", "metric", "period"],
+                how="left",
+            )
+            diff = records_df["consensus_value"] - records_df["prev_value"]
+            records_df["revision_magnitude"] = diff.where(records_df["prev_value"].notna())
+            records_df["revision_direction"] = np.where(
+                records_df["prev_value"].notna(),
+                np.where(diff > 0, "up", np.where(diff < 0, "down", "flat")),
+                None,
+            )
+            records_df = records_df.drop(columns=["prev_value"])
+
+        if all_raw:
+            write_raw_records(source_system=source_system, records=all_raw)
+        append_canonical_records("warehouse_estimates", records_df.to_dict("records"))
+        log(f"Ingested {len(records_df):,} estimates (A4-lite)")
+    finally:
+        rd.close_session()
+        log("Refinitiv session closed.")
+
+
