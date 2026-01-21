@@ -170,3 +170,10 @@ def _rule_enabled(rule: str, *, action_family: Optional[str] = None, action_id: 
     return _resolved_action_family(action_family=action_family, action_id=action_id) in gated_families
 
 
+def _rules_profile_label() -> Optional[str]:
+    raw = str(os.environ.get(_RULES_ENV_KEY, "")).strip()
+    if raw:
+        return "custom"
+    return _profile_name()
+
+
