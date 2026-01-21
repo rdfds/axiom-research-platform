@@ -65,3 +65,25 @@ def test_extract_lease_note_rows_captures_costs_liabilities_and_schedule():
     assert schedule["Thereafter"] == 300_000_000.0
 
 
+def test_extract_debt_maturity_rows_captures_year_buckets():
+    module = _load_module()
+    doc = {
+        "document_id": "sec:abc:10k:2024",
+        "source_type": "sec_edgar_filing",
+        "doc_type": "10-K",
+        "title": "Annual Report on Form 10-K",
+        "raw_text": """
+        Long-term debt maturities are as follows:
+        2025 $200 million
+        2026 $350 million
+        Thereafter $1.2 billion
+        """,
+    }
+    rows = module.extract_debt_maturity_rows(doc)
+    df = pd.DataFrame(rows)
+    buckets = df.set_index("bucket_label")["value"].to_dict()
+    assert buckets["2025"] == 200_000_000.0
+    assert buckets["2026"] == 350_000_000.0
+    assert buckets["Thereafter"] == 1_200_000_000.0
+
+
