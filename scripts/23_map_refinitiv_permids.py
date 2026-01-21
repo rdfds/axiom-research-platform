@@ -96,3 +96,33 @@ def _first_col(df: pd.DataFrame, *names):
     return None
 
 
+class Progress:
+    def __init__(self, total: int):
+        self.total = max(total, 1)
+        self.start = time.time()
+        self.last_print = 0.0
+
+    def update(self, current: int, note: str = ""):
+        now = time.time()
+        if now - self.last_print < 0.2 and current < self.total:
+            return
+        elapsed = now - self.start
+        rate = current / elapsed if elapsed > 0 else 0
+        remaining = (self.total - current) / rate if rate > 0 else 0
+        percent = current / self.total * 100
+        bar_len = 28
+        filled = int(bar_len * percent / 100)
+        bar = "#" * filled + "-" * (bar_len - filled)
+        msg = (
+            f"[{percent:5.1f}%] [{bar}] {current}/{self.total} "
+            f"| {elapsed/60:5.1f}m elapsed | ETA {remaining/60:5.1f}m {note}"
+        )
+        sys.stdout.write("\r" + msg.ljust(120))
+        sys.stdout.flush()
+        self.last_print = now
+
+    def finish(self):
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
