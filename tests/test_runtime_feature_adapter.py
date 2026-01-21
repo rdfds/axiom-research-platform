@@ -173,3 +173,28 @@ def test_banned_total_debt_substitution_never_happens(monkeypatch):
     assert record["value"] == 400.0
 
 
+def test_macro_and_credit_aliases_resolve_from_expected_sources(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "ust_10y_alias,ust_2y_alias,sofr_compatibility_fallback,credit_ig_alias,credit_hy_alias,pe_ratio_compatibility_alias",
+    )
+    features = {
+        "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+        "macro.ust_2y_yield": {"value": 4.25, "support_mode": "exact"},
+        "macro.curve_2s10s": {"value": 0.33, "support_mode": "exact"},
+        "macro.sofr": {"value": 4.49, "support_mode": "exact"},
+        "macro.sofr_or_fed_funds": {"value": 4.40, "support_mode": "exact"},
+        "macro.ig_oas": {"value": 1.02, "support_mode": "exact"},
+        "macro.hy_oas": {"value": 3.44, "support_mode": "exact"},
+        "market.pe_ratio": {"value": 19.3, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "macro.rate_10y") == 4.58
+    assert resolve_feature_value(features, "macro.rate_2y") == 4.25
+    assert resolve_feature_value(features, "macro.sofr") == 4.49
+    assert resolve_feature_value(features, "market.ig_oas") == 1.02
+    assert resolve_feature_value(features, "market.hy_oas") == 3.44
+    assert resolve_feature_value(features, "market.pe") == 19.3
+
+

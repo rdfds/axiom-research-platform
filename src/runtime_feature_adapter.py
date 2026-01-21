@@ -160,3 +160,13 @@ def _resolved_action_family(*, action_family: Optional[str] = None, action_id: O
     return aid or None
 
 
+def _rule_enabled(rule: str, *, action_family: Optional[str] = None, action_id: Optional[str] = None) -> bool:
+    allowed = _allowed_rules()
+    if allowed is not None and rule not in allowed:
+        return False
+    gated_families = _ACTION_GATED_RULES.get(rule)
+    if gated_families is None:
+        return True
+    return _resolved_action_family(action_family=action_family, action_id=action_id) in gated_families
+
+
