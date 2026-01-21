@@ -78,3 +78,37 @@ def test_unsupported_normalized_nodes_fall_back_to_legacy(monkeypatch):
     assert resolve_feature_value(features, "operating.ebitda_ttm") == 180.0
 
 
+def test_proxy_normalized_nodes_do_not_override_exact_legacy(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv("AXIOM_RUNTIME_FEATURE_ADAPTER_RULES", "normalized_net_debt,normalized_available_liquidity")
+    features = {
+        "capital_structure.net_debt": {"value": 500.0, "support_mode": "exact"},
+        "capital_structure.net_debt_normalized": {"value": 420.0, "support_mode": "proxy_missing_component"},
+        "liquidity.available_for_actions": {"value": 140.0, "support_mode": "exact"},
+        "liquidity.available_liquidity_normalized": {"value": 130.0, "support_mode": "proxy_missing_component"},
+    }
+
+    assert resolve_feature_value(features, "capital_structure.net_debt") == 500.0
+    assert resolve_feature_value(features, "liquidity.available_for_actions") == 140.0
+
+
+def test_rule_allowlist_limits_runtime_substitutions(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv("AXIOM_RUNTIME_FEATURE_ADAPTER_RULES", "ust_10y_alias")
+    features = {
+        "capital_structure.net_debt": {"value": 500.0, "support_mode": "exact"},
+        "capital_structure.net_debt_normalized": {"value": 420.0, "support_mode": "exact"},
+        "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+        "macro.ust_2y_yield": {"value": 4.25, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "capital_structure.net_debt") == 500.0
+    assert resolve_feature_value(features, "macro.rate_10y") == 4.58
+    assert resolve_feature_value(features, "macro.rate_2y") is None
+
+    adapted, diagnostics = adapt_snapshot({"features": features})
+    assert adapted["features"]["capital_structure.net_debt"]["value"] == 500.0
+    assert diagnostics["allowed_rules"] == ["ust_10y_alias"]
+    assert diagnostics["counts_by_target"] == {"macro.rate_10y": 1}
+
+

@@ -115,3 +115,21 @@ def _direct_feature_value(features: Dict[str, Any], key: str, default: Any = Non
     return _feature_value(features.get(key))
 
 
+def runtime_feature_adapter_enabled() -> bool:
+    raw = str(os.environ.get(_ADAPTER_ENV_KEY, "0")).strip().lower()
+    return raw not in {"", "0", "false", "no", "off"}
+
+
+def _profile_name() -> Optional[str]:
+    raw = str(os.environ.get(_PROFILE_ENV_KEY, "")).strip().lower().replace("-", "_")
+    if not raw or raw == "default":
+        if not runtime_feature_adapter_enabled():
+            return None
+        return _DEFAULT_PROFILE
+    if raw in _PROFILE_RULES:
+        return raw
+    if not runtime_feature_adapter_enabled():
+        return None
+    return _DEFAULT_PROFILE
+
+
