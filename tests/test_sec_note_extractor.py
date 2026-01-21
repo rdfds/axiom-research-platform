@@ -87,3 +87,14 @@ def test_extract_debt_maturity_rows_captures_year_buckets():
     assert buckets["Thereafter"] == 1_200_000_000.0
 
 
+def test_extract_note_pattern_rows_skips_non_sec_documents():
+    module = _load_module()
+    doc = {
+        "document_id": "fmp:ABC:2024Q4",
+        "source_type": "fmp_transcripts",
+        "doc_type": "earnings_call",
+        "title": "ABC 2024Q4 Earnings Call",
+        "raw_text": "Our revolving credit facility provides commitments of $2.0 billion.",
+    }
+    extracted = module.extract_note_pattern_rows(doc)
+    assert extracted == {"revolver": [], "lease": [], "debt_maturity": []}
