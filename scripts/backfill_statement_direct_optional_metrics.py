@@ -991,3 +991,272 @@ def _load_statement_fact_rows(
     return duckdb.sql(query).fetchdf().to_dict(orient="records")
 
 
+def _split_statement_fact_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[tuple[str, str], dict[str, Any]], dict[tuple[str, str], list[dict[str, Any]]]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        key = (row["entity_id"], row["fact_type"])
+        latest.setdefault(key, row)
+        grouped.setdefault(key, []).append(row)
+    return latest, grouped
+
+
+@contextmanager
+def _company_processing_guard(timeout_seconds: float | None):
+    if (
+        timeout_seconds is None
+        or timeout_seconds <= 0
+        or not hasattr(signal, "SIGALRM")
+        or not hasattr(signal, "setitimer")
+    ):
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _handle_timeout(signum, frame):  # noqa: ARG001
+        raise _CompanyProcessingTimeout(f"company_processing_timeout_after_{timeout_seconds:g}s")
+
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _build_fail_open_optional_metrics(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    error_type: str,
+    error_message: str,
+) -> dict[str, dict[str, Any]]:
+    missing_reason = "company_processing_timeout" if error_type == "company_processing_timeout" else "company_processing_failed"
+    error_text = str(error_message).strip()[:240]
+    breakdown = {
+        "error_type": error_type,
+        "error_message": error_text,
+    }
+    metric_units = {
+        **{metric_name: spec["unit"] for metric_name, spec in STATEMENT_FACT_SPECS.items()},
+        "capital_structure.interest_expense_statement_direct": "usd",
+    }
+    nodes: dict[str, dict[str, Any]] = {}
+    for metric_name, unit in metric_units.items():
+        nodes[metric_name] = _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason=missing_reason,
+            component_breakdown=breakdown,
+            quality_flags=["statement_optional_fail_open", error_type],
+        )
+    return nodes
+
+
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    facts_path = Path(args.facts_path)
+    companyfacts_root = Path(args.companyfacts_root) if args.companyfacts_root else (
+        DEFAULT_LOCAL_COMPANYFACTS_ROOT if DEFAULT_LOCAL_COMPANYFACTS_ROOT.exists() else None
+    )
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    companyfacts_cache: dict[str, dict | None] = {}
+    computed_at = _now_iso()
+    counters: Counter[str] = Counter()
+
+    rows_by_asof: dict[str, list[Dict[str, Any]]] = {}
+    for row in iter_snapshot_rows(snapshot_path):
+        rows_by_asof.setdefault(row["as_of_time"], []).append(row)
+
+    saw_any_rows = bool(rows_by_asof)
+    with out_path.open("w", buffering=1) as out_handle:
+        for batch_as_of_time, asof_rows in rows_by_asof.items():
+            batch_entity_ids = [row["company_id"] for row in asof_rows]
+            statement_fact_rows = _load_statement_fact_rows(facts_path, batch_entity_ids, batch_as_of_time)
+            latest_facts, debt_fact_candidates = _split_statement_fact_rows(statement_fact_rows)
+
+            for row_batch in _iter_row_batches(asof_rows, max(1, int(args.entity_batch_size))):
+                for row in row_batch:
+                    entity_id = row["company_id"]
+                    features = row.setdefault("features", {})
+                    as_of_time = row["as_of_time"]
+                    try:
+                        with _company_processing_guard(args.company_processing_timeout_seconds):
+                            for metric_name, spec in STATEMENT_FACT_SPECS.items():
+                                fact = latest_facts.get((entity_id, spec["fact_type"]))
+                                if fact is None or fact.get("fact_value") is None:
+                                    node = _feature_template(
+                                        metric_name=metric_name,
+                                        as_of_time=as_of_time,
+                                        computed_at=computed_at,
+                                        provenance_source=str(facts_path),
+                                        support_mode="unsupported",
+                                        value=None,
+                                        unit=spec["unit"],
+                                        missing_reason="statement_fact_unavailable",
+                                        component_breakdown={"fact_type": spec["fact_type"]},
+                                        quality_flags=["statement_fact_unavailable"],
+                                    )
+                                else:
+                                    node = _feature_template(
+                                        metric_name=metric_name,
+                                        as_of_time=as_of_time,
+                                        computed_at=computed_at,
+                                        provenance_source=str(facts_path),
+                                        support_mode="exact",
+                                        value=float(fact["fact_value"]),
+                                        unit=spec["unit"],
+                                        missing_reason=None,
+                                        component_breakdown={
+                                            "fact_type": spec["fact_type"],
+                                            "fact_id": fact.get("fact_id"),
+                                            "source_id": fact.get("source_id"),
+                                            "source_type": fact.get("source_type"),
+                                            "raw_pointer": fact.get("raw_pointer"),
+                                            "registry_unit": fact.get("unit"),
+                                            "effective_at": None if fact.get("effective_at") is None else str(fact.get("effective_at"))[:10],
+                                            "end": None if fact.get("effective_at") is None else str(fact.get("effective_at"))[:10],
+                                            "fact_time": None if fact.get("fact_time") is None else str(fact.get("fact_time")),
+                                            "formula": "statement_direct_fact",
+                                        },
+                                        quality_flags=None,
+                                    )
+                                features[metric_name] = node
+                                counters[f"{metric_name}:{node['support_mode']}"] += 1
+
+                            if companyfacts_root is not None:
+                                interest_node = features.get("capital_structure.interest_expense_statement_direct") or {}
+                                ebitda_node = features.get("operating.ebitda_ltm_provider_direct") or {}
+                                statement_ebit_node = features.get("operating.ebit_statement_direct") or {}
+                                needs_interest_repair = (
+                                    interest_node.get("support_mode") == "unsupported"
+                                    and interest_node.get("missing_reason") == "statement_fact_unavailable"
+                                )
+                                needs_ebitda_repair = (
+                                    ebitda_node.get("support_mode") == "unsupported"
+                                    and ebitda_node.get("missing_reason") == "sec_operating_income_ttm_unavailable"
+                                    and statement_ebit_node.get("support_mode") == "exact"
+                                    and statement_ebit_node.get("value") is not None
+                                )
+                                if needs_interest_repair or needs_ebitda_repair:
+                                    if entity_id not in companyfacts_cache:
+                                        companyfacts_cache[entity_id] = _load_companyfacts(companyfacts_root / f"CIK{entity_id}.json")
+                                    companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+                                    companyfacts = companyfacts_cache.get(entity_id)
+
+                                    if needs_interest_repair:
+                                        repaired_interest_expense = _interest_expense_repair_from_companyfacts(
+                                            current_node=interest_node,
+                                            companyfacts=companyfacts,
+                                            companyfacts_path=companyfacts_path,
+                                            as_of_time=as_of_time,
+                                            computed_at=computed_at,
+                                        )
+                                        if repaired_interest_expense is not None:
+                                            prior_mode = interest_node.get("support_mode")
+                                            if prior_mode:
+                                                counters[f"capital_structure.interest_expense_statement_direct:{prior_mode}"] -= 1
+                                            features["capital_structure.interest_expense_statement_direct"] = repaired_interest_expense
+                                            counters[
+                                                f"capital_structure.interest_expense_statement_direct:{repaired_interest_expense['support_mode']}"
+                                            ] += 1
+
+                                    if needs_ebitda_repair:
+                                        repaired_ebitda = _ebitda_repair_from_statement_ebit(
+                                            current_node=ebitda_node,
+                                            statement_ebit_node=statement_ebit_node,
+                                            companyfacts=companyfacts,
+                                            companyfacts_path=companyfacts_path,
+                                            as_of_time=as_of_time,
+                                            computed_at=computed_at,
+                                        )
+                                        if repaired_ebitda is not None:
+                                            prior_mode = ebitda_node.get("support_mode")
+                                            if prior_mode:
+                                                counters[f"operating.ebitda_ltm_provider_direct:{prior_mode}"] -= 1
+                                            features["operating.ebitda_ltm_provider_direct"] = repaired_ebitda
+                                            counters[f"operating.ebitda_ltm_provider_direct:{repaired_ebitda['support_mode']}"] += 1
+
+                            repaired_total_debt = _repair_total_debt_from_statement_split(
+                                current_node=features.get("capital_structure.total_debt_provider_direct"),
+                                current_debt_statement_node=features.get("capital_structure.current_debt_statement_direct"),
+                                long_term_debt_statement_node=features.get("capital_structure.long_term_debt_statement_direct"),
+                                current_debt_statement_candidates=debt_fact_candidates.get((entity_id, "financial.debt_current")),
+                                long_term_debt_statement_candidates=debt_fact_candidates.get((entity_id, "financial.debt_long_term")),
+                                as_of_time=as_of_time,
+                                computed_at=computed_at,
+                                provenance_source=str(facts_path),
+                            )
+                            if repaired_total_debt is not None:
+                                features["capital_structure.total_debt_provider_direct"] = repaired_total_debt
+                                _recompute_standardized_debt_metrics(
+                                    features=features,
+                                    as_of_time=as_of_time,
+                                    computed_at=computed_at,
+                                    provenance_source=str(facts_path),
+                                )
+                    except _CompanyProcessingTimeout as exc:
+                        counters["row_fail_open:company_processing_timeout"] += 1
+                        features.update(
+                            _build_fail_open_optional_metrics(
+                                as_of_time=as_of_time,
+                                computed_at=computed_at,
+                                provenance_source=str(facts_path),
+                                error_type="company_processing_timeout",
+                                error_message=str(exc),
+                            )
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        counters["row_fail_open:company_processing_failed"] += 1
+                        features.update(
+                            _build_fail_open_optional_metrics(
+                                as_of_time=as_of_time,
+                                computed_at=computed_at,
+                                provenance_source=str(facts_path),
+                                error_type="company_processing_failed",
+                                error_message=str(exc),
+                            )
+                        )
+
+                    out_handle.write(json.dumps(row) + "\n")
+
+    if not saw_any_rows:
+        raise ValueError(f"No rows found in snapshot: {snapshot_path}")
+
+    if args.summary_out:
+        summary = {}
+        for metric_name in STATEMENT_FACT_SPECS:
+            summary[metric_name] = {
+                "exact": counters[f"{metric_name}:exact"],
+                "unsupported": counters[f"{metric_name}:unsupported"],
+            }
+        summary["row_fail_open"] = {
+            "company_processing_timeout": counters["row_fail_open:company_processing_timeout"],
+            "company_processing_failed": counters["row_fail_open:company_processing_failed"],
+        }
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2))
+
+    print(f"Wrote statement-direct optional metrics -> {out_path}")
+    if counters["row_fail_open:company_processing_timeout"] or counters["row_fail_open:company_processing_failed"]:
+        print(
+            "row_fail_open:"
+            f" company_processing_timeout={counters['row_fail_open:company_processing_timeout']}"
+            f" company_processing_failed={counters['row_fail_open:company_processing_failed']}"
+        )
+
+
+if __name__ == "__main__":
+    main()
