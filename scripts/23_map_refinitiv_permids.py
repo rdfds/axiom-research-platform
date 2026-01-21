@@ -89,3 +89,10 @@ def _probe_fields(universe_sample: List[str]) -> List[str]:
     return working
 
 
+def _first_col(df: pd.DataFrame, *names):
+    for name in names:
+        if name in df.columns:
+            return df[name]
+    return None
+
+
