@@ -112,3 +112,64 @@ def test_rule_allowlist_limits_runtime_substitutions(monkeypatch):
     assert diagnostics["counts_by_target"] == {"macro.rate_10y": 1}
 
 
+def test_debt_liquidity_aliases_require_capital_structure_context(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "normalized_net_debt,normalized_available_liquidity",
+    )
+    features = {
+        "capital_structure.net_debt": {"value": 500.0, "support_mode": "exact"},
+        "capital_structure.net_debt_normalized": {"value": 420.0, "support_mode": "exact"},
+        "liquidity.available_for_actions": {"value": 120.0, "support_mode": "exact"},
+        "liquidity.available_liquidity_normalized": {"value": 135.0, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "capital_structure.net_debt") == 500.0
+    assert resolve_feature_value(features, "liquidity.available_for_actions") == 120.0
+    assert resolve_feature_value(
+        features,
+        "capital_structure.net_debt",
+        action_family="capital_return",
+        action_id="capital_return.open_market_buyback",
+    ) == 500.0
+    assert resolve_feature_value(
+        features,
+        "capital_structure.net_debt",
+        action_family="capital_structure",
+        action_id="capital_structure.refinancing",
+    ) == 420.0
+    assert resolve_feature_value(
+        features,
+        "liquidity.available_for_actions",
+        action_family="capital_structure",
+        action_id="capital_structure.refinancing",
+    ) == 135.0
+
+    adapted_no_context, diagnostics_no_context = adapt_snapshot({"features": features})
+    assert adapted_no_context["features"]["capital_structure.net_debt"]["value"] == 500.0
+    assert diagnostics_no_context["replacement_count"] == 0
+
+    adapted_capstruct, diagnostics_capstruct = adapt_snapshot(
+        {"features": features},
+        action_family="capital_structure",
+        action_id="capital_structure.refinancing",
+    )
+    assert adapted_capstruct["features"]["capital_structure.net_debt"]["value"] == 420.0
+    assert adapted_capstruct["features"]["liquidity.available_for_actions"]["value"] == 135.0
+    assert diagnostics_capstruct["action_family"] == "capital_structure"
+
+
+def test_banned_total_debt_substitution_never_happens(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    features = {
+        "capital_structure.total_debt": {"value": 400.0, "support_mode": "exact"},
+        "capital_structure.debt_like_obligations_normalized": {"value": 900.0, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "capital_structure.total_debt") == 400.0
+    record = resolve_feature_record(features, "capital_structure.total_debt")
+    assert isinstance(record, dict)
+    assert record["value"] == 400.0
+
+

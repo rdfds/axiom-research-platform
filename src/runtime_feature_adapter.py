@@ -150,3 +150,13 @@ def _allowed_rules() -> Optional[set[str]]:
     }
 
 
+def _resolved_action_family(*, action_family: Optional[str] = None, action_id: Optional[str] = None) -> Optional[str]:
+    family = str(action_family or "").strip().lower()
+    if family:
+        return family
+    aid = str(action_id or "").strip().lower()
+    if "." in aid:
+        return aid.split(".", 1)[0]
+    return aid or None
+
+
