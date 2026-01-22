@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() :
+def main() -> None:
     args = parse_args()
     store = RecommendationRunStore(root=args.runs_root)
     run = store.get_run(args.run_id)
