@@ -103,3 +103,50 @@ def pull_reverse_splits():
     return df
 
 
+def pull_special_dividends():
+    """Pull special/irregular dividends from CRSP."""
+    print("\n" + "=" * 60)
+    print("SPECIAL DIVIDENDS (CRSP)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # 1272 = special dividend, 1262 = irregular, 1292 = liquidating
+    query = """
+    SELECT
+        d.permno,
+        d.exdt as action_date,
+        d.distcd,
+        d.divamt as dividend_amount,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.exdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.exdt >= '2010-01-01'
+      AND d.distcd IN (1272, 1262, 1292, 1273, 1263)  -- Special, irregular, liquidating
+    ORDER BY d.exdt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+
+    def classify_dividend(code):
+        if code in [1272, 1273]:
+            return 'dividend_special'
+        elif code in [1262, 1263]:
+            return 'dividend_irregular'
+        elif code == 1292:
+            return 'dividend_liquidating'
+        return 'dividend_other'
+
+    df['action_type'] = df['distcd'].apply(classify_dividend)
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} special dividends")
+
+    df.to_parquet(DATA_DIR / 'special_dividends.parquet')
+    conn.close()
+    return df
+
+
