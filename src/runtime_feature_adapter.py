@@ -177,3 +177,40 @@ def _rules_profile_label() -> Optional[str]:
     return _profile_name()
 
 
+def _copy_record(
+    source: Any,
+    *,
+    target_key: str,
+    source_key: str,
+    rule: str,
+    value: Any = _MISSING,
+    unit: Optional[str] = None,
+    formula: Optional[str] = None,
+    ignored_legacy: bool = False,
+) -> Dict[str, Any]:
+    if isinstance(source, dict):
+        record = copy.deepcopy(source)
+    else:
+        record = {"value": source}
+    record["name"] = target_key
+    if value is not _MISSING:
+        record["value"] = value
+    if unit is not None:
+        record["unit"] = unit
+    quality_flags = list(record['quality_flags'] or [])
+    for flag in ["runtime_feature_adapter_applied", f"runtime_feature_adapter_rule:{rule}"]:
+        if flag not in quality_flags:
+            quality_flags.append(flag)
+    record["quality_flags"] = quality_flags or None
+    component_breakdown = dict(record.get("component_breakdown") or {})
+    component_breakdown["runtime_feature_adapter"] = {
+        "target_metric": target_key,
+        "source_metric": source_key,
+        "rule": rule,
+        "ignored_legacy": bool(ignored_legacy),
+        "formula": formula,
+    }
+    record["component_breakdown"] = component_breakdown
+    return record
+
+
