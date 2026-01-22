@@ -24,3 +24,19 @@ def test_loads_payload_from_companyfacts_zip_and_hydrates_cache(tmp_path: Path) 
     assert json.loads((cache_dir / "CIK0000123456.json").read_text()) == payload
 
 
+def test_prefers_local_cache_before_zip(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached_payload = {"cik": "0000123456", "source": "cache"}
+    (cache_dir / "CIK0000123456.json").write_text(json.dumps(cached_payload))
+
+    zip_path = tmp_path / "companyfacts.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("CIK0000123456.json", json.dumps({"cik": "0000123456", "source": "zip"}))
+
+    with CompanyFactsBulkSource(companyfacts_dir=cache_dir, companyfacts_zip=zip_path) as source:
+        loaded = source.load("0000123456")
+
+    assert loaded == cached_payload
+
+
