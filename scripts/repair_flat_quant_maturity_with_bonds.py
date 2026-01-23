@@ -25,3 +25,28 @@ def parse_args() :
     return parser.parse_args()
 
 
+def _support_counts(series: pd.Series) -> Dict[str, int]:
+    support = series.fillna("unsupported").astype(str)
+    return {
+        "exact": int((support == "exact").sum()),
+        "proxy_missing_component": int((support == "proxy_missing_component").sum()),
+        "unsupported": int((support == "unsupported").sum()),
+    }
+
+
+def _json_scalar(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            item = value.item()
+            if isinstance(item, pd.Timestamp):
+                return item.isoformat()
+            return item
+        except Exception:
+            pass
+    return value
+
+
