@@ -96,3 +96,14 @@ def load_cik_map(path: Path) -> Dict[str, str]:
     return dict(zip(df["cik"], df["gvkey"]))
 
 
+def load_cik_list(cik_map: Dict[str, str]) -> List[str]:
+    if FMP_TARGET_CIK:
+        return [normalize_cik(FMP_TARGET_CIK)]
+    if not FMP_USE_CIK_MAP:
+        raise RuntimeError("No CIK list available. Set FMP_TARGET_CIK or FMP_USE_CIK_MAP=1.")
+    ciks = [cik for cik in cik_map.keys() if cik]
+    if FMP_LIMIT_CIKS and len(ciks) > FMP_LIMIT_CIKS:
+        ciks = ciks[:FMP_LIMIT_CIKS]
+    return ciks
+
+
