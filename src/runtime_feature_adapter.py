@@ -214,3 +214,23 @@ def _copy_record(
     return record
 
 
+def _resolution(
+    *,
+    target_key: str,
+    source_key: str,
+    record: Dict[str, Any],
+    ignored_legacy: bool,
+    rule: str,
+    synthetic: bool = False,
+) -> Dict[str, Any]:
+    return {
+        "target_key": target_key,
+        "source_key": source_key,
+        "record": record,
+        "ignored_legacy": bool(ignored_legacy),
+        "support_mode": _support_mode(record),
+        "synthetic": bool(synthetic),
+        "rule": rule,
+    }
+
+

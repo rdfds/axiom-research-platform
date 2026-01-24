@@ -198,3 +198,14 @@ def test_macro_and_credit_aliases_resolve_from_expected_sources(monkeypatch):
     assert resolve_feature_value(features, "market.pe") == 19.3
 
 
+def test_macro_rate_2y_can_be_synthesized_from_curve(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv("AXIOM_RUNTIME_FEATURE_ADAPTER_RULES", "ust_10y_minus_curve_2s10s")
+    features = {
+        "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+        "macro.curve_2s10s": {"value": 0.33, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "macro.rate_2y") == 4.25
+
+
