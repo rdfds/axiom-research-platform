@@ -24,3 +24,10 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_root_path(value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
