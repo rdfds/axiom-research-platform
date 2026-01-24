@@ -107,3 +107,9 @@ def load_cik_list(cik_map: Dict[str, str]) -> List[str]:
     return ciks
 
 
+def load_checkpoint() -> Set[str]:
+    if not FMP_RESUME or not CHECKPOINT_PATH.exists():
+        return set()
+    return {line.strip() for line in CHECKPOINT_PATH.read_text().splitlines() if line.strip()}
+
+
