@@ -163,7 +163,7 @@ def load_links() -> pd.DataFrame:
     return link
 
 
-def load_fy_end_map() :
+def load_fy_end_map() -> Dict[str, Dict[str, int]]:
     fin_path = WAREHOUSE_DIR / "warehouse_financials.parquet"
     if not fin_path.exists():
         raise FileNotFoundError("Missing warehouse_financials.parquet")
