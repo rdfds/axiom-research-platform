@@ -176,3 +176,54 @@ def test_cash_sti_proxy_represents_cash_only_when_short_term_investments_are_abs
     )
 
 
+def test_repair_restricted_cash_from_grouped_cash_proxy_reconciliation():
+    companyfacts = _companyfacts_with_entries(
+        {
+            "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": 125.0,
+        }
+    )
+    grouped_cash_node = {
+        "support_mode": "proxy_missing_component",
+        "value": 100.0,
+        "missing_reason": "cash_or_sti_component_missing",
+        "component_breakdown": {
+            "mode": "partial_cash_stack",
+            "cash": {"concept": "CashAndCashEquivalentsAtCarryingValue"},
+            "short_term_investments": None,
+        },
+        "provenance": [{"artifact_type": "SecCompanyFacts"}],
+    }
+    repaired = _repair_restricted_cash_from_total_cash_reconciliation(
+        restricted_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {},
+            "provenance": [],
+        },
+        cash_eq_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "statement_fact_unavailable",
+            "component_breakdown": {},
+            "provenance": [],
+        },
+        cash_sti_node=grouped_cash_node,
+        marketable_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_absent",
+        },
+        companyfacts=companyfacts,
+        companyfacts_path=Path("/tmp/CIK0000000000.json"),
+        as_of_date="2024-12-31",
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-22T00:00:00+00:00",
+    )
+
+    assert repaired is not None
+    assert repaired["support_mode"] == "exact"
+    assert repaired["value"] == 25.0
+    assert repaired["component_breakdown"]["mode"] == "cash_plus_restricted_total_minus_grouped_cash_cash_only_proxy"
+
+
