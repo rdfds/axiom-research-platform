@@ -209,3 +209,12 @@ def test_macro_rate_2y_can_be_synthesized_from_curve(monkeypatch):
     assert resolve_feature_value(features, "macro.rate_2y") == 4.25
 
 
+def test_adapter_does_not_use_fed_funds_to_impersonate_sofr(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    features = {
+        "macro.fed_funds_effective": {"value": 4.40, "support_mode": "exact"},
+    }
+
+    assert resolve_feature_value(features, "macro.sofr") is None
+
+

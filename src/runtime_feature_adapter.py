@@ -234,3 +234,57 @@ def _resolution(
     }
 
 
+def _prefer_alias_source(
+    features: Dict[str, Any],
+    *,
+    target_key: str,
+    source_keys: List[str],
+    rule: str,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    target_raw = features.get(target_key)
+    target_present = target_key in features
+    if not _rule_enabled(rule, action_family=action_family, action_id=action_id):
+        if target_present:
+            return _resolution(
+                target_key=target_key,
+                source_key=target_key,
+                record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+                ignored_legacy=False,
+                rule="legacy_direct",
+            )
+        return None
+    target_rank = _support_rank(target_raw) if target_present else -1
+    for source_key in source_keys:
+        source_raw = features.get(source_key)
+        if not _alias_source_supported(source_raw):
+            continue
+        source_rank = _support_rank(source_raw)
+        if target_present and source_rank < target_rank:
+            continue
+        record = _copy_record(
+            source_raw,
+            target_key=target_key,
+            source_key=source_key,
+            rule=rule,
+            ignored_legacy=bool(target_present),
+        )
+        return _resolution(
+            target_key=target_key,
+            source_key=source_key,
+            record=record,
+            ignored_legacy=bool(target_present),
+            rule=rule,
+        )
+    if target_present:
+        return _resolution(
+            target_key=target_key,
+            source_key=target_key,
+            record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+            ignored_legacy=False,
+            rule="legacy_direct",
+        )
+    return None
+
+
