@@ -156,3 +156,23 @@ def test_repair_restricted_cash_from_total_cash_reconciliation():
     assert repaired["component_breakdown"]["mode"] == "cash_plus_restricted_total_minus_cash_equivalents"
 
 
+def test_cash_sti_proxy_represents_cash_only_when_short_term_investments_are_absent():
+    assert _cash_sti_proxy_represents_cash_only(
+        cash_sti_node={
+            "support_mode": "proxy_missing_component",
+            "value": 98.0,
+            "missing_reason": "cash_or_sti_component_missing",
+            "component_breakdown": {
+                "mode": "partial_cash_stack",
+                "cash": {"concept": "CashAndCashEquivalentsAtCarryingValue"},
+                "short_term_investments": None,
+            },
+        },
+        marketable_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_absent",
+        },
+    )
+
+

@@ -102,3 +102,17 @@ def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]
     return risk, credit, rate
 
 
+def quantile_bins(series: pd.Series, q: int) -> pd.Series:
+    s = pd.to_numeric(series, errors="coerce")
+    try:
+        edges = s.quantile(np.linspace(0, 1, q + 1)).values
+    except Exception:
+        return pd.Series(index=s.index, data=np.nan)
+    edges = np.unique(edges)
+    if len(edges) < 2:
+        return pd.Series(index=s.index, data=np.nan)
+    edges[0] -= 1e-9
+    edges[-1] += 1e-9
+    return pd.cut(s, bins=edges, labels=False, include_lowest=True)
+
+
