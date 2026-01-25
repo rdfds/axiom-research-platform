@@ -227,3 +227,51 @@ def test_repair_restricted_cash_from_grouped_cash_proxy_reconciliation():
     assert repaired["component_breakdown"]["mode"] == "cash_plus_restricted_total_minus_grouped_cash_cash_only_proxy"
 
 
+def test_statement_fact_freshness_rejects_stale_cash_fact():
+    assert not _statement_fact_node_is_fresh_enough(
+        {
+            "support_mode": "exact",
+            "component_breakdown": {
+                "effective_at": "2022-10-31",
+            },
+        },
+        "2024-12-31",
+    )
+
+
+def test_repair_cash_sti_from_statement_cash_rejects_stale_statement_cash():
+    repaired = _repair_cash_sti_from_statement_cash(
+        cash_sti_node={
+            "support_mode": "proxy_missing_component",
+            "value": 100.0,
+            "missing_reason": "cash_or_sti_component_missing",
+            "component_breakdown": {
+                "mode": "partial_cash_stack",
+            },
+            "provenance": [],
+        },
+        cash_eq_node={
+            "support_mode": "exact",
+            "value": 125.0,
+            "component_breakdown": {
+                "effective_at": "2022-10-31",
+                "formula": "statement_direct_fact",
+            },
+            "provenance": [{"artifact_type": "StatementDirect"}],
+        },
+        marketable_node={
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_absent",
+            "component_breakdown": {},
+            "provenance": [],
+        },
+        companyfacts_path=Path("/tmp/CIK0000000000.json"),
+        as_of_date="2024-12-31",
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-25T00:00:00+00:00",
+    )
+
+    assert repaired is None
+
+
