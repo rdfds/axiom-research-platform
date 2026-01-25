@@ -39,3 +39,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _sql_path(path: Path) -> str:
+    return path.as_posix().replace("'", "''")
+
+

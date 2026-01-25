@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-def parse_args() :
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flat-path", required=True, help="Input flat parquet export")
     parser.add_argument("--entity-identifier-path", required=True, help="Entity identifier parquet")
