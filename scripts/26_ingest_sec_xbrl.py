@@ -102,3 +102,37 @@ def ensure_dirs() -> None:
     MAPPINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def fetch_json(url: str, session: requests.Session, sleep_seconds: float) -> Dict:
+    resp = session.get(url, timeout=SEC_TIMEOUT)
+    resp.raise_for_status()
+    if sleep_seconds:
+        time.sleep(sleep_seconds)
+    return resp.json()
+
+
+def load_sec_tickers(
+    session: requests.Session,
+    sleep_seconds: float,
+    refresh: bool = False,
+) -> pd.DataFrame:
+    cache_path = SEC_DIR / "company_tickers.json"
+    if cache_path.exists() and not refresh:
+        data = json.loads(cache_path.read_text())
+    else:
+        log("Downloading SEC ticker mapping...")
+        data = fetch_json(SEC_TICKER_URL, session, sleep_seconds)
+        cache_path.write_text(json.dumps(data))
+
+    rows = []
+    for _, row in data.items():
+        cik = str(row["cik_str"]).zfill(10)
+        rows.append(
+            {
+                "cik": cik,
+                "ticker": str(row.get("ticker", "")).upper().strip(),
+                "title": row.get("title"),
+            }
+        )
+    return pd.DataFrame(rows).drop_duplicates()
+
+

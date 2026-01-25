@@ -18,3 +18,9 @@ export SEC_USER_AGENT="Axiom Research (you@example.com)"
 python -u scripts/26_ingest_sec_xbrl.py --tickers AAPL --start 2020-01-01 --end 2024-12-31 --limit 1
 ```
 
+## Full Universe (R3000 proxy)
+
+```bash
+python -u scripts/26_ingest_sec_xbrl.py --start 2000-01-01 --end 2025-12-31
+```
+
