@@ -33,7 +33,7 @@ USE_RDQ = os.getenv("ECM_USE_RDQ", "1") == "1"
 MIN_MKT_CAP = float(os.getenv("ECM_MIN_MKT_CAP", "0"))
 
 
-def log(msg: str) :
+def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
