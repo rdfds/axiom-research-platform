@@ -338,7 +338,7 @@ def main() -> None:
                         company_id = str(row.get("permco")) if not pd.isna(row.get("permco")) else None
                     quality_flags = ["partial_coverage", "estimated_available_time", "estimated_period_end"]
                     if not company_id:
-                        company_id = str(row['permno']) if not pd.isna(row.get("permno")) else None
+                        company_id = str(row.get("permno")) if not pd.isna(row.get("permno")) else None
                         if company_id:
                             quality_flags.append("estimated_company_id")
                     if not company_id:
