@@ -75,3 +75,7 @@ def _canonical_json(payload: Dict[str, Any]) -> bytes:
     return json.dumps(cleaned, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
+def compute_raw_payload_hash(payload: Dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json(payload)).hexdigest()
+
+
