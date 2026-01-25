@@ -25,3 +25,5 @@ def _bootstrap_runtime_threading_defaults() -> None:
 
 _bootstrap_runtime_threading_defaults()
 
+import pandas as pd
+
