@@ -196,3 +196,194 @@ def build_public_bond_maturity_overlay(
     return overlay
 
 
+def main() -> None:
+    args = parse_args()
+
+    flat_path = Path(args.flat_path)
+    out_parquet = Path(args.out_parquet)
+    out_parquet.parent.mkdir(parents=True, exist_ok=True)
+
+    merged = pd.read_parquet(flat_path).copy()
+    merged["company_id"] = merged["company_id"].astype(str)
+
+    overlay = build_public_bond_maturity_overlay(
+        flat_path=flat_path,
+        entity_identifier_path=Path(args.entity_identifier_path),
+        bond_issuances_path=Path(args.bond_issuances_path),
+        bond_redemptions_path=Path(args.bond_redemptions_path) if args.bond_redemptions_path else None,
+        as_of_date=args.as_of_date,
+    )
+    overlay["company_id"] = overlay["company_id"].astype(str)
+    merged = merged.merge(overlay, on="company_id", how="left")
+
+    # Raw public-bond schedule transparency columns.
+    raw_cols = [
+        "capital_structure__public_bond_outstanding__value",
+        "capital_structure__public_bond_outstanding__unit",
+        "capital_structure__public_bond_outstanding__support_mode",
+        "capital_structure__public_bond_issue_count__value",
+        "capital_structure__public_bond_issue_count__unit",
+        "capital_structure__public_bond_issue_count__support_mode",
+        "capital_structure__public_bond_due_0_12m__value",
+        "capital_structure__public_bond_due_0_12m__unit",
+        "capital_structure__public_bond_due_0_12m__support_mode",
+        "capital_structure__public_bond_due_12_24m__value",
+        "capital_structure__public_bond_due_12_24m__unit",
+        "capital_structure__public_bond_due_12_24m__support_mode",
+    ]
+    merged = merged.drop(columns=[c for c in raw_cols if c in merged.columns], errors="ignore")
+
+    has_public_schedule = merged["public_bond_outstanding"].notna()
+    merged["capital_structure__public_bond_outstanding__value"] = merged["public_bond_outstanding"]
+    merged["capital_structure__public_bond_outstanding__unit"] = "usd"
+    merged["capital_structure__public_bond_outstanding__support_mode"] = has_public_schedule.map(
+        {True: "exact", False: "unsupported"}
+    )
+    merged["capital_structure__public_bond_issue_count__value"] = merged["public_bond_issue_count"]
+    merged["capital_structure__public_bond_issue_count__unit"] = "count"
+    merged["capital_structure__public_bond_issue_count__support_mode"] = has_public_schedule.map(
+        {True: "exact", False: "unsupported"}
+    )
+    merged["capital_structure__public_bond_due_0_12m__value"] = merged["public_bond_due_0_12m"]
+    merged["capital_structure__public_bond_due_0_12m__unit"] = "usd"
+    merged["capital_structure__public_bond_due_0_12m__support_mode"] = has_public_schedule.map(
+        {True: "exact", False: "unsupported"}
+    )
+    merged["capital_structure__public_bond_due_12_24m__value"] = merged["public_bond_due_12_24m"]
+    merged["capital_structure__public_bond_due_12_24m__unit"] = "usd"
+    merged["capital_structure__public_bond_due_12_24m__support_mode"] = has_public_schedule.map(
+        {True: "exact", False: "unsupported"}
+    )
+
+    if "capital_structure__debt_due_12_24m__value" not in merged.columns:
+        merged["capital_structure__debt_due_12_24m__value"] = np.nan
+    if "capital_structure__debt_due_12_24m__unit" not in merged.columns:
+        merged["capital_structure__debt_due_12_24m__unit"] = "usd"
+    if "capital_structure__debt_due_12_24m__support_mode" not in merged.columns:
+        merged["capital_structure__debt_due_12_24m__support_mode"] = "unsupported"
+    if "capital_structure__debt_due_12_24m__fallback_used" not in merged.columns:
+        merged["capital_structure__debt_due_12_24m__fallback_used"] = None
+
+    existing_due_0_support = merged["capital_structure__debt_due_0_12m__support_mode"].fillna("unsupported")
+    existing_due_12_support = merged["capital_structure__debt_due_12_24m__support_mode"].fillna("unsupported")
+
+    due_0_proxy_mask = (
+        existing_due_0_support.eq("unsupported")
+        & has_public_schedule
+        & merged["public_bond_due_0_12m"].fillna(0.0).gt(0)
+    )
+    merged.loc[due_0_proxy_mask, "capital_structure__debt_due_0_12m__value"] = merged.loc[
+        due_0_proxy_mask, "public_bond_due_0_12m"
+    ]
+    merged.loc[due_0_proxy_mask, "capital_structure__debt_due_0_12m__unit"] = "usd"
+    merged.loc[due_0_proxy_mask, "capital_structure__debt_due_0_12m__support_mode"] = "proxy_missing_component"
+    merged.loc[due_0_proxy_mask, "capital_structure__debt_due_0_12m__fallback_used"] = (
+        "fisd_usd_public_bond_maturity_due_0_12m_lower_bound"
+    )
+
+    due_12_proxy_mask = (
+        existing_due_12_support.eq("unsupported")
+        & has_public_schedule
+        & merged["public_bond_due_12_24m"].fillna(0.0).gt(0)
+    )
+    merged.loc[due_12_proxy_mask, "capital_structure__debt_due_12_24m__value"] = merged.loc[
+        due_12_proxy_mask, "public_bond_due_12_24m"
+    ]
+    merged.loc[due_12_proxy_mask, "capital_structure__debt_due_12_24m__unit"] = "usd"
+    merged.loc[due_12_proxy_mask, "capital_structure__debt_due_12_24m__support_mode"] = "proxy_missing_component"
+    merged.loc[due_12_proxy_mask, "capital_structure__debt_due_12_24m__fallback_used"] = (
+        "fisd_usd_public_bond_maturity_due_12_24m_lower_bound"
+    )
+
+    due_0_supported = merged["capital_structure__debt_due_0_12m__support_mode"].fillna("unsupported").ne("unsupported")
+    due_0_lower_bound = np.where(
+        due_0_supported,
+        pd.to_numeric(merged["capital_structure__debt_due_0_12m__value"], errors="coerce"),
+        np.where(has_public_schedule, merged["public_bond_due_0_12m"].fillna(0.0), np.nan),
+    )
+    due_12_lower_bound = np.where(
+        merged["capital_structure__debt_due_12_24m__support_mode"].fillna("unsupported").ne("unsupported"),
+        pd.to_numeric(merged["capital_structure__debt_due_12_24m__value"], errors="coerce"),
+        np.where(has_public_schedule, merged["public_bond_due_12_24m"].fillna(0.0), 0.0),
+    )
+    denominator = pd.to_numeric(
+        merged["capital_structure__debt_like_obligations_normalized__value"],
+        errors="coerce",
+    )
+    ratio_update_mask = has_public_schedule & denominator.notna() & denominator.gt(0) & pd.notna(due_0_lower_bound)
+    ratio_values = (pd.Series(due_0_lower_bound, index=merged.index) + pd.Series(due_12_lower_bound, index=merged.index)) / denominator
+
+    existing_ratio_cols = [
+        "capital_structure__maturity_wall_ratio_24m__value",
+        "capital_structure__maturity_wall_ratio_24m__unit",
+        "capital_structure__maturity_wall_ratio_24m__support_mode",
+        "capital_structure__maturity_wall_ratio_24m__fallback_used",
+    ]
+    for col in existing_ratio_cols:
+        if col not in merged.columns:
+            merged[col] = np.nan if col.endswith("__value") else None
+    merged.loc[ratio_update_mask, "capital_structure__maturity_wall_ratio_24m__value"] = ratio_values[ratio_update_mask]
+    merged.loc[ratio_update_mask, "capital_structure__maturity_wall_ratio_24m__unit"] = "ratio"
+    merged.loc[ratio_update_mask, "capital_structure__maturity_wall_ratio_24m__support_mode"] = "proxy_missing_component"
+    merged.loc[ratio_update_mask, "capital_structure__maturity_wall_ratio_24m__fallback_used"] = (
+        "statement_and_fisd_usd_public_bond_24m_lower_bound_over_debt_like_obligations"
+    )
+
+    merged = merged.drop(
+        columns=[
+            "public_bond_outstanding",
+            "public_bond_issue_count",
+            "public_bond_due_0_12m",
+            "public_bond_due_12_24m",
+        ],
+        errors="ignore",
+    )
+
+    merged.to_parquet(out_parquet, index=False)
+
+    if args.out_csv:
+        out_csv = Path(args.out_csv)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        merged.to_csv(out_csv, index=False)
+
+    if args.summary_out:
+        sample_ids = ["0000006201", "0000003453", "0001637459", "0000909832", "0000003197", "0001639438"]
+        sample = {}
+        for cid in sample_ids:
+            sub = merged[merged["company_id"] == cid]
+            if sub.empty:
+                continue
+            row = sub.iloc[0]
+            sample[cid] = {
+                "company_name": row.get("company_name"),
+                "public_bond_outstanding": _json_scalar(row.get("capital_structure__public_bond_outstanding__value")),
+                "public_bond_due_0_12m": _json_scalar(row.get("capital_structure__public_bond_due_0_12m__value")),
+                "public_bond_due_12_24m": _json_scalar(row['capital_structure__public_bond_due_12_24m__value']),
+                "debt_due_0_12m": _json_scalar(row.get("capital_structure__debt_due_0_12m__value")),
+                "debt_due_0_12m_support_mode": _json_scalar(row.get("capital_structure__debt_due_0_12m__support_mode")),
+                "debt_due_12_24m": _json_scalar(row.get("capital_structure__debt_due_12_24m__value")),
+                "debt_due_12_24m_support_mode": _json_scalar(row.get("capital_structure__debt_due_12_24m__support_mode")),
+                "maturity_wall_ratio_24m": _json_scalar(row.get("capital_structure__maturity_wall_ratio_24m__value")),
+                "maturity_wall_ratio_24m_support_mode": _json_scalar(
+                    row.get("capital_structure__maturity_wall_ratio_24m__support_mode")
+                ),
+            }
+
+        summary = {
+            "rows": int(len(merged)),
+            "public_bond_schedule_matches": int(has_public_schedule.sum()),
+            "proxy_due_0_12m_matches": int(due_0_proxy_mask.sum()),
+            "proxy_due_12_24m_matches": int(due_12_proxy_mask.sum()),
+            "maturity_ratio_public_bond_matches": int(ratio_update_mask.sum()),
+            "capital_structure.debt_due_0_12m": _support_counts(merged["capital_structure__debt_due_0_12m__support_mode"]),
+            "capital_structure.debt_due_12_24m": _support_counts(merged["capital_structure__debt_due_12_24m__support_mode"]),
+            "capital_structure.maturity_wall_ratio_24m": _support_counts(
+                merged["capital_structure__maturity_wall_ratio_24m__support_mode"]
+            ),
+            "sample": sample,
+        }
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2))
+
+    print(f"Overlayed public-bond maturity lower bounds -> {out_parquet}")
+
+
