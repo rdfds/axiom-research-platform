@@ -442,3 +442,5 @@ def main() -> None:
         log("Refinitiv session closed.")
 
 
+if __name__ == "__main__":
+    main()

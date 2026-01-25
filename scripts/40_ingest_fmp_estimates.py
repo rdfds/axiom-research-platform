@@ -196,3 +196,41 @@ def period_end_for_year(year: int, fy_end: Optional[Dict[str, int]]) -> pd.Times
     return pd.Timestamp(year=year, month=12, day=31)
 
 
+def pick_value(row: Dict[str, object], metric: str) -> Optional[float]:
+    key_candidates = []
+    if metric == "eps":
+        key_candidates = [
+            "estimatedEpsAvg",
+            "estimatedEPSAvg",
+            "estimatedEpsMean",
+            "epsMean",
+            "epsAvg",
+        ]
+    elif metric == "revenue":
+        key_candidates = [
+            "estimatedRevenueAvg",
+            "estimatedRevenueMean",
+            "revenueAvg",
+            "revenueMean",
+        ]
+    elif metric == "ebitda":
+        key_candidates = [
+            "estimatedEbitdaAvg",
+            "estimatedEBITDAAvg",
+            "estimatedEbitdaMean",
+            "ebitdaAvg",
+            "ebitdaMean",
+        ]
+
+    for k in key_candidates:
+        if k in row:
+            return row.get(k)
+
+    # Fallback: search by substrings
+    for k, v in row.items():
+        lk = str(k).lower()
+        if metric in lk and ("avg" in lk or "mean" in lk or "consensus" in lk):
+            return v
+    return None
+
+
