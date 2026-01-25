@@ -113,3 +113,9 @@ def load_checkpoint() -> Set[str]:
     return {line.strip() for line in CHECKPOINT_PATH.read_text().splitlines() if line.strip()}
 
 
+def save_checkpoint(cik: str) -> None:
+    CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with CHECKPOINT_PATH.open("a") as handle:
+        handle.write(f"{cik}\n")
+
+
