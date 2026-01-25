@@ -73,3 +73,5 @@ def main() :
     print(f"[backfill_macro] wrote {out_path}", flush=True)
 
 
+if __name__ == "__main__":
+    main()
