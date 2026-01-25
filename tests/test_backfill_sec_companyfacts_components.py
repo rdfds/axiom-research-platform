@@ -275,3 +275,101 @@ def test_repair_cash_sti_from_statement_cash_rejects_stale_statement_cash():
     assert repaired is None
 
 
+def test_extract_lease_liabilities_promotes_stale_operating_total_with_fresh_rou_when_finance_absent():
+    companyfacts = _companyfacts_with_fact_rows(
+        {
+            "OperatingLeaseLiability": [
+                {
+                    "val": 15.0,
+                    "end": "2023-12-31",
+                    "filed": "2024-03-05",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseRightOfUseAsset": [
+                {
+                    "val": 24.0,
+                    "end": "2024-09-30",
+                    "filed": "2024-10-29",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+        }
+    )
+
+    value, meta = _extract_lease_liabilities(companyfacts, "2024-12-31")
+
+    assert value == 15.0
+    assert meta is not None
+    assert meta["mode"] == "operating_only_no_finance_concepts"
+    assert (
+        meta["operating_component"]["support_override"]
+        == "stale_liability_total_corroborated_by_fresh_rou_asset"
+    )
+
+
+def test_extract_lease_liabilities_promotes_stale_operating_and_finance_totals_with_fresh_rou():
+    companyfacts = _companyfacts_with_fact_rows(
+        {
+            "OperatingLeaseLiability": [
+                {
+                    "val": 15.0,
+                    "end": "2023-12-31",
+                    "filed": "2024-03-05",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiability": [
+                {
+                    "val": 5.0,
+                    "end": "2023-12-31",
+                    "filed": "2024-03-05",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseRightOfUseAsset": [
+                {
+                    "val": 24.0,
+                    "end": "2024-09-30",
+                    "filed": "2024-10-29",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "FinanceLeaseRightOfUseAsset": [
+                {
+                    "val": 6.0,
+                    "end": "2024-09-30",
+                    "filed": "2024-10-29",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+        }
+    )
+
+    value, meta = _extract_lease_liabilities(companyfacts, "2024-12-31")
+
+    assert value == 20.0
+    assert meta is not None
+    assert meta["mode"] == "sum_operating_finance"
+    assert (
+        meta["operating_component"]["support_override"]
+        == "stale_liability_total_corroborated_by_fresh_rou_asset"
+    )
+    assert (
+        meta["finance_component"]["support_override"]
+        == "stale_liability_total_corroborated_by_fresh_rou_asset"
+    )
+
+

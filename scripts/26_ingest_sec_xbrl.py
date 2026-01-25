@@ -96,3 +96,9 @@ def maybe_require_user_agent(needs_network: bool) -> str:
     return os.getenv("SEC_USER_AGENT", "Axiom Local SEC Cache")
 
 
+def ensure_dirs() -> None:
+    SEC_DIR.mkdir(parents=True, exist_ok=True)
+    (SEC_DIR / "companyfacts").mkdir(parents=True, exist_ok=True)
+    MAPPINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
