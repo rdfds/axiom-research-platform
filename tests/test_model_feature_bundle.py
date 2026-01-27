@@ -224,3 +224,28 @@ def test_state_vector_v1_uses_explicit_fallback_rules_for_liquidity_and_valuatio
     assert state["support"]["state_vector_v1.market_access"]["support_mode"] == "proxy_missing_component"
 
 
+def test_state_vector_v1_uses_direct_current_debt_when_canonical_current_debt_is_absent():
+    snapshot = {
+        "features": {
+            "operating.revenue_ttm_provider_direct": {"value": 5_000.0, "support_mode": "exact"},
+            "operating.ebitda_ltm_provider_direct": {"value": 500.0, "support_mode": "exact"},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"value": 400.0, "support_mode": "exact"},
+            "capital_structure.current_debt_provider_direct": {"value": 100.0, "support_mode": "exact"},
+            "market.market_cap_provider_direct": {"value": 600.0, "support_mode": "exact"},
+            "capital_structure.total_debt_provider_direct": {"value": 1_000.0, "support_mode": "exact"},
+            "market.volatility_90d": {"value": 0.22, "support_mode": "exact"},
+            "market.credit_window_proxy": {"value": 0.70, "support_mode": "proxy_missing_component"},
+            "macro.fed_funds_effective": {"value": 4.33, "support_mode": "exact"},
+            "macro.hy_oas": {"value": 3.10, "support_mode": "exact"},
+        }
+    }
+
+    bundle = build_model_feature_bundle(snapshot)
+    state = bundle["state_vector_v1"]
+    liquidity_record = state["records"]["state_vector_v1.liquidity_flexibility"]
+
+    assert math.isclose(state["values"]["state_vector_v1.liquidity_flexibility"], 4.0)
+    assert liquidity_record["component_breakdown"]["near_term_debt_source_metric"] == "capital_structure.current_debt_provider_direct"
+    assert "current_debt_fallback" in (liquidity_record.get("quality_flags") or [])
+
+

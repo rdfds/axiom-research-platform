@@ -67,3 +67,13 @@ def _path_metadata(path: Path) -> Dict[str, Any]:
     return info
 
 
+def _copy_file(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(["cp", "-c", str(src), str(dst)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    except Exception:
+        pass
+    shutil.copy2(src, dst)
+
+
