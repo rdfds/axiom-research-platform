@@ -218,3 +218,30 @@ def test_adapter_does_not_use_fed_funds_to_impersonate_sofr(monkeypatch):
     assert resolve_feature_value(features, "macro.sofr") is None
 
 
+def test_adapt_snapshot_emits_replacement_diagnostics(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv("AXIOM_RUNTIME_FEATURE_ADAPTER_RULES", "normalized_net_debt,ust_10y_alias")
+    snapshot = {
+        "company_id": "ABC",
+        "as_of_time": "2026-02-28T00:00:00+00:00",
+        "features": {
+            "capital_structure.net_debt": {"value": 500.0, "support_mode": "exact"},
+            "capital_structure.net_debt_normalized": {"value": 420.0, "support_mode": "exact"},
+            "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+        },
+        "provenance": {},
+    }
+
+    adapted, diagnostics = adapt_snapshot(
+        snapshot,
+        action_family="capital_structure",
+        action_id="capital_structure.refinancing",
+    )
+
+    assert adapted["features"]["capital_structure.net_debt"]["value"] == 420.0
+    assert adapted["features"]["macro.rate_10y"]["value"] == 4.58
+    assert diagnostics["replacement_count"] == 2
+    assert diagnostics["profile"] == "custom"
+    assert diagnostics["action_family"] == "capital_structure"
+    assert diagnostics["counts_by_target"]["capital_structure.net_debt"] == 1
+    assert diagnostics["counts_by_target"]["macro.rate_10y"] == 1

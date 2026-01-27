@@ -197,7 +197,7 @@ def _copy_record(
         record["value"] = value
     if unit is not None:
         record["unit"] = unit
-    quality_flags = list(record['quality_flags'] or [])
+    quality_flags = list(record.get("quality_flags") or [])
     for flag in ["runtime_feature_adapter_applied", f"runtime_feature_adapter_rule:{rule}"]:
         if flag not in quality_flags:
             quality_flags.append(flag)
