@@ -609,3 +609,165 @@ def test_extract_lease_liabilities_prefers_fresh_finance_components_over_stale_d
     assert meta["finance_component"]["mode"] == "finance_sum_current_noncurrent"
 
 
+def test_extract_lease_liabilities_promotes_stale_internally_consistent_operating_and_finance_totals():
+    companyfacts = _companyfacts_with_fact_rows(
+        {
+            "OperatingLeaseLiability": [
+                {
+                    "val": 617.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseLiabilityCurrent": [
+                {
+                    "val": 136.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseLiabilityNoncurrent": [
+                {
+                    "val": 481.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "LesseeOperatingLeaseLiabilityPaymentsDue": [
+                {
+                    "val": 700.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "LesseeOperatingLeaseLiabilityUndiscountedExcessAmount": [
+                {
+                    "val": 83.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiability": [
+                {
+                    "val": 145.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiabilityCurrent": [
+                {
+                    "val": 32.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiabilityNoncurrent": [
+                {
+                    "val": 113.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiabilityPaymentsDue": [
+                {
+                    "val": 180.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "FinanceLeaseLiabilityUndiscountedExcessAmount": [
+                {
+                    "val": 35.0,
+                    "end": "2023-12-30",
+                    "filed": "2024-02-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+        }
+    )
+
+    value, meta = _extract_lease_liabilities(companyfacts, "2024-12-31")
+
+    assert value == pytest.approx(762.0)
+    assert meta is not None
+    assert meta["mode"] == "sum_operating_finance"
+    assert (
+        meta["operating_component"]["support_override"]
+        == "stale_internally_consistent_lease_carry_forward"
+    )
+    assert (
+        meta["finance_component"]["support_override"]
+        == "stale_internally_consistent_lease_carry_forward"
+    )
+
+
+def test_extract_lease_liabilities_does_not_promote_stale_only_references_outside_carry_forward_window():
+    companyfacts = _companyfacts_with_fact_rows(
+        {
+            "OperatingLeaseLiability": [
+                {
+                    "val": 20.0,
+                    "end": "2020-12-31",
+                    "filed": "2021-02-15",
+                    "fy": 2020,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseLiabilityCurrent": [
+                {
+                    "val": 5.0,
+                    "end": "2020-12-31",
+                    "filed": "2021-02-15",
+                    "fy": 2020,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseLiabilityNoncurrent": [
+                {
+                    "val": 15.0,
+                    "end": "2020-12-31",
+                    "filed": "2021-02-15",
+                    "fy": 2020,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+        }
+    )
+
+    value, meta = _extract_lease_liabilities(companyfacts, "2024-12-31")
+
+    assert value is None
+    assert meta is not None
+    assert meta["mode"] == "lease_total_unavailable"

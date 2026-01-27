@@ -20,7 +20,7 @@ from src.pipeline.config import load_config
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--in-path", default=str(DATA_DIR / "curated" / "action_outcomes.parquet"))
     parser.add_argument("--out-path", default=None)
