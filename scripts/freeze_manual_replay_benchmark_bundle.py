@@ -31,3 +31,39 @@ def _resolve_root_path(value: str | Path) -> Path:
     return ROOT / path
 
 
+def _resolve_candidate_path(values: Iterable[str | Path]) -> Path:
+    candidates = [_resolve_root_path(value) for value in values]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"No candidate path exists for {list(values)}")
+
+
+def _sha256_head(path: Path, limit_bytes: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        remaining = limit_bytes
+        while remaining > 0:
+            chunk = handle.read(min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            digest.update(chunk)
+            remaining -= len(chunk)
+    return digest.hexdigest()
+
+
+def _path_metadata(path: Path) -> Dict[str, Any]:
+    info: Dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+    }
+    if path.exists():
+        stat = path.stat()
+        info["kind"] = "directory" if path.is_dir() else "file"
+        info["size_bytes"] = stat.st_size
+        info["modified_at"] = stat.st_mtime
+        if path.is_file():
+            info["sample_sha256"] = _sha256_head(path)
+    return info
+
+

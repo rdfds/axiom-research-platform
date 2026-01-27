@@ -525,3 +525,87 @@ def test_extract_lease_liabilities_prefers_fresh_operating_components_over_stale
     assert meta["operating_component"]["mode"] == "operating_sum_current_noncurrent"
 
 
+def test_extract_lease_liabilities_prefers_fresh_finance_components_over_stale_direct_total():
+    companyfacts = _companyfacts_with_fact_rows(
+        {
+            "OperatingLeaseLiabilityCurrent": [
+                {
+                    "val": 4.2,
+                    "end": "2024-09-30",
+                    "filed": "2024-11-07",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "OperatingLeaseLiabilityNoncurrent": [
+                {
+                    "val": 14.5,
+                    "end": "2024-09-30",
+                    "filed": "2024-11-07",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "OperatingLeaseLiability": [
+                {
+                    "val": 14.5,
+                    "end": "2023-12-31",
+                    "filed": "2024-04-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+            "OperatingLeaseRightOfUseAsset": [
+                {
+                    "val": 18.2,
+                    "end": "2024-09-30",
+                    "filed": "2024-11-07",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "FinanceLeaseLiabilityCurrent": [
+                {
+                    "val": 4.4,
+                    "end": "2024-09-30",
+                    "filed": "2024-11-07",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "FinanceLeaseLiabilityNoncurrent": [
+                {
+                    "val": 20.0,
+                    "end": "2024-09-30",
+                    "filed": "2024-11-07",
+                    "fy": 2024,
+                    "fp": "Q3",
+                    "form": "10-Q",
+                }
+            ],
+            "FinanceLeaseLiability": [
+                {
+                    "val": 2.4,
+                    "end": "2023-12-31",
+                    "filed": "2024-04-15",
+                    "fy": 2023,
+                    "fp": "FY",
+                    "form": "10-K",
+                }
+            ],
+        }
+    )
+
+    value, meta = _extract_lease_liabilities(companyfacts, "2024-12-31")
+
+    assert value == pytest.approx(43.1)
+    assert meta is not None
+    assert meta["mode"] == "sum_operating_finance"
+    assert meta["finance_component"]["mode"] == "finance_sum_current_noncurrent"
+
+
