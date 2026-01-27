@@ -288,3 +288,118 @@ def _prefer_alias_source(
     return None
 
 
+def _fill_alias_source(
+    features: Dict[str, Any],
+    *,
+    target_key: str,
+    source_keys: List[str],
+    rule: str,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    target_raw = features.get(target_key)
+    target_present = target_key in features
+    if not _rule_enabled(rule, action_family=action_family, action_id=action_id):
+        if target_present:
+            return _resolution(
+                target_key=target_key,
+                source_key=target_key,
+                record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+                ignored_legacy=False,
+                rule="legacy_direct",
+            )
+        return None
+    if target_present and _alias_source_supported(target_raw):
+        return _resolution(
+            target_key=target_key,
+            source_key=target_key,
+            record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+            ignored_legacy=False,
+            rule="legacy_direct",
+        )
+    for source_key in source_keys:
+        source_raw = features.get(source_key)
+        if not _alias_source_supported(source_raw):
+            continue
+        record = _copy_record(
+            source_raw,
+            target_key=target_key,
+            source_key=source_key,
+            rule=rule,
+            ignored_legacy=bool(target_present),
+        )
+        return _resolution(
+            target_key=target_key,
+            source_key=source_key,
+            record=record,
+            ignored_legacy=bool(target_present),
+            rule=rule,
+        )
+    if target_present:
+        return _resolution(
+            target_key=target_key,
+            source_key=target_key,
+            record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+            ignored_legacy=False,
+            rule="legacy_direct",
+        )
+    return None
+
+
+def _macro_rate_2y_resolution(
+    features: Dict[str, Any],
+    *,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    direct = _prefer_alias_source(
+        features,
+        target_key="macro.rate_2y",
+        source_keys=["macro.ust_2y_yield"],
+        rule="ust_2y_alias",
+        action_family=action_family,
+        action_id=action_id,
+    )
+    if direct is not None and direct.get("source_key") != "macro.rate_2y":
+        return direct
+
+    target_raw = features.get("macro.rate_2y")
+    target_present = "macro.rate_2y" in features
+    ust10_raw = features.get("macro.ust_10y_yield")
+    curve_raw = features['macro.curve_2s10s']
+    if _rule_enabled("ust_10y_minus_curve_2s10s", action_family=action_family, action_id=action_id) and _alias_source_supported(ust10_raw) and _alias_source_supported(curve_raw):
+        ust10_val = _feature_value(ust10_raw)
+        curve_val = _feature_value(curve_raw)
+        try:
+            value = float(ust10_val) - float(curve_val)
+        except Exception:
+            value = None
+        if value is not None:
+            record = _copy_record(
+                ust10_raw,
+                target_key="macro.rate_2y",
+                source_key="macro.ust_10y_yield|macro.curve_2s10s",
+                rule="ust_10y_minus_curve_2s10s",
+                value=value,
+                formula="macro.ust_10y_yield - macro.curve_2s10s",
+                ignored_legacy=bool(target_present),
+            )
+            return _resolution(
+                target_key="macro.rate_2y",
+                source_key="macro.ust_10y_yield|macro.curve_2s10s",
+                record=record,
+                ignored_legacy=bool(target_present),
+                rule="ust_10y_minus_curve_2s10s",
+                synthetic=True,
+            )
+    if target_present:
+        return _resolution(
+            target_key="macro.rate_2y",
+            source_key="macro.rate_2y",
+            record=target_raw if isinstance(target_raw, dict) else {"value": _feature_value(target_raw)},
+            ignored_legacy=False,
+            rule="legacy_direct",
+        )
+    return None
+
+

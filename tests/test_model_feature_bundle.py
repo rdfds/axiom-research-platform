@@ -249,3 +249,25 @@ def test_state_vector_v1_uses_direct_current_debt_when_canonical_current_debt_is
     assert "current_debt_fallback" in (liquidity_record.get("quality_flags") or [])
 
 
+def test_state_vector_v1_prefers_raw_growth_and_cash_generation_when_available():
+    snapshot = {
+        "features": {
+            "operating.revenue_ttm_provider_direct": {"value": 120.0, "support_mode": "exact"},
+            "operating.revenue_ttm_lag_1y": {"value": 100.0, "support_mode": "exact"},
+            "operating.ebitda_ltm_provider_direct": {"value": 30.0, "support_mode": "exact"},
+            "operating.revenue_yoy_last_q": {"value": 0.05, "support_mode": "exact"},
+            "cash_flow.free_cash_flow_ttm": {"value": 12.0, "support_mode": "exact"},
+            "market.market_cap_provider_direct": {"value": 80.0, "support_mode": "exact"},
+            "macro.fed_funds_effective": {"value": 4.0, "support_mode": "exact"},
+            "macro.hy_oas": {"value": 3.0, "support_mode": "exact"},
+        }
+    }
+
+    state = build_model_feature_bundle(snapshot)["state_vector_v1"]
+
+    assert math.isclose(state["values"]["state_vector_v1.growth"], 0.2)
+    assert state["records"]["state_vector_v1.growth"]["component_breakdown"]["revenue_ttm_lag_1y"] == 100.0
+    assert math.isclose(state["values"]["state_vector_v1.cash_generation"], 0.15)
+    assert state["support"]["state_vector_v1.cash_generation"]["support_mode"] == "exact"
+
+
