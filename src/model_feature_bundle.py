@@ -181,3 +181,20 @@ def _quality_flags(raw: Any) -> list[str]:
     return [str(flag) for flag in (raw.get("quality_flags") or []) if flag is not None]
 
 
+def _reliability_score(record: Any, *, source_metric: str) -> float:
+    if record is None:
+        return 0.0
+    support_mode = _support_mode(record)
+    if support_mode in _EXACTISH_SUPPORT_MODES:
+        return 1.0
+    if support_mode == "proxy_missing_component":
+        return 0.65
+    if support_mode and support_mode.startswith("proxy"):
+        return 0.45
+    if ".normalized" not in source_metric and support_mode not in {"unsupported", None}:
+        return 0.70
+    if support_mode is None and _feature_value(record) is not None:
+        return 0.70
+    return 0.0
+
+
