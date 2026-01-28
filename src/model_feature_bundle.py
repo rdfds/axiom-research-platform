@@ -198,3 +198,20 @@ def _reliability_score(record: Any, *, source_metric: str) -> float:
     return 0.0
 
 
+def _copy_record_for_target(record: Any, *, target_key: str, source_key: str) -> Optional[Dict[str, Any]]:
+    if record is None:
+        return None
+    if isinstance(record, dict):
+        out = copy.deepcopy(record)
+    else:
+        out = {"value": record}
+    out["name"] = target_key
+    source_map = dict(out.get("component_breakdown") or {})
+    source_map["model_feature_bundle"] = {
+        "target_metric": target_key,
+        "source_metric": source_key,
+    }
+    out["component_breakdown"] = source_map
+    return out
+
+
