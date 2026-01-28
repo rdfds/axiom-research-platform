@@ -405,3 +405,30 @@ def _record_issue(container: dict[str, Any], category: str, metric_name: str, ex
         metric_bucket["examples"].append(example)
 
 
+def _permno_map(entity_identifier_path: Path) -> pd.DataFrame:
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
+    ids["permno"] = ids["identifier_value"].astype(str).str.strip()
+    return ids[["entity_id", "permno"]].drop_duplicates()
+
+
+def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) :
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(entity_id AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            close,
+            adjusted_close,
+            ret,
+            retx
+        FROM read_parquet('{raw_timeseries_path}')
+        WHERE series_type = 'price'
+          AND CAST(entity_id AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
