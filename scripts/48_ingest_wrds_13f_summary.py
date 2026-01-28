@@ -127,7 +127,7 @@ def main() -> None:
 
         for _, row in chunk.iterrows():
             cik = str(row.get("cik", "")).strip()
-            rdate = coerce_date(row.get("rdate") or row.get("reportdate") or row['report_period'])
+            rdate = coerce_date(row.get("rdate") or row.get("reportdate") or row.get("report_period"))
             fdate = coerce_date(row.get("fdate"))
 
             if not cik:
