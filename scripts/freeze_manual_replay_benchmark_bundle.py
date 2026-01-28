@@ -104,3 +104,17 @@ def _derive_case_company_ids(manifest_paths: Iterable[Path]) -> List[str]:
     return sorted(ids)
 
 
+def _copy_companyfacts_subset(source_root: Path, dest_root: Path, company_ids: Iterable[str]) -> List[str]:
+    copied: List[str] = []
+    dest_root.mkdir(parents=True, exist_ok=True)
+    for company_id in company_ids:
+        source_path = source_root / f"CIK{str(company_id).zfill(10)}.json"
+        if not source_path.exists():
+            continue
+        target_path = dest_root / source_path.name
+        # Read/write forces real bytes instead of preserving cloud placeholders.
+        target_path.write_text(source_path.read_text())
+        copied.append(str(company_id).zfill(10))
+    return copied
+
+

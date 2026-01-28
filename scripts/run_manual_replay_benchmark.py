@@ -87,3 +87,18 @@ def _bootstrap_env_overrides() :
         os.environ.setdefault(name, str(path))
 
 
+_bootstrap_env_overrides()
+
+from src.action_data_support import resolve_action_support
+from src.backtest_artifacts import (
+    build_backtest_artifact_manifest,
+    fingerprint_path,
+    resolve_backtest_artifact_root,
+    resolve_snapshot_cache_dir,
+)
+from src.backtest_costs import resolve_transaction_cost_model
+from src.backtest_protocol import resolve_backtest_protocol
+from src.backtest_scorecard import (
+    build_portfolio_strategy_scorecard,
+    render_portfolio_strategy_scorecard_markdown,
+)
