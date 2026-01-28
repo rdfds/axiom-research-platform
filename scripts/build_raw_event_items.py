@@ -70,3 +70,5 @@ def main() -> None:
     print(f"Wrote RawEventItems -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
