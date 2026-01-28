@@ -98,3 +98,11 @@ def ensure_bitemporal(event_time: datetime, available_time: datetime) -> None:
         raise ValueError("available_time must be >= event_time.")
 
 
+def _ensure_list(value: Optional[Any]) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
