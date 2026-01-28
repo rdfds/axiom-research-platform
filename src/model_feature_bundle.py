@@ -161,3 +161,23 @@ def _feature_value(raw: Any) -> Any:
     return raw
 
 
+def _support_mode(raw: Any) -> Optional[str]:
+    if isinstance(raw, dict):
+        value = raw.get("support_mode")
+        return str(value).strip().lower() if value is not None else None
+    return None
+
+
+def _applicability_status(raw: Any) -> Optional[str]:
+    if isinstance(raw, dict):
+        value = raw.get("applicability_status")
+        return str(value).strip().lower() if value is not None else None
+    return None
+
+
+def _quality_flags(raw: Any) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+    return [str(flag) for flag in (raw.get("quality_flags") or []) if flag is not None]
+
+

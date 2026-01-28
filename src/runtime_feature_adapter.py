@@ -403,3 +403,120 @@ def _macro_rate_2y_resolution(
     return None
 
 
+def _resolve_feature_record(
+    features: Dict[str, Any],
+    key: str,
+    *,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Any:
+    if key == "capital_structure.net_debt":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["capital_structure.net_debt_normalized"],
+            rule="normalized_net_debt",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "capital_structure.net_leverage":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["capital_structure.net_leverage_normalized"],
+            rule="normalized_net_leverage",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "capital_structure.gross_leverage":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["capital_structure.gross_leverage_normalized"],
+            rule="normalized_gross_leverage",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "liquidity.available_for_actions":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["liquidity.available_liquidity_normalized"],
+            rule="normalized_available_liquidity",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "operating.ebitda_ttm":
+        resolution = _fill_alias_source(
+            features,
+            target_key=key,
+            source_keys=["operating.operating_earnings_normalized"],
+            rule="normalized_operating_earnings_fill",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "macro.rate_10y":  # gitleaks:allow — schema field name, not a credential
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["macro.ust_10y_yield", "macro.us10y_treasury_yield"],
+            rule="ust_10y_alias",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "macro.rate_2y":
+        resolution = _macro_rate_2y_resolution(
+            features,
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "macro.sofr":
+        resolution = _fill_alias_source(
+            features,
+            target_key=key,
+            source_keys=["macro.sofr", "macro.sofr_or_fed_funds"],
+            rule="sofr_compatibility_fallback",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "market.ig_oas":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["macro.ig_oas", "macro.us_ig_oas"],
+            rule="credit_ig_alias",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "market.hy_oas":
+        resolution = _prefer_alias_source(
+            features,
+            target_key=key,
+            source_keys=["macro.hy_oas"],
+            rule="credit_hy_alias",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    if key == "market.pe":
+        resolution = _fill_alias_source(
+            features,
+            target_key=key,
+            source_keys=["market.pe_ratio"],
+            rule="pe_ratio_compatibility_alias",
+            action_family=action_family,
+            action_id=action_id,
+        )
+        return resolution.get("record") if resolution is not None else None
+    return features.get(key)
+
+

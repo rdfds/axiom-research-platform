@@ -118,3 +118,8 @@ def _copy_companyfacts_subset(source_root: Path, dest_root: Path, company_ids: I
     return copied
 
 
+def _copy_report_if_present(src: Path, dst: Path) -> None:
+    if src.exists():
+        _copy_file(src, dst)
+
+
