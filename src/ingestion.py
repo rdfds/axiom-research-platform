@@ -111,7 +111,7 @@ def write_raw_records(
     records: Iterable[Dict[str, Any]],
     base_dir: Path = DATA_DIR / "lake",
     schema_version: str = "v1",
-) :
+) -> pd.DataFrame:
     """
     Append raw payloads to the immutable lake and update raw manifest.
 
