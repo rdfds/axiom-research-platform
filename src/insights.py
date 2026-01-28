@@ -599,3 +599,142 @@ class InsightsGenerator:
         return name_map.get(action, action.replace('_', ' '))
 
 
+class PeerAnalyzer:
+    """
+    Compares company to sector peers.
+
+    Generates the peer diagnostics table from the mock.
+    """
+
+    def __init__(self):
+        self.snapshot = AsOfSnapshotBuilder()
+
+    def get_peer_comparison(
+        self,
+        gvkey: str,
+        as_of_date: str,
+        n_peers: int = 6,
+    ) :
+        """
+        Get peer comparison table.
+
+        Returns metrics for the company and top peers in the same sector.
+        """
+        # Get company data
+        company_data = self.snapshot.get_snapshot(gvkey, as_of_date, lookback_quarters=4)
+        if company_data is None or len(company_data) == 0:
+            return {'company': None, 'peers': [], 'median': None}
+
+        company = company_data.iloc[0]
+        sic = company.get('sic')
+
+        if pd.isna(sic):
+            return {'company': self._extract_metrics(company), 'peers': [], 'median': None}
+
+        # Get peer universe (same 2-digit SIC)
+        sic_2digit = str(int(sic))[:2]
+        universe = self.snapshot.get_universe_snapshot(as_of_date, min_assets=100)
+
+        if universe is None or len(universe) == 0:
+            return {'company': self._extract_metrics(company), 'peers': [], 'median': None}
+
+        # Filter to same sector
+        universe['sic_2'] = universe['sic'].apply(
+            lambda x: str(int(x))[:2] if pd.notna(x) else None
+        )
+        peers = universe[
+            (universe['sic_2'] == sic_2digit) &
+            (universe['gvkey'] != gvkey)
+        ].copy()
+
+        if len(peers) == 0:
+            return {'company': self._extract_metrics(company), 'peers': [], 'median': None}
+
+        # Sort by revenue and take top N
+        peers = peers.nlargest(n_peers, 'revtq')
+
+        # Extract metrics for each peer
+        peer_metrics = []
+        for _, peer in peers.iterrows():
+            metrics = self._extract_metrics(peer)
+            if metrics:
+                peer_metrics.append(metrics)
+
+        # Compute median
+        if peer_metrics:
+            median = self._compute_median(peer_metrics)
+        else:
+            median = None
+
+        return {
+            'company': self._extract_metrics(company),
+            'peers': peer_metrics,
+            'median': median,
+        }
+
+    def _extract_metrics(self, row) -> Optional[Dict]:
+        """Extract key metrics from a data row."""
+        try:
+            # Revenue (annualized from quarterly)
+            revtq = float(row.get('revtq', 0) or 0)
+            revenue = revtq * 4 / 1000  # Convert to $B
+
+            # Get prior year revenue for growth (if available)
+            # For now, use a placeholder
+            growth = None
+
+            # Gross margin
+            gross_margin = None
+            if row.get('revtq') and row.get('cogsq'):
+                revtq = float(row.get('revtq', 0) or 0)
+                cogsq = float(row.get('cogsq', 0) or 0)
+                if revtq > 0:
+                    gross_margin = (revtq - cogsq) / revtq * 100
+
+            # FCF margin (operating income / revenue as proxy)
+            fcf_margin = None
+            if row.get('oibdpq') and row['revtq']:
+                oibdpq = float(row.get('oibdpq', 0) or 0)
+                revtq = float(row.get('revtq', 0) or 0)
+                if revtq > 0:
+                    fcf_margin = oibdpq / revtq * 100
+
+            # EV/EBITDA
+            ev_ebitda = None
+            # Would need market cap data for this
+
+            # Net leverage
+            net_leverage = None
+            cash = float(row.get('cheq', 0) or 0)
+            debt = float(row.get('dlttq', 0) or 0) + float(row.get('dlcq', 0) or 0)
+            ebitda = float(row.get('oibdpq', 0) or 0) * 4  # Annualize
+            if ebitda > 0:
+                net_leverage = (debt - cash) / ebitda
+
+            return {
+                'name': row.get('conm', 'Unknown'),
+                'ticker': row.get('tic', ''),
+                'revenue': revenue,
+                'growth': growth,
+                'gross_margin': gross_margin,
+                'fcf_margin': fcf_margin,
+                'ev_ebitda': ev_ebitda,
+                'net_leverage': net_leverage,
+            }
+        except Exception:
+            return None
+
+    def _compute_median(self, peer_metrics: List[Dict]) -> Dict:
+        """Compute median values across peers."""
+        df = pd.DataFrame(peer_metrics)
+
+        return {
+            'name': 'Peer Median',
+            'ticker': '',
+            'revenue': df['revenue'].median(),
+            'growth': df['growth'].median() if 'growth' in df else None,
+            'gross_margin': df['gross_margin'].median(),
+            'fcf_margin': df['fcf_margin'].median(),
+            'ev_ebitda': df['ev_ebitda'].median() if 'ev_ebitda' in df else None,
+            'net_leverage': df['net_leverage'].median(),
+        }

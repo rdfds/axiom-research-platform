@@ -172,7 +172,7 @@ def build_record(item: dict, cik: str, gvkey: Optional[str]) -> Optional[dict]:
         "action_date": event_date,
         "filing_date": get_date("filingDate"),
         "accepted_date": get_date("acceptedDate"),
-        "form_type": item['formType'],
+        "form_type": item.get("formType"),
         "form_signification": item.get("formSignification"),
         "issuer_state": item.get("issuerStateOrCountry") or item.get("issuerStateOrCountryDescription"),
         "issuer_country": item.get("issuerStateOrCountryDescription"),
