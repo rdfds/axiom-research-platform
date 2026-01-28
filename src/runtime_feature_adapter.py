@@ -520,3 +520,258 @@ def _resolve_feature_record(
     return features.get(key)
 
 
+def resolve_feature_record(
+    features: Dict[str, Any],
+    key: str,
+    *,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Any:
+    if not isinstance(features, dict):
+        return None
+    if not runtime_feature_adapter_enabled():
+        return features.get(key)
+
+    return _resolve_feature_record(
+        features,
+        key,
+        action_family=action_family,
+        action_id=action_id,
+    )
+
+
+def resolve_feature_value(
+    features: Dict[str, Any],
+    key: str,
+    default: Any = None,
+    *,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Any:
+    record = resolve_feature_record(
+        features,
+        key,
+        action_family=action_family,
+        action_id=action_id,
+    )
+    if record is None:
+        return default
+    value = _feature_value(record)
+    return default if value is None else value
+
+
+def adapt_snapshot(
+    snapshot: Dict[str, Any],
+    *,
+    action_family: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    features = dict((snapshot or {}).get("features", {}) or {})
+    if not runtime_feature_adapter_enabled():
+        diagnostics = {
+            "enabled": False,
+            "profile": _rules_profile_label(),
+            "action_family": _resolved_action_family(action_family=action_family, action_id=action_id),
+            "action_id": str(action_id or "") or None,
+            "allowed_rules": sorted(_allowed_rules() or []),
+            "replacement_count": 0,
+            "ignored_legacy_count": 0,
+            "counts_by_target": {},
+            "counts_by_source": {},
+            "counts_by_support_mode": {},
+            "replacements": [],
+        }
+        adapted = dict(snapshot or {})
+        adapted["features"] = features
+        return adapted, diagnostics
+
+    target_keys = [
+        "capital_structure.net_debt",
+        "capital_structure.net_leverage",
+        "capital_structure.gross_leverage",
+        "liquidity.available_for_actions",
+        "operating.ebitda_ttm",
+        "macro.rate_10y",
+        "macro.rate_2y",
+        "macro.sofr",
+        "market.ig_oas",
+        "market.hy_oas",
+        "market.pe",
+    ]
+    adapted_features = dict(features)
+    replacements: List[Dict[str, Any]] = []
+    counts_by_target: Dict[str, int] = {}
+    counts_by_source: Dict[str, int] = {}
+    counts_by_support_mode: Dict[str, int] = {}
+    ignored_legacy_count = 0
+
+    for key in target_keys:
+        resolution_record = resolve_feature_record(
+            features,
+            key,
+            action_family=action_family,
+            action_id=action_id,
+        )
+        if resolution_record is None:
+            continue
+        source_key = key
+        rule = "legacy_direct"
+        ignored_legacy = False
+        synthetic = False
+        if runtime_feature_adapter_enabled():
+            if key == "capital_structure.net_debt":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["capital_structure.net_debt_normalized"],
+                    rule="normalized_net_debt",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "capital_structure.net_leverage":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["capital_structure.net_leverage_normalized"],
+                    rule="normalized_net_leverage",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "capital_structure.gross_leverage":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["capital_structure.gross_leverage_normalized"],
+                    rule="normalized_gross_leverage",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "liquidity.available_for_actions":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["liquidity.available_liquidity_normalized"],
+                    rule="normalized_available_liquidity",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "operating.ebitda_ttm":
+                info = _fill_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["operating.operating_earnings_normalized"],
+                    rule="normalized_operating_earnings_fill",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "macro.rate_10y":  # gitleaks:allow — schema field name, not a credential
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["macro.ust_10y_yield", "macro.us10y_treasury_yield"],
+                    rule="ust_10y_alias",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "macro.rate_2y":
+                info = _macro_rate_2y_resolution(
+                    features,
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "macro.sofr":
+                info = _fill_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["macro.sofr", "macro.sofr_or_fed_funds"],
+                    rule="sofr_compatibility_fallback",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "market.ig_oas":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["macro.ig_oas", "macro.us_ig_oas"],
+                    rule="credit_ig_alias",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "market.hy_oas":
+                info = _prefer_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["macro.hy_oas"],
+                    rule="credit_hy_alias",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            elif key == "market.pe":
+                info = _fill_alias_source(
+                    features,
+                    target_key=key,
+                    source_keys=["market.pe_ratio"],
+                    rule="pe_ratio_compatibility_alias",
+                    action_family=action_family,
+                    action_id=action_id,
+                )
+            else:
+                info = None
+            if info is not None:
+                source_key = str(info.get("source_key") or key)
+                rule = str(info.get("rule") or "legacy_direct")
+                ignored_legacy = bool(info.get("ignored_legacy", False))
+                synthetic = bool(info.get("synthetic", False))
+
+        if source_key == key and key in features:
+            continue
+
+        adapted_features[key] = resolution_record
+        counts_by_target[key] = counts_by_target.get(key, 0) + 1
+        counts_by_source[source_key] = counts_by_source.get(source_key, 0) + 1
+        support_mode = _support_mode(resolution_record) or "unspecified"
+        counts_by_support_mode[support_mode] = counts_by_support_mode.get(support_mode, 0) + 1
+        if ignored_legacy:
+            ignored_legacy_count += 1
+        replacements.append(
+            {
+                "target_key": key,
+                "source_key": source_key,
+                "support_mode": support_mode,
+                "ignored_legacy": ignored_legacy,
+                "synthetic": synthetic,
+                "rule": rule,
+            }
+        )
+
+    adapted = dict(snapshot or {})
+    adapted["features"] = adapted_features
+    provenance = dict(adapted.get("provenance", {}) or {})
+    provenance["runtime_feature_adapter"] = {
+        "enabled": True,
+        "replacement_count": len(replacements),
+        "ignored_legacy_count": ignored_legacy_count,
+    }
+    adapted["provenance"] = provenance
+    diagnostics = {
+        "enabled": True,
+        "profile": _rules_profile_label(),
+        "action_family": _resolved_action_family(action_family=action_family, action_id=action_id),
+        "action_id": str(action_id or "") or None,
+        "allowed_rules": sorted(_allowed_rules() or []),
+        "replacement_count": len(replacements),
+        "ignored_legacy_count": ignored_legacy_count,
+        "counts_by_target": counts_by_target,
+        "counts_by_source": counts_by_source,
+        "counts_by_support_mode": counts_by_support_mode,
+        "replacements": replacements,
+    }
+    return adapted, diagnostics
+
+
+__all__ = [
+    "adapt_snapshot",
+    "resolve_feature_record",
+    "resolve_feature_value",
+    "runtime_feature_adapter_enabled",
+]
