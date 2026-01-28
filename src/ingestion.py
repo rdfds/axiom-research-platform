@@ -106,3 +106,84 @@ def _ensure_list(value: Optional[Any]) -> List[Any]:
     return [value]
 
 
+def write_raw_records(
+    source_system: str,
+    records: Iterable[Dict[str, Any]],
+    base_dir: Path = DATA_DIR / "lake",
+    schema_version: str = "v1",
+) :
+    """
+    Append raw payloads to the immutable lake and update raw manifest.
+
+    Each record must provide:
+      - entity_id
+      - event_time
+      - available_time
+      - payload (raw payload dict)
+      - company_id (optional)
+      - security_id (optional)
+      - supersedes_version_id (optional)
+    """
+    ingest_time = datetime.utcnow()
+    ingest_date = ingest_time.strftime("%Y-%m-%d")
+
+    raw_dir = base_dir / "raw" / source_system / f"ingest_date={ingest_date}"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_path = raw_dir / f"payloads_{ingest_time.strftime('%H%M%S')}.jsonl"
+    manifest_rows = []
+
+    with raw_path.open("a", encoding="utf-8") as f:
+        for rec in records:
+            payload = rec["payload"]
+            entity_id = rec["entity_id"]
+            event_time = pd.to_datetime(rec["event_time"])
+            available_time = pd.to_datetime(rec["available_time"])
+            ensure_bitemporal(event_time, available_time)
+
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=str(entity_id),
+                event_time=event_time.to_pydatetime(),
+                available_time=available_time.to_pydatetime(),
+                raw_payload_hash=raw_payload_hash,
+                schema_version=schema_version,
+            )
+
+            raw_record_id = hashlib.sha256(
+                f"{source_system}|{entity_id}|{raw_payload_hash}".encode("utf-8")
+            ).hexdigest()[:32]
+
+            f.write(json.dumps({"raw_record_id": raw_record_id, "payload": payload}) + "\n")
+
+            manifest_rows.append(
+                {
+                    "source_system": source_system,
+                    "raw_record_id": raw_record_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "raw_path": str(raw_path),
+                    "entity_id": entity_id,
+                    "company_id": rec.get("company_id"),
+                    "security_id": rec.get("security_id"),
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingest_time,
+                    "version_id": version_id,
+                    "supersedes_version_id": rec.get("supersedes_version_id"),
+                }
+            )
+
+    manifest = pd.DataFrame(manifest_rows)
+    manifest_path = base_dir / "raw_manifest.parquet"
+    if manifest_path.exists():
+        try:
+            existing = pd.read_parquet(manifest_path)
+            manifest = pd.concat([existing, manifest], ignore_index=True, sort=False)
+        except Exception:
+            # Corrupt/empty manifest; overwrite with new rows
+            pass
+    manifest.to_parquet(manifest_path, index=False)
+    return manifest
+
+
