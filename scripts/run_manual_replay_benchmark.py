@@ -47,7 +47,7 @@ _CANONICAL_LOCK_ARTIFACT_FALLBACKS: Dict[str, Path] = {
 }
 
 
-def _bootstrap_env_overrides() :
+def _bootstrap_env_overrides() -> None:
     config_path = DEFAULT_CONFIG_PATH
     argv = sys.argv[1:]
     for index, token in enumerate(argv):
