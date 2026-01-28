@@ -358,7 +358,7 @@ def main() -> None:
                 "company_name": row.get("company_name"),
                 "public_bond_outstanding": _json_scalar(row.get("capital_structure__public_bond_outstanding__value")),
                 "public_bond_due_0_12m": _json_scalar(row.get("capital_structure__public_bond_due_0_12m__value")),
-                "public_bond_due_12_24m": _json_scalar(row['capital_structure__public_bond_due_12_24m__value']),
+                "public_bond_due_12_24m": _json_scalar(row.get("capital_structure__public_bond_due_12_24m__value")),
                 "debt_due_0_12m": _json_scalar(row.get("capital_structure__debt_due_0_12m__value")),
                 "debt_due_0_12m_support_mode": _json_scalar(row.get("capital_structure__debt_due_0_12m__support_mode")),
                 "debt_due_12_24m": _json_scalar(row.get("capital_structure__debt_due_12_24m__value")),
