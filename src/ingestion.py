@@ -79,3 +79,22 @@ def compute_raw_payload_hash(payload: Dict[str, Any]) -> str:
     return hashlib.sha256(_canonical_json(payload)).hexdigest()
 
 
+def compute_version_id(
+    source_system: str,
+    entity_id: str,
+    event_time: datetime,
+    available_time: datetime,
+    raw_payload_hash: str,
+    schema_version: str = "v1",
+) -> str:
+    key = f"{source_system}|{entity_id}|{event_time.isoformat()}|{available_time.isoformat()}|{raw_payload_hash}|{schema_version}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def ensure_bitemporal(event_time: datetime, available_time: datetime) -> None:
+    if event_time is None or available_time is None:
+        raise ValueError("event_time and available_time are required.")
+    if available_time < event_time:
+        raise ValueError("available_time must be >= event_time.")
+
+

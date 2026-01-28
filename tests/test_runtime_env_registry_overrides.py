@@ -47,3 +47,21 @@ def test_metric_policy_engine_honors_late_env_override(tmp_path, monkeypatch):
     assert engine.methodology_registry.registry_path == methodology_path
 
 
+def test_company_state_builder_skips_estimates_when_env_enabled(tmp_path, monkeypatch):
+    estimates_path = tmp_path / "warehouse_estimates.parquet"
+    pd.DataFrame(
+        [
+            {
+                "company_id": "123",
+                "available_time": "2024-01-01T00:00:00Z",
+                "event_time": "2024-01-01T00:00:00Z",
+                "num_estimates": 7,
+            }
+        ]
+    ).to_parquet(estimates_path, index=False)
+    monkeypatch.setenv("AXIOM_SKIP_ESTIMATES", "1")
+
+    builder = CompanyStateBuilder(estimates_path=estimates_path, skip_events=True, skip_timeseries=True, skip_macro=True)
+    out = builder._load_estimates("123", pd.Timestamp("2024-12-31", tz="UTC"))
+
+    assert out.empty

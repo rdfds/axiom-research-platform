@@ -32,3 +32,8 @@ python -u scripts/26_ingest_sec_xbrl.py --incremental
 
 By default, `--end` is set to today’s date.
 
+## Notes
+
+- CIKs are resolved from SEC `company_tickers.json` and your CRSP universe.
+- Forms default to 10-K and 10-Q (use `--include-8k` to add 8-K).
+- Raw payloads are cached under `data/sec/companyfacts/`.
