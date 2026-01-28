@@ -141,3 +141,117 @@ def request_json(url: str, params: dict, session: requests.Session) -> list:
     return []
 
 
+def build_record(item: dict, cik: str, gvkey: Optional[str]) -> Optional[dict]:
+    def get_date(key: str) -> Optional[pd.Timestamp]:
+        val = item.get(key)
+        if not val:
+            return None
+        return pd.to_datetime(val, errors="coerce")
+
+    def get_float(key: str) -> Optional[float]:
+        val = item.get(key)
+        if val is None or val == "":
+            return None
+        try:
+            return float(val)
+        except Exception:
+            return None
+
+    date_of_first_sale = get_date("dateOfFirstSale")
+    event_date = date_of_first_sale or get_date("date") or get_date("filingDate")
+    if event_date is None or pd.isna(event_date):
+        return None
+    equity_flag = item.get("securitiesOfferedAreOfEquityType")
+    if equity_flag is False:
+        return None
+
+    return {
+        "cik": cik,
+        "gvkey": gvkey,
+        "company_name": item.get("companyName") or item.get("entityName"),
+        "action_date": event_date,
+        "filing_date": get_date("filingDate"),
+        "accepted_date": get_date("acceptedDate"),
+        "form_type": item['formType'],
+        "form_signification": item.get("formSignification"),
+        "issuer_state": item.get("issuerStateOrCountry") or item.get("issuerStateOrCountryDescription"),
+        "issuer_country": item.get("issuerStateOrCountryDescription"),
+        "equity_flag": equity_flag,
+        "is_amendment": item.get("isAmendment"),
+        "offering_amount": get_float("totalOfferingAmount"),
+        "amount_sold": get_float("totalAmountSold"),
+        "amount_remaining": get_float("totalAmountRemaining"),
+        "source": "fmp_form_d",
+        "action_type": "form_d",
+        "action_subtype": "form_d",
+    }
+
+
+def main() -> None:
+    if not FMP_API_KEY:
+        raise RuntimeError("FMP_API_KEY not set. Export your FMP API key.")
+
+    cik_map = load_cik_map(CIK_MAP_PATH)
+    ciks = load_cik_list(cik_map)
+    if not ciks:
+        raise RuntimeError("No CIKs available to query.")
+
+    start_dt = pd.to_datetime(FMP_START_DATE, errors="coerce")
+    end_dt = pd.to_datetime(FMP_END_DATE, errors="coerce")
+
+    processed = load_checkpoint()
+    records: List[dict] = []
+    writer: Optional[pq.ParquetWriter] = None
+
+    session = requests.Session()
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+    CURATED_DIR.mkdir(parents=True, exist_ok=True)
+
+    log(f"Pulling FMP Form D offerings for {len(ciks):,} CIKs...")
+
+    for idx, cik in enumerate(ciks, start=1):
+        if FMP_RESUME and cik in processed:
+            continue
+
+        url = f"{FMP_BASE_URL}/fundraising"
+        params = {"cik": cik, "apikey": FMP_API_KEY}
+        payload = request_json(url, params=params, session=session)
+
+        for item in payload:
+            rec = build_record(item, cik, cik_map.get(cik))
+            if rec is None:
+                continue
+            if start_dt is not None and rec["action_date"] < start_dt:
+                continue
+            if end_dt is not None and rec["action_date"] > end_dt:
+                continue
+            records.append(rec)
+
+        if FMP_RESUME:
+            processed.add(cik)
+            save_checkpoint(cik)
+
+        if FMP_LOG_EVERY and idx % FMP_LOG_EVERY == 0:
+            log(f"Processed {idx:,}/{len(ciks):,} CIKs | records {len(records):,}")
+
+        if FMP_FLUSH_EVERY and len(records) >= FMP_FLUSH_EVERY:
+            df = pd.DataFrame.from_records(records)
+            table = pa.Table.from_pandas(df, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(OUT_PATH, table.schema, compression="zstd")
+            writer.write_table(table)
+            records = []
+
+    if records:
+        df = pd.DataFrame.from_records(records)
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        if writer is None:
+            writer = pq.ParquetWriter(OUT_PATH, table.schema, compression="zstd")
+        writer.write_table(table)
+
+    if writer is not None:
+        writer.close()
+
+    log(f"Done. Saved -> {OUT_PATH}")
+
+

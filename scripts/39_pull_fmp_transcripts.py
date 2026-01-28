@@ -164,3 +164,17 @@ def load_symbol_list(session: requests.Session) -> List[str]:
     return symbols
 
 
+def load_symbol_dates(symbol: str, session: requests.Session) -> List[Dict]:
+    url = f"{FMP_BASE_URL}/earning-call-transcript-dates"
+    data = _request_json(url, params={"symbol": symbol, "apikey": FMP_API_KEY}, session=session)
+    if not data:
+        if FMP_DEBUG:
+            log(f"[debug] dates empty for {symbol}")
+        return []
+    if isinstance(data, dict) and data.get("Error Message"):
+        if FMP_DEBUG:
+            log(f"[debug] dates error for {symbol}: {data.get('Error Message')}")
+        return []
+    return data
+
+
