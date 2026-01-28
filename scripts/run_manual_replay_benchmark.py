@@ -47,3 +47,43 @@ _CANONICAL_LOCK_ARTIFACT_FALLBACKS: Dict[str, Path] = {
 }
 
 
+def _bootstrap_env_overrides() :
+    config_path = DEFAULT_CONFIG_PATH
+    argv = sys.argv[1:]
+    for index, token in enumerate(argv):
+        if token == "--config" and index + 1 < len(argv):
+            config_path = Path(argv[index + 1])
+            break
+        if token.startswith("--config="):
+            config_path = Path(token.split("=", 1)[1])
+            break
+    if not config_path.is_absolute():
+        config_path = ROOT / config_path
+    if not config_path.exists():
+        return
+    try:
+        payload = json.loads(config_path.read_text())
+    except Exception:
+        # Synced placeholder manifests/configs should not block offline replay startup.
+        return
+    env_override_candidates = dict(payload.get("env_override_candidates", {}) or {})
+    if env_override_candidates:
+        for name, values in env_override_candidates.items():
+            candidates = []
+            for value in list(values or []):
+                path = Path(value)
+                if not path.is_absolute():
+                    path = ROOT / path
+                candidates.append(path)
+            chosen = next((candidate for candidate in candidates if candidate.exists()), candidates[0] if candidates else None)
+            if chosen is not None:
+                os.environ.setdefault(name, str(chosen))
+        return
+    env_overrides = dict(payload.get("env_overrides", {}) or {})
+    for name, path_value in env_overrides.items():
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = ROOT / path
+        os.environ.setdefault(name, str(path))
+
+

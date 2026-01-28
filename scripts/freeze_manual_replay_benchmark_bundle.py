@@ -87,3 +87,20 @@ def _copy_tree(src: Path, dst: Path) -> None:
             _copy_file(child, target)
 
 
+def _load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def _derive_case_company_ids(manifest_paths: Iterable[Path]) -> List[str]:
+    ids: Set[str] = set()
+    for path in manifest_paths:
+        payload = _load_json(path)
+        cases = payload["cases"] if isinstance(payload, dict) and "cases" in payload else payload
+        for case in cases:
+            for key in ("company_id", "source_company_id"):
+                value = case.get(key)
+                if value:
+                    ids.add(str(value).zfill(10))
+    return sorted(ids)
+
+
