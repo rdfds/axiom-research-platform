@@ -119,3 +119,25 @@ def save_checkpoint(cik: str) -> None:
         handle.write(f"{cik}\n")
 
 
+def request_json(url: str, params: dict, session: requests.Session) -> list:
+    for attempt in range(FMP_RETRIES + 1):
+        try:
+            if FMP_DEBUG:
+                log(f"GET {url} params={params}")
+            resp = session.get(url, params=params, timeout=FMP_TIMEOUT)
+            if resp.status_code == 429:
+                time.sleep(max(FMP_SLEEP * 5, 2.0))
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            if FMP_SLEEP:
+                time.sleep(FMP_SLEEP)
+            return data if isinstance(data, list) else []
+        except Exception as exc:
+            if attempt >= FMP_RETRIES:
+                log(f"Request failed: {exc}")
+                return []
+            time.sleep(max(FMP_SLEEP, 0.5))
+    return []
+
+

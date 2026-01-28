@@ -91,3 +91,76 @@ def _safe_params(params: Dict[str, object]) -> Dict[str, object]:
     return safe
 
 
+def _request_json(url: str, params: Dict[str, object], session: requests.Session) -> Optional[List[Dict]]:
+    for attempt in range(FMP_RETRIES + 1):
+        try:
+            if FMP_DEBUG:
+                log(f"[debug] GET {url} params={_safe_params(params)}")
+            resp = session.get(url, params=params, timeout=FMP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            if FMP_SLEEP:
+                time.sleep(FMP_SLEEP)
+            return data
+        except requests.RequestException as exc:
+            if attempt < FMP_RETRIES:
+                time.sleep(max(FMP_SLEEP, 0.2))
+                continue
+            log(f"Request failed: {url} {exc}")
+            return None
+    return None
+
+
+def load_universe_tickers() -> List[str]:
+    universe_path = DATA_DIR / "curated" / "universe_r3000_proxy.parquet"
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    if not universe_path.exists() or not names_path.exists():
+        return []
+    universe = pd.read_parquet(universe_path)
+    universe["date"] = pd.to_datetime(universe["date"])
+    asof_date = universe["date"].max()
+    universe = universe[universe["date"] == asof_date][["permno"]]
+
+    names = pd.read_parquet(names_path, columns=["permno", "namedt", "nameendt", "ticker"])
+    names["namedt"] = pd.to_datetime(names["namedt"])
+    names["nameendt"] = pd.to_datetime(names["nameendt"])
+    active = names[(names["namedt"] <= asof_date) & (names["nameendt"] >= asof_date)]
+    active = active.sort_values(["permno", "nameendt"])
+    latest = active.drop_duplicates(subset=["permno"], keep="last")
+    merged = universe.merge(latest, on="permno", how="left")
+    tickers = (
+        merged["ticker"]
+        .dropna()
+        .astype(str)
+        .str.upper()
+        .str.strip()
+        .tolist()
+    )
+    return sorted(set(tickers))
+
+
+def load_symbol_list(session: requests.Session) -> List[str]:
+    if FMP_TARGET_SYMBOL:
+        return [FMP_TARGET_SYMBOL.upper()]
+
+    symbols: List[str] = []
+    if FMP_USE_UNIVERSE:
+        symbols = load_universe_tickers()
+        if symbols:
+            log(f"Using universe tickers: {len(symbols):,}")
+
+    url = f"{FMP_BASE_URL}/earnings-transcript-list"
+    data = _request_json(url, params={"apikey": FMP_API_KEY}, session=session)
+    if data:
+        avail = [row.get("symbol") for row in data if row.get("symbol")]
+        avail = [str(s).upper() for s in avail]
+        if symbols:
+            symbols = sorted(set(symbols).intersection(set(avail)))
+        else:
+            symbols = sorted(set(avail))
+
+    if FMP_LIMIT_SYMBOLS and FMP_LIMIT_SYMBOLS > 0:
+        symbols = symbols[:FMP_LIMIT_SYMBOLS]
+    return symbols
+
+
