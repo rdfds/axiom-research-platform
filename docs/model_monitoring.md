@@ -14,3 +14,14 @@ Before scoring or training, validate:
 
 A material schema, coverage, or fallback-rate change blocks promotion until the affected slices are reviewed.
 
+## 2. Temporal performance
+
+Temporal claims require time-ordered evaluation. Record:
+
+- training cutoff and fixed test window;
+- eligible population and excluded sectors or families;
+- baseline and candidate metrics by slice, not only in aggregate;
+- candidate count, successful evaluation count, and failure reasons.
+
+The committed forward-gap benchmark uses four training cutoffs and two-year test windows. Its exact result is stored in [`../results/public_benchmark.json`](../results/public_benchmark.json).
+

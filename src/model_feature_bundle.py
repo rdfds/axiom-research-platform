@@ -215,3 +215,13 @@ def _copy_record_for_target(record: Any, *, target_key: str, source_key: str) ->
     return out
 
 
+def _resolved_action_family(*, action_type: Optional[str] = None, action_id: Optional[str] = None) -> Optional[str]:
+    family = str(action_type or "").strip().lower()
+    if family:
+        return family
+    aid = str(action_id or "").strip().lower()
+    if "." in aid:
+        return aid.split(".", 1)[0]
+    return aid or None
+
+
