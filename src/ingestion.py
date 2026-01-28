@@ -187,3 +187,75 @@ def write_raw_records(
     return manifest
 
 
+def append_canonical_records(
+    table_name: str,
+    records: Iterable[Dict[str, Any]],
+    base_dir: Path = DATA_DIR / "warehouse",
+    schema_version: str = "v1",
+) -> pd.DataFrame:
+    """
+    Append normalized records to warehouse with bitemporal enforcement.
+    """
+    base_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(records)
+
+    required = [
+        "source_system",
+        "entity_id",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "version_id",
+        "raw_payload_hash",
+        "upstream_version_ids",
+        "quality_flags",
+    ]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
+    df["event_time"] = pd.to_datetime(df["event_time"])
+    df["available_time"] = pd.to_datetime(df["available_time"])
+    df["ingestion_time"] = pd.to_datetime(df["ingestion_time"])
+
+    # Normalize optional numeric fields that can come in as mixed types
+    if "fiscal_year" in df.columns:
+        df["fiscal_year"] = pd.to_numeric(df["fiscal_year"], errors="coerce").astype("Int64")
+    if "fiscal_quarter" in df.columns:
+        df["fiscal_quarter"] = pd.to_numeric(df["fiscal_quarter"], errors="coerce").astype("Int64")
+
+    for _, row in df.iterrows():
+        ensure_bitemporal(row["event_time"], row["available_time"])
+
+    df["upstream_version_ids"] = df["upstream_version_ids"].apply(_ensure_list)
+    df["quality_flags"] = df["quality_flags"].apply(_ensure_list)
+
+    dir_path = base_dir / table_name
+    if dir_path.exists() and dir_path.is_dir():
+        df["year"] = df["event_time"].dt.year.astype("Int64")
+        rows = 0
+        for year, ydf in df.groupby("year"):
+            if pd.isna(year):
+                continue
+            year_dir = dir_path / f"year={int(year)}"
+            year_dir.mkdir(parents=True, exist_ok=True)
+            part_path = year_dir / f"part_{int(datetime.utcnow().timestamp())}_{os.getpid()}.parquet"
+            ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+            rows += len(ydf)
+        return df
+
+    path = base_dir / f"{table_name}.parquet"
+    if path.exists():
+        existing = pd.read_parquet(path)
+        if "fiscal_year" in existing.columns:
+            existing["fiscal_year"] = pd.to_numeric(existing["fiscal_year"], errors="coerce").astype("Int64")
+        if "fiscal_quarter" in existing.columns:
+            existing["fiscal_quarter"] = pd.to_numeric(existing["fiscal_quarter"], errors="coerce").astype("Int64")
+        df = pd.concat([existing, df], ignore_index=True, sort=False)
+
+    if "fiscal_year" in df.columns:
+        df["fiscal_year"] = pd.to_numeric(df["fiscal_year"], errors="coerce").astype("Int64")
+    if "fiscal_quarter" in df.columns:
+        df["fiscal_quarter"] = pd.to_numeric(df["fiscal_quarter"], errors="coerce").astype("Int64")
+    df.to_parquet(path, index=False)
+    return df
