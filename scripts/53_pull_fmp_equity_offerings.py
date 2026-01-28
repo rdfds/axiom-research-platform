@@ -255,3 +255,5 @@ def main() -> None:
     log(f"Done. Saved -> {OUT_PATH}")
 
 
+if __name__ == "__main__":
+    main()
