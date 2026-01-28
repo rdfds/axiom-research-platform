@@ -43,3 +43,12 @@ def _sql_path(path: Path) -> str:
     return path.as_posix().replace("'", "''")
 
 
+def _support_counts(series: pd.Series) -> Dict[str, int]:
+    support = series.fillna("unsupported").astype(str)
+    return {
+        "exact": int((support == "exact").sum()),
+        "proxy_missing_component": int((support == "proxy_missing_component").sum()),
+        "unsupported": int((support == "unsupported").sum()),
+    }
+
+

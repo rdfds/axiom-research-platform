@@ -387,3 +387,5 @@ def main() -> None:
     print(f"Overlayed public-bond maturity lower bounds -> {out_parquet}")
 
 
+if __name__ == "__main__":
+    main()
