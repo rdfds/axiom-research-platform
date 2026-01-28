@@ -366,7 +366,7 @@ def _macro_rate_2y_resolution(
     target_raw = features.get("macro.rate_2y")
     target_present = "macro.rate_2y" in features
     ust10_raw = features.get("macro.ust_10y_yield")
-    curve_raw = features['macro.curve_2s10s']
+    curve_raw = features.get("macro.curve_2s10s")
     if _rule_enabled("ust_10y_minus_curve_2s10s", action_family=action_family, action_id=action_id) and _alias_source_supported(ust10_raw) and _alias_source_supported(curve_raw):
         ust10_val = _feature_value(ust10_raw)
         curve_val = _feature_value(curve_raw)

@@ -102,3 +102,16 @@ from src.backtest_scorecard import (
     build_portfolio_strategy_scorecard,
     render_portfolio_strategy_scorecard_markdown,
 )
+from src.company_state_builder import CompanyStateBuilder
+from src.company_state_store import SnapshotStore
+from src.historical_recommendation_eval import (
+    _aggregate_historical_cases,
+    _build_historical_alias_overrides,
+    _load_action_support_summary,
+    _load_fixed_historical_cases,
+    _load_realized_outcomes_lookup,
+    _score_ex_post_alignment,
+    _snapshot_coverage_summary,
+    _snapshot_has_meaningful_coverage,
+    _top_action_ids,
+)
