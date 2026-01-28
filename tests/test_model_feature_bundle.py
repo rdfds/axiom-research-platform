@@ -271,3 +271,22 @@ def test_state_vector_v1_prefers_raw_growth_and_cash_generation_when_available()
     assert state["support"]["state_vector_v1.cash_generation"]["support_mode"] == "exact"
 
 
+def test_state_vector_v1_uses_vix_fallback_for_market_stress_when_price_history_is_missing():
+    snapshot = {
+        "features": {
+            "operating.revenue_ttm_provider_direct": {"value": 120.0, "support_mode": "exact"},
+            "operating.ebitda_ltm_provider_direct": {"value": 30.0, "support_mode": "exact"},
+            "market.vix": {"value": 24.0, "support_mode": "exact"},
+            "macro.fed_funds_effective": {"value": 4.0, "support_mode": "exact"},
+            "macro.hy_oas": {"value": 3.0, "support_mode": "exact"},
+        }
+    }
+
+    state = build_model_feature_bundle(snapshot)["state_vector_v1"]
+    record = state["records"]["state_vector_v1.market_stress"]
+
+    assert math.isclose(state["values"]["state_vector_v1.market_stress"], 24.0 / 80.0)
+    assert state["support"]["state_vector_v1.market_stress"]["support_mode"] == "exact"
+    assert record["fallback_used"] == "market.vix"
+    assert record["component_breakdown"]["market.vix"] == 24.0
+    assert "market_stress_vix_fallback" in (record.get("quality_flags") or [])
