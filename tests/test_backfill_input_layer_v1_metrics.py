@@ -75,3 +75,68 @@ def test_selection_prefers_sec_revenue_over_provider_direct():
     assert selected["component_breakdown"]["selection_policy"] == "prefer_sec_companyfacts_reconstruction"
 
 
+def test_revenue_ttm_lag_1y_uses_prior_year_ttm_asof():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                80.0,
+                                start="2022-01-01",
+                                end="2022-12-31",
+                                filed="2023-02-15",
+                                fy=2022,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                60.0,
+                                start="2022-01-01",
+                                end="2022-09-30",
+                                filed="2022-11-01",
+                                fy=2022,
+                                fp="Q3",
+                                form="10-Q",
+                            ),
+                            _duration_fact(
+                                72.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2023-11-01",
+                                fy=2023,
+                                fp="Q3",
+                                form="10-Q",
+                            ),
+                            _duration_fact(
+                                81.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-01",
+                                fy=2024,
+                                fp="Q3",
+                                form="10-Q",
+                            ),
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "operating.revenue_ttm_lag_1y",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 92.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["lagged_as_of_date"] == "2023-12-31"
+    assert component_breakdown["mode"] == "ytd_plus_prior_fy_minus_prior_ytd"
+    assert component_breakdown["concept"] == "Revenues"
+
+

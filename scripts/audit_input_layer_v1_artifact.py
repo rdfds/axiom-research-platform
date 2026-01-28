@@ -395,3 +395,13 @@ def _selected_component_gap_days(component_breakdown: Any, keys: tuple[str, ...]
     return (max(ends) - min(ends)).days
 
 
+def _record_issue(container: dict[str, Any], category: str, metric_name: str, example: dict[str, Any]) -> None:
+    metric_bucket = container.setdefault(category, {}).setdefault(
+        metric_name,
+        {"count": 0, "examples": []},
+    )
+    metric_bucket["count"] += 1
+    if len(metric_bucket["examples"]) < 5:
+        metric_bucket["examples"].append(example)
+
+
