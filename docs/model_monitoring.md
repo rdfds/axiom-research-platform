@@ -25,3 +25,13 @@ Temporal claims require time-ordered evaluation. Record:
 
 The committed forward-gap benchmark uses four training cutoffs and two-year test windows. Its exact result is stored in [`../results/public_benchmark.json`](../results/public_benchmark.json).
 
+## 3. Baseline and placebo gates
+
+A candidate must improve on the current baseline and pass the applicable negative control. For the committed forward-gap policy, the negative control shuffles gap values within each driver/horizon panel before scoring the same validation split.
+
+```bash
+python scripts/build_public_benchmark.py --check
+```
+
+Review aggregate lift, pass rate, and family/sector slices. A positive aggregate result does not override a severe regression in a high-support slice.
+

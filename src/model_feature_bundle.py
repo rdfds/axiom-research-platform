@@ -225,3 +225,29 @@ def _resolved_action_family(*, action_type: Optional[str] = None, action_id: Opt
     return aid or None
 
 
+def _resolve_first_record(
+    features: Dict[str, Any],
+    source_keys: Iterable[str],
+    *,
+    action_type: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
+    for source_key in source_keys:
+        record = resolve_feature_record(
+            features,
+            source_key,
+            action_family=action_type,
+            action_id=action_id,
+        )
+        if record is None:
+            continue
+        if _feature_value(record) is None:
+            continue
+        actual_source = source_key
+        if isinstance(record, dict):
+            runtime_adapter_meta = dict((record['component_breakdown'] or {}).get("runtime_feature_adapter", {}) or {})
+            actual_source = str(runtime_adapter_meta.get("source_metric") or source_key)
+        return record, actual_source
+    return None, None
+
+
