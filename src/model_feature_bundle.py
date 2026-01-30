@@ -251,3 +251,29 @@ def _resolve_first_record(
     return None, None
 
 
+def _canonical_meta(record: Any, *, source_metric: Optional[str]) -> Dict[str, Any]:
+    return {
+        "source_metric": source_metric,
+        "support_mode": _support_mode(record),
+        "applicability_status": _applicability_status(record),
+        "quality_flags": _quality_flags(record),
+        "is_proxy": bool(_support_mode(record) and _support_mode(record) not in _EXACTISH_SUPPORT_MODES),
+        "is_legacy": bool(source_metric and ".normalized" not in source_metric and source_metric.startswith(("capital_structure.", "liquidity.", "operating.", "macro.", "market."))),
+    }
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        out = float(_feature_value(value))
+    except Exception:
+        return None
+    if out != out or out in (float("inf"), float("-inf")):
+        return None
+    return out
+
+
+def _is_exactish_support_mode(mode: Optional[str]) -> bool:
+    normalized = str(mode).strip().lower() if mode is not None else None
+    return normalized in _EXACTISH_SUPPORT_MODES
+
+
