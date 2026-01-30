@@ -46,3 +46,15 @@ def _parse_years(arg: Optional[str]) -> Optional[List[int]]:
     return sorted(set(out))
 
 
+def _iter_year_dirs(root: Path, years: Optional[List[int]]) -> Iterable[Path]:
+    if years is None:
+        for p in sorted(root.glob("year=*")):
+            if p.is_dir():
+                yield p
+        return
+    for y in years:
+        p = root / f"year={y}"
+        if p.is_dir():
+            yield p
+
+
