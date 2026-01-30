@@ -432,3 +432,25 @@ def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) :
     return prices
 
 
+def _load_crsp_market_cache(crsp_market_cache_path: Path, permnos: list[str]) -> pd.DataFrame:
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(permno AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            close_price,
+            price_proxy,
+            total_return,
+            price_return,
+            shares_outstanding,
+            daily_cap,
+            delist_flag
+        FROM read_parquet('{crsp_market_cache_path}')
+        WHERE CAST(permno AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
