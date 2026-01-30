@@ -277,3 +277,30 @@ def _is_exactish_support_mode(mode: Optional[str]) -> bool:
     return normalized in _EXACTISH_SUPPORT_MODES
 
 
+def _all_exactish_support(
+    support: Dict[str, Dict[str, Any]],
+    *keys: Optional[str],
+) -> bool:
+    usable = [str(key) for key in keys if key]
+    if not usable:
+        return False
+    return all(_is_exactish_support_mode((support.get(key, {}) or {}).get("support_mode")) for key in usable)
+
+
+def _derived_support_meta(
+    *,
+    source_metric: str,
+    support_mode: Optional[str],
+    quality_flags: Iterable[str] = (),
+) -> Dict[str, Any]:
+    normalized_mode = str(support_mode).strip().lower() if support_mode is not None else None
+    return {
+        "source_metric": source_metric,
+        "support_mode": normalized_mode,
+        "applicability_status": None,
+        "quality_flags": [str(flag) for flag in quality_flags if flag],
+        "is_proxy": bool(normalized_mode and normalized_mode not in _EXACTISH_SUPPORT_MODES),
+        "is_legacy": False,
+    }
+
+
