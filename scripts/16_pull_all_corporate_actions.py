@@ -150,3 +150,39 @@ def pull_special_dividends():
     return df
 
 
+def pull_spinoffs():
+    """Pull spin-offs from CRSP distributions."""
+    print("\n" + "=" * 60)
+    print("SPIN-OFFS (CRSP)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # 4112 = spin-off, 41xx range
+    query = """
+    SELECT
+        d.permno,
+        d.exdt as action_date,
+        d.distcd,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.exdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.exdt >= '2010-01-01'
+      AND d.distcd BETWEEN 4100 AND 4199
+    ORDER BY d.exdt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    df['action_type'] = 'spinoff'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} spin-offs")
+
+    df.to_parquet(DATA_DIR / 'spinoffs.parquet')
+    conn.close()
+    return df
+
+
