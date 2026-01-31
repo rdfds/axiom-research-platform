@@ -245,7 +245,7 @@ def _resolve_first_record(
             continue
         actual_source = source_key
         if isinstance(record, dict):
-            runtime_adapter_meta = dict((record['component_breakdown'] or {}).get("runtime_feature_adapter", {}) or {})
+            runtime_adapter_meta = dict((record.get("component_breakdown", {}) or {}).get("runtime_feature_adapter", {}) or {})
             actual_source = str(runtime_adapter_meta.get("source_metric") or source_key)
         return record, actual_source
     return None, None

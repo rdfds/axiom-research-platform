@@ -47,3 +47,21 @@ For learned precedent ranking and action-evidence components, review:
 
 If support is insufficient, the correct behavior is a broader cohort, a lower-confidence result, or no claim—not an extrapolated high-confidence score.
 
+## 5. Product-contract checks
+
+Model output must survive into the final recommendation contract without losing provenance or limitations. CI therefore covers company-state validation, feature bundles, ranking and backtest behavior, learned-quality evaluation, orchestration, planner behavior, dossier evaluation, and end-to-end examples.
+
+These tests establish deterministic implementation behavior on committed fixtures; provider-scale coverage and operational metrics are evaluated in their deployment environments.
+
+## 6. Drift and operational monitoring
+
+Provider-backed deployments should track:
+
+- schema and missingness drift;
+- feature-distribution and support-coverage drift;
+- ranking, calibration, and baseline-relative performance by slice;
+- run failures, latency, and fallback rates;
+- changes in recommendation mix or confidence distribution.
+
+Alert thresholds belong with the versioned candidate artifact and evaluation manifest. Provider paths, credentials, and live operational metrics remain in their deployment environments.
+
