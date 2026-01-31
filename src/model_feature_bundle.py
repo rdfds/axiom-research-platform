@@ -332,3 +332,902 @@ def _state_vector_record(
     return out
 
 
+def _copy_state_metric(
+    state_values: Dict[str, Any],
+    state_records: Dict[str, Dict[str, Any]],
+    state_support: Dict[str, Dict[str, Any]],
+    state_reliability: Dict[str, float],
+    state_sources: Dict[str, str],
+    *,
+    key: str,
+    source_key: str,
+    canonical: Dict[str, Any],
+    records: Dict[str, Dict[str, Any]],
+    support: Dict[str, Dict[str, Any]],
+    reliability: Dict[str, float],
+    sources: Dict[str, str],
+    transform: Optional[str] = None,
+    value: Any = None,
+    extra_quality_flags: Iterable[str] = (),
+) -> None:
+    source_record = records.get(source_key)
+    source_metric = str(sources.get(source_key) or source_key)
+    state_value = canonical.get(source_key) if value is None else value
+    support_mode = (support.get(source_key, {}) or {}).get("support_mode")
+    if state_value is None and support_mode is None:
+        support_mode = "unsupported"
+    quality_flags = list(dict.fromkeys([*_quality_flags(source_record), *list(extra_quality_flags)]))
+    record = (
+        _copy_record_for_target(
+            source_record,
+            target_key=key,
+            source_key=source_metric,
+        )
+        if source_record is not None
+        else _state_vector_record(
+            key=key,
+            value=state_value,
+            support_mode=support_mode,
+            quality_flags=quality_flags,
+        )
+    )
+    if transform:
+        breakdown = dict((record or {}).get("component_breakdown") or {})
+        breakdown["state_vector_transform"] = transform
+        record["component_breakdown"] = breakdown
+    if state_value is not None:
+        record["value"] = state_value
+    if quality_flags:
+        record["quality_flags"] = quality_flags
+    state_values[key] = state_value
+    state_records[key] = record
+    state_support[key] = _derived_support_meta(
+        source_metric=f"derived:{key}",
+        support_mode=support_mode,
+        quality_flags=quality_flags,
+    )
+    state_reliability[key] = float(reliability.get(source_key, 0.0))
+    state_sources[key] = source_metric
+
+
+def _set_state_metric(
+    state_values: Dict[str, Any],
+    state_records: Dict[str, Dict[str, Any]],
+    state_support: Dict[str, Dict[str, Any]],
+    state_reliability: Dict[str, float],
+    state_sources: Dict[str, str],
+    *,
+    key: str,
+    value: Any,
+    support_mode: Optional[str],
+    source_metric: str,
+    formula: Optional[str] = None,
+    component_values: Optional[Dict[str, Any]] = None,
+    component_reliability: Iterable[float] = (),
+    quality_flags: Iterable[str] = (),
+    fallback_used: Optional[str] = None,
+) -> None:
+    flags = [str(flag) for flag in quality_flags if flag]
+    state_values[key] = value
+    state_records[key] = _state_vector_record(
+        key=key,
+        value=value,
+        support_mode=support_mode,
+        formula=formula,
+        component_values=component_values,
+        quality_flags=flags,
+        fallback_used=fallback_used,
+    )
+    state_support[key] = _derived_support_meta(
+        source_metric=source_metric,
+        support_mode=support_mode,
+        quality_flags=flags,
+    )
+    rel_values = [float(x) for x in component_reliability if x is not None]
+    state_reliability[key] = float(sum(rel_values) / len(rel_values)) if rel_values else 0.0
+    state_sources[key] = source_metric
+
+
+def _build_state_vector_v1(
+    snapshot: Dict[str, Any],
+    *,
+    canonical: Dict[str, Any],
+    records: Dict[str, Dict[str, Any]],
+    support: Dict[str, Dict[str, Any]],
+    reliability: Dict[str, float],
+    sources: Dict[str, str],
+) -> Dict[str, Any]:
+    features = snapshot.get("features") or {}
+    state_values: Dict[str, Any] = {}
+    state_records: Dict[str, Dict[str, Any]] = {}
+    state_support: Dict[str, Dict[str, Any]] = {}
+    state_reliability: Dict[str, float] = {}
+    state_sources: Dict[str, str] = {}
+
+    revenue = _safe_float(canonical.get("scale.revenue_ttm"))
+    ebitda = _safe_float(canonical.get("scale.ebitda_ttm"))
+    if revenue is not None and revenue > 0:
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.size_log_revenue",
+            value=math.log10(max(revenue, 1.0)),
+            support_mode=(support.get("scale.revenue_ttm", {}) or {}).get("support_mode"),
+            source_metric="derived:state_vector_v1.size_log_revenue",
+            formula="log10(revenue_ttm)",
+            component_values={
+                "revenue_ttm": revenue,
+                "source_metric": sources.get("scale.revenue_ttm", "operating.revenue_ttm"),
+                "log_base": 10,
+            },
+            component_reliability=[reliability.get("scale.revenue_ttm", 0.0)],
+            quality_flags=_quality_flags(records.get("scale.revenue_ttm")),
+        )
+    else:
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.size_log_revenue",
+            value=None,
+            support_mode="unsupported",
+            source_metric="derived:state_vector_v1.size_log_revenue",
+            formula="log10(revenue_ttm)",
+            quality_flags=["revenue_ttm_missing_or_non_positive"],
+        )
+
+    if revenue is not None and revenue > 0 and ebitda is not None:
+        profitability_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "scale.revenue_ttm", "scale.ebitda_ttm")
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.profitability",
+            value=ebitda / revenue,
+            support_mode=profitability_support_mode,
+            source_metric="derived:state_vector_v1.profitability",
+            formula="ebitda_ttm / revenue_ttm",
+            component_values={
+                "revenue_ttm": revenue,
+                "ebitda_ttm": ebitda,
+                "revenue_source_metric": sources.get("scale.revenue_ttm", "operating.revenue_ttm_provider_direct"),
+                "ebitda_source_metric": sources.get("scale.ebitda_ttm", "operating.ebitda_ltm_provider_direct"),
+            },
+            component_reliability=[
+                reliability.get("scale.revenue_ttm", 0.0),
+                reliability.get("scale.ebitda_ttm", 0.0),
+            ],
+            quality_flags=list(
+                dict.fromkeys(
+                    [
+                        *_quality_flags(records.get("scale.revenue_ttm")),
+                        *_quality_flags(records.get("scale.ebitda_ttm")),
+                    ]
+                )
+            ),
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.profitability",
+            source_key="operating.ebitda_margin_ttm",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["profitability_uses_margin_fallback"],
+        )
+
+    revenue_lag = _safe_float(canonical.get("operating.revenue_ttm_lag_1y"))
+    if revenue is not None and revenue > 0 and revenue_lag is not None and revenue_lag > 0:
+        growth_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "scale.revenue_ttm", "operating.revenue_ttm_lag_1y")
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.growth",
+            value=(revenue / revenue_lag) - 1.0,
+            support_mode=growth_support_mode,
+            source_metric="derived:state_vector_v1.growth",
+            formula="(revenue_ttm / revenue_ttm_lag_1y) - 1",
+            component_values={
+                "revenue_ttm": revenue,
+                "revenue_ttm_lag_1y": revenue_lag,
+                "revenue_source_metric": sources.get("scale.revenue_ttm", "operating.revenue_ttm_provider_direct"),
+                "revenue_lag_source_metric": sources.get("operating.revenue_ttm_lag_1y", "operating.revenue_ttm_lag_1y"),
+            },
+            component_reliability=[
+                reliability.get("scale.revenue_ttm", 0.0),
+                reliability.get("operating.revenue_ttm_lag_1y", 0.0),
+            ],
+            quality_flags=list(
+                dict.fromkeys(
+                    [
+                        *_quality_flags(records.get("scale.revenue_ttm")),
+                        *_quality_flags(records.get("operating.revenue_ttm_lag_1y")),
+                    ]
+                )
+            ),
+        )
+    else:
+        growth_source_key = "operating.revenue_yoy_last_q"
+        growth_flags = ["growth_uses_last_q_proxy"]
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.growth",
+            source_key=growth_source_key,
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=growth_flags if canonical.get(growth_source_key) is not None else (),
+        )
+
+    market_cap = _safe_float(canonical.get("scale.market_cap"))
+    free_cash_flow = _safe_float(canonical.get("cash_flow.free_cash_flow_ttm"))
+    if free_cash_flow is not None and market_cap is not None and market_cap > 0:
+        cash_generation_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "cash_flow.free_cash_flow_ttm", "scale.market_cap")
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.cash_generation",
+            value=free_cash_flow / market_cap,
+            support_mode=cash_generation_support_mode,
+            source_metric="derived:state_vector_v1.cash_generation",
+            formula="free_cash_flow_ttm / equity_market_cap",
+            component_values={
+                "free_cash_flow_ttm": free_cash_flow,
+                "equity_market_cap": market_cap,
+                "free_cash_flow_source_metric": sources.get("cash_flow.free_cash_flow_ttm", "cash_flow.free_cash_flow_ttm"),
+                "equity_market_cap_source_metric": sources.get("scale.market_cap", "market.market_cap_provider_direct"),
+            },
+            component_reliability=[
+                reliability.get("cash_flow.free_cash_flow_ttm", 0.0),
+                reliability.get("scale.market_cap", 0.0),
+            ],
+            quality_flags=list(
+                dict.fromkeys(
+                    [
+                        *_quality_flags(records.get("cash_flow.free_cash_flow_ttm")),
+                        *_quality_flags(records.get("scale.market_cap")),
+                    ]
+                )
+            ),
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.cash_generation",
+            source_key="market.fcf_yield",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["cash_generation_uses_market_fcf_yield_fallback"] if canonical.get("market.fcf_yield") is not None else (),
+        )
+
+    for target_key, source_key in (
+        ("state_vector_v1.rates_level", "macro.fed_funds_effective"),
+        ("state_vector_v1.credit_spread", "macro.hy_oas"),
+    ):
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key=target_key,
+            source_key=source_key,
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+        )
+
+    gross_debt = _safe_float(canonical.get("capital.total_debt"))
+    net_debt = _safe_float(canonical.get("capital.net_debt"))
+    lease_liabilities = _safe_float(canonical.get("capital.lease_liabilities"))
+    retirement_liabilities = _safe_float(canonical.get("capital.combined_retirement_liability"))
+
+    if gross_debt is not None and ebitda not in (None, 0) and ebitda > 0:
+        gross_flags = []
+        lease_component = lease_liabilities if lease_liabilities is not None else 0.0
+        retirement_component = retirement_liabilities if retirement_liabilities is not None else 0.0
+        if lease_liabilities is None:
+            gross_flags.append("lease_liabilities_missing_assumed_zero")
+        if retirement_liabilities is None:
+            gross_flags.append("retirement_liabilities_missing_assumed_zero")
+        gross_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "capital.total_debt", "scale.ebitda_ttm", "capital.lease_liabilities", "capital.combined_retirement_liability")
+            and not gross_flags
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.gross_obligation_burden",
+            value=(gross_debt + lease_component + retirement_component) / ebitda,
+            support_mode=gross_support_mode,
+            source_metric="derived:state_vector_v1.gross_obligation_burden",
+            formula="(gross_debt + lease_liabilities + retirement_liabilities) / ebitda_ttm",
+            component_values={
+                "gross_debt": gross_debt,
+                "lease_liabilities": lease_component,
+                "retirement_liabilities": retirement_component,
+                "ebitda_ttm": ebitda,
+                "gross_debt_source_metric": sources.get("capital.total_debt", "capital_structure.total_debt_provider_direct"),
+                "lease_liabilities_source_metric": sources.get("capital.lease_liabilities", "capital_structure.lease_liabilities_sec_exact"),
+                "retirement_liabilities_source_metric": sources.get("capital.combined_retirement_liability", "capital_structure.combined_retirement_liability"),
+                "ebitda_source_metric": sources.get("scale.ebitda_ttm", "operating.ebitda_ltm_provider_direct"),
+            },
+            component_reliability=[
+                reliability.get("capital.total_debt", 0.0),
+                reliability.get("capital.lease_liabilities", 0.0),
+                reliability.get("capital.combined_retirement_liability", 0.0),
+                reliability.get("scale.ebitda_ttm", 0.0),
+            ],
+            quality_flags=gross_flags,
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.gross_obligation_burden",
+            source_key="capital.gross_leverage_including_retirement",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["gross_obligation_uses_leverage_fallback"],
+        )
+
+    if net_debt is not None and ebitda not in (None, 0) and ebitda > 0:
+        net_flags = []
+        retirement_component = retirement_liabilities if retirement_liabilities is not None else 0.0
+        if retirement_liabilities is None:
+            net_flags.append("retirement_liabilities_missing_assumed_zero")
+        net_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "capital.net_debt", "scale.ebitda_ttm", "capital.combined_retirement_liability")
+            and not net_flags
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.net_obligation_burden",
+            value=(net_debt + retirement_component) / ebitda,
+            support_mode=net_support_mode,
+            source_metric="derived:state_vector_v1.net_obligation_burden",
+            formula="(net_debt + retirement_liabilities) / ebitda_ttm",
+            component_values={
+                "net_debt": net_debt,
+                "retirement_liabilities": retirement_component,
+                "ebitda_ttm": ebitda,
+                "net_debt_source_metric": sources.get("capital.net_debt", "capital_structure.net_debt_normalized"),
+                "retirement_liabilities_source_metric": sources.get("capital.combined_retirement_liability", "capital_structure.combined_retirement_liability"),
+                "ebitda_source_metric": sources.get("scale.ebitda_ttm", "operating.ebitda_ltm_provider_direct"),
+            },
+            component_reliability=[
+                reliability.get("capital.net_debt", 0.0),
+                reliability.get("capital.combined_retirement_liability", 0.0),
+                reliability.get("scale.ebitda_ttm", 0.0),
+            ],
+            quality_flags=net_flags,
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.net_obligation_burden",
+            source_key="capital.net_leverage_including_retirement",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["net_obligation_uses_leverage_fallback"],
+        )
+
+    liquidity_candidates = (
+        ("liquidity.available_liquidity_normalized", "preferred_available_liquidity"),
+        ("liquidity.available_for_actions", "available_for_actions_fallback"),
+        ("liquidity.cash", "cash_only_fallback"),
+    )
+    debt_candidates = (
+        ("capital.debt_due_next_24m", "debt_due_next_24m"),
+        ("capital.debt_due_0_12m", "debt_due_0_12m_fallback"),
+        ("capital.current_debt", "current_debt_fallback"),
+    )
+    debt_key = next((key for key, _ in debt_candidates if (_safe_float(canonical.get(key)) or 0.0) > 0), None)
+    liquidity_key = next((key for key, _ in liquidity_candidates if _safe_float(canonical.get(key)) is not None), None)
+    debt_value = _safe_float(canonical.get(debt_key)) if debt_key else None
+    debt_support_key = debt_key
+    debt_source_metric = sources.get(debt_key or "", debt_key)
+    debt_reliability_value = reliability.get(debt_key, 0.0) if debt_key else 0.0
+    raw_debt_record = None
+    liquidity_flags: list[str] = []
+    canonical_debt_flags = _quality_flags(records.get(debt_key)) if debt_key else []
+    if "current_debt_fallback" in canonical_debt_flags:
+        liquidity_flags.append("current_debt_fallback")
+    if "debt_due_0_12m_fallback" in canonical_debt_flags:
+        liquidity_flags.append("debt_due_0_12m_fallback")
+    if debt_value in (None, 0):
+        raw_debt_record, raw_debt_source = _resolve_first_record(
+            features,
+            (
+                "capital_structure.debt_due_next_24m",
+                "capital_structure.debt_due_0_12m",
+                "capital_structure.current_debt_statement_direct",
+                "capital_structure.current_debt_provider_direct",
+                "capital_structure.current_debt",
+            ),
+        )
+        raw_debt_value = _safe_float(raw_debt_record)
+        if raw_debt_value not in (None, 0) and raw_debt_value > 0:
+            debt_value = raw_debt_value
+            debt_source_metric = raw_debt_source or "capital_structure.current_debt"
+            debt_reliability_value = _reliability_score(raw_debt_record, source_metric=debt_source_metric)
+            if raw_debt_source == "capital_structure.debt_due_next_24m":
+                debt_support_key = None
+            elif raw_debt_source == "capital_structure.debt_due_0_12m":
+                debt_support_key = None
+                liquidity_flags.append("debt_due_0_12m_fallback")
+            else:
+                debt_support_key = None
+                liquidity_flags.append("current_debt_fallback")
+    else:
+        raw_debt_source = None
+    cash_value = _safe_float(canonical.get("liquidity.cash"))
+    marketable_value = _safe_float(canonical.get("liquidity.marketable_securities"))
+    revolver_value = _safe_float(canonical.get("liquidity.revolver_undrawn"))
+    component_liquidity = None
+    if cash_value is not None:
+        component_liquidity = cash_value + (marketable_value or 0.0) + (revolver_value or 0.0)
+        if marketable_value is None:
+            liquidity_flags.append("marketable_securities_missing_assumed_zero")
+        if revolver_value is None:
+            liquidity_flags.append("revolver_undrawn_missing_assumed_zero")
+    liquidity_value = component_liquidity
+    liquidity_source_metric = "derived:available_liquidity_components"
+    if liquidity_value is None and liquidity_key:
+        liquidity_value = _safe_float(canonical.get(liquidity_key))
+        liquidity_source_metric = sources.get(liquidity_key or "", liquidity_key or "liquidity.available_liquidity_normalized")
+        if liquidity_key != "liquidity.available_liquidity_normalized":
+            liquidity_flags.append(liquidity_candidates[[k for k, _ in liquidity_candidates].index(liquidity_key)][1])
+    if debt_key and debt_key != "capital.debt_due_next_24m":
+        liquidity_flags.append(debt_candidates[[k for k, _ in debt_candidates].index(debt_key)][1])
+    if liquidity_value is not None and debt_value not in (None, 0) and debt_value > 0:
+        liquidity_ratio_value = liquidity_value / debt_value
+        if "current_debt_fallback" in liquidity_flags and math.isfinite(liquidity_ratio_value):
+            # Current debt is only a weak maturity proxy; cap the ratio so tiny current maturities
+            # do not masquerade as an infinitely safer liquidity profile.
+            liquidity_ratio_value = min(liquidity_ratio_value, 25.0)
+            if liquidity_ratio_value < (liquidity_value / debt_value):
+                liquidity_flags.append("current_debt_proxy_ratio_capped")
+        component_keys = [
+            "liquidity.cash" if cash_value is not None else None,
+            "liquidity.marketable_securities" if marketable_value is not None else None,
+            "liquidity.revolver_undrawn" if revolver_value is not None else None,
+            debt_support_key,
+        ]
+        liquidity_support_mode = (
+            "exact"
+            if not liquidity_flags and (
+                _all_exactish_support(support, *component_keys)
+                or (raw_debt_record is not None and _is_exactish_support_mode(_support_mode(raw_debt_record)))
+            )
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.liquidity_flexibility",
+            value=liquidity_ratio_value,
+            support_mode=liquidity_support_mode,
+            source_metric="derived:state_vector_v1.liquidity_flexibility",
+            formula="liquidity / near_term_debt",
+            component_values={
+                "liquidity": liquidity_value,
+                "near_term_debt": debt_value,
+                "ratio_cap": 25.0 if "current_debt_fallback" in liquidity_flags else None,
+                "cash_and_short_term_investments": cash_value,
+                "marketable_securities": marketable_value,
+                "undrawn_revolver": revolver_value,
+                "liquidity_source_metric": liquidity_source_metric,
+                "near_term_debt_source_metric": debt_source_metric,
+            },
+            component_reliability=[
+                reliability.get("liquidity.cash", 0.0) if cash_value is not None else 0.0,
+                reliability.get("liquidity.marketable_securities", 0.0) if marketable_value is not None else 0.0,
+                reliability.get("liquidity.revolver_undrawn", 0.0) if revolver_value is not None else 0.0,
+                debt_reliability_value,
+            ],
+            quality_flags=liquidity_flags,
+            fallback_used="available_liquidity_over_near_term_debt",
+        )
+    else:
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.liquidity_flexibility",
+            value=None,
+            support_mode="unsupported",
+            source_metric="derived:state_vector_v1.liquidity_flexibility",
+            formula="liquidity / near_term_debt",
+            quality_flags=["liquidity_or_near_term_debt_missing"],
+        )
+
+    interest_expense = _safe_float(canonical.get("capital.interest_expense"))
+    if ebitda is not None and interest_expense not in (None, 0) and interest_expense > 0:
+        interest_support_mode = (
+            "exact"
+            if _all_exactish_support(support, "scale.ebitda_ttm", "capital.interest_expense")
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.interest_coverage",
+            value=ebitda / interest_expense,
+            support_mode=interest_support_mode,
+            source_metric="derived:state_vector_v1.interest_coverage",
+            formula="ebitda_ttm / interest_expense",
+            component_values={
+                "ebitda_ttm": ebitda,
+                "interest_expense": interest_expense,
+                "ebitda_source_metric": sources.get("scale.ebitda_ttm", "operating.ebitda_ltm_provider_direct"),
+                "interest_expense_source_metric": sources.get("capital.interest_expense", "capital_structure.interest_expense_statement_direct"),
+            },
+            component_reliability=[
+                reliability.get("scale.ebitda_ttm", 0.0),
+                reliability.get("capital.interest_expense", 0.0),
+            ],
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.interest_coverage",
+            source_key="capital.interest_coverage",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["interest_coverage_external_fallback"],
+        )
+
+    cash_and_sti = _safe_float(canonical.get("liquidity.cash"))
+    valuation_flags = []
+    if lease_liabilities is None:
+        lease_liabilities = 0.0
+        valuation_flags.append("lease_liabilities_missing_assumed_zero")
+    if market_cap is not None and gross_debt is not None and cash_and_sti is not None and ebitda not in (None, 0) and ebitda > 0:
+        valuation_support_mode = (
+            "exact"
+            if not valuation_flags and _all_exactish_support(
+                support,
+                "scale.market_cap",
+                "capital.total_debt",
+                "capital.lease_liabilities",
+                "liquidity.cash",
+                "scale.ebitda_ttm",
+            )
+            else "proxy_missing_component"
+        )
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.valuation_multiple",
+            value=(market_cap + gross_debt + lease_liabilities - cash_and_sti) / ebitda,
+            support_mode=valuation_support_mode,
+            source_metric="derived:state_vector_v1.valuation_multiple",
+            formula="(equity_market_cap + gross_debt + lease_liabilities - cash_and_short_term_investments) / ebitda_ttm",
+            component_values={
+                "equity_market_cap": market_cap,
+                "gross_debt": gross_debt,
+                "lease_liabilities": lease_liabilities,
+                "cash_and_short_term_investments": cash_and_sti,
+                "ebitda_ttm": ebitda,
+                "equity_market_cap_source_metric": sources.get("scale.market_cap", "market.market_cap_provider_direct"),
+                "gross_debt_source_metric": sources.get("capital.total_debt", "capital_structure.total_debt_provider_direct"),
+                "lease_liabilities_source_metric": sources.get("capital.lease_liabilities", "capital_structure.lease_liabilities_sec_exact"),
+                "cash_source_metric": sources.get("liquidity.cash", "liquidity.cash_and_short_term_investments_provider_direct"),
+                "ebitda_source_metric": sources.get("scale.ebitda_ttm", "operating.ebitda_ltm_provider_direct"),
+            },
+            component_reliability=[
+                reliability.get("scale.market_cap", 0.0),
+                reliability.get("capital.total_debt", 0.0),
+                reliability.get("capital.lease_liabilities", 0.0),
+                reliability.get("liquidity.cash", 0.0),
+                reliability.get("scale.ebitda_ttm", 0.0),
+            ],
+            quality_flags=valuation_flags,
+        )
+    else:
+        _copy_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.valuation_multiple",
+            source_key="market.ev_ebitda",
+            canonical=canonical,
+            records=records,
+            support=support,
+            reliability=reliability,
+            sources=sources,
+            extra_quality_flags=["valuation_multiple_uses_market_ev_ebitda_fallback"],
+        )
+
+    vol_90d = _safe_float(canonical.get("market.volatility_90d"))
+    drawdown_90d = _safe_float(canonical.get("market.drawdown_90d"))
+    stress_components = []
+    stress_weights = []
+    stress_flags = []
+    if vol_90d is not None:
+        stress_components.append(vol_90d)
+        stress_weights.append(0.6)
+    else:
+        stress_flags.append("volatility_90d_missing")
+    if drawdown_90d is not None:
+        stress_components.append(abs(min(drawdown_90d, 0.0)))
+        stress_weights.append(0.4)
+    else:
+        stress_flags.append("drawdown_90d_missing")
+    if stress_components:
+        weight_total = sum(stress_weights) or 1.0
+        stress_value = sum(component * weight for component, weight in zip(stress_components, stress_weights)) / weight_total
+        stress_support_mode = "exact" if all(
+            (support.get(key, {}) or {}).get("support_mode") in _EXACTISH_SUPPORT_MODES
+            for key in ("market.volatility_90d", "market.drawdown_90d")
+            if _safe_float(canonical.get(key)) is not None
+        ) and not stress_flags else "proxy_missing_component"
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.market_stress",
+            value=stress_value,
+            support_mode=stress_support_mode,
+            source_metric="derived:state_vector_v1.market_stress",
+            formula="weighted_average(volatility_90d, abs(min(drawdown_90d, 0)))",
+            component_values={
+                "volatility_90d": vol_90d,
+                "drawdown_90d_abs": None if drawdown_90d is None else abs(min(drawdown_90d, 0.0)),
+                "weights": {"volatility_90d": 0.6, "drawdown_90d_abs": 0.4},
+            },
+            component_reliability=[
+                reliability.get("market.volatility_90d", 0.0),
+                reliability.get("market.drawdown_90d", 0.0),
+            ],
+            quality_flags=stress_flags,
+        )
+    elif _safe_float(canonical.get("market.vix")) is not None:
+        vix = _safe_float(canonical.get("market.vix"))
+        vix_support_mode = (support.get("market.vix", {}) or {}).get("support_mode")
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.market_stress",
+            value=max(0.0, min(1.0, float(vix) / 80.0)),
+            support_mode="exact" if _is_exactish_support_mode(vix_support_mode) else "proxy_missing_component",
+            source_metric="derived:state_vector_v1.market_stress",
+            formula="clip(market.vix / 80.0, 0, 1)",
+            component_values={
+                "market.vix": vix,
+                "market.vix_denominator": 80.0,
+            },
+            component_reliability=[reliability.get("market.vix", 0.0)],
+            quality_flags=["volatility_90d_missing", "drawdown_90d_missing", "market_stress_vix_fallback"],
+            fallback_used="market.vix",
+        )
+    else:
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.market_stress",
+            value=None,
+            support_mode="unsupported",
+            source_metric="derived:state_vector_v1.market_stress",
+            formula="weighted_average(volatility_90d, abs(min(drawdown_90d, 0)))",
+            quality_flags=["market_stress_inputs_missing"],
+        )
+
+    credit_window = _safe_float(canonical.get("market.credit_window_proxy"))
+    equity_window = _safe_float(canonical.get("market.equity_window_proxy"))
+    credit_spread_level = _safe_float(canonical.get("market.credit_spread_level"))
+    access_components = []
+    access_weights = []
+    access_flags = []
+    if credit_window is not None:
+        access_components.append(credit_window)
+        access_weights.append(0.4)
+    else:
+        access_flags.append("credit_window_proxy_missing")
+    if equity_window is not None:
+        access_components.append(equity_window)
+        access_weights.append(0.4)
+    else:
+        access_flags.append("equity_window_proxy_missing")
+    if credit_spread_level is not None:
+        spread_access = max(0.0, min(1.0, 1.0 - (credit_spread_level / 0.08)))
+        access_components.append(spread_access)
+        access_weights.append(0.2)
+    else:
+        access_flags.append("credit_spread_level_missing")
+        spread_access = None
+    if access_components:
+        weight_total = sum(access_weights) or 1.0
+        access_value = sum(component * weight for component, weight in zip(access_components, access_weights)) / weight_total
+        access_support_mode = "exact" if all(
+            (support.get(key, {}) or {}).get("support_mode") in _EXACTISH_SUPPORT_MODES
+            for key in ("market.credit_window_proxy", "market.equity_window_proxy", "market.credit_spread_level")
+            if _safe_float(canonical.get(key)) is not None
+        ) and not access_flags else "proxy_missing_component"
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.market_access",
+            value=access_value,
+            support_mode=access_support_mode,
+            source_metric="derived:state_vector_v1.market_access",
+            formula="weighted_average(credit_window_proxy, equity_window_proxy, normalized_credit_spread_level)",
+            component_values={
+                "credit_window_proxy": credit_window,
+                "equity_window_proxy": equity_window,
+                "credit_spread_level": credit_spread_level,
+                "normalized_credit_spread_access": spread_access,
+                "weights": {
+                    "credit_window_proxy": 0.4,
+                    "equity_window_proxy": 0.4,
+                    "normalized_credit_spread_access": 0.2,
+                },
+                "credit_spread_cap": 0.08,
+            },
+            component_reliability=[
+                reliability.get("market.credit_window_proxy", 0.0),
+                reliability.get("market.equity_window_proxy", 0.0),
+                reliability.get("market.credit_spread_level", 0.0),
+            ],
+            quality_flags=access_flags,
+        )
+    else:
+        _set_state_metric(
+            state_values,
+            state_records,
+            state_support,
+            state_reliability,
+            state_sources,
+            key="state_vector_v1.market_access",
+            value=None,
+            support_mode="unsupported",
+            source_metric="derived:state_vector_v1.market_access",
+            formula="weighted_average(credit_window_proxy, equity_window_proxy, normalized_credit_spread_level)",
+            quality_flags=["market_access_inputs_missing"],
+        )
+
+    sector = canonical.get("taxonomy.sector")
+    if sector is None:
+        sector = _feature_value((snapshot or {}).get("sector"))
+    subsector = canonical.get("taxonomy.subsector")
+    if subsector is None:
+        subsector = _feature_value((snapshot or {}).get("subsector"))
+    retirement_regime = canonical.get("capital.retirement_obligation_regime")
+    proxy_features = sorted(
+        key
+        for key, meta in state_support.items()
+        if (meta.get("support_mode") or "") not in _EXACTISH_SUPPORT_MODES and meta.get("support_mode") != "unsupported"
+    )
+    missing_features = sorted(
+        key for key, meta in state_support.items() if meta.get("support_mode") == "unsupported"
+    )
+    data_quality_flags = sorted(
+        {
+            flag
+            for meta in state_support.values()
+            for flag in (meta.get("quality_flags") or [])
+            if flag
+        }
+    )
+    return {
+        "values": state_values,
+        "records": state_records,
+        "support": state_support,
+        "reliability": state_reliability,
+        "sources": state_sources,
+        "meta": {
+            "version": "state_vector_v1",
+            "sector": sector,
+            "subsector": subsector,
+            "retirement_regime": retirement_regime,
+            "data_quality_flags": data_quality_flags,
+            "proxy_features": proxy_features,
+            "missing_features": missing_features,
+            "feature_order": list(_STATE_VECTOR_V1_FEATURES),
+        },
+    }
+
+
