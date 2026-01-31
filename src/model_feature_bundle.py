@@ -304,3 +304,31 @@ def _derived_support_meta(
     }
 
 
+def _state_vector_record(
+    *,
+    key: str,
+    value: Any,
+    support_mode: Optional[str],
+    formula: Optional[str] = None,
+    component_values: Optional[Dict[str, Any]] = None,
+    quality_flags: Optional[Iterable[str]] = None,
+    fallback_used: Optional[str] = None,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "name": key,
+        "value": value,
+        "support_mode": support_mode,
+    }
+    breakdown = dict(component_values or {})
+    if formula:
+        breakdown["formula"] = formula
+    if breakdown:
+        out["component_breakdown"] = breakdown
+    flags = [str(flag) for flag in (quality_flags or []) if flag]
+    if flags:
+        out["quality_flags"] = flags
+    if fallback_used:
+        out["fallback_used"] = fallback_used
+    return out
+
+

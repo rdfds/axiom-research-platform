@@ -35,3 +35,15 @@ python scripts/build_public_benchmark.py --check
 
 Review aggregate lift, pass rate, and family/sector slices. A positive aggregate result does not override a severe regression in a high-support slice.
 
+## 4. Retrieval, support, and calibration
+
+For learned precedent ranking and action-evidence components, review:
+
+- ranking quality against the accepted baseline;
+- support coverage and out-of-support rate;
+- calibration and confidence by action family;
+- fallback frequency and mismatch reasons;
+- behavior on intentionally sparse, contradictory, or low-quality evidence.
+
+If support is insufficient, the correct behavior is a broader cohort, a lower-confidence result, or no claim—not an extrapolated high-confidence score.
+
