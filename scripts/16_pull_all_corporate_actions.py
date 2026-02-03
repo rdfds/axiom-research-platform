@@ -186,3 +186,76 @@ def pull_spinoffs():
     return df
 
 
+def pull_rights_offerings():
+    """Pull rights offerings from CRSP."""
+    print("\n" + "=" * 60)
+    print("RIGHTS OFFERINGS (CRSP)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # 4122 = rights distribution, 41xx-42xx range
+    query = """
+    SELECT
+        d.permno,
+        d.exdt as action_date,
+        d.distcd,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.exdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.exdt >= '2010-01-01'
+      AND d.distcd BETWEEN 4120 AND 4199
+    ORDER BY d.exdt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    df['action_type'] = 'rights_offering'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} rights offerings")
+
+    df.to_parquet(DATA_DIR / 'rights_offerings.parquet')
+    conn.close()
+    return df
+
+
+def pull_return_of_capital():
+    """Pull return of capital distributions."""
+    print("\n" + "=" * 60)
+    print("RETURN OF CAPITAL (CRSP)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # 45xx = return of capital
+    query = """
+    SELECT
+        d.permno,
+        d.exdt as action_date,
+        d.distcd,
+        d.divamt as amount,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.exdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.exdt >= '2010-01-01'
+      AND d.distcd BETWEEN 4500 AND 4599
+    ORDER BY d.exdt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    df['action_type'] = 'return_of_capital'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} return of capital")
+
+    df.to_parquet(DATA_DIR / 'return_of_capital.parquet')
+    conn.close()
+    return df
+
+
