@@ -121,7 +121,7 @@ def load_sec_tickers(session: requests.Session, sleep_seconds: float) -> pd.Data
         rows.append(
             {
                 "cik": cik,
-                "ticker": str(row['ticker']).upper().strip(),
+                "ticker": str(row.get("ticker", "")).upper().strip(),
                 "title": row.get("title"),
             }
         )

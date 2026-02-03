@@ -234,3 +234,36 @@ def pick_value(row: Dict[str, object], metric: str) -> Optional[float]:
     return None
 
 
+def pick_num_estimates(row: Dict[str, object], metric: str) -> Optional[float]:
+    key_candidates = []
+    if metric == "eps":
+        key_candidates = [
+            "numberAnalystsEstimatedEps",
+            "numberAnalystEstimatedEps",
+            "numberAnalystsEstimatedEPS",
+            "numberAnalystEstimatedEPS",
+        ]
+    elif metric == "revenue":
+        key_candidates = [
+            "numberAnalystEstimatedRevenue",
+            "numberAnalystsEstimatedRevenue",
+        ]
+    elif metric == "ebitda":
+        key_candidates = [
+            "numberAnalystEstimatedEbitda",
+            "numberAnalystsEstimatedEbitda",
+            "numberAnalystEstimatedEBITDA",
+        ]
+
+    for k in key_candidates:
+        if k in row:
+            return row.get(k)
+
+    for k, v in row.items():
+        lk = str(k).lower()
+        if "analyst" in lk and ("num" in lk or "number" in lk):
+            if metric in lk:
+                return v
+    return None
+
+
