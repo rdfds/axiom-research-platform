@@ -117,3 +117,33 @@ from src.historical_recommendation_eval import (
 )
 from src.recommendation_run import RecommendationRunStore, create_recommendation_run
 from src.recommendation_run_orchestrator import execute_recommendation_run
+from src.replay_snapshot_enrichment import enrich_snapshot_with_revenue_growth_inputs
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the frozen manual historical replay benchmark.")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    parser.add_argument("--benchmark", required=True, help="Benchmark key from the lock config.")
+    parser.add_argument("--runs-root", required=True)
+    parser.add_argument("--snapshot-cache-dir", default="", help="Optional snapshot cache dir. Defaults to a stable path under the artifact root.")
+    parser.add_argument("--artifact-root", default="", help="Optional stable artifact root. Defaults to <runs-root>/_backtest_artifacts.")
+    parser.add_argument("--out-json", default="", help="Optional report output path. Defaults under the artifact root.")
+    parser.add_argument("--scorecard-json", default="", help="Optional standardized scorecard JSON path.")
+    parser.add_argument("--scorecard-md", default="", help="Optional standardized scorecard markdown path.")
+    parser.add_argument("--manifest-json", default="", help="Optional artifact manifest JSON path.")
+    parser.add_argument("--protocol", default="", help="Optional canonical backtest protocol override.")
+    parser.add_argument("--cost-model", default="", help="Optional transaction cost model override.")
+    parser.add_argument("--precedent-top-k", type=int, help="Optional override for the number of precedent candidates to retrieve per case.")
+    parser.add_argument("--case-count", type=int, help="Optional case limit for smoke runs.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-case progress logs.")
+    parser.add_argument("--dump-stack-after-seconds", type=int, help="Optional faulthandler timeout for diagnosing stalls.")
+    return parser.parse_args()
+
+
+def _resolve_path(value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
