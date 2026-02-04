@@ -259,3 +259,39 @@ def pull_return_of_capital():
     return df
 
 
+def pull_going_private():
+    """Pull going private transactions from CRSP delistings."""
+    print("\n" + "=" * 60)
+    print("GOING PRIVATE (CRSP DELISTINGS)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # 251 = went private
+    query = """
+    SELECT
+        d.permno,
+        d.dlstdt as action_date,
+        d.dlstcd as delist_code,
+        n.comnam as company_name,
+        n.ticker,
+        n.siccd as sic
+    FROM crsp.msedelist d
+    LEFT JOIN crsp.msenames n
+        ON d.permno = n.permno
+        AND d.dlstdt BETWEEN n.namedt AND n.nameendt
+    WHERE d.dlstdt >= '2010-01-01'
+      AND d.dlstcd = 251
+    ORDER BY d.dlstdt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    df['action_type'] = 'going_private'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} going private transactions")
+
+    df.to_parquet(DATA_DIR / 'going_private.parquet')
+    conn.close()
+    return df
+
+
