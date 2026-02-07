@@ -412,7 +412,7 @@ def _permno_map(entity_identifier_path: Path) -> pd.DataFrame:
     return ids[["entity_id", "permno"]].drop_duplicates()
 
 
-def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) :
+def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) -> pd.DataFrame:
     permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
     query = f"""
         SELECT

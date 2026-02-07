@@ -140,3 +140,126 @@ def test_revenue_ttm_lag_1y_uses_prior_year_ttm_asof():
     assert component_breakdown["concept"] == "Revenues"
 
 
+def test_legacy_provider_metric_is_cleanly_unsupported_when_no_provider_field_exists():
+    node = _build_legacy_provider_metric(
+        metric_name="operating.revenue_ttm_lag_1y",
+        provider_row=None,
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-04-05T00:00:00+00:00",
+        provenance_source="/tmp/provider.parquet",
+        unit="usd",
+    )
+
+    assert node["support_mode"] == "unsupported"
+    assert node["missing_reason"] == "provider_direct_field_not_defined_for_metric"
+    assert "provider_direct_field_not_defined_for_metric" in (node.get("quality_flags") or [])
+
+
+def test_net_income_falls_back_to_profit_loss_when_net_income_loss_is_stale_or_missing():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                2_700_000_000.0,
+                                start="2010-01-01",
+                                end="2010-12-31",
+                                filed="2011-02-22",
+                                fy=2010,
+                                fp="FY",
+                                form="10-K",
+                            )
+                        ]
+                    }
+                },
+                "ProfitLoss": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                6_493_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-15",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                7_659_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2023-11-01",
+                                fy=2023,
+                                fp="Q3",
+                                form="10-Q",
+                            ),
+                            _duration_fact(
+                                7_998_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                                form="10-Q",
+                            ),
+                            _duration_fact(
+                                2_463_000_000.0,
+                                start="2024-07-01",
+                                end="2024-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                                form="10-Q",
+                                frame="CY2024Q3",
+                            ),
+                            _duration_fact(
+                                5_535_000_000.0,
+                                start="2024-01-01",
+                                end="2024-06-30",
+                                filed="2024-08-07",
+                                fy=2024,
+                                fp="Q2",
+                                form="10-Q",
+                            ),
+                            _duration_fact(
+                                2_681_000_000.0,
+                                start="2024-04-01",
+                                end="2024-06-30",
+                                filed="2024-08-07",
+                                fy=2024,
+                                fp="Q2",
+                                form="10-Q",
+                                frame="CY2024Q2",
+                            ),
+                            _duration_fact(
+                                2_854_000_000.0,
+                                start="2024-01-01",
+                                end="2024-03-31",
+                                filed="2024-05-01",
+                                fy=2024,
+                                fp="Q1",
+                                form="10-Q",
+                                frame="CY2024Q1",
+                            ),
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "earnings.net_income_ttm_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 6_832_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["concept"] == "ProfitLoss"
+
+
