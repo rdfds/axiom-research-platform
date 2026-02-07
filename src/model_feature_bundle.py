@@ -1486,3 +1486,15 @@ def candidate_generation_view(
     return dict((bundle.get("views", {}) or {}).get("candidate_generation", {}) or {})
 
 
+def mechanism_view(
+    bundle: Dict[str, Any],
+) -> Dict[str, Any]:
+    return dict((bundle.get("views", {}) or {}).get("mechanism", {}) or {})
+
+
+def causal_view(
+    bundle: Dict[str, Any],
+) -> Dict[str, Any]:
+    return dict((bundle.get("views", {}) or {}).get("causal", {}) or {})
+
+
