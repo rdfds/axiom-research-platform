@@ -1504,3 +1504,9 @@ def precedent_view(
     return dict((bundle.get("views", {}) or {}).get("precedent", {}) or {})
 
 
+def dossier_view(
+    bundle: Dict[str, Any],
+) -> Dict[str, Any]:
+    return dict((bundle.get("views", {}) or {}).get("dossier", {}) or {})
+
+

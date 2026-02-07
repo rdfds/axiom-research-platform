@@ -243,3 +243,465 @@ def _progress(payload: Dict[str, Any], quiet: bool) -> None:
     print(json.dumps(payload, sort_keys=True), flush=True)
 
 
+def _derive_facts_years(selected_cases: List[Dict[str, Any]], lookback_years: int) -> List[int] | None:
+    years: set[int] = set()
+    for spec in selected_cases:
+        raw_as_of = spec.get("as_of_time")
+        if not raw_as_of:
+            continue
+        try:
+            ts = pd.Timestamp(raw_as_of)
+        except Exception:
+            continue
+        year = int(ts.year)
+        for candidate_year in range(year - max(0, int(lookback_years)), year + 1):
+            years.add(candidate_year)
+    return sorted(years) if years else None
+
+
+def main() -> None:
+    args = _parse_args()
+    if args.dump_stack_after_seconds:
+        faulthandler.dump_traceback_later(int(args.dump_stack_after_seconds), repeat=False)
+    lock_path = Path(args.config)
+    config = _load_lock_config(lock_path)
+    locked = _resolve_locked_inputs(config, args.benchmark)
+
+    for env_name, env_value in locked["resolved_env"].items():
+        os.environ[env_name] = env_value
+    runs_root_path = Path(args.runs_root)
+    artifact_root = resolve_backtest_artifact_root(
+        runs_root=runs_root_path,
+        artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+    )
+    snapshot_cache_dir = resolve_snapshot_cache_dir(
+        runs_root=runs_root_path,
+        artifact_root=artifact_root,
+        snapshot_cache_dir=Path(args.snapshot_cache_dir) if args.snapshot_cache_dir else None,
+    )
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    snapshot_cache_dir.mkdir(parents=True, exist_ok=True)
+    out_path = _resolve_output_path(
+        args.out_json,
+        artifact_root / f"{args.benchmark}.historical_replay_report.json",
+    )
+    scorecard_json_path = _resolve_output_path(
+        args.scorecard_json,
+        artifact_root / f"{args.benchmark}.canonical_scorecard.json",
+    )
+    scorecard_md_path = _resolve_output_path(
+        args.scorecard_md,
+        artifact_root / f"{args.benchmark}.canonical_scorecard.md",
+    )
+    manifest_json_path = _resolve_output_path(
+        args.manifest_json,
+        artifact_root / f"{args.benchmark}.artifact_manifest.json",
+    )
+
+    run_tmp_dir = runs_root_path / "_tmp"
+    os.environ["RECOMMENDATION_RUN_TMP_DIR"] = str(run_tmp_dir)
+    locked["resolved_env"]["RECOMMENDATION_RUN_TMP_DIR"] = str(run_tmp_dir)
+
+    defaults = locked["defaults"]
+    benchmark = locked["benchmark"]
+    paths = locked["resolved_paths"]
+    precedent_top_k = int(args.precedent_top_k) if args.precedent_top_k is not None else int(defaults.get("precedent_top_k", 0) or 0)
+
+    manifest = paths["manifest"]
+    outcomes_path = paths["outcomes_path"]
+    selected_cases = _load_fixed_historical_cases([manifest], case_count=args.case_count)
+    facts_years = _derive_facts_years(
+        selected_cases,
+        lookback_years=int(defaults.get("facts_years_lookback", 2)),
+    )
+    alias_overrides = _build_historical_alias_overrides(selected_cases)
+    outcomes_lookup = _load_realized_outcomes_lookup(outcomes_path)
+    action_support_summary = _load_action_support_summary(
+        outcomes_path=outcomes_path,
+        manifest_path=paths["action_support_manifest"],
+    )
+
+    builder = CompanyStateBuilder(
+        raw_timeseries_path=paths["raw_timeseries_path"],
+        event_store_path=paths["event_store_path"],
+        corporate_actions_master_path=paths["corporate_actions_master_path"],
+        facts_path=paths["facts_path"],
+        ownership_summary_path=paths["ownership_summary_path"],
+        issuer_ratings_path=paths["issuer_ratings_path"],
+        entity_graph_path=paths["entity_graph_path"],
+        entity_identifier_path=paths["entity_identifier_path"],
+        entity_table_path=paths["entity_table_path"],
+        historical_backfill_mode=bool(defaults.get("historical_backfill_mode", True)),
+        facts_years=facts_years,
+        companyfacts_root=paths["companyfacts_root"],
+        enable_market_relevant_smart_normalized_inputs=bool(
+            defaults.get("enable_market_relevant_smart_normalized_inputs", True)
+        ),
+    )
+
+    snapshot_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    protocol = resolve_backtest_protocol(
+        protocol_key=args.protocol or None,
+        benchmark_key=args.benchmark,
+    )
+    cost_model = resolve_transaction_cost_model(args.cost_model or protocol.cost_model_key)
+    if precedent_top_k > 0:
+        from src.pipeline.run import warm_precedent_runtime
+
+        _progress(
+            {
+                "event": "precedent_runtime_warm_start",
+                "outcomes_path": str(outcomes_path),
+            },
+            args.quiet,
+        )
+        warm_summary = warm_precedent_runtime(outcomes_path)
+        _progress(
+            {
+                "event": "precedent_runtime_warm_complete",
+                **warm_summary,
+            },
+            args.quiet,
+        )
+
+    snapshot_store = None
+    legacy_snapshot_cache_root = snapshot_cache_dir
+    try:
+        snapshot_store = SnapshotStore(root=snapshot_cache_dir)
+    except Exception:
+        snapshot_store = None
+
+    def _load_persisted_snapshot(company_id: str, ts: pd.Timestamp) -> Dict[str, Any] | None:
+        if snapshot_store is not None:
+            try:
+                cached = snapshot_store.load_keyed_snapshot(str(company_id), ts.strftime("%Y-%m-%d"))
+            except Exception:
+                cached = None
+            if isinstance(cached, dict) and cached:
+                return cached
+        legacy_path = legacy_snapshot_cache_root / f"company_id={company_id}" / f"snapshot_as_of={ts.strftime('%Y%m%dT%H%M%SZ')}.json"
+        if legacy_path.exists():
+            try:
+                return json.loads(legacy_path.read_text())
+            except Exception:
+                return None
+        return None
+
+    def snapshot_loader(company_id: str, as_of_dt) -> Dict[str, Any]:
+        ts = pd.Timestamp(as_of_dt)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        key = (str(company_id), ts.isoformat())
+        cache_path = snapshot_cache_dir / f"company_id={company_id}" / f"snapshot_as_of={ts.strftime('%Y%m%dT%H%M%SZ')}.json"
+        keyed_as_of = ts.strftime("%Y-%m-%d")
+
+        def _persist_snapshot_payload(payload: Dict[str, Any]) -> None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(payload, default=str))
+            if snapshot_store is not None:
+                snapshot_store.upsert_keyed_snapshot(payload, as_of=keyed_as_of)
+
+        def _enrich_snapshot_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+            enriched, changed, enrichment_summary = enrich_snapshot_with_revenue_growth_inputs(
+                payload,
+                companyfacts_root=paths["companyfacts_root"],
+                company_id=str(company_id),
+                as_of_time=ts.isoformat(),
+            )
+            if changed:
+                _persist_snapshot_payload(enriched)
+                _progress(
+                    {
+                        "event": "snapshot_matching_enrichment_complete",
+                        "company_id": str(company_id),
+                        "as_of_time": ts.isoformat(),
+                        "metrics": enrichment_summary.get("metrics") or {},
+                    },
+                    args.quiet,
+                )
+            return enriched
+
+        if key not in snapshot_cache:
+            cached_snapshot = _load_persisted_snapshot(str(company_id), ts)
+            if isinstance(cached_snapshot, dict) and cached_snapshot:
+                snapshot_cache[key] = _enrich_snapshot_payload(cached_snapshot)
+                _progress(
+                    {
+                        "event": "snapshot_cache_hit",
+                        "company_id": str(company_id),
+                        "as_of_time": ts.isoformat(),
+                    },
+                    args.quiet,
+                )
+                return snapshot_cache[key]
+            extra_aliases = list(alias_overrides.get(key, []) or [])
+            _progress(
+                {
+                    "event": "snapshot_build_start",
+                    "company_id": str(company_id),
+                    "as_of_time": ts.isoformat(),
+                    "alias_count": len(extra_aliases),
+                },
+                args.quiet,
+            )
+            snapshot = builder.build(
+                company_id=str(company_id),
+                as_of_time=ts.isoformat(),
+                extra_aliases=extra_aliases,
+            )
+            payload = _enrich_snapshot_payload(asdict(snapshot))
+            snapshot_cache[key] = payload
+            _progress(
+                {
+                    "event": "snapshot_build_complete",
+                    "company_id": str(company_id),
+                    "as_of_time": ts.isoformat(),
+                },
+                args.quiet,
+            )
+            _persist_snapshot_payload(payload)
+            _progress(
+                {
+                    "event": "snapshot_cache_write_complete",
+                    "company_id": str(company_id),
+                    "cache_path": str(cache_path),
+                },
+                args.quiet,
+            )
+        return snapshot_cache[key]
+
+    store = RecommendationRunStore(root=runs_root_path)
+    cases: List[Dict[str, Any]] = []
+
+    for index, spec in enumerate(selected_cases, start=1):
+        company_id = str(spec["company_id"])
+        source_company_id = str(spec.get("source_company_id") or company_id)
+        as_of_time = str(spec["as_of_time"])
+        company_aliases = list(alias_overrides.get((company_id, as_of_time), []) or [])
+        anchor_action_id = str(spec["anchor_action_id"])
+        anchor_action_family = str(spec["anchor_action_family"])
+        anchor_action_date = str(spec["anchor_action_date"])
+        anchor_action_support = resolve_action_support(
+            action_id=anchor_action_id,
+            action_family=anchor_action_family,
+            support_report=action_support_summary,
+        )
+        try:
+            _progress({"event": "case_start", "index": index, "total": len(selected_cases), "company_id": company_id}, args.quiet)
+            prebuilt_snapshot = snapshot_loader(company_id, pd.Timestamp(as_of_time).to_pydatetime())
+            snapshot_coverage = _snapshot_coverage_summary(prebuilt_snapshot)
+            if not _snapshot_has_meaningful_coverage(
+                snapshot_coverage,
+                min_non_missing_core_features=int(defaults.get("min_non_missing_core_features", 3)),
+            ):
+                cases.append(
+                    {
+                        "company_id": company_id,
+                        "source_company_id": source_company_id,
+                        "as_of_time": as_of_time,
+                        "anchor_action_id": anchor_action_id,
+                        "anchor_action_family": anchor_action_family,
+                        "anchor_action_date": anchor_action_date,
+                        "anchor_action_support": anchor_action_support,
+                        "unsupported_reason": "insufficient_snapshot_coverage",
+                        "snapshot_coverage": snapshot_coverage,
+                    }
+                )
+                _progress({"event": "case_skip", "index": index, "company_id": company_id, "reason": "insufficient_snapshot_coverage"}, args.quiet)
+                continue
+            run_id = create_recommendation_run(
+                company_id=company_id,
+                as_of_time=as_of_time,
+                run_store=store,
+                snapshot_loader=snapshot_loader,
+                entity_graph_path=paths["entity_graph_path"],
+                entity_identifier_path=paths["entity_identifier_path"],
+                company_aliases=company_aliases,
+                skip_as_of_lower_bound_validation=True,
+                metadata={
+                    "historical_eval": {
+                        "anchor_action_id": anchor_action_id,
+                        "anchor_action_family": anchor_action_family,
+                        "anchor_action_date": anchor_action_date,
+                        "lookback_days": int(defaults.get("lookback_days", 365)),
+                        "alignment_horizon_days": int(defaults.get("alignment_horizon_days", 120)),
+                        "precedent_top_k": precedent_top_k,
+                    }
+                },
+            )
+            summary = execute_recommendation_run(
+                run_id=run_id,
+                runs_root=Path(args.runs_root),
+                snapshot_loader=snapshot_loader,
+                snapshot_root=snapshot_cache_dir,
+                entity_identifier_path=paths["entity_identifier_path"],
+                outcomes_path=outcomes_path,
+                precedent_top_k=precedent_top_k,
+                top_plans=int(defaults.get("top_plans", 3)),
+            )
+            artifacts = dict(summary.get("artifacts", {}) or {})
+            package_path = artifacts.get("RecommendationPackage")
+            package = json.loads(Path(package_path).read_text()) if package_path else {}
+            top_action_ids = _top_action_ids(package)
+            recommended_action_support = [
+                resolve_action_support(
+                    action_id=action_id,
+                    action_family=action_id.split(".", 1)[0] if "." in action_id else "",
+                    support_report=action_support_summary,
+                )
+                for action_id in top_action_ids
+            ]
+            alignment = _score_ex_post_alignment(
+                company_id=source_company_id,
+                as_of_time=as_of_time,
+                recommended_action_ids=top_action_ids,
+                outcomes_lookup=outcomes_lookup,
+                alignment_horizon_days=int(defaults.get("alignment_horizon_days", 120)),
+                anchor_action_id=anchor_action_id,
+                anchor_action_family=anchor_action_family,
+                anchor_action_support=anchor_action_support,
+                recommended_action_support=recommended_action_support,
+            )
+            case = {
+                "company_id": company_id,
+                "source_company_id": source_company_id,
+                "as_of_time": as_of_time,
+                "run_id": summary.get("run_id"),
+                "anchor_action_id": anchor_action_id,
+                "anchor_action_family": anchor_action_family,
+                "anchor_action_date": anchor_action_date,
+                "anchor_action_support": anchor_action_support,
+                "recommended_posture": package.get("recommended_posture"),
+                "top_action_ids": top_action_ids,
+                "recommended_action_support": recommended_action_support,
+                "historical_alignment": alignment,
+                "snapshot_coverage": snapshot_coverage,
+                "artifacts": artifacts,
+            }
+            if not top_action_ids:
+                case["unsupported_reason"] = "no_feasible_plan_generated"
+            cases.append(case)
+            _progress(
+                {
+                    "event": "case_complete",
+                    "index": index,
+                    "total": len(selected_cases),
+                    "company_id": company_id,
+                    "run_id": summary.get("run_id"),
+                    "alignment_score": alignment.get("score"),
+                    "alignment_reason": alignment.get("reason"),
+                },
+                args.quiet,
+            )
+        except Exception as exc:
+            cases.append(
+                {
+                    "company_id": company_id,
+                    "source_company_id": source_company_id,
+                    "as_of_time": as_of_time,
+                    "anchor_action_id": anchor_action_id,
+                    "anchor_action_family": anchor_action_family,
+                    "anchor_action_date": anchor_action_date,
+                    "anchor_action_support": anchor_action_support,
+                    "error": str(exc),
+                }
+            )
+            _progress({"event": "case_error", "index": index, "company_id": company_id, "error": str(exc)}, args.quiet)
+
+    report = {
+        "generated_at": pd.Timestamp.utcnow().isoformat(),
+        "benchmark_key": args.benchmark,
+        "benchmark_label": benchmark.get("label"),
+        "benchmark_lock_path": str(lock_path),
+        "lock_version": config['version'],
+        "manifest": str(manifest),
+        "runs_root": str(runs_root_path),
+        "artifact_root": str(artifact_root),
+        "snapshot_cache_dir": str(snapshot_cache_dir),
+        "case_count_requested": len(selected_cases),
+        "runs_analyzed": len(cases),
+        "reference_metrics": benchmark.get("reference_metrics", {}),
+        "resolved_paths": {name: _path_metadata(path) for name, path in paths.items()},
+        "resolved_env_overrides": {
+            name: _path_metadata(Path(value))
+            for name, value in locked["resolved_env"].items()
+        },
+        "resolved_path_fingerprints": {
+            name: fingerprint_path(path)
+            for name, path in paths.items()
+        },
+        "resolved_env_override_fingerprints": {
+            name: fingerprint_path(value)
+            for name, value in locked["resolved_env"].items()
+        },
+        "defaults": defaults,
+        "facts_years": facts_years,
+        "cases": cases,
+        "aggregate": _aggregate_historical_cases(cases),
+    }
+    scorecard = build_portfolio_strategy_scorecard(
+        report,
+        protocol=protocol,
+        cost_model=cost_model,
+    )
+    report["protocol"] = protocol.to_dict()
+    report["cost_model"] = cost_model.to_dict()
+    report["scorecard"] = scorecard
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2, default=str))
+
+    scorecard_json_path.parent.mkdir(parents=True, exist_ok=True)
+    scorecard_json_path.write_text(json.dumps(scorecard, indent=2, default=str))
+
+    scorecard_md_path.parent.mkdir(parents=True, exist_ok=True)
+    scorecard_md_path.write_text(render_portfolio_strategy_scorecard_markdown(scorecard))
+
+    manifest = build_backtest_artifact_manifest(
+        suite=str(config.get("suite") or "manual_replay_historical_benchmark"),
+        benchmark_key=args.benchmark,
+        protocol=protocol,
+        cost_model=cost_model,
+        lock_path=lock_path,
+        runs_root=runs_root_path,
+        artifact_root=artifact_root,
+        snapshot_cache_dir=snapshot_cache_dir,
+        resolved_paths=paths,
+        resolved_env=locked["resolved_env"],
+        outputs={
+            "historical_report": out_path,
+            "scorecard_json": scorecard_json_path,
+            "scorecard_markdown": scorecard_md_path,
+        },
+    )
+    manifest_json_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_json_path.write_text(json.dumps(manifest, indent=2, default=str))
+
+    report["artifact_manifest_path"] = str(manifest_json_path)
+    report["artifact_manifest"] = manifest
+    out_path.write_text(json.dumps(report, indent=2, default=str))
+
+    aggregate = dict(report.get("aggregate", {}) or {})
+    portfolio_proxy = dict(scorecard.get("portfolio_proxy", {}) or {})
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "benchmark_key": args.benchmark,
+                "out_json": str(out_path),
+                "scorecard_json": str(scorecard_json_path),
+                "manifest_json": str(manifest_json_path),
+                "mean_alignment_score": aggregate.get("mean_alignment_score"),
+                "net_mean_alignment_score": portfolio_proxy.get("net_mean_alignment_score"),
+                "anchor_primary_exact_rate": aggregate.get("anchor_primary_exact_rate"),
+                "anchor_primary_family_rate": aggregate.get("anchor_primary_family_rate"),
+                "unsupported_case_count": aggregate.get("unsupported_case_count"),
+            }
+        )
+    )
+    if args.dump_stack_after_seconds:
+        faulthandler.cancel_dump_traceback_later()
+
+
