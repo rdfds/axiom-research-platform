@@ -221,3 +221,8 @@ def rebuild_universe() -> None:
         rd.close_session()
 
 
+def batched(items: List[str], batch_size: int) -> Iterable[List[str]]:
+    for i in range(0, len(items), batch_size):
+        yield items[i:i + batch_size]
+
+

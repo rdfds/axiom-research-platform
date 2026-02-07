@@ -378,3 +378,118 @@ def pull_ticker_changes():
     return df
 
 
+def link_all_to_compustat(actions_list):
+    """Link all CRSP-based actions to Compustat gvkey."""
+    print("\n" + "=" * 60)
+    print("LINKING ALL TO COMPUSTAT")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # Get the linking table
+    query = """
+    SELECT lpermno as permno, gvkey, linkdt, linkenddt
+    FROM crsp.ccmxpf_lnkhist
+    WHERE linktype IN ('LU', 'LC', 'LS')
+      AND linkprim IN ('P', 'C')
+    """
+
+    link = pd.read_sql(query, conn)
+    link['linkdt'] = pd.to_datetime(link['linkdt'])
+    link['linkenddt'] = pd.to_datetime(link['linkenddt'].fillna('2099-12-31'))
+
+    def add_gvkey(df):
+        if 'permno' not in df.columns or len(df) == 0:
+            return df
+        merged = df.merge(link, on='permno', how='left')
+        # Filter to valid link dates
+        if 'action_date' in merged.columns:
+            merged = merged[
+                (merged['action_date'] >= merged['linkdt']) &
+                (merged['action_date'] <= merged['linkenddt'])
+            ]
+        merged = merged.drop_duplicates('permno', keep='first')
+        return merged
+
+    linked_count = 0
+    total_count = 0
+
+    for name, df in actions_list:
+        if len(df) > 0 and 'permno' in df.columns:
+            linked = add_gvkey(df)
+            linked_count += linked['gvkey'].notna().sum()
+            total_count += len(df)
+            # Save linked version
+            linked.to_parquet(DATA_DIR / f'{name}_linked.parquet')
+
+    print(f"  Linked {linked_count:,} / {total_count:,} actions to Compustat")
+    conn.close()
+
+
+def main():
+    print("=" * 70)
+    print("PULLING ALL CORPORATE ACTIONS FROM WRDS")
+    print("=" * 70)
+
+    all_actions = []
+
+    # 1. Stock splits
+    splits = pull_stock_splits()
+    all_actions.append(('stock_splits', splits))
+
+    # 2. Reverse splits
+    reverse = pull_reverse_splits()
+    all_actions.append(('reverse_splits', reverse))
+
+    # 3. Special dividends
+    special_div = pull_special_dividends()
+    all_actions.append(('special_dividends', special_div))
+
+    # 4. Spin-offs
+    spinoffs = pull_spinoffs()
+    all_actions.append(('spinoffs', spinoffs))
+
+    # 5. Rights offerings
+    rights = pull_rights_offerings()
+    all_actions.append(('rights_offerings', rights))
+
+    # 6. Return of capital
+    roc = pull_return_of_capital()
+    all_actions.append(('return_of_capital', roc))
+
+    # 7. Going private
+    going_priv = pull_going_private()
+    all_actions.append(('going_private', going_priv))
+
+    # 8. Bond issuances
+    bonds = pull_bond_issuances()
+    all_actions.append(('bond_issuances', bonds))
+
+    # 9. Ticker changes
+    tickers = pull_ticker_changes()
+    all_actions.append(('ticker_changes', tickers))
+
+    # Link to Compustat
+    link_all_to_compustat(all_actions)
+
+    # Summary
+    print("\n" + "=" * 70)
+    print("SUMMARY - ALL CORPORATE ACTIONS")
+    print("=" * 70)
+
+    total = 0
+    for name, df in all_actions:
+        count = len(df)
+        total += count
+        print(f"  {name:25} {count:>8,}")
+
+    print("-" * 70)
+    print(f"  {'TOTAL NEW ACTIONS':25} {total:>8,}")
+
+    print("\n  Plus existing data:")
+    print(f"    Buybacks (Compustat):     53,025")
+    print(f"    Acquisitions (CRSP):       3,726")
+    print(f"    Bankruptcies (CRSP):       2,014")
+    print(f"    Dividends (CRSP):        151,457")
+
+
