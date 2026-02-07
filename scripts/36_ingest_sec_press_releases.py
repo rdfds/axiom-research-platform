@@ -160,3 +160,24 @@ def build_cik_universe(sec_tickers: pd.DataFrame, universe_tickers: pd.DataFrame
     return merged
 
 
+def load_submissions(cik: str, session: requests.Session, sleep_seconds: float) -> Optional[Dict]:
+    cache_path = SEC_DIR / "submissions" / f"CIK{cik}.json"
+    if cache_path.exists():
+        try:
+            return json.loads(cache_path.read_text())
+        except json.JSONDecodeError:
+            # Corrupt/empty cache file; delete and refetch
+            try:
+                cache_path.unlink()
+            except Exception:
+                pass
+    url = SEC_SUBMISSIONS_URL.format(cik=cik)
+    try:
+        payload = fetch_json(url, session, sleep_seconds)
+    except requests.RequestException as exc:
+        log(f"Failed CIK {cik}: {exc}")
+        return None
+    cache_path.write_text(json.dumps(payload))
+    return payload
+
+

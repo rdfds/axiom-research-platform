@@ -267,3 +267,298 @@ def pick_num_estimates(row: Dict[str, object], metric: str) -> Optional[float]:
     return None
 
 
+def derive_period_end(row: Dict[str, object]) -> Tuple[Optional[pd.Timestamp], bool, Optional[int]]:
+    date_val = row.get("date")
+    if date_val:
+        dt = pd.to_datetime(date_val, errors="coerce")
+        if pd.notna(dt):
+            return dt, False, int(dt.year)
+    year_val = row['fiscalYear'] or row.get("calendarYear") or row.get("year")
+    if year_val:
+        try:
+            year = int(year_val)
+            return pd.Timestamp(year=year, month=12, day=31), True, year
+        except Exception:
+            return None, True, None
+    return None, True, None
+
+
+def main() -> None:
+    api_key = require_api_key()
+    FMP_DIR.mkdir(parents=True, exist_ok=True)
+    session = requests.Session()
+
+    symbols: List[str] = []
+    if FMP_TARGET_SYMBOL:
+        symbols = [FMP_TARGET_SYMBOL.strip().upper()]
+    elif FMP_USE_UNIVERSE:
+        symbols = load_universe_tickers()
+    else:
+        raise RuntimeError("No universe available; set FMP_TARGET_SYMBOL or FMP_USE_UNIVERSE=1")
+
+    symbols = [s for s in symbols if s]
+    if FMP_LIMIT_SYMBOLS and len(symbols) > FMP_LIMIT_SYMBOLS:
+        symbols = symbols[:FMP_LIMIT_SYMBOLS]
+
+    log(f"Symbols to pull: {len(symbols):,}")
+
+    names, link = load_mappings()
+    fy_end_map = load_fy_end_map()
+
+    checkpoint_path = FMP_DIR / "fmp_estimates_checkpoint.txt"
+    processed = set()
+    if FMP_RESUME and checkpoint_path.exists():
+        processed = set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
+
+    ingestion_time = datetime.utcnow()
+    available_time = pd.Timestamp(ingestion_time)
+    source_system = "fmp_estimates"
+
+    existing_path = WAREHOUSE_DIR / "warehouse_estimates.parquet"
+    existing_latest = None
+    if existing_path.exists():
+        existing = pd.read_parquet(
+            existing_path, columns=["entity_id", "metric", "period", "available_time", "consensus_value"]
+        )
+        existing["available_time"] = pd.to_datetime(existing["available_time"], errors="coerce")
+        existing = existing.sort_values(["entity_id", "metric", "period", "available_time"])
+        existing_latest = existing.groupby(["entity_id", "metric", "period"]).tail(1)
+        existing_latest = existing_latest.rename(columns={"consensus_value": "prev_value"})
+
+    all_records: List[Dict] = []
+    all_raw: List[Dict] = []
+
+    for idx, symbol in enumerate(symbols, start=1):
+        if FMP_RESUME and symbol in processed:
+            continue
+
+        url = f"{FMP_BASE_URL}/analyst-estimates"
+        params = {"symbol": symbol, "period": FMP_PERIOD, "apikey": api_key}
+        rows = _request_json(url, params, session) or []
+
+        if not rows:
+            processed.add(symbol)
+            if FMP_RESUME:
+                with checkpoint_path.open("a") as f:
+                    f.write(f"{symbol}\n")
+            if idx % 50 == 0:
+                log(f"Progress: {idx}/{len(symbols)} symbols")
+            continue
+
+        # Derive period_end for each row
+        parsed_rows = []
+        for row in rows:
+            period_end, estimated_pe, year = derive_period_end(row)
+            if period_end is None:
+                continue
+            if period_end.year < FMP_START_YEAR or period_end.year > FMP_END_YEAR:
+                continue
+            parsed_rows.append((row, period_end, estimated_pe, year))
+
+        if not parsed_rows:
+            processed.add(symbol)
+            if FMP_RESUME:
+                with checkpoint_path.open("a") as f:
+                    f.write(f"{symbol}\n")
+            continue
+
+        # Label FY1/FY2 based on future periods
+        period_ends = sorted({p[1] for p in parsed_rows})
+        future = [dt for dt in period_ends if dt.date() >= available_time.date()]
+        if not future:
+            future = period_ends[-2:] if len(period_ends) >= 2 else period_ends
+        label_map = {dt: f"FY{idx+1}" for idx, dt in enumerate(future[:2])}
+
+        for row, period_end, estimated_pe, year in parsed_rows:
+            if period_end not in label_map:
+                continue
+            period_label = label_map[period_end]
+
+            gvkey = map_symbol_to_gvkey(symbol, period_end, names, link)
+            company_id = gvkey if gvkey is not None else None
+            entity_id = gvkey if gvkey is not None else symbol
+
+            if gvkey and estimated_pe and year is not None:
+                fy_end = fy_end_map.get(str(gvkey))
+                period_end = period_end_for_year(year, fy_end)
+
+            quality_flags = ["partial_coverage", "estimated_available_time"]
+            if estimated_pe:
+                quality_flags.append("estimated_period_end")
+            if gvkey is None:
+                quality_flags.append("estimated_company_id")
+
+            for metric in ("eps", "revenue", "ebitda"):
+                value = pick_value(row, metric)
+                if value is None or (isinstance(value, float) and np.isnan(value)):
+                    continue
+                num_est = pick_num_estimates(row, metric)
+                try:
+                    value_f = float(value)
+                except Exception:
+                    continue
+
+                event_time = period_end
+                if event_time > available_time:
+                    event_time = available_time
+                    quality_flags = list(quality_flags) + ["estimated_event_time"]
+
+                payload = {
+                    "symbol": symbol,
+                    "metric": metric,
+                    "period": period_label,
+                    "consensus_value": value_f,
+                    "num_estimates": num_est,
+                    "period_end": period_end.isoformat(),
+                    "capture_time": available_time.isoformat(),
+                }
+                raw_payload_hash = compute_raw_payload_hash(payload)
+                version_id = compute_version_id(
+                    source_system=source_system,
+                    entity_id=str(entity_id),
+                    event_time=event_time.to_pydatetime(),
+                    available_time=available_time.to_pydatetime(),
+                    raw_payload_hash=raw_payload_hash,
+                )
+
+                all_raw.append(
+                    {
+                        "entity_id": str(entity_id),
+                        "company_id": str(company_id) if company_id is not None else None,
+                        "security_id": None,
+                        "event_time": event_time,
+                        "available_time": available_time,
+                        "payload": payload,
+                    }
+                )
+
+                all_records.append(
+                    {
+                        "source_system": source_system,
+                        "entity_id": str(entity_id),
+                        "company_id": str(company_id) if company_id is not None else None,
+                        "security_id": None,
+                        "event_time": event_time,
+                        "available_time": available_time,
+                        "ingestion_time": ingestion_time,
+                        "version_id": version_id,
+                        "raw_payload_hash": raw_payload_hash,
+                        "upstream_version_ids": [version_id],
+                        "quality_flags": quality_flags,
+                        "metric": metric,
+                        "period": period_label,
+                        "consensus_value": value_f,
+                        "num_estimates": num_est,
+                        "revision_direction": None,
+                        "revision_magnitude": None,
+                        "period_end": period_end,
+                    }
+                )
+
+                # Optional NTM derived from FY1
+                if period_label == "FY1":
+                    ntm_period_end = (available_time + pd.DateOffset(months=12)).to_period("M").to_timestamp("M")
+                    ntm_event_time = ntm_period_end
+                    ntm_flags = list(quality_flags) + ["derived_ntm_from_fy1"]
+                    if ntm_event_time > available_time:
+                        ntm_event_time = available_time
+                        ntm_flags.append("estimated_event_time")
+                    ntm_payload = dict(payload)
+                    ntm_payload["period"] = "NTM"
+                    ntm_payload["period_end"] = ntm_period_end.isoformat()
+                    ntm_raw_hash = compute_raw_payload_hash(ntm_payload)
+                    ntm_version = compute_version_id(
+                        source_system=source_system,
+                        entity_id=str(entity_id),
+                        event_time=ntm_event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=ntm_raw_hash,
+                    )
+                    all_raw.append(
+                        {
+                            "entity_id": str(entity_id),
+                            "company_id": str(company_id) if company_id is not None else None,
+                            "security_id": None,
+                            "event_time": ntm_event_time,
+                            "available_time": available_time,
+                            "payload": ntm_payload,
+                        }
+                    )
+                    all_records.append(
+                        {
+                            "source_system": source_system,
+                            "entity_id": str(entity_id),
+                            "company_id": str(company_id) if company_id is not None else None,
+                            "security_id": None,
+                            "event_time": ntm_event_time,
+                            "available_time": available_time,
+                            "ingestion_time": ingestion_time,
+                            "version_id": ntm_version,
+                            "raw_payload_hash": ntm_raw_hash,
+                            "upstream_version_ids": [ntm_version],
+                            "quality_flags": ntm_flags,
+                            "metric": metric,
+                            "period": "NTM",
+                            "consensus_value": value_f,
+                            "num_estimates": num_est,
+                            "revision_direction": None,
+                            "revision_magnitude": None,
+                            "period_end": ntm_period_end,
+                        }
+                    )
+
+        processed.add(symbol)
+        if FMP_RESUME:
+            with checkpoint_path.open("a") as f:
+                f.write(f"{symbol}\n")
+
+        if idx % 50 == 0:
+            log(f"Progress: {idx}/{len(symbols)} symbols")
+
+        if len(all_records) >= FMP_FLUSH_EVERY:
+            records_df = pd.DataFrame(all_records)
+            if existing_latest is not None and not existing_latest.empty:
+                records_df = records_df.merge(
+                    existing_latest[["entity_id", "metric", "period", "prev_value"]],
+                    on=["entity_id", "metric", "period"],
+                    how="left",
+                )
+                diff = records_df["consensus_value"] - records_df["prev_value"]
+                records_df["revision_magnitude"] = diff.where(records_df["prev_value"].notna())
+                records_df["revision_direction"] = np.where(
+                    records_df["prev_value"].notna(),
+                    np.where(diff > 0, "up", np.where(diff < 0, "down", "flat")),
+                    None,
+                )
+                records_df = records_df.drop(columns=["prev_value"])
+
+            write_raw_records(source_system=source_system, records=all_raw)
+            append_canonical_records("warehouse_estimates", records_df.to_dict("records"))
+            all_records.clear()
+            all_raw.clear()
+
+    if all_records:
+        records_df = pd.DataFrame(all_records)
+        if existing_latest is not None and not existing_latest.empty:
+            records_df = records_df.merge(
+                existing_latest[["entity_id", "metric", "period", "prev_value"]],
+                on=["entity_id", "metric", "period"],
+                how="left",
+            )
+            diff = records_df["consensus_value"] - records_df["prev_value"]
+            records_df["revision_magnitude"] = diff.where(records_df["prev_value"].notna())
+            records_df["revision_direction"] = np.where(
+                records_df["prev_value"].notna(),
+                np.where(diff > 0, "up", np.where(diff < 0, "down", "flat")),
+                None,
+            )
+            records_df = records_df.drop(columns=["prev_value"])
+
+        write_raw_records(source_system=source_system, records=all_raw)
+        append_canonical_records("warehouse_estimates", records_df.to_dict("records"))
+
+    log("Done. Ingested FMP estimates (A4-lite).")
+
+
+if __name__ == "__main__":
+    main()
