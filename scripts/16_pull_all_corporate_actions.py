@@ -336,3 +336,45 @@ def pull_bond_issuances():
     return df
 
 
+def pull_ticker_changes():
+    """Pull ticker symbol changes from CRSP."""
+    print("\n" + "=" * 60)
+    print("TICKER CHANGES (CRSP)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    query = """
+    WITH ticker_hist AS (
+        SELECT
+            permno,
+            ticker,
+            comnam,
+            namedt,
+            nameendt,
+            LAG(ticker) OVER (PARTITION BY permno ORDER BY namedt) as prev_ticker
+        FROM crsp.msenames
+        WHERE namedt >= '2010-01-01'
+    )
+    SELECT
+        permno,
+        namedt as action_date,
+        prev_ticker,
+        ticker as new_ticker,
+        comnam as company_name
+    FROM ticker_hist
+    WHERE prev_ticker IS NOT NULL
+      AND prev_ticker != ticker
+    ORDER BY namedt DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    df['action_type'] = 'ticker_change'
+    df['action_date'] = pd.to_datetime(df['action_date'])
+    print(f"  Retrieved {len(df):,} ticker changes")
+
+    df.to_parquet(DATA_DIR / 'ticker_changes.parquet')
+    conn.close()
+    return df
+
+

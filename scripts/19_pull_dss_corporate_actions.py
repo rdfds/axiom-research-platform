@@ -189,3 +189,35 @@ def universe_from_indices() -> Tuple[List[str], Dict[str, str]]:
     return tickers, {"method": "indices", "label": ",".join(index_universes)}
 
 
+def rebuild_universe() -> None:
+    import refinitiv.data as rd
+
+    log("Rebuilding US active equity universe...")
+    rd.open_session()
+    try:
+        tickers, meta = try_screen_universe()
+        if not tickers:
+            if DSS_REQUIRE_FULL_UNIVERSE:
+                raise RuntimeError(
+                    "Screen universe failed or returned too few tickers. "
+                    "Set DSS_REQUIRE_FULL_UNIVERSE=0 to allow index fallback, "
+                    "or provide a custom universe file."
+                )
+            log("Screen universe failed. Falling back to index constituents.")
+            tickers, meta = universe_from_indices()
+
+        if not tickers:
+            raise RuntimeError("Failed to build any universe from Refinitiv.")
+
+        df = pd.DataFrame({
+            "ric": sorted(list(set(tickers))),
+            "source_method": meta.get("method", "unknown"),
+            "source_label": meta.get("label", "unknown"),
+            "pulled_at": datetime.now().isoformat(),
+        })
+        df.to_parquet(UNIVERSE_PATH, index=False)
+        log(f"Saved universe: {len(df):,} tickers -> {UNIVERSE_PATH.name}")
+    finally:
+        rd.close_session()
+
+
