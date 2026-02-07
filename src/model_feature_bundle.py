@@ -1231,3 +1231,93 @@ def _build_state_vector_v1(
     }
 
 
+def _build_canonical_block(
+    features: Dict[str, Any],
+    *,
+    action_type: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]], Dict[str, Any], Dict[str, float], Dict[str, str]]:
+    canonical: Dict[str, Any] = {}
+    records: Dict[str, Dict[str, Any]] = {}
+    support: Dict[str, Any] = {}
+    reliability: Dict[str, float] = {}
+    sources: Dict[str, str] = {}
+    for canonical_key, source_keys in _CANONICAL_SPECS.items():
+        record, source_key = _resolve_first_record(
+            features,
+            source_keys,
+            action_type=action_type,
+            action_id=action_id,
+        )
+        if record is None or source_key is None:
+            continue
+        target_record = _copy_record_for_target(record, target_key=canonical_key, source_key=source_key)
+        canonical[canonical_key] = _feature_value(target_record)
+        records[canonical_key] = target_record or {"value": _feature_value(record)}
+        support[canonical_key] = _canonical_meta(record, source_metric=source_key)
+        reliability[canonical_key] = _reliability_score(record, source_metric=source_key)
+        sources[canonical_key] = source_key
+
+    market_cap = canonical.get("scale.market_cap")
+    if market_cap is not None:
+        try:
+            canonical["scale.log_market_cap"] = math.log10(max(float(market_cap), 1.0))
+        except Exception:
+            pass
+        bucket = "micro"
+        try:
+            cap = float(market_cap)
+            if cap >= 200_000_000_000:
+                bucket = "mega"
+            elif cap >= 10_000_000_000:
+                bucket = "large"
+            elif cap >= 2_000_000_000:
+                bucket = "mid"
+            elif cap >= 300_000_000:
+                bucket = "small"
+        except Exception:
+            bucket = "micro"
+        canonical["scale.market_cap_bucket"] = bucket
+
+    retirement_regime = canonical.get("capital.retirement_obligation_regime")
+    if retirement_regime is not None:
+        regime_value = str(retirement_regime).strip()
+        regime_record = records.get("capital.retirement_obligation_regime")
+        regime_source = sources.get("capital.retirement_obligation_regime", "capital_structure.retirement_obligation_regime")
+        for observed_regime, canonical_key in _RETIREMENT_REGIME_FLAGS.items():
+            flag_value = 1.0 if regime_value == observed_regime else 0.0
+            canonical[canonical_key] = flag_value
+            if regime_record is not None:
+                target_record = _copy_record_for_target(
+                    regime_record,
+                    target_key=canonical_key,
+                    source_key=regime_source,
+                )
+                if isinstance(target_record, dict):
+                    target_record["value"] = flag_value
+                    breakdown = dict(target_record.get("component_breakdown") or {})
+                    breakdown["model_feature_bundle_regime_encoding"] = {
+                        "source_metric": "capital.retirement_obligation_regime",
+                        "observed_regime": regime_value,
+                        "target_regime": observed_regime,
+                        "encoding": "one_hot",
+                    }
+                    target_record["component_breakdown"] = breakdown
+                records[canonical_key] = target_record or {"value": flag_value}
+                support[canonical_key] = _canonical_meta(regime_record, source_metric=regime_source)
+                reliability[canonical_key] = _reliability_score(regime_record, source_metric=regime_source)
+            else:
+                records[canonical_key] = {"value": flag_value}
+                support[canonical_key] = {
+                    "source_metric": "capital_structure.retirement_obligation_regime",
+                    "support_mode": None,
+                    "applicability_status": None,
+                    "quality_flags": [],
+                    "is_proxy": False,
+                    "is_legacy": True,
+                }
+                reliability[canonical_key] = 0.0
+            sources[canonical_key] = regime_source
+    return canonical, records, support, reliability, sources
+
+
