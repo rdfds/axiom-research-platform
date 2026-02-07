@@ -181,3 +181,50 @@ def load_submissions(cik: str, session: requests.Session, sleep_seconds: float) 
     return payload
 
 
+def html_to_text(html: str) -> str:
+    # Remove script/style and tags
+    html = re.sub(r"(?is)<(script|style).*?>.*?(</\\1>)", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", html)
+    text = re.sub(r"\\s+", " ", text)
+    return text.strip()
+
+
+def fetch_filing_text(cik: str, accession: str, primary_doc: str, session: requests.Session, sleep_seconds: float) -> Optional[str]:
+    acc_no = accession.replace("-", "")
+    url = f"{SEC_ARCHIVES_BASE}/{int(cik)}/{acc_no}/{primary_doc}"
+    resp = session.get(url, timeout=SEC_TIMEOUT)
+    if resp.status_code != 200:
+        return None
+    if sleep_seconds:
+        time.sleep(sleep_seconds)
+    content_type = resp.headers.get("Content-Type", "")
+    text = resp.text
+    if "html" in content_type.lower() or primary_doc.lower().endswith((".htm", ".html")):
+        return html_to_text(text)
+    return text
+
+
+def write_partitioned(records: List[Dict]) -> int:
+    if not records:
+        return 0
+    df = pd.DataFrame(records)
+    df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+    df["available_time"] = pd.to_datetime(df["available_time"], errors="coerce")
+    df["ingestion_time"] = pd.to_datetime(df["ingestion_time"], errors="coerce")
+    df["year"] = df["event_time"].dt.year.astype("Int64")
+
+    out_dir = WAREHOUSE_DIR / "warehouse_press_releases"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = 0
+    for year, ydf in df.groupby("year"):
+        if pd.isna(year):
+            continue
+        year_dir = out_dir / f"year={int(year)}"
+        year_dir.mkdir(parents=True, exist_ok=True)
+        part_path = year_dir / f"part_{int(datetime.utcnow().timestamp())}_{os.getpid()}.parquet"
+        ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+        rows += len(ydf)
+    return rows
+
+

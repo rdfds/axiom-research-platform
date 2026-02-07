@@ -273,7 +273,7 @@ def derive_period_end(row: Dict[str, object]) -> Tuple[Optional[pd.Timestamp], b
         dt = pd.to_datetime(date_val, errors="coerce")
         if pd.notna(dt):
             return dt, False, int(dt.year)
-    year_val = row['fiscalYear'] or row.get("calendarYear") or row.get("year")
+    year_val = row.get("fiscalYear") or row.get("calendarYear") or row.get("year")
     if year_val:
         try:
             year = int(year_val)
