@@ -188,3 +188,52 @@ def _path_metadata(path: Path) -> Dict[str, Any]:
     return info
 
 
+def _resolve_output_path(value: str, default_path: Path) -> Path:
+    raw = str(value or "").strip()
+    return Path(raw) if raw else default_path
+
+
+def _load_lock_config(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def _resolve_locked_inputs(config: Dict[str, Any], benchmark_key: str) -> Dict[str, Any]:
+    benchmarks = dict(config.get("benchmarks", {}) or {})
+    if benchmark_key not in benchmarks:
+        raise KeyError(f"Unknown benchmark '{benchmark_key}'. Available: {sorted(benchmarks)}")
+    defaults = dict(config['defaults'] or {})
+    artifacts = dict(config.get("artifacts", {}) or {})
+    benchmark = dict(benchmarks[benchmark_key] or {})
+
+    resolved_paths = {
+        "manifest": _resolve_path(benchmark["manifest"]),
+        "outcomes_path": _resolve_locked_artifact_path("outcomes_path", artifacts["outcomes_path"]),
+        "action_support_manifest": _resolve_locked_artifact_path("action_support_manifest", artifacts["action_support_manifest"]),
+        "corporate_actions_master_path": _resolve_locked_artifact_path("corporate_actions_master_path", artifacts["corporate_actions_master_path"]),
+        "entity_graph_path": _resolve_locked_artifact_path("entity_graph_path", artifacts["entity_graph_path"]),
+        "entity_identifier_path": _resolve_locked_artifact_path("entity_identifier_path", artifacts["entity_identifier_path"]),
+        "entity_table_path": _resolve_locked_artifact_path("entity_table_path", artifacts["entity_table_path"]),
+        "raw_timeseries_path": _resolve_locked_artifact_path("raw_timeseries_path", artifacts["raw_timeseries_path"]),
+        "event_store_path": _resolve_locked_artifact_path("event_store_path", artifacts["event_store_path"]),
+        "ownership_summary_path": _resolve_locked_artifact_path("ownership_summary_path", artifacts["ownership_summary_path"]),
+        "issuer_ratings_path": _resolve_locked_artifact_path("issuer_ratings_path", artifacts["issuer_ratings_path"]),
+        "companyfacts_root": _resolve_locked_artifact_path("companyfacts_root", artifacts["companyfacts_root"]),
+        "facts_path": _resolve_candidate_path(artifacts["facts_path_candidates"], artifact_key="facts_path"),
+    }
+    env_override_candidates = dict(config.get("env_override_candidates", {}) or {})
+    if env_override_candidates:
+        resolved_env = {
+            name: str(_resolve_candidate_path(values))
+            for name, values in env_override_candidates.items()
+        }
+    else:
+        env_overrides = dict(config.get("env_overrides", {}) or {})
+        resolved_env = {name: str(_resolve_path(path)) for name, path in env_overrides.items()}
+    return {
+        "defaults": defaults,
+        "benchmark": benchmark,
+        "resolved_paths": resolved_paths,
+        "resolved_env": resolved_env,
+    }
+
+

@@ -693,7 +693,7 @@ class PeerAnalyzer:
 
             # FCF margin (operating income / revenue as proxy)
             fcf_margin = None
-            if row.get('oibdpq') and row['revtq']:
+            if row.get('oibdpq') and row.get('revtq'):
                 oibdpq = float(row.get('oibdpq', 0) or 0)
                 revtq = float(row.get('revtq', 0) or 0)
                 if revtq > 0:
