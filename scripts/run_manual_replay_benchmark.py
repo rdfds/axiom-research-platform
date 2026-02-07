@@ -237,3 +237,9 @@ def _resolve_locked_inputs(config: Dict[str, Any], benchmark_key: str) -> Dict[s
     }
 
 
+def _progress(payload: Dict[str, Any], quiet: bool) -> None:
+    if quiet:
+        return
+    print(json.dumps(payload, sort_keys=True), flush=True)
+
+

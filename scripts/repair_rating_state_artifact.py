@@ -196,3 +196,16 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _rating_score(rating: Any) -> Optional[float]:
+    rating = _null_if_na(rating)
+    if rating is None:
+        return None
+    normalized = str(rating).upper().strip()
+    if not normalized:
+        return None
+    for label, score in RATING_SCORE_MAP.items():
+        if label in normalized:
+            return float(score)
+    return None
+
+

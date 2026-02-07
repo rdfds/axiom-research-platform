@@ -38,3 +38,15 @@ def _is_materialized(path: Path) -> bool:
     return True
 
 
+def _normalize_id(x: object) -> Optional[str]:
+    if x is None:
+        return None
+    s = str(x).strip()
+    if not s or s.lower() == "nan":
+        return None
+    # "81284.0" -> "81284"
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
