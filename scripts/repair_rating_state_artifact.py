@@ -157,3 +157,28 @@ def _normalize_name(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(name).lower())
 
 
+def _normalize_company_id(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if digits:
+        return digits.zfill(10)
+    return text
+
+
+def _null_if_na(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
