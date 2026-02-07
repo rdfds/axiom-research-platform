@@ -182,3 +182,17 @@ def _null_if_na(value: Any) -> Any:
     return value
 
 
+def _node_support(node: Dict[str, Any] | None) -> str:
+    if not node:
+        return "unsupported"
+    return str(node.get("support_mode") or "unsupported")
+
+
+def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, Any]:
+    repaired = copy.deepcopy(node)
+    repaired["computed_at"] = computed_at
+    repaired["missing_reason"] = None
+    repaired["quality_flags"] = repaired.get("quality_flags") or None
+    return repaired
+
+
