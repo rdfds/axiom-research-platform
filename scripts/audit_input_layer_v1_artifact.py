@@ -454,3 +454,54 @@ def _load_crsp_market_cache(crsp_market_cache_path: Path, permnos: list[str]) ->
     return prices
 
 
+def _load_crsp_daily_from_repo(
+    crsp_daily_root: Path,
+    permnos: list[str],
+    *,
+    min_asof_date: pd.Timestamp,
+    max_asof_date: pd.Timestamp,
+) -> pd.DataFrame:
+    if not permnos:
+        return pd.DataFrame()
+    start_year = int(min_asof_date.year) - 1
+    end_year = int(max_asof_date.year)
+    files: list[Path] = []
+    for year in range(start_year, end_year + 1):
+        candidate = crsp_daily_root / f"dsf_{year:04d}-01-01_to_{year:04d}-12-31.parquet"
+        if candidate.exists():
+            files.append(candidate)
+    if not files:
+        return pd.DataFrame()
+
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    min_trade_date = (min_asof_date - pd.Timedelta(days=370)).date().isoformat()
+    max_trade_date = max_asof_date.date().isoformat()
+    selects = []
+    for file_path in files:
+        selects.append(
+            f"""
+            SELECT
+                CAST(permno AS VARCHAR) AS permno,
+                CAST(date AS DATE) AS trade_date,
+                ABS(prc) AS close_price,
+                ABS(prc) AS price_proxy,
+                ret AS total_return,
+                retx AS price_return,
+                shrout AS shares_outstanding,
+                ABS(prc) * shrout AS daily_cap,
+                FALSE AS delist_flag
+            FROM read_parquet('{file_path.as_posix()}')
+            WHERE CAST(permno AS VARCHAR) IN ({permno_sql})
+              AND CAST(date AS DATE) >= DATE '{min_trade_date}'
+              AND CAST(date AS DATE) <= DATE '{max_trade_date}'
+            """
+        )
+    prices = duckdb.sql(" UNION ALL ".join(selects)).fetchdf()
+    if prices.empty:
+        return prices
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices["date_key"] = prices["trade_date"]
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
