@@ -162,3 +162,30 @@ def try_screen_universe() -> Tuple[List[str], Dict[str, str]]:
     return [], {}
 
 
+def universe_from_indices() -> Tuple[List[str], Dict[str, str]]:
+    import refinitiv.data as rd
+
+    index_universes = [
+        "0#.SPX",
+        "0#.MID",
+        "0#.SML",
+        "0#.RUI",
+        "0#.RUT",
+        "0#.RUA",
+        "0#.NDX",
+    ]
+    tickers: List[str] = []
+
+    for idx in index_universes:
+        try:
+            df = rd.get_data(universe=idx, fields=["TR.CommonName"])
+            if df is None or len(df) == 0:
+                continue
+            tickers.extend(df["Instrument"].dropna().tolist())
+        except Exception as e:
+            log(f"Index universe {idx} failed: {e}")
+
+    tickers = sorted(list(set(tickers)))
+    return tickers, {"method": "indices", "label": ",".join(index_universes)}
+
+

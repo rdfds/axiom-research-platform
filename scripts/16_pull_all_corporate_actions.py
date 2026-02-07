@@ -295,3 +295,44 @@ def pull_going_private():
     return df
 
 
+def pull_bond_issuances():
+    """Pull corporate bond issuances from FISD."""
+    print("\n" + "=" * 60)
+    print("BOND ISSUANCES (FISD)")
+    print("=" * 60)
+
+    conn = get_connection()
+
+    # Check what tables exist in FISD
+    try:
+        query = """
+        SELECT
+            issue_id,
+            issuer_id,
+            offering_date as action_date,
+            offering_amt as deal_value,
+            maturity,
+            coupon,
+            security_level,
+            sic_code as sic
+        FROM fisd.fisd_issue
+        WHERE offering_date >= '2010-01-01'
+          AND offering_amt > 100  -- $100M+ issuances
+        ORDER BY offering_date DESC
+        LIMIT 50000
+        """
+
+        df = pd.read_sql(query, conn)
+        df['action_type'] = 'bond_issuance'
+        df['action_date'] = pd.to_datetime(df['action_date'])
+        print(f"  Retrieved {len(df):,} bond issuances")
+
+        df.to_parquet(DATA_DIR / 'bond_issuances.parquet')
+    except Exception as e:
+        print(f"  Error accessing FISD: {e}")
+        df = pd.DataFrame()
+
+    conn.close()
+    return df
+
+
