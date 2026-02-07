@@ -65,3 +65,15 @@ Provider-backed deployments should track:
 
 Alert thresholds belong with the versioned candidate artifact and evaluation manifest. Provider paths, credentials, and live operational metrics remain in their deployment environments.
 
+## 7. Promotion and rollback
+
+A promotion record should contain the candidate artifact, data window, metric table, thresholds, failed-slice analysis, reviewer, and rollback target. Promote only when all required data, temporal, placebo/baseline, support, calibration, and product-contract gates pass.
+
+On failure:
+
+1. stop promotion or roll back to the recorded accepted artifact;
+2. identify whether the regression is caused by data coverage, model behavior, support/calibration, or pipeline health;
+3. reproduce the failing slice with a fixed fixture;
+4. add a regression test before reevaluating the candidate.
+
+See the [`../MODEL_CARD.md`](../MODEL_CARD.md) for intended use, evaluation metrics, data access, and limitations.

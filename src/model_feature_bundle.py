@@ -1321,3 +1321,25 @@ def _build_canonical_block(
     return canonical, records, support, reliability, sources
 
 
+def _build_view(
+    features: Dict[str, Any],
+    *,
+    action_type: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    view = copy.deepcopy(features)
+    overrides: Dict[str, str] = {}
+    for key in _LEGACY_COMPAT_KEYS:
+        record, source_key = _resolve_first_record(
+            features,
+            [key],
+            action_type=action_type,
+            action_id=action_id,
+        )
+        if record is None:
+            continue
+        view[key] = _copy_record_for_target(record, target_key=key, source_key=str(source_key or key))
+        overrides[key] = str(source_key or key)
+    return view, overrides
+
+
