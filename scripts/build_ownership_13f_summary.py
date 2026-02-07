@@ -58,3 +58,14 @@ def _iter_year_dirs(root: Path, years: Optional[List[int]]) -> Iterable[Path]:
             yield p
 
 
+def _readable_year_files(year_dir: Path) -> List[Path]:
+    out: List[Path] = []
+    for p in sorted(year_dir.glob("*.parquet")):
+        name = p.name.lower()
+        if name.startswith(".") or name.startswith("_"):
+            continue
+        if _is_materialized(p):
+            out.append(p)
+    return out
+
+
