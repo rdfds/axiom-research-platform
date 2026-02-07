@@ -1343,3 +1343,146 @@ def _build_view(
     return view, overrides
 
 
+def build_model_feature_bundle(
+    snapshot: Dict[str, Any],
+    *,
+    action_id: Optional[str] = None,
+    action_type: Optional[str] = None,
+    regime: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    raw_features = dict((snapshot or {}).get("features", {}) or {})
+    resolved_regime = dict(regime or ((snapshot or {}).get("regime", {}) or {}))
+    resolved_action_type = _resolved_action_family(action_type=action_type, action_id=action_id)
+    canonical, records, support, reliability, sources = _build_canonical_block(
+        raw_features,
+        action_type=resolved_action_type,
+        action_id=action_id,
+    )
+    state_vector_v1 = _build_state_vector_v1(
+        snapshot,
+        canonical=canonical,
+        records=records,
+        support=support,
+        reliability=reliability,
+        sources=sources,
+    )
+    for key, value in dict(state_vector_v1.get("values", {}) or {}).items():
+        if value is None:
+            continue
+        canonical[key] = value
+    records.update(dict(state_vector_v1.get("records", {}) or {}))
+    support.update(dict(state_vector_v1.get("support", {}) or {}))
+    reliability.update(dict(state_vector_v1.get("reliability", {}) or {}))
+    sources.update(dict(state_vector_v1.get("sources", {}) or {}))
+    views: Dict[str, Dict[str, Any]] = {}
+    overrides_by_view: Dict[str, Dict[str, str]] = {}
+    for view_name in _VIEW_NAMES:
+        views[view_name], overrides_by_view[view_name] = _build_view(
+            raw_features,
+            action_type=resolved_action_type,
+            action_id=action_id,
+        )
+        for state_key in _STATE_VECTOR_V1_FEATURES:
+            record = records.get(state_key)
+            if not isinstance(record, dict):
+                continue
+            views[view_name][state_key] = _copy_record_for_target(
+                record,
+                target_key=state_key,
+                source_key=str(sources.get(state_key) or state_key),
+            )
+
+    diagnostics = {
+        "action_family": resolved_action_type,
+        "action_id": str(action_id or "") or None,
+        "canonical_count": len(canonical),
+        "canonical_sources": sources,
+        "view_override_counts": {name: len(rows) for name, rows in overrides_by_view.items()},
+        "view_overrides": overrides_by_view,
+    }
+    return {
+        "meta": {
+            "company_id": str((snapshot or {}).get("company_id", "") or ""),
+            "as_of_time": str((snapshot or {}).get("as_of_time", "") or ""),
+            "snapshot_id": str((snapshot or {}).get("snapshot_id", "") or ""),
+            "action_family": resolved_action_type,
+            "action_id": str(action_id or "") or None,
+            "regime": resolved_regime,
+        },
+        "raw_features": raw_features,
+        "canonical": canonical,
+        "records": records,
+        "support": support,
+        "reliability": reliability,
+        "state_vector_v1": state_vector_v1,
+        "views": views,
+        "diagnostics": diagnostics,
+    }
+
+
+def attach_model_feature_bundle(
+    snapshot: Dict[str, Any],
+    *,
+    action_id: Optional[str] = None,
+    action_type: Optional[str] = None,
+    regime: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    out = dict(snapshot or {})
+    out[_BUNDLE_KEY] = build_model_feature_bundle(
+        snapshot,
+        action_id=action_id,
+        action_type=action_type,
+        regime=regime,
+    )
+    return out
+
+
+def get_model_feature_bundle(
+    snapshot: Dict[str, Any],
+    *,
+    action_id: Optional[str] = None,
+    action_type: Optional[str] = None,
+    regime: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if (
+        action_id is None
+        and action_type is None
+        and isinstance(snapshot, dict)
+        and isinstance(snapshot.get(_BUNDLE_KEY), dict)
+    ):
+        return dict(snapshot.get(_BUNDLE_KEY) or {})
+    return build_model_feature_bundle(
+        snapshot,
+        action_id=action_id,
+        action_type=action_type,
+        regime=regime,
+    )
+
+
+def feature_view_from_snapshot(
+    snapshot: Dict[str, Any],
+    *,
+    view_name: str,
+    action_id: Optional[str] = None,
+    action_type: Optional[str] = None,
+    regime: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    bundle = get_model_feature_bundle(
+        snapshot,
+        action_id=action_id,
+        action_type=action_type,
+        regime=regime,
+    )
+    views = dict(bundle.get("views", {}) or {})
+    view = views.get(view_name)
+    if isinstance(view, dict):
+        return view
+    return dict((snapshot or {}).get("features", {}) or {})
+
+
+def candidate_generation_view(
+    bundle: Dict[str, Any],
+) -> Dict[str, Any]:
+    return dict((bundle.get("views", {}) or {}).get("candidate_generation", {}) or {})
+
+
