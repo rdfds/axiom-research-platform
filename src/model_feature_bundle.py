@@ -1498,3 +1498,9 @@ def causal_view(
     return dict((bundle.get("views", {}) or {}).get("causal", {}) or {})
 
 
+def precedent_view(
+    bundle: Dict[str, Any],
+) -> Dict[str, Any]:
+    return dict((bundle.get("views", {}) or {}).get("precedent", {}) or {})
+
+

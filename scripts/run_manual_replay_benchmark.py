@@ -147,3 +147,44 @@ def _resolve_path(value: str | Path) -> Path:
     return ROOT / path
 
 
+def _looks_like_stale_manual_replay_bundle_path(path: Path) -> bool:
+    text = str(path)
+    return "/out/manual_replay_bundle_" in text or text.endswith("/companyfacts_buyback_20260407")
+
+
+def _resolve_locked_artifact_path(artifact_key: str, value: str | Path) -> Path:
+    path = _resolve_path(value)
+    if path.exists():
+        return path
+    if _looks_like_stale_manual_replay_bundle_path(path):
+        fallback = _CANONICAL_LOCK_ARTIFACT_FALLBACKS.get(artifact_key)
+        if fallback is not None and fallback.exists():
+            return fallback
+    return path
+
+
+def _resolve_candidate_path(values: Iterable[str | Path], artifact_key: str = "") -> Path:
+    candidates = [_resolve_path(value) for value in values]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    if candidates and any(_looks_like_stale_manual_replay_bundle_path(candidate) for candidate in candidates):
+        fallback = _CANONICAL_LOCK_ARTIFACT_FALLBACKS.get(artifact_key)
+        if fallback is not None and fallback.exists():
+            return fallback
+    return candidates[0]
+
+
+def _path_metadata(path: Path) -> Dict[str, Any]:
+    exists = path.exists()
+    info: Dict[str, Any] = {
+        "path": str(path),
+        "exists": exists,
+    }
+    if exists:
+        stat = path.stat()
+        info["size_bytes"] = stat.st_size
+        info["modified_at"] = pd.Timestamp(stat.st_mtime, unit="s", tz="UTC").isoformat()
+    return info
+
+
