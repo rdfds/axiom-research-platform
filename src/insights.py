@@ -614,7 +614,7 @@ class PeerAnalyzer:
         gvkey: str,
         as_of_date: str,
         n_peers: int = 6,
-    ) :
+    ) -> Dict:
         """
         Get peer comparison table.
 

@@ -1510,3 +1510,8 @@ def dossier_view(
     return dict((bundle.get("views", {}) or {}).get("dossier", {}) or {})
 
 
+def get_bundle_record(bundle: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
+    record = dict((bundle.get("records", {}) or {}).get(key, {}) or {})
+    return record or None
+
+

@@ -201,7 +201,7 @@ def _resolve_locked_inputs(config: Dict[str, Any], benchmark_key: str) -> Dict[s
     benchmarks = dict(config.get("benchmarks", {}) or {})
     if benchmark_key not in benchmarks:
         raise KeyError(f"Unknown benchmark '{benchmark_key}'. Available: {sorted(benchmarks)}")
-    defaults = dict(config['defaults'] or {})
+    defaults = dict(config.get("defaults", {}) or {})
     artifacts = dict(config.get("artifacts", {}) or {})
     benchmark = dict(benchmarks[benchmark_key] or {})
 

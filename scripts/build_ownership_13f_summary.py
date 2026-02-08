@@ -69,3 +69,10 @@ def _readable_year_files(year_dir: Path) -> List[Path]:
     return out
 
 
+def _first_present(cols: set[str], candidates: List[str]) -> Optional[str]:
+    for c in candidates:
+        if c in cols:
+            return c
+    return None
+
+
