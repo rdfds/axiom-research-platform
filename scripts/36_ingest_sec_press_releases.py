@@ -228,3 +228,21 @@ def write_partitioned(records: List[Dict]) -> int:
     return rows
 
 
+def parse_recent_filings(payload: Dict, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    filings = payload.get("filings", {}).get("recent", {})
+    if not filings:
+        return pd.DataFrame()
+    df = pd.DataFrame(filings)
+    if df.empty:
+        return df
+    df["filingDate"] = pd.to_datetime(df.get("filingDate"), errors="coerce")
+    df["reportDate"] = pd.to_datetime(df.get("reportDate"), errors="coerce")
+    df["acceptanceDateTime"] = pd.to_datetime(df.get("acceptanceDateTime"), errors="coerce")
+    df = df[df.get("form") == "8-K"]
+    if df.empty:
+        return df
+    # Filter by filing date
+    df = df[(df["filingDate"] >= start) & (df["filingDate"] <= end)]
+    return df
+
+
