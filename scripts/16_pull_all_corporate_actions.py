@@ -493,3 +493,5 @@ def main():
     print(f"    Dividends (CRSP):        151,457")
 
 
+if __name__ == "__main__":
+    main()
