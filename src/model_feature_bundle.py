@@ -1515,3 +1515,12 @@ def get_bundle_record(bundle: Dict[str, Any], key: str) -> Optional[Dict[str, An
     return record or None
 
 
+def get_bundle_value(bundle: Dict[str, Any], key: str, default: Any = None) -> Any:
+    if key in dict(bundle.get("canonical", {}) or {}):
+        value = bundle["canonical"].get(key)
+        return default if value is None else value
+    record = get_bundle_record(bundle, key)
+    if record is not None:
+        value = _feature_value(record)
+        return default if value is None else value
+    return default
