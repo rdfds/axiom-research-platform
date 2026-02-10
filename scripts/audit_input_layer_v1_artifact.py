@@ -505,3 +505,10 @@ def _load_crsp_daily_from_repo(
     return prices
 
 
+def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Series | None:
+    eligible = df[df["trade_date"] <= date_key]
+    if eligible.empty:
+        return None
+    return eligible.iloc[-1]
+
+
