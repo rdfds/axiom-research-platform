@@ -34,3 +34,10 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}")
 
 
+def parse_date(value: str) -> Optional[pd.Timestamp]:
+    try:
+        return pd.to_datetime(value)
+    except Exception:
+        return None
+
+
