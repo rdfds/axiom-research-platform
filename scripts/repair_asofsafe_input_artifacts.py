@@ -81,3 +81,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _permno_map(entity_identifier_path: Path) :
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
+    ids["permno"] = ids["identifier_value"].astype(str).str.strip()
+    return {
+        str(entity_id): permno
+        for entity_id, permno in ids[["entity_id", "permno"]].drop_duplicates().itertuples(index=False)
+    }
+
+
+def _load_monthly_price_history(raw_timeseries_path: Path, permnos: list[str]) -> dict[str, pd.DataFrame]:
+    if not permnos:
+        return {}
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(entity_id AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            close,
+            ret,
+            retx
+        FROM read_parquet('{raw_timeseries_path}')
+        WHERE series_type = 'price'
+          AND CAST(entity_id AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return {
+        permno: frame.reset_index(drop=True)
+        for permno, frame in prices.groupby("permno")
+    }
+
+
