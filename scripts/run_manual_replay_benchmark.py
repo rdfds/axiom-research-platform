@@ -705,3 +705,5 @@ def main() -> None:
         faulthandler.cancel_dump_traceback_later()
 
 
+if __name__ == "__main__":
+    main()
