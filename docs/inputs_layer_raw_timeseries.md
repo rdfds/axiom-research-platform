@@ -4,3 +4,7 @@ This dataset normalizes **prices**, **macro series**, and **estimates** into a s
 point‑in‑time table with full provenance. It is the canonical time‑series input to
 downstream pipelines.
 
+## Location
+
+`data/inputs_layer/raw_timeseries.parquet`
+
