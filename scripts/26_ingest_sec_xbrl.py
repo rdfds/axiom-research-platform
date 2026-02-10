@@ -81,7 +81,7 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}")
 
 
-def require_user_agent() :
+def require_user_agent() -> str:
     user_agent = os.getenv("SEC_USER_AGENT")
     if not user_agent:
         raise RuntimeError(

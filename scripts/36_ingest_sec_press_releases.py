@@ -152,7 +152,7 @@ def load_universe_tickers(universe_date: Optional[str]) -> pd.DataFrame:
     return merged
 
 
-def build_cik_universe(sec_tickers: pd.DataFrame, universe_tickers: pd.DataFrame, limit: int = 0) :
+def build_cik_universe(sec_tickers: pd.DataFrame, universe_tickers: pd.DataFrame, limit: int = 0) -> pd.DataFrame:
     merged = universe_tickers.merge(sec_tickers, on="ticker", how="left")
     merged = merged.dropna(subset=["cik"]).drop_duplicates(subset=["cik"])
     if limit and limit > 0:
