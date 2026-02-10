@@ -50,3 +50,34 @@ def _normalize_id(x: object) -> Optional[str]:
     return s
 
 
+def _load_identifier_maps(entity_identifier_path: Path) -> tuple[Dict[str, str], Dict[str, str]]:
+    ids = pd.read_parquet(entity_identifier_path)
+    ids["identifier_type"] = ids["identifier_type"].astype(str).str.lower()
+    ids["identifier_value"] = ids["identifier_value"].astype(str).str.strip()
+    ids["entity_id"] = ids["entity_id"].astype(str).str.strip()
+
+    permno_to_entity: Dict[str, str] = {}
+    cik_to_entity: Dict[str, str] = {}
+    permno = ids[ids["identifier_type"] == "permno"][["identifier_value", "entity_id"]].dropna()
+    cik = ids[ids["identifier_type"] == "cik"][["identifier_value", "entity_id"]].dropna()
+
+    for _, row in permno.iterrows():
+        key = _normalize_id(row["identifier_value"])
+        if key:
+            permno_to_entity[key] = str(row["entity_id"])
+            stripped = key.lstrip("0")
+            if stripped:
+                permno_to_entity[stripped] = str(row["entity_id"])
+
+    for _, row in cik.iterrows():
+        key = _normalize_id(row["identifier_value"])
+        if key:
+            cik_to_entity[key] = str(row["entity_id"])
+            stripped = key.lstrip("0")
+            if stripped:
+                cik_to_entity[stripped] = str(row["entity_id"])
+                cik_to_entity[stripped.zfill(10)] = str(row["entity_id"])
+
+    return permno_to_entity, cik_to_entity
+
+

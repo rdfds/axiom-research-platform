@@ -209,3 +209,15 @@ def _rating_score(rating: Any) -> Optional[float]:
     return None
 
 
+def _coerce_watchlist(value: Any) -> Any:
+    value = _null_if_na(value)
+    if not isinstance(value, str):
+        return value
+    lowered = value.strip().lower()
+    if lowered in ("y", "yes", "true", "watch", "negative", "positive"):
+        return True
+    if lowered in ("n", "no", "false", "none", "stable"):
+        return False
+    return None
+
+
