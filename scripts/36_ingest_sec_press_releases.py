@@ -246,3 +246,170 @@ def parse_recent_filings(payload: Dict, start: pd.Timestamp, end: pd.Timestamp) 
     return df
 
 
+def main() -> None:
+    ensure_dirs()
+    user_agent = require_user_agent()
+    start = pd.to_datetime(SEC_START)
+    end = pd.to_datetime(SEC_END)
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"})
+
+    sec_tickers = load_sec_tickers(session, SEC_SLEEP)
+    universe = load_universe_tickers(SEC_UNIVERSE_DATE)
+    cik_universe = build_cik_universe(sec_tickers, universe, SEC_LIMIT_CIKS)
+    log(f"CIKs to pull: {len(cik_universe):,}")
+
+    source_system = "sec_8k_press_release"
+    ingestion_time = datetime.utcnow()
+
+    checkpoint_path = SEC_DIR / "press_releases_checkpoint.txt"
+    processed = set()
+    if SEC_RESUME and checkpoint_path.exists():
+        processed = set([line.strip() for line in checkpoint_path.read_text().splitlines() if line.strip()])
+
+    total = 0
+    start_ts = _time.perf_counter()
+    for idx, row in cik_universe.iterrows():
+        if idx < SEC_START_INDEX:
+            continue
+        if (idx + 1) % 100 == 1:
+            log(f"Processing CIK {idx + 1}/{len(cik_universe)}")
+        cik = row["cik"]
+        if SEC_RESUME and cik in processed:
+            continue
+        try:
+            submissions = load_submissions(cik, session, SEC_SLEEP)
+        except requests.RequestException as exc:
+            log(f"Failed CIK {cik}: {exc}")
+            continue
+        if not submissions:
+            if SEC_RESUME:
+                with checkpoint_path.open("a") as f:
+                    f.write(f"{cik}\n")
+            continue
+        recent = parse_recent_filings(submissions, start, end)
+        if recent.empty:
+            if SEC_RESUME:
+                with checkpoint_path.open("a") as f:
+                    f.write(f"{cik}\n")
+            continue
+        if SEC_MAX_PER_CIK and len(recent) > SEC_MAX_PER_CIK:
+            recent = recent.head(SEC_MAX_PER_CIK)
+
+        raw_records = []
+        canonical_records = []
+
+        for _, filing in recent.iterrows():
+            accession = filing.get("accessionNumber")
+            primary_doc = filing.get("primaryDocument")
+            filing_date = pd.to_datetime(filing.get("filingDate"), errors="coerce")
+            report_date = pd.to_datetime(filing.get("reportDate"), errors="coerce")
+            acceptance = pd.to_datetime(filing.get("acceptanceDateTime"), errors="coerce")
+            if pd.notna(acceptance):
+                # SEC acceptanceDateTime is timezone-aware (UTC); make all timestamps UTC
+                acceptance = acceptance.tz_convert("UTC") if acceptance.tzinfo else acceptance.tz_localize("UTC")
+            if pd.notna(filing_date):
+                filing_date = filing_date.tz_localize("UTC")
+            if pd.notna(report_date):
+                report_date = report_date.tz_localize("UTC")
+            doc_desc = filing.get("primaryDocDescription")
+
+            if pd.isna(filing_date):
+                continue
+
+            event_time = report_date if pd.notna(report_date) else filing_date
+            available_time = acceptance if pd.notna(acceptance) else filing_date
+
+            quality_flags = ["partial_coverage"]
+            if pd.isna(report_date):
+                quality_flags.append("estimated_event_time")
+            if pd.isna(acceptance):
+                quality_flags.append("estimated_available_time")
+
+            if available_time < event_time:
+                event_time = available_time
+                if "estimated_event_time" not in quality_flags:
+                    quality_flags.append("estimated_event_time")
+
+            text = None
+            if SEC_FETCH_TEXT and accession and primary_doc:
+                text = fetch_filing_text(cik, accession, primary_doc, session, SEC_SLEEP)
+
+            payload = {
+                "cik": cik,
+                "accession": accession,
+                "primary_document": primary_doc,
+                "filing_date": filing_date.isoformat() if hasattr(filing_date, "isoformat") else str(filing_date),
+                "report_date": report_date.isoformat() if hasattr(report_date, "isoformat") else str(report_date),
+                "acceptance_datetime": acceptance.isoformat() if hasattr(acceptance, "isoformat") else str(acceptance),
+                "headline": doc_desc,
+                "text": text,
+            }
+
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=str(cik),
+                event_time=event_time.to_pydatetime(),
+                available_time=available_time.to_pydatetime(),
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            raw_records.append(
+                {
+                    "entity_id": str(cik),
+                    "company_id": str(cik),
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "payload": payload,
+                }
+            )
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": str(cik),
+                    "company_id": str(cik),
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingestion_time,
+                    "version_id": version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [version_id],
+                    "quality_flags": quality_flags,
+                    "document_id": accession,
+                    "release_date": event_time,
+                    "headline": doc_desc,
+                    "text": text,
+                    "form_type": "8-K",
+                    "cik": cik,
+                    "accession": accession,
+                    "primary_document": primary_doc,
+                }
+            )
+
+        if raw_records:
+            write_raw_records(source_system=source_system, records=raw_records)
+        if canonical_records:
+            rows = write_partitioned(canonical_records)
+            total += rows
+
+        if SEC_RESUME:
+            with checkpoint_path.open("a") as f:
+                f.write(f"{cik}\n")
+
+        if (idx + 1) % 100 == 0:
+            elapsed = _time.perf_counter() - start_ts
+            rate = (idx + 1) / elapsed if elapsed > 0 else 0.0
+            remaining = (len(cik_universe) - (idx + 1))
+            eta = (remaining / rate) if rate > 0 else 0.0
+            log(f"Progress: {idx + 1}/{len(cik_universe)} CIKs | elapsed {elapsed/60:.1f}m | ETA {eta/60:.1f}m")
+
+    log(f"Done. Ingested {total:,} press release records.")
+
+
+if __name__ == "__main__":
+    main()
