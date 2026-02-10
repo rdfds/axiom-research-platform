@@ -512,3 +512,19 @@ def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Ser
     return eligible.iloc[-1]
 
 
+def _compound_trailing_return(price_history: pd.DataFrame, as_of_ts: pd.Timestamp, months: int) -> float | None:
+    current_row = _latest_row_on_or_before(price_history, as_of_ts)
+    if current_row is None:
+        return None
+    current_trade_date = current_row["trade_date"]
+    target_date = current_trade_date - pd.DateOffset(months=months)
+    window = price_history[(price_history["trade_date"] > target_date) & (price_history["trade_date"] <= current_trade_date)].copy()
+    if window.empty:
+        return None
+    if window["ret"].notna().all():
+        return float((1.0 + window["ret"].astype(float)).prod() - 1.0)
+    if window["retx"].notna().all():
+        return float((1.0 + window["retx"].astype(float)).prod() - 1.0)
+    return None
+
+

@@ -263,3 +263,51 @@ def test_net_income_falls_back_to_profit_loss_when_net_income_loss_is_stale_or_m
     assert component_breakdown["concept"] == "ProfitLoss"
 
 
+def test_selection_keeps_provider_ebitda_when_sec_bridge_is_only_partial():
+    sec_node = _metric_node(
+        value=11_391_000_000.0,
+        support_mode="proxy_missing_component",
+        primary_source_basis="sec_companyfacts",
+        quality_flags=["partial_depreciation_without_full_amortization"],
+    )
+    provider_node = _metric_node(
+        value=14_668_000_000.0,
+        support_mode="exact",
+        primary_source_basis="provider_direct",
+    )
+
+    selected = _select_preferred_direct_metric(
+        metric_name="operating.ebitda_ltm_provider_direct",
+        sec_or_market_node=sec_node,
+        provider_node=provider_node,
+    )
+
+    assert selected["primary_source_basis"] == "provider_direct"
+    assert selected["value"] == 14_668_000_000.0
+    assert "provider_direct_retained_due_to_partial_sec_ebitda_bridge" in (selected.get("quality_flags") or [])
+
+
+def test_selection_keeps_provider_total_debt_when_sec_stack_is_unavailable():
+    provider_node = _metric_node(
+        value=158_522_000_000.0,
+        support_mode="exact",
+        primary_source_basis="provider_direct",
+    )
+    sec_node = _metric_node(
+        value=None,
+        support_mode="unsupported",
+        primary_source_basis="sec_companyfacts",
+        missing_reason="sec_debt_components_unavailable",
+    )
+
+    selected = _select_preferred_direct_metric(
+        metric_name="capital_structure.total_debt_provider_direct",
+        sec_or_market_node=sec_node,
+        provider_node=provider_node,
+    )
+
+    assert selected["primary_source_basis"] == "provider_direct"
+    assert selected["value"] == 158_522_000_000.0
+    assert "provider_direct_retained_due_to_partial_sec_debt_stack" in (selected.get("quality_flags") or [])
+
+
