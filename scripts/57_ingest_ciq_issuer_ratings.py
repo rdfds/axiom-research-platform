@@ -36,3 +36,8 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}")
 
 
+def _clean_gvkey(series: pd.Series) -> pd.Series:
+    cleaned = series.astype("string").str.extract(r"([0-9]+)", expand=False)
+    return cleaned.str.zfill(6)
+
+
