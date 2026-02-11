@@ -26,3 +26,13 @@ def _load_active_artifact_module():
     return module
 
 
+def _load_snapshot_module():
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "build_company_state_snapshot.py"
+    spec = importlib.util.spec_from_file_location("build_company_state_snapshot", script_path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+

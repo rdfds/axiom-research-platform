@@ -86,3 +86,25 @@ def build_active_revolver_artifact(
     return out_path
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build a compact active WRDS DealScan revolver artifact for a specific as-of date.")
+    parser.add_argument("--in-path", default=str(DEFAULT_IN_PATH), help="Input DealScan revolver parquet")
+    parser.add_argument("--asof", required=True, help="As-of date, e.g. 2024-12-31")
+    parser.add_argument("--tickers", default=None, help="Optional comma-separated tickers to retain")
+    parser.add_argument("--out-path", default=None, help="Output parquet path")
+    args = parser.parse_args()
+
+    out_path = Path(args.out_path) if args.out_path else (
+        DEFAULT_OUT_DIR / f"loanconnector_revolver_facilities_active_{args.asof.replace('-', '_')}.parquet"
+    )
+    path = build_active_revolver_artifact(
+        in_path=Path(args.in_path),
+        out_path=out_path,
+        as_of=args.asof,
+        tickers=args.tickers,
+    )
+    print(path)
+
+
+if __name__ == "__main__":
+    main()
