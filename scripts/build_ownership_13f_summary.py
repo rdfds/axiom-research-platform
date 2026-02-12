@@ -245,3 +245,5 @@ def main() -> None:
     print(f"Wrote ownership summary -> {out_path} rows={total_rows} years_written={wrote} years_skipped={skipped}")
 
 
+if __name__ == "__main__":
+    main()
