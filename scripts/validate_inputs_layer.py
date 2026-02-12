@@ -33,3 +33,8 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def load_schema(path: Path) -> Dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
