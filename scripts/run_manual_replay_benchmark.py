@@ -615,7 +615,7 @@ def main() -> None:
         "benchmark_key": args.benchmark,
         "benchmark_label": benchmark.get("label"),
         "benchmark_lock_path": str(lock_path),
-        "lock_version": config['version'],
+        "lock_version": config.get("version"),
         "manifest": str(manifest),
         "runs_root": str(runs_root_path),
         "artifact_root": str(artifact_root),

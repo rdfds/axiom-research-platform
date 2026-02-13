@@ -528,3 +528,23 @@ def _compound_trailing_return(price_history: pd.DataFrame, as_of_ts: pd.Timestam
     return None
 
 
+def _compound_trailing_crsp_return(price_history: pd.DataFrame, as_of_ts: pd.Timestamp, months: int) -> float | None:
+    current_row = _latest_row_on_or_before(price_history, as_of_ts)
+    if current_row is None:
+        return None
+    current_trade_date = current_row["trade_date"]
+    target_date = current_trade_date - pd.DateOffset(months=months)
+    start_row = _latest_row_on_or_before(price_history, target_date)
+    if start_row is None:
+        return None
+    start_trade_date = start_row["trade_date"]
+    window = price_history[(price_history["trade_date"] > start_trade_date) & (price_history["trade_date"] <= current_trade_date)].copy()
+    if window.empty:
+        return None
+    if window["total_return"].notna().all():
+        return float((1.0 + window["total_return"].astype(float)).prod() - 1.0)
+    if window["price_return"].notna().all():
+        return float((1.0 + window["price_return"].astype(float)).prod() - 1.0)
+    return None
+
+
