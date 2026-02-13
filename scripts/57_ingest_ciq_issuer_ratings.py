@@ -41,3 +41,49 @@ def _clean_gvkey(series: pd.Series) -> pd.Series:
     return cleaned.str.zfill(6)
 
 
+def build_company_gvkey_map() -> pd.DataFrame:
+    if MAP_PATH.exists():
+        log(f"Loading cached CIQ company->gvkey map: {MAP_PATH}")
+        return pd.read_parquet(MAP_PATH)
+
+    if not IDENT_PATH.exists():
+        raise FileNotFoundError(f"Missing CIQ identifiers master at {IDENT_PATH}")
+
+    chunk = int(os.getenv("CIQ_CHUNK", "2000000"))
+    log_every = int(os.getenv("CIQ_LOG_EVERY", "5000000"))
+    engine = "python" if os.getenv("CIQ_ENGINE") == "python" else "c"
+
+    log(f"Building CIQ company->gvkey map from {IDENT_PATH} (chunk={chunk}, engine={engine})")
+    mapping: dict[str, str] = {}
+    scanned = 0
+    next_log = log_every
+
+    usecols = ["companyid", "symboltypecat", "symbolvalue"]
+    for frame in pd.read_csv(
+        IDENT_PATH,
+        usecols=usecols,
+        dtype=str,
+        chunksize=chunk,
+        engine=engine,
+        low_memory=False if engine == "c" else None,
+    ):
+        scanned += len(frame)
+        gv = frame[frame["symboltypecat"].str.upper() == "GVKEY"].copy()
+        if not gv.empty:
+            gv = gv.dropna(subset=["companyid", "symbolvalue"])
+            gv["companyid"] = gv["companyid"].astype("string")
+            gv["symbolvalue"] = _clean_gvkey(gv["symbolvalue"])
+            gv = gv.dropna(subset=["symbolvalue"])
+            for companyid, gvkey in zip(gv["companyid"], gv["symbolvalue"]):
+                if companyid not in mapping:
+                    mapping[companyid] = gvkey
+        if scanned >= next_log:
+            log(f"Scanned {scanned:,} rows | mapped companies {len(mapping):,}")
+            next_log += log_every
+
+    df = pd.DataFrame({"companyid": list(mapping.keys()), "gvkey": list(mapping.values())})
+    df.to_parquet(MAP_PATH, index=False)
+    log(f"Cached company->gvkey map: {MAP_PATH} ({len(df):,} rows)")
+    return df
+
+

@@ -41,3 +41,106 @@ def parse_date(value: str) -> Optional[pd.Timestamp]:
         return None
 
 
+def adjust_close(df: pd.DataFrame) -> pd.Series:
+    close = df["close"]
+    if "cfacpr" in df.columns:
+        factor = df["cfacpr"].replace(0, np.nan)
+        return close / factor
+    return close
+
+
+def build_hash_series(df: pd.DataFrame, cols: List[str]) -> pd.Series:
+    # Fast stable hash using pandas, then hex string
+    h = pd.util.hash_pandas_object(df[cols], index=False)
+    return h.map(lambda x: f"{x:016x}")
+
+
+def ingest_file(path: Path, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]) :
+    df = pd.read_parquet(path)
+    if df.empty:
+        return 0
+
+    df["date"] = pd.to_datetime(df["date"])
+    if start is not None:
+        df = df[df["date"] >= start]
+    if end is not None:
+        df = df[df["date"] <= end]
+    if df.empty:
+        return 0
+
+    df["event_time"] = df["date"]
+    df["available_time"] = df["date"] + pd.Timedelta(hours=16)
+    df["entity_id"] = df["permno"].astype("Int64").astype("string")
+    df["security_id"] = df["entity_id"]
+    df["company_id"] = None
+
+    # Close price (CRSP prc can be negative)
+    df["close"] = df["prc"].abs()
+    df["adjusted_close"] = adjust_close(df)
+
+    # Optional OHLC (if available)
+    df["open"] = df["openprc"] if "openprc" in df.columns else np.nan
+    df["high"] = df["askhi"] if "askhi" in df.columns else np.nan
+    df["low"] = df["bidlo"] if "bidlo" in df.columns else np.nan
+
+    df["volume"] = df["vol"] if "vol" in df.columns else np.nan
+    df["total_return_index"] = np.nan
+
+    hash_cols = ["permno", "date", "prc", "vol"]
+    hash_cols = [c for c in hash_cols if c in df.columns]
+    df["raw_payload_hash"] = build_hash_series(df, hash_cols)
+
+    df["version_id"] = build_hash_series(
+        df.assign(source_system="crsp_dsf")[["permno", "date", "raw_payload_hash"]],
+        ["permno", "date", "raw_payload_hash"],
+    )
+
+    df["source_system"] = "crsp_dsf"
+    df["ingestion_time"] = datetime.utcnow()
+    df["upstream_version_ids"] = None
+    df["quality_flags"] = None
+
+    out_cols = [
+        "source_system",
+        "entity_id",
+        "company_id",
+        "security_id",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "version_id",
+        "raw_payload_hash",
+        "upstream_version_ids",
+        "quality_flags",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume",
+        "total_return_index",
+        "ret",
+        "retx",
+        "permno",
+        "date",
+    ]
+    for col in out_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+    df = df[out_cols]
+
+    df["year"] = df["event_time"].dt.year.astype("Int64")
+
+    rows = 0
+    for year, ydf in df.groupby("year"):
+        if pd.isna(year):
+            continue
+        year_dir = OUT_DIR / f"year={int(year)}"
+        year_dir.mkdir(parents=True, exist_ok=True)
+        part_path = year_dir / f"part_{uuid.uuid4().hex}.parquet"
+        ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+        rows += len(ydf)
+
+    return rows
+
+
