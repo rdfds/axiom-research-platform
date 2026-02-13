@@ -38,3 +38,38 @@ def load_schema(path: Path) -> Dict:
         return json.load(f)
 
 
+def load_dataset(
+    path: Path,
+    sample_rows: int | None = None,
+    columns: List[str] | None = None,
+) -> pd.DataFrame:
+    if path.is_dir():
+        # Partitioned parquet dataset
+        if sample_rows:
+            files = sorted(path.rglob("*.parquet"))
+            if not files:
+                return pd.DataFrame()
+            parts = []
+            total = 0
+            for f in files:
+                try:
+                    df_part = pd.read_parquet(f, columns=columns)
+                except Exception:
+                    # skip unreadable/unstable files (e.g., stale NFS handles)
+                    continue
+                parts.append(df_part)
+                total += len(df_part)
+                if total >= sample_rows:
+                    break
+            df = pd.concat(parts, ignore_index=True)
+            return df.head(sample_rows)
+        return pd.read_parquet(path, columns=columns)
+    if path.suffix == ".parquet":
+        return pd.read_parquet(path, columns=columns)
+    if path.suffix == ".csv":
+        return pd.read_csv(path)
+    if path.suffix in {".json", ".ndjson"}:
+        return pd.read_json(path, lines=path.suffix == ".ndjson")
+    raise ValueError(f"Unsupported file type: {path}")
+
+

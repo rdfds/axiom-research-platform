@@ -22,3 +22,22 @@ downstream pipelines.
 
 See full schema: `schemas/inputs_layer/raw_timeseries_store.schema.json`
 
+## Series ID Conventions
+
+### Prices (from `data/warehouse/warehouse_prices.parquet`)
+Long‑format series:
+- `price.close`
+- `price.adjusted_close`
+- `price.volume`
+- `price.ret`
+- `price.retx`
+
+### Macro (from `data/warehouse/warehouse_macro.parquet`)
+Series ID uses the instrument identifier:
+- e.g., `DGS10`, `DGS2`, `VIXCLS`
+
+### Estimates (from `data/warehouse/warehouse_estimates.parquet`)
+Series ID format:
+- `estimate.<metric>.<period>.consensus`
+- Example: `estimate.EPS.FY1.consensus`
+
