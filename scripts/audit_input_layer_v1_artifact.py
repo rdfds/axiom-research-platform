@@ -548,3 +548,749 @@ def _compound_trailing_crsp_return(price_history: pd.DataFrame, as_of_ts: pd.Tim
     return None
 
 
+def _open_artifact_text(path: Path):
+    return gzip.open(path, "rt") if path.suffix == ".gz" else path.open()
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    rows = []
+    with _open_artifact_text(artifact_path) as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+
+    if not rows:
+        raise SystemExit("Artifact is empty")
+
+    as_of_date = date.fromisoformat(rows[0]["as_of_time"][:10])
+    as_of_ts = pd.Timestamp(rows[0]["as_of_time"]).tz_convert("UTC").normalize()
+    coverage: dict[str, Counter[str]] = defaultdict(Counter)
+    issues: dict[str, Any] = {}
+    negative_proxy_liquidity: list[dict[str, Any]] = []
+    price_history_by_entity: dict[str, pd.DataFrame] = {}
+    permno_by_entity: dict[str, str] = {}
+
+    using_crsp_market_cache = bool(args.crsp_market_cache_path)
+    using_crsp_daily_root = bool(args.crsp_daily_root)
+    if args.entity_identifier_path and (args.raw_timeseries_path or args.crsp_market_cache_path or args.crsp_daily_root):
+        permnos = _permno_map(Path(args.entity_identifier_path))
+        permno_by_entity = {
+            str(entity_id): permno
+            for entity_id, permno in permnos[["entity_id", "permno"]].itertuples(index=False)
+        }
+        needed_permnos = [permno for row in rows if (permno := permno_by_entity.get(str(row.get("company_id"))))]
+        if needed_permnos:
+            if args.crsp_market_cache_path:
+                prices = _load_crsp_market_cache(Path(args.crsp_market_cache_path), needed_permnos)
+            elif args.crsp_daily_root:
+                prices = _load_crsp_daily_from_repo(
+                    Path(args.crsp_daily_root),
+                    needed_permnos,
+                    min_asof_date=as_of_ts,
+                    max_asof_date=as_of_ts,
+                )
+            else:
+                prices = _load_price_history(Path(args.raw_timeseries_path), needed_permnos)
+            for permno, frame in prices.groupby("permno"):
+                price_history_by_entity[permno] = frame.reset_index(drop=True)
+
+    for row in rows:
+        features = row.get("features") or {}
+        label = _company_label(row)
+        for metric_name in AUDITED_METRICS:
+            coverage[metric_name][_support(features.get(metric_name))] += 1
+
+        def node(metric_name: str) -> dict[str, Any]:
+            return features.get(metric_name) or {}
+
+        def value(metric_name: str) -> float | None:
+            return _value(node(metric_name))
+
+        def support(metric_name: str) -> str:
+            return _support(node(metric_name))
+
+        impossible_nonnegative_metrics = [
+            "market.market_cap_provider_direct",
+            "market.price_spot",
+            "operating.revenue_ttm_provider_direct",
+            "liquidity.cash_and_short_term_investments_provider_direct",
+            "liquidity.cash_and_equivalents_statement_direct",
+            "capital_structure.total_debt_provider_direct",
+            "capital_structure.current_debt_statement_direct",
+            "capital_structure.long_term_debt_statement_direct",
+            "liquidity.restricted_cash_sec_exact",
+            "liquidity.marketable_securities_sec_exact",
+            "capital_structure.lease_liabilities_sec_exact",
+            "capital_structure.debt_like_obligations_normalized",
+            "capital_structure.gross_leverage_normalized",
+            "capital_structure.gross_leverage_standardized",
+        ]
+        for metric_name in impossible_nonnegative_metrics:
+            metric_value = value(metric_name)
+            if metric_value is not None and metric_value < 0:
+                _record_issue(
+                    issues,
+                    "impossible_negative_values",
+                    metric_name,
+                    {**label, "value": metric_value},
+                )
+
+        return_metrics = [
+            "market.total_return_1m_standardized",
+            "market.total_return_3m_standardized",
+            "market.total_return_6m_standardized",
+            "market.total_return_12m_standardized",
+        ]
+        for metric_name in return_metrics:
+            metric_value = value(metric_name)
+            if metric_value is not None and metric_value < -1.0:
+                _record_issue(
+                    issues,
+                    "impossible_return_values",
+                    metric_name,
+                    {**label, "value": metric_value},
+                )
+
+        permno = permno_by_entity.get(str(row.get("company_id")))
+        if permno and permno in price_history_by_entity:
+            frame = price_history_by_entity[permno]
+            spot = value("market.price_spot")
+            latest_row = _latest_row_on_or_before(frame, as_of_ts)
+            if using_crsp_market_cache or using_crsp_daily_root:
+                if latest_row is None:
+                    expected_spot = None
+                elif pd.notna(latest_row["close_price"]):
+                    expected_spot = float(latest_row["close_price"])
+                elif pd.notna(latest_row["price_proxy"]):
+                    expected_spot = float(latest_row["price_proxy"])
+                else:
+                    expected_spot = None
+            else:
+                expected_spot = None if latest_row is None or pd.isna(latest_row["close"]) else float(latest_row["close"])
+            if support("market.price_spot") == "exact" and spot is not None and not _approx_equal(spot, expected_spot):
+                _record_issue(
+                    issues,
+                    "formula_mismatches",
+                    "market.price_spot",
+                    {**label, "expected": expected_spot, "actual": spot},
+                )
+            for metric_name, months in [
+                ("market.total_return_1m_standardized", 1),
+                ("market.total_return_3m_standardized", 3),
+                ("market.total_return_6m_standardized", 6),
+                ("market.total_return_12m_standardized", 12),
+            ]:
+                actual = value(metric_name)
+                expected = (
+                    _compound_trailing_crsp_return(frame, as_of_ts, months)
+                    if using_crsp_market_cache or using_crsp_daily_root
+                    else _compound_trailing_return(frame, as_of_ts, months)
+                )
+                if support(metric_name) == "exact" and actual is not None and not _approx_equal(actual, expected):
+                    _record_issue(
+                        issues,
+                        "formula_mismatches",
+                        metric_name,
+                        {**label, "expected": expected, "actual": actual},
+                    )
+
+        for metric_name in APPROVED_MACRO_METRICS:
+            if value(metric_name) is None:
+                _record_issue(issues, "missing_macro_values", metric_name, label)
+
+        sec_component_metrics = [
+            "liquidity.restricted_cash_sec_exact",
+            "liquidity.marketable_securities_sec_exact",
+            "capital_structure.lease_liabilities_sec_exact",
+        ]
+        for metric_name in sec_component_metrics:
+            metric_node = node(metric_name)
+            if support(metric_name) != "exact":
+                continue
+            breakdown = metric_node.get("component_breakdown")
+            concept = (breakdown or {}).get("concept")
+            if metric_name == "liquidity.restricted_cash_sec_exact":
+                age_days = _latest_end_age_days(as_of_date, breakdown)
+                if age_days is not None and age_days > MAX_SEC_FACT_AGE_DAYS:
+                    _record_issue(
+                        issues,
+                        "stale_exact_sec_components",
+                        metric_name,
+                        {**label, "age_days": age_days, "component_breakdown": breakdown},
+                    )
+                if not _restricted_cash_breakdown_is_semantically_valid(breakdown):
+                    _record_issue(
+                        issues,
+                        "restricted_cash_semantic_mismatch",
+                        metric_name,
+                        {**label, "concept": concept, "component_breakdown": breakdown},
+                    )
+            if metric_name == "liquidity.marketable_securities_sec_exact":
+                age_days = _latest_end_age_days(as_of_date, breakdown)
+                if age_days is not None and age_days > MAX_SEC_FACT_AGE_DAYS:
+                    _record_issue(
+                        issues,
+                        "stale_exact_sec_components",
+                        metric_name,
+                        {**label, "age_days": age_days, "component_breakdown": breakdown},
+                    )
+                if concept not in MARKETABLE_SECURITY_EXACT_CONCEPTS:
+                    _record_issue(
+                        issues,
+                        "marketable_security_semantic_mismatch",
+                        metric_name,
+                        {**label, "concept": concept, "component_breakdown": breakdown},
+                    )
+            if metric_name == "capital_structure.lease_liabilities_sec_exact":
+                age_days = _lease_selected_age_days(as_of_date, breakdown)
+                lease_support_overrides = _selected_lease_support_overrides(breakdown)
+                stale_override_ok = (
+                    bool(lease_support_overrides & LEASE_APPROVED_STALE_SUPPORT_OVERRIDES)
+                    and age_days is not None
+                    and age_days <= LEASE_STALE_CARRY_FORWARD_MAX_AGE_DAYS
+                )
+                if age_days is not None and age_days > LEASE_EXACT_MAX_AGE_DAYS and not stale_override_ok:
+                    _record_issue(
+                        issues,
+                        "stale_exact_lease_components",
+                        metric_name,
+                        {**label, "age_days": age_days, "component_breakdown": breakdown},
+                    )
+                gap_days = _lease_selected_gap_days(breakdown)
+                mixed_override_ok = bool(lease_support_overrides & LEASE_APPROVED_MIXED_SUPPORT_OVERRIDES)
+                if gap_days is not None and gap_days > LEASE_COMPONENT_ALIGNMENT_MAX_GAP_DAYS and not mixed_override_ok:
+                    _record_issue(
+                        issues,
+                        "lease_component_period_mismatch_exact",
+                        metric_name,
+                        {**label, "gap_days": gap_days, "component_breakdown": breakdown},
+                    )
+
+        revenue_breakdown = node("operating.revenue_ttm_provider_direct").get("component_breakdown") or {}
+        if (
+            support("operating.revenue_ttm_provider_direct") == "exact"
+            and revenue_breakdown.get("mode") == "latest_fy"
+            and revenue_breakdown.get("frame")
+        ):
+            _record_issue(
+                issues,
+                "framed_latest_fy_revenue_exact",
+                "operating.revenue_ttm_provider_direct",
+                {**label, "component_breakdown": revenue_breakdown},
+            )
+
+        grouped_cash_breakdown = node("liquidity.cash_and_short_term_investments_provider_direct").get("component_breakdown") or {}
+        if support("liquidity.cash_and_short_term_investments_provider_direct") == "exact":
+            grouped_cash_mode = grouped_cash_breakdown.get("mode")
+            cash_age_days = _grouped_cash_age_days(as_of_date, grouped_cash_breakdown)
+            max_cash_age_days = (
+                GROUPED_CASH_STATEMENT_REPAIR_MAX_AGE_DAYS
+                if grouped_cash_mode in GROUPED_CASH_APPROVED_REPAIR_MODES
+                else BALANCE_SHEET_EXACT_MAX_AGE_DAYS
+            )
+            if cash_age_days is not None and cash_age_days > max_cash_age_days:
+                _record_issue(
+                    issues,
+                    "stale_exact_grouped_cash",
+                    "liquidity.cash_and_short_term_investments_provider_direct",
+                    {
+                        **label,
+                        "age_days": cash_age_days,
+                        "component_breakdown": grouped_cash_breakdown,
+                    },
+                )
+            cash_gap_days = _selected_component_gap_days(
+                grouped_cash_breakdown,
+                (
+                    "cash",
+                    "short_term_investments",
+                    "cash_and_equivalents_statement_direct",
+                    "marketable_securities_sec_exact",
+                ),
+            )
+            if (
+                cash_gap_days is not None
+                and cash_gap_days > CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS
+                and grouped_cash_mode not in GROUPED_CASH_APPROVED_REPAIR_MODES
+            ):
+                _record_issue(
+                    issues,
+                    "cash_component_period_mismatch_exact",
+                    "liquidity.cash_and_short_term_investments_provider_direct",
+                    {
+                        **label,
+                        "gap_days": cash_gap_days,
+                        "component_breakdown": grouped_cash_breakdown,
+                    },
+                )
+
+        total_debt_breakdown = node("capital_structure.total_debt_provider_direct").get("component_breakdown") or {}
+        total_debt_concepts = _iter_component_concepts(_selected_total_debt_breakdown(total_debt_breakdown))
+        if any("CapitalLease" in concept for concept in total_debt_concepts):
+            if (
+                support("capital_structure.total_debt_provider_direct") == "exact"
+                and not total_debt_breakdown.get("finance_lease_adjustment")
+            ):
+                _record_issue(
+                    issues,
+                    "capital_lease_overlap_unadjusted",
+                    "capital_structure.total_debt_provider_direct",
+                    {**label, "component_breakdown": total_debt_breakdown},
+                )
+        total_debt_gap_days = _selected_component_gap_days(
+            total_debt_breakdown,
+            (
+                "combined_debt",
+                "current",
+                "noncurrent",
+                "short_term_borrowings",
+                "current_statement_debt",
+                "long_term_statement_debt",
+            ),
+        )
+        if (
+            support("capital_structure.total_debt_provider_direct") == "exact"
+            and total_debt_gap_days is not None
+            and total_debt_gap_days > DEBT_COMPONENT_ALIGNMENT_MAX_GAP_DAYS
+        ):
+            _record_issue(
+                issues,
+                "debt_component_period_mismatch_exact",
+                "capital_structure.total_debt_provider_direct",
+                {
+                    **label,
+                    "gap_days": total_debt_gap_days,
+                    "component_breakdown": total_debt_breakdown,
+                },
+            )
+        if (
+            support("capital_structure.total_debt_provider_direct") == "exact"
+            and total_debt_breakdown.get("mode") == "statement_direct_current_plus_noncurrent_debt"
+        ):
+            current_statement = total_debt_breakdown.get("current_statement_debt") or {}
+            long_term_statement = total_debt_breakdown.get("long_term_statement_debt") or {}
+            statement_age_days = _latest_end_age_days(as_of_date, total_debt_breakdown)
+            if statement_age_days is not None and statement_age_days > BALANCE_SHEET_EXACT_MAX_AGE_DAYS:
+                _record_issue(
+                    issues,
+                    "stale_exact_statement_debt",
+                    "capital_structure.total_debt_provider_direct",
+                    {
+                        **label,
+                        "age_days": statement_age_days,
+                        "component_breakdown": total_debt_breakdown,
+                    },
+                )
+            current_source = current_statement.get("source_type")
+            long_term_source = long_term_statement.get("source_type")
+            if current_source and long_term_source and current_source != long_term_source:
+                _record_issue(
+                    issues,
+                    "statement_debt_source_mismatch_exact",
+                    "capital_structure.total_debt_provider_direct",
+                    {
+                        **label,
+                        "component_breakdown": total_debt_breakdown,
+                    },
+                )
+
+        # Formula audits
+        grouped_cash = value("liquidity.cash_and_short_term_investments_provider_direct")
+        grouped_cash_support = support("liquidity.cash_and_short_term_investments_provider_direct")
+        cash_eq = value("liquidity.cash_and_equivalents_statement_direct")
+        restricted_cash_sec_support = support("liquidity.restricted_cash_sec_exact")
+        marketable_sec_support = support("liquidity.marketable_securities_sec_exact")
+        restricted_cash_sec_missing = node("liquidity.restricted_cash_sec_exact").get("missing_reason")
+        marketable_sec_missing = node("liquidity.marketable_securities_sec_exact").get("missing_reason")
+        restricted_cash = (
+            value("liquidity.restricted_cash_sec_exact")
+            if restricted_cash_sec_support == "exact"
+            else (
+                0.0
+                if restricted_cash_sec_support == "unsupported" and restricted_cash_sec_missing == "sec_concept_absent"
+                else (value("liquidity.restricted_cash") if support("liquidity.restricted_cash") == "exact" else None)
+            )
+        )
+        marketable = (
+            value("liquidity.marketable_securities_sec_exact")
+            if marketable_sec_support == "exact"
+            else (
+                0.0
+                if marketable_sec_support == "unsupported" and marketable_sec_missing == "sec_concept_absent"
+                else (value("liquidity.marketable_securities") if support("liquidity.marketable_securities") == "exact" else None)
+            )
+        )
+        revolver = (
+            value("liquidity.revolver_undrawn_sec_exact")
+            if support("liquidity.revolver_undrawn_sec_exact") == "exact"
+            else (
+                value("liquidity.revolver_undrawn")
+                if support("liquidity.revolver_undrawn") == "exact"
+                else None
+            )
+        )
+        available_liquidity = value("liquidity.available_liquidity_normalized")
+        expected_avail = _expected_available_liquidity_from_breakdown(
+            (node("liquidity.available_liquidity_normalized") or {}).get("component_breakdown")
+        )
+        if expected_avail is None:
+            if grouped_cash is not None and grouped_cash_support == "exact":
+                expected_avail = grouped_cash
+            elif cash_eq is not None and marketable is not None:
+                expected_avail = cash_eq + marketable
+            elif cash_eq is not None and grouped_cash is not None and abs(grouped_cash - cash_eq) <= 1.0:
+                expected_avail = cash_eq
+            elif grouped_cash is not None:
+                expected_avail = grouped_cash
+            elif cash_eq is not None:
+                expected_avail = cash_eq
+            else:
+                expected_avail = None
+            if expected_avail is not None:
+                if restricted_cash is not None:
+                    expected_avail -= restricted_cash
+                if revolver is not None:
+                    expected_avail += revolver
+                if expected_avail < 0:
+                    expected_avail = 0.0
+        if available_liquidity is not None and not _approx_equal(available_liquidity, expected_avail):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "liquidity.available_liquidity_normalized",
+                {**label, "expected": expected_avail, "actual": available_liquidity},
+            )
+
+        debt_like = value("capital_structure.debt_like_obligations_normalized")
+        total_debt = value("capital_structure.total_debt_provider_direct")
+        total_debt_support = support("capital_structure.total_debt_provider_direct")
+        current_debt = value("capital_structure.current_debt_statement_direct")
+        current_debt_support = support("capital_structure.current_debt_statement_direct")
+        long_term_debt = value("capital_structure.long_term_debt_statement_direct")
+        long_term_debt_support = support("capital_structure.long_term_debt_statement_direct")
+        lease = value("capital_structure.lease_liabilities_sec_exact")
+        expected_debt_like = _expected_debt_like_from_breakdown(
+            (node("capital_structure.debt_like_obligations_normalized") or {}).get("component_breakdown")
+        )
+        if expected_debt_like is None:
+            if total_debt is not None and total_debt_support == "exact":
+                expected_debt_base = total_debt
+            elif (
+                current_debt is not None
+                and long_term_debt is not None
+                and current_debt_support == "exact"
+                and long_term_debt_support == "exact"
+            ):
+                expected_debt_base = current_debt + long_term_debt
+            elif total_debt is not None:
+                expected_debt_base = total_debt
+            elif current_debt is not None or long_term_debt is not None:
+                expected_debt_base = float((current_debt or 0.0) + (long_term_debt or 0.0))
+            else:
+                expected_debt_base = None
+            expected_debt_like = None if expected_debt_base is None else expected_debt_base + (lease or 0.0)
+        if debt_like is not None and not _approx_equal(debt_like, expected_debt_like):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.debt_like_obligations_normalized",
+                {**label, "expected": expected_debt_like, "actual": debt_like},
+            )
+
+        pension_liability = value("capital_structure.net_pension_liability")
+        if pension_liability is not None and pension_liability < 0:
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_pension_liability",
+                {**label, "expected": "non_negative", "actual": pension_liability},
+            )
+
+        other_postretirement_liability = value("capital_structure.other_postretirement_benefit_liability")
+        if other_postretirement_liability is not None and other_postretirement_liability < 0:
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.other_postretirement_benefit_liability",
+                {**label, "expected": "non_negative", "actual": other_postretirement_liability},
+            )
+
+        combined_retirement_liability = value("capital_structure.combined_retirement_liability")
+        if combined_retirement_liability is not None and combined_retirement_liability < 0:
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.combined_retirement_liability",
+                {**label, "expected": "non_negative", "actual": combined_retirement_liability},
+            )
+
+        debt_like_including_pension = value("capital_structure.debt_like_obligations_including_pension")
+        expected_debt_like_including_pension = (
+            None if debt_like is None else debt_like + (pension_liability or 0.0)
+        )
+        if debt_like_including_pension is not None and not _approx_equal(
+            debt_like_including_pension,
+            expected_debt_like_including_pension,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.debt_like_obligations_including_pension",
+                {**label, "expected": expected_debt_like_including_pension, "actual": debt_like_including_pension},
+            )
+
+        debt_like_including_retirement = value("capital_structure.debt_like_obligations_including_retirement")
+        expected_debt_like_including_retirement = (
+            None if debt_like is None else debt_like + (combined_retirement_liability or 0.0)
+        )
+        if debt_like_including_retirement is not None and not _approx_equal(
+            debt_like_including_retirement,
+            expected_debt_like_including_retirement,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.debt_like_obligations_including_retirement",
+                {
+                    **label,
+                    "expected": expected_debt_like_including_retirement,
+                    "actual": debt_like_including_retirement,
+                },
+            )
+
+        net_debt_norm = value("capital_structure.net_debt_normalized")
+        expected_net_debt = None if debt_like is None or available_liquidity is None else debt_like - available_liquidity
+        if net_debt_norm is not None and not _approx_equal(net_debt_norm, expected_net_debt):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_debt_normalized",
+                {**label, "expected": expected_net_debt, "actual": net_debt_norm},
+            )
+
+        net_debt_including_pension = value("capital_structure.net_debt_including_pension")
+        expected_net_debt_including_pension = (
+            None
+            if debt_like_including_pension is None or available_liquidity is None
+            else debt_like_including_pension - available_liquidity
+        )
+        if net_debt_including_pension is not None and not _approx_equal(
+            net_debt_including_pension,
+            expected_net_debt_including_pension,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_debt_including_pension",
+                {**label, "expected": expected_net_debt_including_pension, "actual": net_debt_including_pension},
+            )
+
+        net_debt_including_retirement = value("capital_structure.net_debt_including_retirement")
+        expected_net_debt_including_retirement = (
+            None
+            if debt_like_including_retirement is None or available_liquidity is None
+            else debt_like_including_retirement - available_liquidity
+        )
+        if net_debt_including_retirement is not None and not _approx_equal(
+            net_debt_including_retirement,
+            expected_net_debt_including_retirement,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_debt_including_retirement",
+                {
+                    **label,
+                    "expected": expected_net_debt_including_retirement,
+                    "actual": net_debt_including_retirement,
+                },
+            )
+
+        op_earnings = value("operating.operating_earnings_normalized")
+        gross_lev = value("capital_structure.gross_leverage_normalized")
+        expected_gross = None
+        if debt_like is not None and op_earnings is not None and op_earnings > 0:
+            expected_gross = debt_like / op_earnings
+        if gross_lev is not None and not _approx_equal(gross_lev, expected_gross):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.gross_leverage_normalized",
+                {**label, "expected": expected_gross, "actual": gross_lev},
+            )
+
+        gross_lev_including_pension = value("capital_structure.gross_leverage_including_pension")
+        expected_gross_including_pension = None
+        if debt_like_including_pension is not None and op_earnings is not None and op_earnings > 0:
+            expected_gross_including_pension = debt_like_including_pension / op_earnings
+        if gross_lev_including_pension is not None and not _approx_equal(
+            gross_lev_including_pension,
+            expected_gross_including_pension,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.gross_leverage_including_pension",
+                {**label, "expected": expected_gross_including_pension, "actual": gross_lev_including_pension},
+            )
+
+        gross_lev_including_retirement = value("capital_structure.gross_leverage_including_retirement")
+        expected_gross_including_retirement = None
+        if debt_like_including_retirement is not None and op_earnings is not None and op_earnings > 0:
+            expected_gross_including_retirement = debt_like_including_retirement / op_earnings
+        if gross_lev_including_retirement is not None and not _approx_equal(
+            gross_lev_including_retirement,
+            expected_gross_including_retirement,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.gross_leverage_including_retirement",
+                {
+                    **label,
+                    "expected": expected_gross_including_retirement,
+                    "actual": gross_lev_including_retirement,
+                },
+            )
+
+        net_lev = value("capital_structure.net_leverage_normalized")
+        expected_net_lev = None
+        if net_debt_norm is not None and op_earnings is not None and op_earnings > 0:
+            expected_net_lev = net_debt_norm / op_earnings
+        if net_lev is not None and not _approx_equal(net_lev, expected_net_lev):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_leverage_normalized",
+                {**label, "expected": expected_net_lev, "actual": net_lev},
+            )
+
+        net_lev_including_pension = value("capital_structure.net_leverage_including_pension")
+        expected_net_lev_including_pension = None
+        if net_debt_including_pension is not None and op_earnings is not None and op_earnings > 0:
+            expected_net_lev_including_pension = net_debt_including_pension / op_earnings
+        if net_lev_including_pension is not None and not _approx_equal(
+            net_lev_including_pension,
+            expected_net_lev_including_pension,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_leverage_including_pension",
+                {**label, "expected": expected_net_lev_including_pension, "actual": net_lev_including_pension},
+            )
+
+        net_lev_including_retirement = value("capital_structure.net_leverage_including_retirement")
+        expected_net_lev_including_retirement = None
+        if net_debt_including_retirement is not None and op_earnings is not None and op_earnings > 0:
+            expected_net_lev_including_retirement = net_debt_including_retirement / op_earnings
+        if net_lev_including_retirement is not None and not _approx_equal(
+            net_lev_including_retirement,
+            expected_net_lev_including_retirement,
+        ):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_leverage_including_retirement",
+                {
+                    **label,
+                    "expected": expected_net_lev_including_retirement,
+                    "actual": net_lev_including_retirement,
+                },
+            )
+
+        revenue = value("operating.revenue_ttm_provider_direct")
+        ebitda = value("operating.ebitda_ltm_provider_direct")
+        ebitda_margin = value("operating.ebitda_margin_standardized")
+        expected_ebitda_margin = None if revenue is None or revenue <= 0 or ebitda is None else ebitda / revenue
+        if ebitda_margin is not None and not _approx_equal(ebitda_margin, expected_ebitda_margin):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "operating.ebitda_margin_standardized",
+                {**label, "expected": expected_ebitda_margin, "actual": ebitda_margin},
+            )
+
+        net_income = value("earnings.net_income_ttm_provider_direct")
+        net_margin = value("earnings.net_margin_standardized")
+        expected_net_margin = None if revenue is None or revenue <= 0 or net_income is None else net_income / revenue
+        if net_margin is not None and not _approx_equal(net_margin, expected_net_margin):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "earnings.net_margin_standardized",
+                {**label, "expected": expected_net_margin, "actual": net_margin},
+            )
+
+        std_net_debt = value("capital_structure.net_debt_standardized")
+        expected_std_net_debt = None if total_debt is None or grouped_cash is None else total_debt - grouped_cash
+        if std_net_debt is not None and not _approx_equal(std_net_debt, expected_std_net_debt):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_debt_standardized",
+                {**label, "expected": expected_std_net_debt, "actual": std_net_debt},
+            )
+
+        std_gross_lev = value("capital_structure.gross_leverage_standardized")
+        expected_std_gross = None if total_debt is None or ebitda is None or ebitda <= 0 else total_debt / ebitda
+        if std_gross_lev is not None and not _approx_equal(std_gross_lev, expected_std_gross):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.gross_leverage_standardized",
+                {**label, "expected": expected_std_gross, "actual": std_gross_lev},
+            )
+
+        std_net_lev = value("capital_structure.net_leverage_standardized")
+        expected_std_net_lev = None if std_net_debt is None or ebitda is None or ebitda <= 0 else std_net_debt / ebitda
+        if std_net_lev is not None and not _approx_equal(std_net_lev, expected_std_net_lev):
+            _record_issue(
+                issues,
+                "formula_mismatches",
+                "capital_structure.net_leverage_standardized",
+                {**label, "expected": expected_std_net_lev, "actual": std_net_lev},
+            )
+
+        if available_liquidity is not None and available_liquidity < 0 and support("liquidity.available_liquidity_normalized") == "proxy_missing_component":
+            negative_proxy_liquidity.append(
+                {
+                    **label,
+                    "available_liquidity_normalized": available_liquidity,
+                    "component_breakdown": (node("liquidity.available_liquidity_normalized") or {}).get("component_breakdown"),
+                    "restricted_cash_breakdown": (node("liquidity.restricted_cash_sec_exact") or {}).get("component_breakdown"),
+                    "marketable_breakdown": (node("liquidity.marketable_securities_sec_exact") or {}).get("component_breakdown"),
+                }
+            )
+
+    macro_variation = {}
+    for metric_name in APPROVED_MACRO_METRICS:
+        values = sorted({(_value((row.get("features") or {}).get(metric_name))) for row in rows if _value((row['features'] or {}).get(metric_name)) is not None})
+        macro_variation[metric_name] = {"unique_values": len(values), "sample_values": values[:5]}
+
+    summary = {
+        "artifact_path": str(artifact_path),
+        "row_count": len(rows),
+        "coverage": {
+            metric_name: dict(sorted(counter.items()))
+            for metric_name, counter in sorted(coverage.items())
+        },
+        "issues": issues,
+        "remaining_negative_proxy_liquidity_cases": {
+            "count": len(negative_proxy_liquidity),
+            "examples": negative_proxy_liquidity[:9],
+        },
+        "macro_variation": macro_variation,
+    }
+
+    out_path = Path(args.out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(summary, indent=2))
+    print(out_path)
+
+
+if __name__ == "__main__":
+    main()

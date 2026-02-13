@@ -221,3 +221,16 @@ def _coerce_watchlist(value: Any) -> Any:
     return None
 
 
+def _prefer_fitch_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    cols = [col for col in ("source_type", "rating_agency", "agency", "provider", "event_subtype") if col in df.columns]
+    if not cols:
+        return df
+    mask = pd.Series(False, index=df.index)
+    for col in cols:
+        mask = mask | df[col].astype(str).str.contains("fitch", case=False, na=False)
+    preferred = df[mask].copy()
+    return preferred if not preferred.empty else df
+
+
