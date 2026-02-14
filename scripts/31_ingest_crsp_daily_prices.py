@@ -144,3 +144,29 @@ def ingest_file(path: Path, start: Optional[pd.Timestamp], end: Optional[pd.Time
     return rows
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start", default=None, help="Start date YYYY-MM-DD")
+    parser.add_argument("--end", default=None, help="End date YYYY-MM-DD")
+    parser.add_argument("--pattern", default="dsf_*.parquet", help="Glob for dsf files")
+    args = parser.parse_args()
+
+    start = parse_date(args.start) if args.start else None
+    end = parse_date(args.end) if args.end else None
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(WRDS_DIR.glob(args.pattern))
+    if not files:
+        raise FileNotFoundError(f"No files matching {args.pattern} in {WRDS_DIR}")
+
+    total = 0
+    for path in files:
+        log(f"Ingesting {path.name}...")
+        rows = ingest_file(path, start, end)
+        total += rows
+        log(f"  {path.name}: {rows:,} rows")
+
+    log(f"Done. Total rows ingested: {total:,}")
+
+
