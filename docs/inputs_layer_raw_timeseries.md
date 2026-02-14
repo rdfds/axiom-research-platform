@@ -41,3 +41,11 @@ Series ID format:
 - `estimate.<metric>.<period>.consensus`
 - Example: `estimate.EPS.FY1.consensus`
 
+## Provenance Rules
+
+Each record carries:
+- `published_at`: when the data was observable (e.g., `available_time`)
+- `effective_at`: usually same as observation date
+- `ingested_at`: ingestion time from the warehouse
+- `raw_pointer`: `path#row=<row_id>[:<metric>]`
+

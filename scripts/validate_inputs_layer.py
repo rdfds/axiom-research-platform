@@ -73,3 +73,28 @@ def load_dataset(
     raise ValueError(f"Unsupported file type: {path}")
 
 
+def is_numeric_like(s: pd.Series) :
+    if pd.api.types.is_numeric_dtype(s):
+        return True
+    # soft check for numeric-ish object columns
+    coerced = pd.to_numeric(s, errors="coerce")
+    return coerced.notna().mean() >= 0.95
+
+
+def is_bool_like(s: pd.Series) -> bool:
+    if pd.api.types.is_bool_dtype(s):
+        return True
+    if pd.api.types.is_numeric_dtype(s):
+        vals = s.dropna().unique()
+        return set(vals).issubset({0, 1})
+    if pd.api.types.is_string_dtype(s) or s.dtype == object:
+        # Try numeric coercion first (handles 0.0/1.0 stored as object)
+        coerced = pd.to_numeric(s, errors="coerce")
+        if coerced.notna().any():
+            vals = set(coerced.dropna().unique())
+            return vals.issubset({0, 1})
+        vals = {str(v).strip().lower() for v in s.dropna().unique()}
+        return vals.issubset({"true", "false", "0", "1", "yes", "no", "y", "n"})
+    return False
+
+
