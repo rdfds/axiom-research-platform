@@ -234,3 +234,17 @@ def _prefer_fitch_rows(df: pd.DataFrame) -> pd.DataFrame:
     return preferred if not preferred.empty else df
 
 
+def _resolve_ratings_path(explicit_path: str | None) -> Path:
+    candidates = [explicit_path] if explicit_path else []
+    candidates.extend(DEFAULT_RATINGS_PATHS)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.exists():
+            return path
+    raise FileNotFoundError(
+        "Could not find issuer ratings data. Checked: " + ", ".join(DEFAULT_RATINGS_PATHS)
+    )
+
+
