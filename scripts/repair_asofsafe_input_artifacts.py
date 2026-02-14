@@ -115,3 +115,10 @@ def _load_monthly_price_history(raw_timeseries_path: Path, permnos: list[str]) -
     }
 
 
+def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Series | None:
+    eligible = df[df["trade_date"] <= date_key]
+    if eligible.empty:
+        return None
+    return eligible.iloc[-1]
+
+
