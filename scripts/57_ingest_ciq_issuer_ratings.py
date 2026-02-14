@@ -87,3 +87,63 @@ def build_company_gvkey_map() -> pd.DataFrame:
     return df
 
 
+def main() -> None:
+    if not IN_PATH.exists():
+        raise FileNotFoundError(f"Missing CIQ entity ratings file at {IN_PATH}")
+
+    CURATED_DIR.mkdir(parents=True, exist_ok=True)
+
+    log("Loading CIQ entity ratings...")
+    ratings = pd.read_csv(IN_PATH, dtype=str, low_memory=False)
+
+    ratings["ratingdate"] = pd.to_datetime(ratings.get("ratingdate"), errors="coerce")
+    ratings["creditwatchdate"] = pd.to_datetime(ratings.get("creditwatchdate"), errors="coerce")
+    ratings["outlookdate"] = pd.to_datetime(ratings.get("outlookdate"), errors="coerce")
+
+    ratings["ciqcompanyid"] = ratings.get("ciqcompanyid").astype("string")
+    ratings["company_id"] = ratings.get("company_id").astype("string")
+
+    mapping = build_company_gvkey_map()
+    ratings = ratings.merge(
+        mapping,
+        left_on="ciqcompanyid",
+        right_on="companyid",
+        how="left",
+    )
+
+    before = len(ratings)
+    ratings = ratings.dropna(subset=["gvkey", "ratingdate"])
+    log(f"Mapped gvkey for {ratings['gvkey'].notna().sum():,} rows (kept {len(ratings):,}/{before:,})")
+
+    keep = {
+        "gvkey": "gvkey",
+        "ratingdate": "rating_date",
+        "ratingsymbol": "rating_symbol",
+        "currentratingsymbol": "current_rating_symbol",
+        "ratingtypecode": "rating_type_code",
+        "ratingtypename": "rating_type_name",
+        "creditwatch": "creditwatch",
+        "outlook": "outlook",
+        "ratingactionword": "rating_action_word",
+        "cwolactionword": "cwol_action_word",
+        "ratingqualifier": "rating_qualifier",
+        "longtermflag": "longterm_flag",
+        "shorttermflag": "shortterm_flag",
+        "globalornationalscaleind": "global_or_national_scale",
+        "unsol": "unsolicited",
+        "entity_id": "entity_id",
+        "ciqcompanyid": "ciqcompanyid",
+        "entname": "entity_name",
+        "countrycode": "country_code",
+        "region": "region",
+        "sectorcode": "sector_code",
+        "industrycode": "industry_code",
+    }
+
+    out = ratings[list(keep.keys())].rename(columns=keep)
+    out.to_parquet(OUT_PATH, index=False)
+    log(f"Saved issuer ratings -> {OUT_PATH} ({len(out):,} rows)")
+
+
+if __name__ == "__main__":
+    main()
