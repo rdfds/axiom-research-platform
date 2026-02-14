@@ -81,7 +81,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _permno_map(entity_identifier_path: Path) :
+def _permno_map(entity_identifier_path: Path) -> dict[str, str]:
     ids = pd.read_parquet(entity_identifier_path)
     ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
     ids["permno"] = ids["identifier_value"].astype(str).str.strip()
