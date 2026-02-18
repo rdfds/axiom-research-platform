@@ -19,3 +19,39 @@ def _feature(name: str, value, *, support_mode="proxy_missing_component", missin
     }
 
 
+def test_apply_market_metric_repairs_overwrites_proxy_with_exact():
+    features = {
+        "market.price_spot": _feature("market.price_spot", 10.0),
+        "market.total_return_1m_standardized": _feature("market.total_return_1m_standardized", 0.05),
+    }
+    repairs = {
+        "market.price_spot": {
+            "value": 11.0,
+            "support_mode": "exact",
+            "missing_reason": None,
+            "component_breakdown": {"formula": "latest_crsp_close_on_or_before_asof"},
+            "fallback_used": None,
+            "quality_flags": None,
+            "provenance": [{"source": "/tmp/crsp"}],
+        },
+        "market.total_return_1m_standardized": {
+            "value": 0.06,
+            "support_mode": "exact",
+            "missing_reason": None,
+            "component_breakdown": {"formula": "compound_total_return_from_crsp_daily_window"},
+            "fallback_used": None,
+            "quality_flags": None,
+            "provenance": [{"source": "/tmp/crsp"}],
+        },
+    }
+
+    _apply_market_metric_repairs(features=features, repaired_metrics=repairs, exact_only=True)
+
+    assert features["market.price_spot"]["value"] == 11.0
+    assert features["market.price_spot"]["support_mode"] == "exact"
+    assert features["market.price_spot"]["fallback_used"] is None
+    assert features["market.price_spot"]["quality_flags"] is None
+    assert features["market.total_return_1m_standardized"]["value"] == 0.06
+    assert features["market.total_return_1m_standardized"]["support_mode"] == "exact"
+
+

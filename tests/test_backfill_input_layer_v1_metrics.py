@@ -311,3 +311,27 @@ def test_selection_keeps_provider_total_debt_when_sec_stack_is_unavailable():
     assert "provider_direct_retained_due_to_partial_sec_debt_stack" in (selected.get("quality_flags") or [])
 
 
+def test_selection_prefers_pit_market_cap_over_provider_direct():
+    market_node = _metric_node(
+        value=947_000_000_000.0,
+        support_mode="exact",
+        primary_source_basis="sec_companyfacts",
+        breakdown={"formula": "price_spot * shares_outstanding"},
+    )
+    provider_node = _metric_node(
+        value=949_565_692_090.96,
+        support_mode="exact",
+        primary_source_basis="provider_direct",
+    )
+
+    selected = _select_preferred_direct_metric(
+        metric_name="market.market_cap_provider_direct",
+        sec_or_market_node=market_node,
+        provider_node=provider_node,
+    )
+
+    assert selected["primary_source_basis"] == "sec_companyfacts"
+    assert selected["value"] == 947_000_000_000.0
+    assert "provider_direct_superseded_by_pit_market_cap" in (selected.get("quality_flags") or [])
+
+

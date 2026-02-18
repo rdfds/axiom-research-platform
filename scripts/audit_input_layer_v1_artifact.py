@@ -1268,7 +1268,7 @@ def main() -> None:
 
     macro_variation = {}
     for metric_name in APPROVED_MACRO_METRICS:
-        values = sorted({(_value((row.get("features") or {}).get(metric_name))) for row in rows if _value((row['features'] or {}).get(metric_name)) is not None})
+        values = sorted({(_value((row.get("features") or {}).get(metric_name))) for row in rows if _value((row.get("features") or {}).get(metric_name)) is not None})
         macro_variation[metric_name] = {"unique_values": len(values), "sample_values": values[:5]}
 
     summary = {

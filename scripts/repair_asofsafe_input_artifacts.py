@@ -122,3 +122,44 @@ def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Ser
     return eligible.iloc[-1]
 
 
+def _compound_trailing_return(price_history: pd.DataFrame, as_of_ts: pd.Timestamp, months: int) -> tuple[float | None, dict[str, Any], str | None]:
+    current_row = _latest_row_on_or_before(price_history, as_of_ts)
+    if current_row is None:
+        return None, {}, "market_timeseries_unavailable"
+    current_trade_date = current_row["trade_date"]
+    target_date = current_trade_date - pd.DateOffset(months=months)
+    window = price_history[(price_history["trade_date"] > target_date) & (price_history["trade_date"] <= current_trade_date)].copy()
+    if window.empty:
+        return None, {
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+        }, "market_timeseries_unavailable"
+    if window["ret"].notna().all():
+        compounded = float((1.0 + window["ret"].astype(float)).prod() - 1.0)
+        return compounded, {
+            "current_close": None if pd.isna(current_row["close"]) else float(current_row["close"]),
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "periods_used": int(len(window)),
+            "return_column": "ret",
+            "formula": "compound_ret_over_monthly_window",
+        }, None
+    if window["retx"].notna().all():
+        compounded = float((1.0 + window["retx"].astype(float)).prod() - 1.0)
+        return compounded, {
+            "current_close": None if pd.isna(current_row["close"]) else float(current_row["close"]),
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "periods_used": int(len(window)),
+            "return_column": "retx",
+            "formula": "compound_retx_over_monthly_window",
+        }, None
+    return None, {
+        "current_trade_date": str(current_trade_date.date()),
+        "target_trade_date": str(target_date.date()),
+        "periods_used": int(len(window)),
+    }, "market_return_series_unavailable"
+
+
