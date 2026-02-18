@@ -170,3 +170,5 @@ def main() -> None:
     log(f"Done. Total rows ingested: {total:,}")
 
 
+if __name__ == "__main__":
+    main()
