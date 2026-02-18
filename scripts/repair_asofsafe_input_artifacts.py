@@ -163,3 +163,10 @@ def _compound_trailing_return(price_history: pd.DataFrame, as_of_ts: pd.Timestam
     }, "market_return_series_unavailable"
 
 
+def _normalize_quality_flags(flags: Any, new_flag: str | None = None) -> list[str] | None:
+    values = [str(flag) for flag in (flags or []) if str(flag)]
+    if new_flag and new_flag not in values:
+        values.append(new_flag)
+    return values or None
+
+
