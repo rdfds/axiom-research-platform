@@ -55,7 +55,7 @@ def build_hash_series(df: pd.DataFrame, cols: List[str]) -> pd.Series:
     return h.map(lambda x: f"{x:016x}")
 
 
-def ingest_file(path: Path, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]) :
+def ingest_file(path: Path, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]) -> int:
     df = pd.read_parquet(path)
     if df.empty:
         return 0
