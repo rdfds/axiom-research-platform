@@ -18,3 +18,7 @@ def configured_data_root() :
     return Path(raw).expanduser()
 
 
+def _absolute_no_symlink(path: Path) -> Path:
+    return Path(os.path.abspath(str(path.expanduser())))
+
+
