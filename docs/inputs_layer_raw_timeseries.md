@@ -49,3 +49,14 @@ Each record carries:
 - `ingested_at`: ingestion time from the warehouse
 - `raw_pointer`: `path#row=<row_id>[:<metric>]`
 
+## Notes / Assumptions
+
+- `entity_id_type` is `entity_id` for issuer‑level series and `macro_series` for macro.
+- Units:
+  - returns are `pct`
+  - price is `price`
+  - volume is `shares`
+- Frequency:
+  - prices default to `D`
+  - macro/estimates are left null unless explicit
+
