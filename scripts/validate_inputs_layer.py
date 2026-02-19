@@ -98,3 +98,7 @@ def is_bool_like(s: pd.Series) -> bool:
     return False
 
 
+def is_string_like(s: pd.Series) -> bool:
+    return pd.api.types.is_string_dtype(s) or s.dtype == object
+
+

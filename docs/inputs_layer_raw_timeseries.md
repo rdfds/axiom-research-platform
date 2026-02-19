@@ -60,3 +60,10 @@ Each record carries:
   - prices default to `D`
   - macro/estimates are left null unless explicit
 
+## How to Rebuild
+
+```bash
+python -u scripts/build_raw_timeseries_store.py
+python -u scripts/validate_inputs_layer.py --config configs/inputs_layer.json
+```
+
