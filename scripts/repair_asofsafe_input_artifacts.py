@@ -198,3 +198,22 @@ def _repair_negative_revenue(features: dict[str, Any]) -> None:
             _demote_metric(feature, missing_reason="dependent_on_negative_revenue")
 
 
+def _exact_market_repairs(
+    *,
+    permno: str | None,
+    price_history: pd.DataFrame | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> dict[str, dict[str, Any]]:
+    if _build_price_metrics_from_crsp is None:
+        return {}
+    return _build_price_metrics_from_crsp(
+        permno=permno,
+        price_history=price_history,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+    )
+
+
