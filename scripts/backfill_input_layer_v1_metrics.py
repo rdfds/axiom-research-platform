@@ -275,3 +275,135 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ticker_to_entity_map(entity_identifier_path: Path) -> pd.DataFrame:
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "ticker"].copy()
+    ids["ticker"] = ids["identifier_value"].astype(str).str.upper().str.strip()
+    return ids[["entity_id", "ticker"]].drop_duplicates()
+
+
+def _provider_reference_map(taxonomy_reference_path: Path, entity_identifier_path: Path) -> pd.DataFrame:
+    ref = pd.read_parquet(taxonomy_reference_path).copy()
+    ref["ticker"] = ref["Instrument"].astype(str).str.replace(r"\..*$", "", regex=True).str.upper().str.strip()
+    tickers = _ticker_to_entity_map(entity_identifier_path)
+    merged = ref.merge(tickers, on="ticker", how="inner")
+    merged = merged.sort_values(["entity_id", "Instrument"]).drop_duplicates("entity_id", keep="first")
+    return merged
+
+
+def _feature_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+    provenance_artifact_type: str = "ReferenceFact",
+    primary_source_basis: str = "provider_direct",
+    input_layer_bucket_reason: str = "provider_reference_sidecar",
+) -> Dict[str, Any]:
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": 1.0 if value is not None else None,
+        "provenance": [
+            {
+                "artifact_type": provenance_artifact_type,
+                "artifact_id": f"{primary_source_basis}:{Path(provenance_source).name}",
+                "source": provenance_source,
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        ],
+        "missing_reason": missing_reason,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": primary_source_basis,
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": None,
+        "input_source_owner_id": None,
+        "input_source_owner_name": None,
+        "input_source_classification": primary_source_basis,
+        "input_source_formula_basis": None,
+        "input_source_alignment_status": "aligned",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": None,
+        "methodology_execution_reason": None,
+        "input_layer_bucket": "reference",
+        "input_layer_bucket_reason": input_layer_bucket_reason,
+        "strict_market_defined": None,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+        "view_type": None,
+    }
+
+
+def _build_metric_from_value(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+    value: float | None,
+    support_mode: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+    primary_source_basis: str,
+    provenance_artifact_type: str,
+    input_layer_bucket_reason: str,
+) -> Dict[str, Any]:
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode=support_mode,
+        value=value,
+        unit=unit,
+        missing_reason=missing_reason,
+        component_breakdown=component_breakdown,
+        quality_flags=quality_flags,
+        provenance_artifact_type=provenance_artifact_type,
+        primary_source_basis=primary_source_basis,
+        input_layer_bucket_reason=input_layer_bucket_reason,
+    )
+
+
+def _support_rank(node: Dict[str, Any] | None) -> int:
+    support_mode = (node or {}).get("support_mode")
+    if support_mode == "exact":
+        return 2
+    if support_mode == "proxy_missing_component":
+        return 1
+    return 0
+
+

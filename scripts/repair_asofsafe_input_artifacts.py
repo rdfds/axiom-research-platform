@@ -170,3 +170,31 @@ def _normalize_quality_flags(flags: Any, new_flag: str | None = None) -> list[st
     return values or None
 
 
+def _demote_metric(feature: dict[str, Any], *, missing_reason: str) -> None:
+    feature["value"] = None
+    feature["confidence"] = None
+    feature["support_mode"] = "unsupported"
+    feature["missing_reason"] = missing_reason
+    feature["quality_flags"] = _normalize_quality_flags(feature.get("quality_flags"), missing_reason)
+
+
+def _repair_negative_revenue(features: dict[str, Any]) -> None:
+    revenue = features.get("operating.revenue_ttm_provider_direct")
+    if not revenue:
+        return
+    value = revenue.get("value")
+    if value is None or float(value) >= 0:
+        return
+    _demote_metric(revenue, missing_reason="negative_ttm_revenue_rejected")
+    breakdown = revenue.get("component_breakdown") or {}
+    breakdown["guard_reason"] = "negative_ttm_revenue_rejected"
+    revenue["component_breakdown"] = breakdown
+    for metric_name in [
+        "operating.ebitda_margin_standardized",
+        "earnings.net_margin_standardized",
+    ]:
+        feature = features.get(metric_name)
+        if feature:
+            _demote_metric(feature, missing_reason="dependent_on_negative_revenue")
+
+

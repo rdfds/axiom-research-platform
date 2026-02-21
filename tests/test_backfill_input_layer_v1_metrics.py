@@ -335,3 +335,75 @@ def test_selection_prefers_pit_market_cap_over_provider_direct():
     assert "provider_direct_superseded_by_pit_market_cap" in (selected.get("quality_flags") or [])
 
 
+def test_selection_keeps_provider_market_cap_when_pit_cap_is_only_proxy():
+    market_node = _metric_node(
+        value=725_816_444_525.25,
+        support_mode="proxy_missing_component",
+        primary_source_basis="sec_companyfacts",
+        missing_reason="price_component_not_exact",
+    )
+    provider_node = _metric_node(
+        value=949_565_692_090.96,
+        support_mode="exact",
+        primary_source_basis="provider_direct",
+    )
+
+    selected = _select_preferred_direct_metric(
+        metric_name="market.market_cap_provider_direct",
+        sec_or_market_node=market_node,
+        provider_node=provider_node,
+    )
+
+    assert selected["primary_source_basis"] == "provider_direct"
+    assert selected["value"] == 949_565_692_090.96
+    assert "provider_direct_retained_due_to_proxy_pit_market_cap" in (selected.get("quality_flags") or [])
+
+
+def test_total_debt_does_not_double_count_short_term_borrowings_when_they_overlap_current_debt():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtCurrent": {"units": {"USD": [_instant_fact(39_700_000.0)]}},
+                "LongTermDebtNoncurrent": {"units": {"USD": [_instant_fact(360_200_000.0)]}},
+                "LongTermDebt": {"units": {"USD": [_instant_fact(410_600_000.0)]}},
+                "ShortTermBorrowings": {"units": {"USD": [_instant_fact(39_700_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 360_200_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "long_term_debt_with_overlapping_short_term_borrowings"
+    assert component_breakdown["formula"] == "exact_long_term_debt_total_due_to_current_short_term_overlap"
+
+
+def test_total_debt_uses_long_term_debt_total_when_it_is_the_only_exact_debt_total():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebt": {"units": {"USD": [_instant_fact(6_794_502_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 6_794_502_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "long_term_debt_total_only"
+
+

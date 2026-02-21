@@ -55,3 +55,27 @@ def test_apply_market_metric_repairs_overwrites_proxy_with_exact():
     assert features["market.total_return_1m_standardized"]["support_mode"] == "exact"
 
 
+def test_apply_market_metric_repairs_demotes_non_exact_when_exact_required():
+    features = {
+        "market.total_return_12m_standardized": _feature("market.total_return_12m_standardized", 0.12),
+    }
+    repairs = {
+        "market.total_return_12m_standardized": {
+            "value": 0.11,
+            "support_mode": "proxy_missing_component",
+            "missing_reason": "total_return_component_unavailable",
+            "component_breakdown": {"formula": "compound_price_return_from_crsp_daily_window"},
+            "fallback_used": None,
+            "quality_flags": ["price_return_only"],
+            "provenance": [{"source": "/tmp/crsp"}],
+        }
+    }
+
+    _apply_market_metric_repairs(features=features, repaired_metrics=repairs, exact_only=True)
+
+    assert features["market.total_return_12m_standardized"]["value"] is None
+    assert features["market.total_return_12m_standardized"]["support_mode"] == "unsupported"
+    assert (
+        features["market.total_return_12m_standardized"]["missing_reason"]
+        == "total_return_component_unavailable"
+    )
