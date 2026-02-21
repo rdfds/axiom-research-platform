@@ -61,3 +61,17 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}")
 
 
+def normalize_value(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+

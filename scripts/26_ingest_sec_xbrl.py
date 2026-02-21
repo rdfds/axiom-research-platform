@@ -186,3 +186,28 @@ def build_cik_universe(
     return merged
 
 
+def load_companyfacts(
+    cik: str,
+    session: requests.Session,
+    sleep_seconds: float,
+    refresh: bool = False,
+) -> Optional[Dict]:
+    cache_path = SEC_DIR / "companyfacts" / f"CIK{cik}.json"
+    if cache_path.exists() and not refresh:
+        if SEC_LOG_VERBOSE:
+            log(f"Using cached companyfacts for CIK {cik}")
+        return json.loads(cache_path.read_text())
+
+    url = SEC_COMPANYFACTS_URL.format(cik=cik)
+    try:
+        if SEC_LOG_VERBOSE:
+            log(f"Downloading companyfacts for CIK {cik}")
+        payload = fetch_json(url, session, sleep_seconds)
+    except requests.RequestException as exc:
+        log(f"Failed CIK {cik}: {exc}")
+        return None
+
+    cache_path.write_text(json.dumps(payload))
+    return payload
+
+

@@ -76,3 +76,57 @@ def _parquet_columns(paths: Sequence[Path]) -> set[str]:
         return set()
 
 
+def _context_multiplier(text: str) -> float:
+    lower = (text or "").lower()
+    if "in billions" in lower or "(billions)" in lower:
+        return 1_000_000_000.0
+    if "in millions" in lower or "(millions)" in lower:
+        return 1_000_000.0
+    if "in thousands" in lower or "(thousands)" in lower:
+        return 1_000.0
+    return 1.0
+
+
+def _money_mentions(text: str) -> List[Dict[str, object]]:
+    mentions: List[Dict[str, object]] = []
+    if not text:
+        return mentions
+    default_multiplier = _context_multiplier(text)
+    for match in MONEY_RE.finditer(text):
+        raw = match.group(0).strip()
+        number_raw = (match.group("number") or "").replace(",", "")
+        if not number_raw:
+            continue
+        try:
+            number = float(number_raw)
+        except ValueError:
+            continue
+        prefix = match.group("prefix")
+        unit = (match.group("unit") or "").lower()
+        # Skip plain years and similar false positives unless they look like money.
+        if not prefix and not unit and "." not in number_raw and 1900 <= number <= 2100:
+            continue
+        # Skip tiny bare numbers when there is no currency/unit context. This
+        # filters date fragments like "31" in "December 31, 2024" while still
+        # allowing plain table values when the block says "(in millions)".
+        if not prefix and not unit and "," not in number_raw and default_multiplier == 1.0 and number < 1000:
+            continue
+        if unit in {"billion", "bn", "b"}:
+            multiplier = 1_000_000_000.0
+        elif unit in {"million", "mm", "mn", "m"}:
+            multiplier = 1_000_000.0
+        elif unit in {"thousand", "k"}:
+            multiplier = 1_000.0
+        else:
+            multiplier = default_multiplier
+        mentions.append({"raw": raw, "value": number * multiplier, "start": match.start(), "end": match.end()})
+    return mentions
+
+
+def _first_money_value(text: str) -> Optional[float]:
+    mentions = _money_mentions(text)
+    if not mentions:
+        return None
+    return float(mentions[0]["value"])
+
+
