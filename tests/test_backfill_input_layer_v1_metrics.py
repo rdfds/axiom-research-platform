@@ -407,3 +407,49 @@ def test_total_debt_uses_long_term_debt_total_when_it_is_the_only_exact_debt_tot
     assert component_breakdown["mode"] == "long_term_debt_total_only"
 
 
+def test_total_debt_uses_noncurrent_debt_total_when_it_is_the_only_exact_debt_total():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtNoncurrent": {"units": {"USD": [_instant_fact(360_200_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 360_200_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "noncurrent_debt_total_only"
+    assert component_breakdown["noncurrent_debt_total"]["concept"] == "LongTermDebtNoncurrent"
+
+
+def test_total_debt_uses_convertible_debt_total_when_it_is_the_only_exact_debt_total():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "ConvertibleDebt": {"units": {"USD": [_instant_fact(393_588_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 393_588_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "noncurrent_debt_total_only"
+    assert component_breakdown["noncurrent_debt_total"]["concept"] == "ConvertibleDebt"
+
+

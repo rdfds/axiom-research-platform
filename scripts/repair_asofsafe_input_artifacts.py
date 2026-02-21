@@ -217,3 +217,22 @@ def _exact_market_repairs(
     )
 
 
+def _monthly_market_repairs(
+    *,
+    permno: str | None,
+    price_history: pd.DataFrame | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> dict[str, dict[str, Any]]:
+    if _build_price_metrics is None:
+        return {}
+    return _build_price_metrics(
+        permno=permno,
+        price_history=price_history,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+    )
+
+
