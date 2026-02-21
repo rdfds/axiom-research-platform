@@ -50,3 +50,12 @@ def iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
+def _node_value(node: Dict[str, Any] | None) -> float | None:
+    if not node:
+        return None
+    value = node.get("value")
+    if value is None:
+        return None
+    return float(value)
+
+
