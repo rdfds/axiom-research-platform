@@ -248,3 +248,40 @@ def _resolve_ratings_path(explicit_path: str | None) -> Path:
     )
 
 
+def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized_to_original: Dict[str, str] = {}
+    for col in df.columns:
+        normalized_to_original.setdefault(_normalize_name(col), col)
+    renamed = df.copy()
+    for canonical, aliases in CANONICAL_ALIASES.items():
+        for alias in aliases:
+            source = normalized_to_original.get(_normalize_name(alias))
+            if source and canonical not in renamed.columns:
+                renamed = renamed.rename(columns={source: canonical})
+                break
+    return renamed
+
+
+def load_issuer_ratings(path: Path) -> pd.DataFrame:
+    suffixes = path.suffixes
+    if suffixes[-2:] == [".csv", ".gz"] or path.suffix == ".csv":
+        opener = gzip.open if path.suffixes[-1:] == [".gz"] else open
+        with opener(path, "rt", errors="ignore") as handle:
+            df = pd.read_csv(handle, low_memory=False)
+    else:
+        df = pd.read_parquet(path)
+
+    df = _canonicalize_columns(df)
+    if "company_id" not in df.columns:
+        raise ValueError(f"Ratings file {path} does not expose a company_id-like column after normalization.")
+
+    df["company_id"] = df["company_id"].map(_normalize_company_id)
+    df = df[df["company_id"].notna()].copy()
+
+    for col in ("rating_date", "published_at", "effective_at"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
+
+    return df
+
+
