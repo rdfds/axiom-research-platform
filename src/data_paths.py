@@ -22,3 +22,10 @@ def _absolute_no_symlink(path: Path) -> Path:
     return Path(os.path.abspath(str(path.expanduser())))
 
 
+def _relative_under_default_data_root(path: Path) -> Optional[Path]:
+    try:
+        return _absolute_no_symlink(path).relative_to(_absolute_no_symlink(DEFAULT_DATA_ROOT))
+    except Exception:
+        return None
+
+
