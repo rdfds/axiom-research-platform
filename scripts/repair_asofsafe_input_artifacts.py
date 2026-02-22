@@ -263,3 +263,125 @@ def _apply_market_metric_repairs(
         feature["provenance"] = repaired.get("provenance")
 
 
+def _repair_artifact(
+    path: Path,
+    *,
+    permno_by_entity: dict[str, str],
+    exact_price_history_by_permno: dict[str, pd.DataFrame],
+    monthly_price_history_by_permno: dict[str, pd.DataFrame],
+    market_provenance_source: str,
+    computed_at: str,
+    allow_monthly_market_proxy: bool,
+) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with path.open() as src, tmp_path.open("w") as dst:
+        for line in src:
+            row = json.loads(line)
+            features = row.get("features") or {}
+            as_of_time = row["as_of_time"]
+            as_of_ts = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+            permno = permno_by_entity.get(str(row.get("company_id")))
+            exact_repairs = _exact_market_repairs(
+                permno=permno,
+                price_history=exact_price_history_by_permno.get(permno) if permno else None,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=market_provenance_source,
+            )
+            _repair_negative_revenue(features)
+            if exact_repairs:
+                _apply_market_metric_repairs(features=features, repaired_metrics=exact_repairs, exact_only=True)
+            elif allow_monthly_market_proxy:
+                monthly_repairs = _monthly_market_repairs(
+                    permno=permno,
+                    price_history=monthly_price_history_by_permno.get(permno) if permno else None,
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                    provenance_source=market_provenance_source,
+                )
+                _apply_market_metric_repairs(features=features, repaired_metrics=monthly_repairs, exact_only=False)
+            else:
+                _apply_market_metric_repairs(features=features, repaired_metrics={}, exact_only=True)
+                for metric_name in TARGET_MARKET_METRICS:
+                    feature = features.get(metric_name)
+                    if feature is None:
+                        continue
+                    _demote_metric(feature, missing_reason="market_timeseries_unavailable")
+            dst.write(json.dumps(row) + "\n")
+    tmp_path.replace(path)
+
+
+def main() -> None:
+    args = parse_args()
+    root = Path(args.root)
+    artifact_paths = [root / name for name in TARGET_ARTIFACTS if (root / name).exists()]
+    if not artifact_paths:
+        raise SystemExit("No target artifacts found")
+
+    permno_by_entity = _permno_map(Path(args.entity_identifier_path))
+    company_ids = set()
+    for path in artifact_paths:
+        with path.open() as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                company_ids.add(str(row.get("company_id")))
+    needed_permnos = [permno_by_entity[cid] for cid in company_ids if cid in permno_by_entity]
+    crsp_market_cache_path = Path(args.crsp_market_cache_path) if args.crsp_market_cache_path else None
+    crsp_daily_root = Path(args.crsp_daily_root) if args.crsp_daily_root else (
+        DEFAULT_LOCAL_CRSP_DAILY_ROOT if DEFAULT_LOCAL_CRSP_DAILY_ROOT and Path(DEFAULT_LOCAL_CRSP_DAILY_ROOT).exists() else None
+    )
+
+    as_of_times: list[pd.Timestamp] = []
+    for path in artifact_paths:
+        with path.open() as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row['as_of_time']:
+                    as_of_times.append(pd.Timestamp(row["as_of_time"]).tz_convert("UTC").normalize())
+    min_asof_date = min(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
+    max_asof_date = max(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
+
+    exact_price_history = pd.DataFrame()
+    market_provenance_source = str(Path(args.raw_timeseries_path))
+    if crsp_market_cache_path is not None and _load_crsp_market_cache is not None:
+        exact_price_history = _load_crsp_market_cache(crsp_market_cache_path, needed_permnos)
+        market_provenance_source = str(crsp_market_cache_path)
+    elif crsp_daily_root is not None and _load_crsp_daily_from_repo is not None:
+        exact_price_history = _load_crsp_daily_from_repo(
+            crsp_daily_root,
+            needed_permnos,
+            min_asof_date=min_asof_date,
+            max_asof_date=max_asof_date,
+        )
+        market_provenance_source = str(crsp_daily_root)
+
+    exact_price_history_by_permno = {
+        permno: frame.reset_index(drop=True)
+        for permno, frame in exact_price_history.groupby("permno")
+    }
+    monthly_price_history_by_permno = (
+        _load_monthly_price_history(Path(args.raw_timeseries_path), needed_permnos)
+        if args.allow_monthly_market_proxy
+        else {}
+    )
+    computed_at = pd.Timestamp.utcnow().isoformat()
+
+    for path in artifact_paths:
+        _repair_artifact(
+            path,
+            permno_by_entity=permno_by_entity,
+            exact_price_history_by_permno=exact_price_history_by_permno,
+            monthly_price_history_by_permno=monthly_price_history_by_permno,
+            market_provenance_source=market_provenance_source,
+            computed_at=computed_at,
+            allow_monthly_market_proxy=args.allow_monthly_market_proxy,
+        )
+        print(f"Repaired {path}")
+
+
+if __name__ == "__main__":
+    main()

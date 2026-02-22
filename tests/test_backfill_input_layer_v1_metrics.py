@@ -501,3 +501,195 @@ def test_total_debt_adds_secured_borrowings_to_generic_current_and_noncurrent_de
     assert component_breakdown["short_term_borrowings"]["concept"] == "SecuredDebt"
 
 
+def test_company_processing_guard_times_out():
+    with pytest.raises(_CompanyProcessingTimeout):
+        with _company_processing_guard(0.05):
+            time.sleep(0.2)
+
+
+def test_fail_open_metric_set_marks_all_metrics_unsupported():
+    metrics = _build_fail_open_metric_set(
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-29T22:30:00+00:00",
+        provenance_source="/tmp/companyfacts/CIK0000000001.json",
+        error_type="company_processing_timeout",
+        error_message="timed out on issuer parse",
+    )
+
+    assert metrics["operating.revenue_ttm_provider_direct"]["support_mode"] == "unsupported"
+    assert metrics["capital_structure.net_debt_standardized"]["support_mode"] == "unsupported"
+    assert metrics["capital_structure.gross_leverage_standardized"]["missing_reason"] == "company_processing_timeout"
+    assert metrics["earnings.net_margin_standardized"]["component_breakdown"]["error_type"] == "company_processing_timeout"
+    assert "company_processing_fail_open" in (metrics["market.market_cap_provider_direct"]["quality_flags"] or [])
+
+
+def test_cash_and_short_term_investments_uses_current_afs_debt_securities_when_marketable_concept_is_company_specific():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [_instant_fact(20_945_000_000.0)]}},
+                "AvailableForSaleSecuritiesDebtSecuritiesCurrent": {"units": {"USD": [_instant_fact(6_724_000_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        "2026-03-28",
+    )
+
+    assert value == 27_669_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "cash_plus_short_term_investments"
+    assert component_breakdown["short_term_investments"]["concept"] == "AvailableForSaleSecuritiesDebtSecuritiesCurrent"
+
+
+def test_cash_and_short_term_investments_uses_within_one_year_afs_maturity_as_short_term_investments():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [_instant_fact(9_980_000_000.0)]}},
+                "AvailableForSaleSecuritiesDebtMaturitiesWithinOneYearFairValue": {
+                    "units": {"USD": [_instant_fact(748_000_000.0)]}
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        "2026-03-28",
+    )
+
+    assert value == 10_728_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "cash_plus_short_term_investments"
+    assert (
+        component_breakdown["short_term_investments"]["concept"]
+        == "AvailableForSaleSecuritiesDebtMaturitiesWithinOneYearFairValue"
+    )
+
+
+def test_cash_and_short_term_investments_uses_combined_cash_restricted_total_when_only_cash_is_current():
+    current_fact = {
+        "val": 4_121_000_000.0,
+        "end": "2025-12-31",
+        "filed": "2026-01-29",
+        "fy": 2025,
+        "fp": "FY",
+        "form": "10-K",
+        "frame": "CY2025Q4I",
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [current_fact]}},
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {"units": {"USD": [current_fact]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        "2026-03-29",
+    )
+
+    assert value == 4_121_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "combined_cash_restricted_less_restricted_plus_short_term_investments"
+    assert component_breakdown["restricted_cash_adjustment"]["mode"] == "infer_zero_restricted_cash_due_to_absent_current_restricted_cash_concept"
+
+
+def test_cash_and_short_term_investments_uses_combined_cash_restricted_total_plus_short_term_investments_when_cash_current_missing():
+    current_combined = {
+        "val": 670_000_000.0,
+        "end": "2025-12-31",
+        "filed": "2026-02-12",
+        "fy": 2025,
+        "fp": "FY",
+        "form": "10-K",
+        "frame": "CY2025Q4I",
+    }
+    current_sti = {
+        "val": 5_000_000.0,
+        "end": "2025-12-31",
+        "filed": "2026-02-12",
+        "fy": 2025,
+        "fp": "FY",
+        "form": "10-K",
+        "frame": "CY2025Q4I",
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {"units": {"USD": [current_combined]}},
+                "ShortTermInvestments": {"units": {"USD": [current_sti]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        "2026-03-29",
+    )
+
+    assert value == 675_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "combined_cash_restricted_less_restricted_plus_short_term_investments"
+    assert component_breakdown["short_term_investments"]["concept"] == "ShortTermInvestments"
+
+
+def test_cash_and_short_term_investments_subtracts_current_restricted_cash_from_combined_cash_restricted_total():
+    current_combined = {
+        "val": 4_501_000_000.0,
+        "end": "2025-12-31",
+        "filed": "2026-02-11",
+        "fy": 2025,
+        "fp": "FY",
+        "form": "10-K",
+        "frame": "CY2025Q4I",
+    }
+    current_restricted = {
+        "val": 135_000_000.0,
+        "end": "2025-12-31",
+        "filed": "2026-02-11",
+        "fy": 2025,
+        "fp": "FY",
+        "form": "10-K",
+        "frame": "CY2025Q4I",
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [{"val": 4_310_000_000.0, **{k: v for k, v in current_combined.items() if k != 'val'}}]}},
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {"units": {"USD": [current_combined]}},
+                "RestrictedCashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [current_restricted]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        "2026-03-29",
+    )
+
+    assert value == 4_366_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["restricted_cash_adjustment"]["concept"] == "RestrictedCashAndCashEquivalentsAtCarryingValue"
+
+
