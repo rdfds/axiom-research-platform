@@ -419,3 +419,5 @@ def main() -> None:
     print(f"Repaired rating-state metrics -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
