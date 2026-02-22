@@ -38,3 +38,23 @@ flowchart TB
     Evidence --> CFO --> Demo
 ```
 
+## 1. As-of Data Plane
+
+The as-of layer is the foundation. It keeps market, financial, filing, event, estimate, macro, and private overlay data separate from model output.
+
+Important files:
+
+- `docs/data_contract.md`
+- `docs/asof_views.md`
+- `docs/quality_flags.md`
+- `src/company_state_builder.py`
+- `src/asof_store.py`
+
+Design principles:
+
+- raw data is append-only
+- modeled features must carry provenance
+- every feature has an as-of interpretation
+- missing values stay explicit
+- fallbacks are allowed only when flagged
+
