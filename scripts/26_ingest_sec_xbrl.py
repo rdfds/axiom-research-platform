@@ -235,3 +235,124 @@ def statement_type_for_tag(tag: str) -> str:
     return STATEMENT_TYPE_BY_TAG.get(tag, "unknown")
 
 
+def parse_companyfacts(
+    payload: Dict,
+    company_id: str,
+    permno: Optional[int],
+    permco: Optional[int],
+    ticker: Optional[str],
+    cusip: Optional[str],
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    include_8k: bool,
+    min_available_time: Optional[pd.Timestamp] = None,
+    allowed_tags: Optional[set] = None,
+) -> Tuple[List[Dict], Optional[pd.Timestamp], Optional[pd.Timestamp]]:
+    facts = payload.get("facts", {})
+    records: List[Dict] = []
+    min_event: Optional[pd.Timestamp] = None
+    max_filed: Optional[pd.Timestamp] = None
+    start_date_str = start_date.date().isoformat()
+    end_date_str = end_date.date().isoformat()
+    min_available_date_str = (
+        min_available_time.date().isoformat() if min_available_time is not None else None
+    )
+
+    for taxonomy, taxonomy_data in facts.items():
+        for tag, tag_data in taxonomy_data.items():
+            if allowed_tags is not None and tag not in allowed_tags:
+                continue
+            units = tag_data.get("units", {})
+            for unit_name, values in units.items():
+                for entry in values:
+                    raw_end = entry.get("end")
+                    raw_filed = entry.get("filed")
+
+                    # Fast path for incremental/local bulk runs: skip obviously stale
+                    # entries before paying the pandas timestamp parsing cost.
+                    if min_available_date_str is not None:
+                        if raw_filed:
+                            filed_prefix = str(raw_filed)[:10]
+                            if len(filed_prefix) == 10 and filed_prefix <= min_available_date_str:
+                                continue
+                        elif raw_end:
+                            end_prefix = str(raw_end)[:10]
+                            if len(end_prefix) == 10 and end_prefix <= min_available_date_str:
+                                continue
+
+                    if raw_end:
+                        end_prefix = str(raw_end)[:10]
+                        if len(end_prefix) == 10 and (end_prefix < start_date_str or end_prefix > end_date_str):
+                            continue
+
+                    end = pd.to_datetime(entry['end'], errors="coerce")
+                    filed = pd.to_datetime(entry.get("filed"), errors="coerce")
+                    form = entry.get("form")
+
+                    if pd.isna(end):
+                        continue
+                    if end < start_date or end > end_date:
+                        continue
+
+                    if form:
+                        form = str(form).upper()
+                        if not (form.startswith("10-K") or form.startswith("10-Q") or (include_8k and form.startswith("8-K"))):
+                            continue
+
+                    value = parse_value(entry.get("val"))
+                    if value is None:
+                        continue
+
+                    fiscal_year = entry.get("fy")
+                    fiscal_period = entry.get("fp")
+                    fiscal_quarter = None
+                    if isinstance(fiscal_period, str) and fiscal_period.startswith("Q"):
+                        fiscal_quarter = fiscal_period.replace("Q", "")
+
+                    available_time = filed if not pd.isna(filed) else end
+                    quality_flags: List[str] = []
+                    if pd.isna(filed) or available_time < end:
+                        available_time = end
+                        quality_flags.append("estimated_available_time")
+
+                    if min_available_time is not None and not pd.isna(available_time):
+                        if available_time <= min_available_time:
+                            continue
+
+                    restatement_flag = bool(form and form.endswith("/A"))
+                    if restatement_flag:
+                        quality_flags.append("restatement")
+
+                    min_event = end if min_event is None else min(min_event, end)
+                    max_filed = available_time if max_filed is None else max(max_filed, available_time)
+
+                    records.append(
+                        {
+                            "company_id": company_id,
+                            "entity_id": company_id,
+                            "permno": permno,
+                            "permco": permco,
+                            "ticker": ticker,
+                            "cusip": cusip,
+                            "taxonomy": taxonomy,
+                            "line_item": tag,
+                            "statement_type": statement_type_for_tag(tag),
+                            "value": value,
+                            "currency": normalize_currency(unit_name),
+                            "units": unit_name,
+                            "fiscal_period_end": end,
+                            "fiscal_year": fiscal_year,
+                            "fiscal_quarter": fiscal_quarter,
+                            "form_type": form,
+                            "frame": entry.get("frame"),
+                            "accession": entry.get("accn"),
+                            "event_time": end,
+                            "available_time": available_time,
+                            "quality_flags": quality_flags,
+                            "restatement_flag": restatement_flag,
+                        }
+                    )
+
+    return records, min_event, max_filed
+
+
