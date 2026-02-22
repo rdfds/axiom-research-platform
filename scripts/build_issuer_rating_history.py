@@ -245,3 +245,5 @@ def main() -> None:
     print(f"[check] parquet rows={cnt}")
 
 
+if __name__ == "__main__":
+    main()
