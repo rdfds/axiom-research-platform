@@ -236,3 +236,30 @@ def _monthly_market_repairs(
     )
 
 
+def _apply_market_metric_repairs(
+    *,
+    features: dict[str, Any],
+    repaired_metrics: dict[str, dict[str, Any]],
+    exact_only: bool,
+) -> None:
+    for metric_name in TARGET_MARKET_METRICS:
+        feature = features.get(metric_name)
+        repaired = repaired_metrics.get(metric_name)
+        if feature is None or repaired is None:
+            continue
+        repaired_support = str(repaired.get("support_mode") or "unsupported")
+        if exact_only and repaired_support != "exact":
+            _demote_metric(feature, missing_reason=str(repaired.get("missing_reason") or "market_timeseries_unavailable"))
+            feature["component_breakdown"] = repaired.get("component_breakdown")
+            feature["fallback_used"] = None
+            continue
+        feature["value"] = repaired.get("value")
+        feature["support_mode"] = repaired_support
+        feature["missing_reason"] = repaired.get("missing_reason")
+        feature["confidence"] = 1.0 if repaired.get("value") is not None else None
+        feature["component_breakdown"] = repaired.get("component_breakdown")
+        feature["fallback_used"] = repaired.get("fallback_used")
+        feature["quality_flags"] = repaired.get("quality_flags")
+        feature["provenance"] = repaired.get("provenance")
+
+

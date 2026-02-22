@@ -453,3 +453,51 @@ def test_total_debt_uses_convertible_debt_total_when_it_is_the_only_exact_debt_t
     assert component_breakdown["noncurrent_debt_total"]["concept"] == "ConvertibleDebt"
 
 
+def test_total_debt_uses_short_term_borrowings_plus_noncurrent_debt_when_aligned_current_is_missing():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LinesOfCreditCurrent": {"units": {"USD": [_instant_fact(50_000_000.0)]}},
+                "LongTermLineOfCredit": {"units": {"USD": [_instant_fact(200_000_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 250_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "short_term_borrowings_plus_noncurrent_debt"
+
+
+def test_total_debt_adds_secured_borrowings_to_generic_current_and_noncurrent_debt_stack():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "DebtCurrent": {"units": {"USD": [_instant_fact(14_392_000_000.0)]}},
+                "SecuredDebt": {"units": {"USD": [_instant_fact(6_283_000_000.0)]}},
+                "LongTermDebtNoncurrent": {"units": {"USD": [_instant_fact(41_804_000_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2026-03-28",
+    )
+
+    assert value == 62_479_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "current_plus_noncurrent_debt_plus_short_term_borrowings"
+    assert component_breakdown["short_term_borrowings"]["concept"] == "SecuredDebt"
+
+
