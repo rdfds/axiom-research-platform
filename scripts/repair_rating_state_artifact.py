@@ -319,7 +319,7 @@ def build_rating_index(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             "payload": _rating_payload_from_row(row),
             "support_mode": _row_support_mode(row),
             "source_type": _null_if_na(row.get("source_type")) or "issuer_ratings",
-            "artifact_id": _null_if_na(row.get("artifact_id")) or f"issuer_rating:{company_id}:{_null_if_na(row['rating_date'])}",
+            "artifact_id": _null_if_na(row.get("artifact_id")) or f"issuer_rating:{company_id}:{_null_if_na(row.get('rating_date'))}",
             "published_at": str(_null_if_na(row.get("published_at"))) if _null_if_na(row.get("published_at")) is not None else None,
             "ingested_at": str(_null_if_na(row.get("ingested_at"))) if _null_if_na(row.get("ingested_at")) is not None else None,
             "rating_date": str(_null_if_na(row.get("rating_date"))) if _null_if_na(row.get("rating_date")) is not None else None,
