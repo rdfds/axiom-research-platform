@@ -309,3 +309,24 @@ def test_effective_liquidity_components_infers_zero_restricted_and_marketable_fr
     assert resolved["marketable_zero_reconciled"] is True
 
 
+def test_grouped_cash_proxy_can_promote_exact_when_short_term_investments_are_absent():
+    can_promote = _grouped_cash_proxy_can_promote_to_exact_cash_baseline(
+        cash_grouped={
+            "support_mode": "proxy_missing_component",
+            "value": 270_300_000.0,
+            "missing_reason": "cash_or_sti_component_missing",
+            "component_breakdown": {
+                "mode": "partial_cash_stack",
+                "cash": {"concept": "CashAndCashEquivalentsAtCarryingValue"},
+                "short_term_investments": None,
+            },
+        },
+        cash_exact={"support_mode": "unsupported", "value": None, "missing_reason": "statement_fact_unavailable"},
+        marketable_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_absent"},
+        marketable={"support_mode": "unsupported", "value": None, "missing_reason": "not_disclosed"},
+        marketable_inferred_zero=True,
+    )
+
+    assert can_promote is True
+
+

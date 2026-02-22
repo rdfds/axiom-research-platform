@@ -74,3 +74,41 @@ The snapshot layer tracks:
 
 This is what lets downstream models explain where a value came from instead of only emitting a score.
 
+## 3. Valuation Driver Engine
+
+The valuation driver system answers:
+
+> What business drivers explain valuation differences inside the relevant peer set?
+
+It supports investor-native display lenses such as P/E and EV/EBITDA while routing driver weights through more stable value surfaces like P/Revenue or EV/Revenue when appropriate.
+
+Important files:
+
+- `src/valuation_driver_validation.py`
+- `src/valuation_driver_interpretation.py`
+- `scripts/build_curated_company_valuation_drivers.py`
+- `tests/test_investor_native_valuation_lens.py`
+- `tests/test_cfo_native_valuation_basis.py`
+
+The interpretation layer intentionally labels these as conditional peer-set associations, not causal recommendations.
+
+## 4. Market-Implied Gap Model
+
+The market-implied model answers a harder question:
+
+> When the market pays a premium or applies a discount, which future driver changes does that premium or discount historically predict?
+
+It compares two forecasts:
+
+- a fundamentals-only forecast based on current level, recent momentum, and cycle context
+- a market-gap enhanced forecast that adds the valuation premium or discount
+
+If the gap-enhanced forecast improves out-of-sample MAE for a driver, the model treats that driver as market-priced. The current company gap is then allocated between validated driver expectations and a residual "outside measured drivers" bucket.
+
+Important files:
+
+- `scripts/validate_forward_gap_lambda_policy.py`
+- `scripts/build_valuation_action_bridge.py`
+- `tests/test_roic_materialization_valuation_drivers.py`
+- `tests/test_valuation_action_bridge_wwntbt.py`
+
