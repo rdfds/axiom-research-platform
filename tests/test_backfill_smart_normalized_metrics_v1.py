@@ -83,3 +83,119 @@ def test_effective_total_debt_baseline_promotes_single_statement_component_match
     assert resolved["override_reason"] == "single_statement_component_matches_total_debt"
 
 
+def test_effective_total_debt_baseline_uses_long_term_debt_when_short_term_borrowings_duplicate_current():
+    resolved = _effective_total_debt_baseline(
+        total_debt={
+            "support_mode": "exact",
+            "value": 439_600_000.0,
+            "component_breakdown": {
+                "mode": "current_plus_noncurrent_debt_plus_short_term_borrowings",
+            },
+        },
+        current_debt={
+            "support_mode": "exact",
+            "value": 39_700_000.0,
+            "component_breakdown": {"concept": "LongTermDebtCurrent"},
+        },
+        long_term_debt={
+            "support_mode": "exact",
+            "value": 410_600_000.0,
+            "component_breakdown": {"concept": "LongTermDebt"},
+        },
+    )
+
+    assert resolved["value"] == 410_600_000.0
+    assert resolved["exact"] is True
+    assert resolved["source_metric"] == "capital_structure.long_term_debt_statement_direct"
+    assert resolved["override_reason"] == "short_term_borrowings_overlap_current_debt"
+
+
+def test_effective_total_debt_baseline_keeps_total_debt_when_overlap_delta_is_not_material():
+    resolved = _effective_total_debt_baseline(
+        total_debt={
+            "support_mode": "exact",
+            "value": 193_294_000.0,
+            "component_breakdown": {
+                "mode": "current_plus_noncurrent_debt_plus_short_term_borrowings",
+                "current": {"concept": "LongTermDebtCurrent"},
+            },
+        },
+        current_debt={
+            "support_mode": "unsupported",
+            "value": None,
+            "component_breakdown": {"concept": "LongTermDebtCurrent"},
+        },
+        long_term_debt={
+            "support_mode": "exact",
+            "value": 193_750_000.0,
+            "component_breakdown": {"concept": "LongTermDebt"},
+        },
+    )
+
+    assert resolved["value"] == 193_294_000.0
+    assert resolved["exact"] is True
+    assert resolved["source_metric"] == "capital_structure.total_debt_provider_direct"
+    assert resolved["override_reason"] is None
+
+
+def test_effective_total_debt_baseline_falls_back_to_partial_statement_components():
+    resolved = _effective_total_debt_baseline(
+        total_debt={"support_mode": "unsupported", "value": None},
+        current_debt={"support_mode": "exact", "value": 12_000_000.0},
+        long_term_debt={"support_mode": "unsupported", "value": None},
+    )
+
+    assert resolved["value"] == 12_000_000.0
+    assert resolved["exact"] is False
+    assert resolved["source_metric"] == (
+        "capital_structure.current_debt_statement_direct + "
+        "capital_structure.long_term_debt_statement_direct"
+    )
+    assert resolved["formula"] == "sum_available_statement_debt_components"
+
+
+def test_effective_cash_equivalents_value_prefers_fresher_companyfacts_cash():
+    resolved = _effective_cash_equivalents_value(
+        {
+            "support_mode": "exact",
+            "value": 8_432_000_000.0,
+            "provenance": [
+                {
+                    "artifact_type": "ExtractedFact",
+                    "artifact_id": "cash_q3",
+                    "source": "facts",
+                    "published_at": "2025-11-04",
+                    "ingested_at": "2025-11-05",
+                    "hash": None,
+                }
+            ],
+        },
+        companyfacts={
+            "facts": {
+                "us-gaap": {
+                    "CashAndCashEquivalentsAtCarryingValue": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "val": 7_105_000_000.0,
+                                    "end": "2025-12-31",
+                                    "filed": "2026-02-25",
+                                    "fy": 2025,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        as_of_time="2026-02-28T00:00:00Z",
+    )
+
+    assert resolved["value"] == 7_105_000_000.0
+    assert resolved["exact"] is True
+    assert resolved["source_metric"] == "liquidity.cash_and_equivalents_companyfacts_exact"
+    assert resolved["support_override"] == "companyfacts_cash_exact_newer_than_provider_direct"
+
+
