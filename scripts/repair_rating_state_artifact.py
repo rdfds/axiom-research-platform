@@ -285,3 +285,15 @@ def load_issuer_ratings(path: Path) -> pd.DataFrame:
     return df
 
 
+def _rating_payload_from_row(row: pd.Series) -> Dict[str, Any]:
+    rating = _null_if_na(row.get("rating_symbol")) or _null_if_na(row.get("current_rating_symbol"))
+    outlook = _null_if_na(row.get("outlook"))
+    watchlist = _coerce_watchlist(row['creditwatch'])
+    return {
+        "rating": _null_if_na(rating),
+        "outlook": outlook,
+        "watchlist": watchlist,
+        "score": _rating_score(rating),
+    }
+
+

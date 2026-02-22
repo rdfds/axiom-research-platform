@@ -184,3 +184,64 @@ def _build_from_ciq(
     return out
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build issuer rating history for CompanyState.")
+    parser.add_argument("--entity-identifier-path", default="data/inputs_layer/entity_identifier.parquet")
+    parser.add_argument("--fisd-ratings-path", default="data/curated/bond_ratings_fisd.parquet")
+    parser.add_argument("--ciq-ratings-path", default="data/curated/issuer_ratings_ciq.parquet")
+    parser.add_argument("--gvkey-to-cik-path", default="data/wrds/compustat/cik_gvkey.csv.gz")
+    parser.add_argument("--out", default="data/inputs_layer/issuer_rating_history.parquet")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+
+    entity_identifier_path = ROOT / args.entity_identifier_path
+    fisd_ratings_path = ROOT / args.fisd_ratings_path
+    ciq_ratings_path = ROOT / args.ciq_ratings_path
+    gvkey_to_cik_path = ROOT / args.gvkey_to_cik_path
+    out_path = ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if out_path.exists() and not args.overwrite:
+        print(f"Output exists: {out_path}")
+        return
+    if not entity_identifier_path.exists():
+        raise FileNotFoundError(f"Missing entity_identifier parquet: {entity_identifier_path}")
+
+    permno_to_entity, cik_to_entity = _load_identifier_maps(entity_identifier_path)
+    frames = []
+
+    fisd = _build_from_fisd(fisd_ratings_path, permno_to_entity)
+    if not fisd.empty:
+        print(f"[ratings] fisd rows={len(fisd)}")
+        frames.append(fisd)
+    else:
+        print(f"[ratings] fisd unavailable/unreadable at {fisd_ratings_path}")
+
+    ciq = _build_from_ciq(ciq_ratings_path, gvkey_to_cik_path, cik_to_entity)
+    if not ciq.empty:
+        print(f"[ratings] ciq rows={len(ciq)}")
+        frames.append(ciq)
+    else:
+        print("[ratings] ciq unavailable/unmapped (expected if gvkey->cik file is not materialized)")
+
+    if not frames:
+        raise RuntimeError("No issuer ratings were built; materialize at least one source first.")
+
+    out = pd.concat(frames, ignore_index=True, sort=False)
+    for c in ("rating_date", "published_at", "ingested_at", "effective_at"):
+        out[c] = pd.to_datetime(out[c], utc=True, errors="coerce")
+
+    out = out.sort_values(["company_id", "rating_date", "published_at"], ascending=[True, True, True])
+    out = out.drop_duplicates(
+        subset=["company_id", "source_type", "rating_type_code", "rating_date", "rating_symbol"],
+        keep="last",
+    )
+    out.to_parquet(out_path, index=False)
+    print(f"Wrote issuer ratings -> {out_path} rows={len(out)}")
+
+    # Optional sanity check
+    con = duckdb.connect()
+    cnt = con.execute(f"SELECT count(*) FROM read_parquet('{out_path.as_posix()}')").fetchone()[0]
+    print(f"[check] parquet rows={cnt}")
+
+
