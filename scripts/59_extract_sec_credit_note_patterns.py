@@ -135,3 +135,35 @@ def _match_money_value(match: re.Match[str]) -> Optional[float]:
     return _first_money_value(money_text)
 
 
+def _candidate_blocks(text: str, keyword_re: re.Pattern, radius: int = 2) -> List[str]:
+    lines = [line.strip() for line in (text or "").splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return []
+    blocks: List[str] = []
+    seen: set[str] = set()
+    for idx, line in enumerate(lines):
+        if not keyword_re.search(line):
+            continue
+        lo = max(0, idx - radius)
+        hi = min(len(lines), idx + radius + 1)
+        block = "\n".join(lines[lo:hi]).strip()
+        if block and block not in seen:
+            seen.add(block)
+            blocks.append(block)
+    if blocks:
+        return blocks
+    # Fallback to a few sentence windows if the document is one long blob.
+    sentences = re.split(r"(?<=[.!?])\s+", text or "")
+    for idx, sentence in enumerate(sentences):
+        if not keyword_re.search(sentence):
+            continue
+        lo = max(0, idx - 1)
+        hi = min(len(sentences), idx + 2)
+        block = " ".join(sentences[lo:hi]).strip()
+        if block and block not in seen:
+            seen.add(block)
+            blocks.append(block)
+    return blocks
+
+
