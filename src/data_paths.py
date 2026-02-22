@@ -29,3 +29,21 @@ def _relative_under_default_data_root(path: Path) -> Optional[Path]:
         return None
 
 
+def resolve_data_path(path: Path | str) -> Path:
+    candidate = Path(path).expanduser()
+    data_root = configured_data_root()
+
+    if candidate.is_absolute():
+        rel = _relative_under_default_data_root(candidate)
+        if rel is not None:
+            return data_root / rel
+        return candidate
+
+    parts = candidate.parts
+    if parts[:1] == ("data",):
+        rel = Path(*parts[1:]) if len(parts) > 1 else Path()
+        return data_root / rel
+
+    return candidate
+
+
