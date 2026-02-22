@@ -75,3 +75,15 @@ def normalize_value(value) -> Optional[float]:
         return None
 
 
+def normalize_int(value) :
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+

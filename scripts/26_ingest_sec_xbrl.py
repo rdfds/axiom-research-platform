@@ -211,3 +211,27 @@ def load_companyfacts(
     return payload
 
 
+def parse_value(val) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+
+def normalize_currency(unit: str) -> Optional[str]:
+    if not unit:
+        return None
+    if "/" in unit:
+        unit = unit.split("/")[0]
+    unit = unit.strip()
+    if len(unit) == 3 and unit.isalpha():
+        return unit.upper()
+    return None
+
+
+def statement_type_for_tag(tag: str) -> str:
+    return STATEMENT_TYPE_BY_TAG.get(tag, "unknown")
+
+

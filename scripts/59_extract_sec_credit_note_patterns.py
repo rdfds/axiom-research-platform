@@ -130,3 +130,8 @@ def _first_money_value(text: str) -> Optional[float]:
     return float(mentions[0]["value"])
 
 
+def _match_money_value(match: re.Match[str]) -> Optional[float]:
+    money_text = match.groupdict().get("money") or match.group(0)
+    return _first_money_value(money_text)
+
+
