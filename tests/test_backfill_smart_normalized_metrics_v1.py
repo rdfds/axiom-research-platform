@@ -246,3 +246,66 @@ def test_effective_total_debt_baseline_prefers_fresher_companyfacts_debt():
     assert resolved["override_reason"] == "fresher_companyfacts_total_debt"
 
 
+def test_effective_total_debt_baseline_preserves_supported_total_debt_floor_against_lower_companyfacts():
+    resolved = _effective_total_debt_baseline(
+        total_debt={
+            "support_mode": "proxy_missing_component",
+            "value": 9_575_000_000.0,
+            "provenance": [
+                {
+                    "artifact_type": "ExtractedFact",
+                    "artifact_id": "debt_q3",
+                    "source": "facts",
+                    "published_at": "2025-11-04",
+                    "ingested_at": "2025-11-05",
+                    "hash": None,
+                }
+            ],
+        },
+        current_debt={"support_mode": "unsupported", "value": None},
+        long_term_debt={"support_mode": "unsupported", "value": None},
+        companyfacts={
+            "facts": {
+                "us-gaap": {
+                    "DebtLongtermAndShorttermCombinedAmount": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "val": 8_100_000_000.0,
+                                    "end": "2025-12-31",
+                                    "filed": "2026-02-25",
+                                    "fy": 2025,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        as_of_time="2026-02-28T00:00:00Z",
+    )
+
+    assert resolved["value"] == 9_575_000_000.0
+    assert resolved["exact"] is False
+    assert resolved["source_metric"] == "capital_structure.total_debt_provider_direct"
+    assert resolved["override_reason"] == "preserve_supported_total_debt_floor"
+
+
+def test_effective_liquidity_components_infers_zero_restricted_and_marketable_from_cash_reconciliation():
+    resolved = _effective_liquidity_component_values(
+        cash_grouped={"support_mode": "proxy_missing_component", "value": 22_900_000.0},
+        cash_exact={"support_mode": "exact", "value": 22_900_000.0},
+        restricted_cash_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_unavailable"},
+        marketable_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_unavailable"},
+        restricted_cash={"support_mode": "unsupported", "value": None},
+        marketable={"support_mode": "unsupported", "value": None},
+    )
+
+    assert resolved["restricted_cash_value"] == 0.0
+    assert resolved["marketable_value"] == 0.0
+    assert resolved["restricted_cash_zero_reconciled"] is True
+    assert resolved["marketable_zero_reconciled"] is True
+
+

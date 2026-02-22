@@ -58,3 +58,19 @@ Design principles:
 - missing values stay explicit
 - fallbacks are allowed only when flagged
 
+## 2. Company State
+
+`CompanyStateSnapshot` is the canonical runtime object. It collects the data needed to evaluate a company as of a specific date.
+
+The snapshot layer tracks:
+
+- feature value
+- source input references
+- confidence
+- support mode
+- fallback use
+- quality flags
+- component breakdowns
+
+This is what lets downstream models explain where a value came from instead of only emitting a score.
+
