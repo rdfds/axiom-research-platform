@@ -65,3 +65,16 @@ def _node_support(node: Dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _union_provenance(*nodes: Dict[str, Any] | None) -> list[Dict[str, Any]]:
+    merged: list[Dict[str, Any]] = []
+    seen = set()
+    for node in nodes:
+        for prov in (node or {}).get("provenance") or []:
+            key = json.dumps(prov, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(copy.deepcopy(prov))
+    return merged
+
+
