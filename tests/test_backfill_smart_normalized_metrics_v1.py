@@ -199,3 +199,50 @@ def test_effective_cash_equivalents_value_prefers_fresher_companyfacts_cash():
     assert resolved["support_override"] == "companyfacts_cash_exact_newer_than_provider_direct"
 
 
+def test_effective_total_debt_baseline_prefers_fresher_companyfacts_debt():
+    resolved = _effective_total_debt_baseline(
+        total_debt={
+            "support_mode": "exact",
+            "value": 9_575_000_000.0,
+            "provenance": [
+                {
+                    "artifact_type": "ExtractedFact",
+                    "artifact_id": "debt_q3",
+                    "source": "facts",
+                    "published_at": "2025-11-04",
+                    "ingested_at": "2025-11-05",
+                    "hash": None,
+                }
+            ],
+        },
+        current_debt={"support_mode": "unsupported", "value": None},
+        long_term_debt={"support_mode": "unsupported", "value": None},
+        companyfacts={
+            "facts": {
+                "us-gaap": {
+                    "DebtLongtermAndShorttermCombinedAmount": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "val": 10_600_000_000.0,
+                                    "end": "2025-12-31",
+                                    "filed": "2026-02-25",
+                                    "fy": 2025,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        as_of_time="2026-02-28T00:00:00Z",
+    )
+
+    assert resolved["value"] == 10_600_000_000.0
+    assert resolved["exact"] is True
+    assert resolved["source_metric"] == "capital_structure.total_debt_companyfacts_exact"
+    assert resolved["override_reason"] == "fresher_companyfacts_total_debt"
+
+

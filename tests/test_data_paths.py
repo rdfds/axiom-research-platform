@@ -20,3 +20,12 @@ def test_resolve_data_path_rewrites_repo_relative_data_path(monkeypatch):
     assert resolved == Path("/tmp/axiom_data_root/inputs_layer/raw_timeseries.parquet")
 
 
+def test_resolve_data_path_rewrites_absolute_repo_data_path(monkeypatch):
+    monkeypatch.setenv("AXIOM_DATA_ROOT", "/tmp/axiom_data_root")
+    repo_data_path = Path("./data/curated/action_outcomes.parquet")
+
+    resolved = resolve_data_path(repo_data_path)
+
+    assert resolved == Path("/tmp/axiom_data_root/curated/action_outcomes.parquet")
+
+

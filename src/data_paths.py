@@ -11,7 +11,7 @@ DATA_ROOT_ENV = "AXIOM_DATA_ROOT"
 COMPANYFACTS_ROOT_ENV = "AXIOM_COMPANYFACTS_ROOT"
 
 
-def configured_data_root() :
+def configured_data_root() -> Path:
     raw = str(os.environ.get(DATA_ROOT_ENV, "") or "").strip()
     if not raw:
         return DEFAULT_DATA_ROOT
