@@ -297,3 +297,125 @@ def _rating_payload_from_row(row: pd.Series) -> Dict[str, Any]:
     }
 
 
+def _row_support_mode(row: pd.Series) -> str:
+    payload = _rating_payload_from_row(row)
+    return "exact" if payload.get("rating") is not None else "proxy_missing_component"
+
+
+def build_rating_index(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    if df.empty:
+        return {}
+    df = df.copy()
+    df["company_id"] = df["company_id"].map(_normalize_company_id)
+    df = df[df["company_id"].notna()].copy()
+    order_cols = [col for col in ("rating_date", "published_at", "effective_at") if col in df.columns]
+    out: Dict[str, Dict[str, Any]] = {}
+    for company_id, group in df.groupby("company_id", sort=False):
+        group = _prefer_fitch_rows(group.copy())
+        if order_cols:
+            group = group.sort_values(order_cols, ascending=[False] * len(order_cols))
+        row = group.iloc[0]
+        out[str(company_id)] = {
+            "payload": _rating_payload_from_row(row),
+            "support_mode": _row_support_mode(row),
+            "source_type": _null_if_na(row.get("source_type")) or "issuer_ratings",
+            "artifact_id": _null_if_na(row.get("artifact_id")) or f"issuer_rating:{company_id}:{_null_if_na(row['rating_date'])}",
+            "published_at": str(_null_if_na(row.get("published_at"))) if _null_if_na(row.get("published_at")) is not None else None,
+            "ingested_at": str(_null_if_na(row.get("ingested_at"))) if _null_if_na(row.get("ingested_at")) is not None else None,
+            "rating_date": str(_null_if_na(row.get("rating_date"))) if _null_if_na(row.get("rating_date")) is not None else None,
+            "source_row": row.to_dict(),
+        }
+    return out
+
+
+def repair_rating_state(
+    *,
+    features: Dict[str, Any],
+    company_id: str,
+    rating_index: Dict[str, Dict[str, Any]],
+    computed_at: str,
+) -> bool:
+    target = features.get("capital_structure.rating_state")
+    if not target or target.get("value") is not None:
+        return False
+
+    record = rating_index.get(_normalize_company_id(company_id) or str(company_id))
+    if not record:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = record["payload"]
+    repaired["support_mode"] = record["support_mode"]
+    repaired["confidence"] = 0.72 if record["payload"].get("rating") is not None else 0.55
+    repaired["fallback_used"] = None if record["payload"].get("score") is not None else "heuristic"
+    repaired["provenance"] = [
+        {
+            "artifact_type": "ExtractedFact",
+            "artifact_id": str(record["artifact_id"]),
+            "source": str(record["source_type"]),
+            "published_at": record["published_at"],
+            "ingested_at": record["ingested_at"],
+            "hash": None,
+        }
+    ]
+    repaired["component_breakdown"] = {
+        "rating": record["payload"].get("rating"),
+        "outlook": record["payload"].get("outlook"),
+        "watchlist": record["payload"].get("watchlist"),
+        "score": record["payload"].get("score"),
+        "source_type": record["source_type"],
+        "rating_date": record["rating_date"],
+        "selection_rule": "latest_rating_prefer_fitch",
+    }
+    repaired["quality_flags"] = None
+    features["capital_structure.rating_state"] = repaired
+    return True
+
+
+def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
+    counters: Dict[str, Counter[str]] = {metric: Counter() for metric in REPAIR_METRICS}
+    for row in iter_rows(path):
+        features = row.get("features") or {}
+        for metric in REPAIR_METRICS:
+            node = features.get(metric) or {}
+            mode = str(node.get("support_mode") or "unsupported")
+            if node.get("value") is None:
+                mode = "unsupported"
+            counters[metric][mode] += 1
+    return {
+        metric: {
+            "exact": counter["exact"],
+            "proxy_missing_component": counter["proxy_missing_component"],
+            "unsupported": counter["unsupported"],
+        }
+        for metric, counter in counters.items()
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    ratings_path = _resolve_ratings_path(args.ratings_path)
+    ratings_df = load_issuer_ratings(ratings_path)
+    rating_index = build_rating_index(ratings_df)
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            repair_rating_state(
+                features=row.get("features") or {},
+                company_id=str(row.get("company_id")),
+                rating_index=rating_index,
+                computed_at=computed_at,
+            )
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        Path(args.summary_out).write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired rating-state metrics -> {out_path}")
+
+
