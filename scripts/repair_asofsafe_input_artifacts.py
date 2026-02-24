@@ -340,7 +340,7 @@ def main() -> None:
                 if not line.strip():
                     continue
                 row = json.loads(line)
-                if row['as_of_time']:
+                if row.get("as_of_time"):
                     as_of_times.append(pd.Timestamp(row["as_of_time"]).tz_convert("UTC").normalize())
     min_asof_date = min(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
     max_asof_date = max(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
