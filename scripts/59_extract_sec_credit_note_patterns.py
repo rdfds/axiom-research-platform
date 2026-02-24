@@ -167,3 +167,13 @@ def _candidate_blocks(text: str, keyword_re: re.Pattern, radius: int = 2) -> Lis
     return blocks
 
 
+def _is_likely_sec_filing(doc: Dict[str, object]) -> bool:
+    hay = " ".join(
+        str(doc.get(key) or "")
+        for key in ("source_type", "doc_type", "title", "url", "document_id")
+    ).lower()
+    form_hits = any(token in hay for token in ("10-k", "10q", "10-q", "10k", "annual report", "quarterly report"))
+    sec_hits = any(token in hay for token in ("sec", "edgar", "/archives/"))
+    return form_hits or sec_hits
+
+
