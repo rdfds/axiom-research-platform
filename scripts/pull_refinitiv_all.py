@@ -97,3 +97,23 @@ MNA_FIELD_CANDIDATES = [
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
+def save_parquet(df, name):
+    """Save dataframe to parquet with logging."""
+    path = DATA_DIR / f'{name}.parquet'
+    df.to_parquet(path, index=False)
+    log(f"  Saved {len(df):,} rows to {path.name}")
+    return path
+
+
+def ensure_session() :
+    """Verify Refinitiv Desktop/Workspace session is actually usable."""
+    try:
+        _ = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+        return True
+    except Exception as e:
+        log(f"Refinitiv session check failed: {e}")
+        log("Make sure Refinitiv Workspace/Desktop is running and you are logged in.")
+        log("Then rerun this script in the same terminal.")
+        return False
+
+
