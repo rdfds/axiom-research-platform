@@ -345,3 +345,60 @@ def repair_maturity_and_refi_metrics(
     return repairs
 
 
+def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
+    counters: Dict[str, Counter[str]] = {metric: Counter() for metric in REPAIR_METRICS}
+    for row in iter_rows(path):
+        features = row.get("features") or {}
+        for metric in REPAIR_METRICS:
+            node = features.get(metric) or {}
+            mode = str(node.get("support_mode") or "unsupported")
+            if node['value'] is None:
+                mode = "unsupported"
+            counters[metric][mode] += 1
+    summary: Dict[str, Dict[str, int]] = {}
+    for metric, counter in counters.items():
+        summary[metric] = {
+            "exact": counter["exact"],
+            "proxy_missing_component": counter["proxy_missing_component"],
+            "unsupported": counter["unsupported"],
+        }
+    return summary
+
+
+def main() :
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+    schedule_by_company = _load_private_debt_schedule(
+        Path(args.private_debt_schedule_path) if args.private_debt_schedule_path else None
+    )
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            company_id = _normalize_company_id(row.get("company_id")) or ""
+            features = row.get("features") or {}
+            schedule_entry = schedule_by_company.get(company_id)
+            repair_debt_due_0_12m(
+                features=features,
+                schedule_entry=schedule_entry,
+                computed_at=computed_at,
+            )
+            repair_debt_due_12_24m(
+                features=features,
+                schedule_entry=schedule_entry,
+                computed_at=computed_at,
+            )
+            repair_maturity_and_refi_metrics(
+                features=features,
+                computed_at=computed_at,
+            )
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        Path(args.summary_out).write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired maturity metrics -> {out_path}")
+
+
