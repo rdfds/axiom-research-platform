@@ -121,3 +121,60 @@ def test_repair_due_12_24_and_maturity_wall_from_private_schedule():
     assert features["capital_structure.refi_pressure_flag"]["value"] == 1.0
 
 
+def test_repair_maturity_wall_lower_bound_from_current_debt_only():
+    features = {
+        "capital_structure.current_debt_statement_direct": _node(
+            "capital_structure.current_debt_statement_direct",
+            90.0,
+            support_mode="exact",
+        ),
+        "capital_structure.debt_due_0_12m": _node("capital_structure.debt_due_0_12m", None),
+        "capital_structure.debt_due_12_24m": _node("capital_structure.debt_due_12_24m", None),
+        "capital_structure.total_debt_provider_direct": _node(
+            "capital_structure.total_debt_provider_direct",
+            300.0,
+            support_mode="exact",
+        ),
+        "capital_structure.debt_like_obligations_normalized": _node(
+            "capital_structure.debt_like_obligations_normalized",
+            360.0,
+            support_mode="exact",
+        ),
+        "capital_structure.maturity_wall_ratio_24m_reported": _node(
+            "capital_structure.maturity_wall_ratio_24m_reported",
+            None,
+            unit="ratio",
+        ),
+        "capital_structure.maturity_wall_ratio_24m_market": _node(
+            "capital_structure.maturity_wall_ratio_24m_market",
+            None,
+            unit="ratio",
+        ),
+        "capital_structure.maturity_wall_ratio_24m": _node(
+            "capital_structure.maturity_wall_ratio_24m",
+            None,
+            unit="ratio",
+        ),
+    }
+
+    assert repair_debt_due_0_12m(
+        features=features,
+        schedule_entry=None,
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+    repair_count = repair_maturity_and_refi_metrics(
+        features=features,
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+
+    assert repair_count == 3
+    reported = features["capital_structure.maturity_wall_ratio_24m_reported"]
+    market = features["capital_structure.maturity_wall_ratio_24m_market"]
+    decision = features["capital_structure.maturity_wall_ratio_24m"]
+    assert reported["value"] == 0.3
+    assert market["value"] == 0.25
+    assert reported["support_mode"] == "proxy_missing_component"
+    assert decision["support_mode"] == "proxy_missing_component"
+    assert reported["quality_flags"] == ["lower_bound_only"]
+
+

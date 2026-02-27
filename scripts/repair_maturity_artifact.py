@@ -86,3 +86,24 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _normalize_company_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return text
+    return digits.zfill(10)
+
+
+def _pick_column(columns: list[str], *candidates: str) -> str | None:
+    lowered = {column.lower(): column for column in columns}
+    for candidate in candidates:
+        match = lowered.get(candidate.lower())
+        if match:
+            return match
+    return None
+
+

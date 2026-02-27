@@ -330,3 +330,24 @@ def test_grouped_cash_proxy_can_promote_exact_when_short_term_investments_are_ab
     assert can_promote is True
 
 
+def test_grouped_cash_proxy_does_not_promote_when_short_term_investments_are_only_unavailable():
+    can_promote = _grouped_cash_proxy_can_promote_to_exact_cash_baseline(
+        cash_grouped={
+            "support_mode": "proxy_missing_component",
+            "value": 419_000_000.0,
+            "missing_reason": "cash_or_sti_component_missing",
+            "component_breakdown": {
+                "mode": "partial_cash_stack",
+                "cash": {"concept": "CashAndCashEquivalentsAtCarryingValue"},
+                "short_term_investments": None,
+            },
+        },
+        cash_exact={"support_mode": "unsupported", "value": None, "missing_reason": "statement_fact_unavailable"},
+        marketable_sec={"support_mode": "unsupported", "value": None, "missing_reason": "sec_concept_unavailable"},
+        marketable={"support_mode": "unsupported", "value": None, "missing_reason": "not_disclosed"},
+        marketable_inferred_zero=False,
+    )
+
+    assert can_promote is False
+
+
