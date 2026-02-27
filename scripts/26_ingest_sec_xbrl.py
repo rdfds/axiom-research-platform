@@ -378,3 +378,250 @@ def load_incremental_cutoffs() -> Dict[str, pd.Timestamp]:
     return cutoffs
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start", default=DEFAULT_START)
+    parser.add_argument("--end", default=DEFAULT_END)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--universe-date", default=None)
+    parser.add_argument("--ciks", default=None, help="Comma-separated CIKs (override universe)")
+    parser.add_argument("--tickers", default=None, help="Comma-separated tickers (override universe)")
+    parser.add_argument("--include-8k", action="store_true")
+    parser.add_argument("--refresh", action="store_true", help="Redownload SEC payloads")
+    parser.add_argument("--incremental", action="store_true", help="Only ingest filings newer than warehouse max available_time")
+    parser.add_argument("--sleep", type=float, default=float(os.getenv("SEC_SLEEP_SECONDS", "0.2")))
+    parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--fast", action="store_true", help="Only ingest a small tag set for faster runs")
+    parser.add_argument("--chunk-index", type=int, default=0, help="0-based index of this worker")
+    parser.add_argument("--chunk-count", type=int, default=1, help="Total number of workers")
+    parser.add_argument(
+        "--companyfacts-dir",
+        default=None,
+        help="Read local companyfacts JSONs from this directory before attempting SEC downloads",
+    )
+    parser.add_argument(
+        "--companyfacts-zip",
+        default=None,
+        help="Read local SEC companyfacts.zip bulk archive instead of per-company network fetches when possible",
+    )
+    parser.add_argument(
+        "--hydrate-cache",
+        action="store_true",
+        help="When reading from --companyfacts-zip, write requested payloads into data/sec/companyfacts",
+    )
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Do not fall back to live SEC requests when a local companyfacts dir/zip is provided",
+    )
+    parser.add_argument(
+        "--skip-raw-lake",
+        action="store_true",
+        help="Skip writing duplicate raw payloads into data/lake during local bulk/cache ingestion",
+    )
+    args = parser.parse_args()
+
+    ensure_dirs()
+    local_companyfacts_dir = Path(args.companyfacts_dir) if args.companyfacts_dir else (SEC_DIR / "companyfacts")
+    default_companyfacts_zip = SEC_DIR / "companyfacts.zip"
+    local_companyfacts_zip = (
+        Path(args.companyfacts_zip)
+        if args.companyfacts_zip
+        else (default_companyfacts_zip if default_companyfacts_zip.exists() else None)
+    )
+    needs_sec_ticker_download = (not args.ciks) and (args.refresh or not (SEC_DIR / "company_tickers.json").exists())
+    needs_companyfacts_network = (not args.local_only) and (
+        args.refresh or local_companyfacts_zip is None
+    )
+    user_agent = maybe_require_user_agent(needs_sec_ticker_download or needs_companyfacts_network)
+    skip_raw_lake = args.skip_raw_lake or (args.local_only and local_companyfacts_zip is not None)
+
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": user_agent,
+            "Accept-Encoding": "gzip, deflate",
+            "Accept": "application/json",
+        }
+    )
+
+    start_date = pd.to_datetime(args.start)
+    end_date = pd.to_datetime(args.end)
+
+    if args.ciks:
+        cik_list = [c.strip().zfill(10) for c in args.ciks.split(",") if c.strip()]
+        mapping = pd.DataFrame({"cik": cik_list})
+    else:
+        sec_tickers = load_sec_tickers(session, args.sleep, refresh=args.refresh)
+        if args.tickers:
+            tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            mapping = sec_tickers[sec_tickers["ticker"].isin(tickers)]
+        else:
+            universe = load_universe_tickers(args.universe_date)
+            mapping = build_cik_universe(sec_tickers, universe, limit=args.limit)
+
+    if mapping.empty:
+        raise RuntimeError("No CIKs resolved from universe/tickers.")
+
+    build_entity_id_map(mapping)
+    mapping.to_parquet(MAPPINGS_DIR / "sec_ticker_cik.parquet", index=False)
+
+    log(f"Resolved {len(mapping):,} CIKs")
+    cutoffs = load_incremental_cutoffs() if args.incremental else {}
+
+    rows = mapping.to_dict(orient="records")
+    if args.chunk_count < 1:
+        raise ValueError("--chunk-count must be >= 1")
+    if args.chunk_index < 0 or args.chunk_index >= args.chunk_count:
+        raise ValueError("--chunk-index must be in [0, chunk-count)")
+    if args.chunk_count > 1:
+        rows = [row for idx, row in enumerate(rows) if idx % args.chunk_count == args.chunk_index]
+        log(f"Chunking enabled: worker {args.chunk_index+1}/{args.chunk_count} handling {len(rows):,} CIKs")
+    ingestion_time = datetime.utcnow()
+    total_records = 0
+    batch_size = max(1, args.batch_size)
+    total_ciks = len(rows)
+    processed_ciks = 0
+    start_ts = time.perf_counter()
+    allowed_tags: Optional[set] = None
+    fast_enabled = args.fast or (os.getenv("SEC_FAST", "0") == "1")
+    if os.getenv("SEC_TAGS"):
+        allowed_tags = {t.strip() for t in os.getenv("SEC_TAGS", "").split(",") if t.strip()}
+        log(f"Tag filter enabled via SEC_TAGS ({len(allowed_tags)} tags)")
+    elif fast_enabled:
+        allowed_tags = set(FINANCIAL_FACT_TAGS)
+        log(f"Fast mode enabled: limiting to {len(allowed_tags)} tags")
+
+    with CompanyFactsBulkSource(
+        companyfacts_dir=local_companyfacts_dir,
+        companyfacts_zip=local_companyfacts_zip,
+        hydrate_cache=args.hydrate_cache,
+        prefer_zip=local_companyfacts_zip is not None,
+    ) as bulk_source:
+        if local_companyfacts_zip is not None:
+            log(f"Using local SEC bulk archive: {local_companyfacts_zip}")
+        elif local_companyfacts_dir.exists():
+            log(f"Using local SEC companyfacts cache: {local_companyfacts_dir}")
+        if skip_raw_lake:
+            log("Skipping raw-lake payload writes for local bulk/cache ingestion")
+
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i : i + batch_size]
+            canonical_batch: List[Dict] = []
+
+            for row in batch:
+                cik = str(row["cik"]).zfill(10)
+                processed_ciks += 1
+
+                if processed_ciks == 1 or (SEC_LOG_EVERY and processed_ciks % SEC_LOG_EVERY == 0):
+                    elapsed = time.perf_counter() - start_ts
+                    rate = processed_ciks / elapsed if elapsed > 0 else 0.0
+                    remaining = total_ciks - processed_ciks
+                    eta = (remaining / rate) if rate > 0 else 0.0
+                    log(
+                        f"Progress: {processed_ciks}/{total_ciks} CIKs | elapsed {elapsed/60:.1f}m | ETA {eta/60:.1f}m"
+                    )
+
+                cik_start = time.perf_counter()
+                payload = None
+                raw_payload_hash = None
+                payload_origin = None
+                if not args.refresh:
+                    payload, raw_payload_hash, payload_origin = bulk_source.load_with_metadata(cik)
+                if payload is None:
+                    if args.local_only:
+                        if SEC_LOG_VERBOSE:
+                            log(f"Skipping CIK {cik}: not found in local bulk/cache source")
+                        continue
+                    payload = load_companyfacts(cik, session, args.sleep, refresh=args.refresh)
+                    payload_origin = "network"
+                if SEC_LOG_VERBOSE:
+                    log(f"Fetched CIK {cik} in {(time.perf_counter() - cik_start):.1f}s via {payload_origin or 'unknown'}")
+                if not payload:
+                    continue
+
+                min_available = cutoffs.get(cik)
+                records, min_event, max_filed = parse_companyfacts(
+                    payload=payload,
+                    company_id=cik,
+                    permno=row.get("permno"),
+                    permco=row.get("permco"),
+                    ticker=row.get("ticker"),
+                    cusip=row.get("cusip"),
+                    start_date=start_date,
+                    end_date=end_date,
+                    include_8k=args.include_8k,
+                    min_available_time=min_available,
+                    allowed_tags=allowed_tags,
+                )
+                if SEC_LOG_VERBOSE:
+                    log(f"Parsed CIK {cik}: {len(records):,} records")
+
+                if not records:
+                    continue
+
+                raw_event = min_event or ingestion_time
+                raw_available = max_filed or raw_event
+                if raw_payload_hash is None:
+                    raw_payload_hash = compute_raw_payload_hash(payload)
+                raw_version_id = compute_version_id(
+                    source_system="sec_edgar_xbrl",
+                    entity_id=cik,
+                    event_time=raw_event.to_pydatetime() if hasattr(raw_event, "to_pydatetime") else raw_event,
+                    available_time=raw_available.to_pydatetime() if hasattr(raw_available, "to_pydatetime") else raw_available,
+                    raw_payload_hash=raw_payload_hash,
+                )
+
+                upstream_version_ids: List[str]
+                if skip_raw_lake:
+                    upstream_version_ids = []
+                else:
+                    write_raw_records(
+                        source_system="sec_edgar_xbrl",
+                        records=[
+                            {
+                                "entity_id": cik,
+                                "company_id": cik,
+                                "event_time": raw_event,
+                                "available_time": raw_available,
+                                "payload": payload,
+                            }
+                        ],
+                    )
+                    upstream_version_ids = [raw_version_id]
+
+                for rec in records:
+                    rec.update(
+                        {
+                            "source_system": "sec_edgar_xbrl",
+                            "entity_id": cik,
+                            "company_id": cik,
+                            "security_id": None,
+                            "ingestion_time": ingestion_time,
+                            "raw_payload_hash": raw_payload_hash,
+                            "version_id": compute_version_id(
+                                source_system="sec_edgar_xbrl",
+                                entity_id=cik,
+                                event_time=rec["event_time"].to_pydatetime()
+                                if hasattr(rec["event_time"], "to_pydatetime")
+                                else rec["event_time"],
+                                available_time=rec["available_time"].to_pydatetime()
+                                if hasattr(rec["available_time"], "to_pydatetime")
+                            else rec["available_time"],
+                                raw_payload_hash=raw_payload_hash,
+                            ),
+                            "upstream_version_ids": upstream_version_ids,
+                        }
+                    )
+                    canonical_batch.append(rec)
+
+            if canonical_batch:
+                append_canonical_records("warehouse_financials", canonical_batch)
+                total_records += len(canonical_batch)
+                log(f"Ingested {len(canonical_batch):,} records (total {total_records:,})")
+
+    log(f"Done. Total financial statement records: {total_records:,}")
+
+
+if __name__ == "__main__":
+    main()
