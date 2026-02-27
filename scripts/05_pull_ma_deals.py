@@ -142,3 +142,66 @@ def pull_compustat_acquisitions(db):
         return None
 
 
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python 05_pull_ma_deals.py USERNAME")
+        sys.exit(1)
+
+    WRDS_USERNAME = sys.argv[1]
+
+    print("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=WRDS_USERNAME)
+    print("Connected!\n")
+
+    # Find what we can actually access
+    accessible = find_accessible_tables(db)
+
+    print(f"\n\nAccessible tables: {len(accessible)}")
+
+    # Pull data from accessible tables
+    results = {}
+    if accessible:
+        results = pull_accessible_transaction_data(db, accessible)
+
+    # Always pull Compustat acquisition data as backup
+    aqc_df = pull_compustat_acquisitions(db)
+    if aqc_df is not None:
+        results['comp.funda_acquisitions'] = aqc_df
+
+    # Save data
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    for name, df in results.items():
+        safe_name = name.replace('.', '_')
+        output_path = OUTPUT_DIR / f'{safe_name}.parquet'
+        df.to_parquet(output_path, index=False)
+        print(f"\nSaved {name} to {output_path}")
+        print(f"  Rows: {len(df):,}")
+
+        # CSV sample
+        df.head(500).to_csv(OUTPUT_DIR / f'{safe_name}_sample.csv', index=False)
+
+    db.close()
+
+    print("\n" + "="*70)
+    print("SUMMARY")
+    print("="*70)
+    print(f"""
+Data saved to {OUTPUT_DIR}
+
+For V1 M&A analog retrieval, you have:
+
+1. Compustat AQC data (comp_funda_acquisitions.parquet)
+   - Shows which companies made acquisitions and amounts
+   - Can link to fundamentals for "state at time of acquisition"
+   - Limited: no target company info, no deal terms
+
+2. Any accessible CIQ sample tables above
+
+For richer M&A data, options:
+   - LSEG Workspace (via JHU library website)
+   - SDC Platinum (terminals at Carey Business School)
+   - Manual curation from SEC 8-K filings
+    """)
+
+
