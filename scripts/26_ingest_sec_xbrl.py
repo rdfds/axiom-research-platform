@@ -356,3 +356,25 @@ def parse_companyfacts(
     return records, min_event, max_filed
 
 
+def build_entity_id_map(mapping: pd.DataFrame) -> None:
+    path = MAPPINGS_DIR / "entity_id_map.parquet"
+    mapping = mapping.copy()
+    if "company_id" not in mapping.columns:
+        mapping["company_id"] = mapping["cik"]
+    if path.exists():
+        existing = pd.read_parquet(path)
+        mapping = pd.concat([existing, mapping], ignore_index=True, sort=False)
+        mapping = mapping.drop_duplicates(subset=["company_id"], keep="last")
+    mapping.to_parquet(path, index=False)
+
+
+def load_incremental_cutoffs() -> Dict[str, pd.Timestamp]:
+    path = DATA_DIR / "warehouse" / "warehouse_financials.parquet"
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(path, columns=["company_id", "available_time"])
+    df["available_time"] = pd.to_datetime(df["available_time"])
+    cutoffs = df.groupby("company_id")["available_time"].max().to_dict()
+    return cutoffs
+
+

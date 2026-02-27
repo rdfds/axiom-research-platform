@@ -177,3 +177,26 @@ def _is_likely_sec_filing(doc: Dict[str, object]) -> bool:
     return form_hits or sec_hits
 
 
+def _base_row(doc: Dict[str, object], family: str, metric_key: str, value: float, evidence_text: str, pattern_name: str, confidence: float, bucket_label: Optional[str] = None) -> Dict[str, object]:
+    return {
+        "document_id": doc.get("document_id"),
+        "entity_id": doc.get("entity_id"),
+        "source_type": doc.get("source_type"),
+        "doc_type": doc.get("doc_type"),
+        "title": doc.get("title"),
+        "url": doc.get("url"),
+        "published_at": doc.get("published_at"),
+        "effective_at": doc.get("effective_at"),
+        "ingested_at": doc.get("ingested_at"),
+        "pattern_family": family,
+        "metric_key": metric_key,
+        "value": float(value),
+        "currency": "USD",
+        "bucket_label": bucket_label,
+        "pattern_name": pattern_name,
+        "extraction_confidence": float(confidence),
+        "evidence_text": evidence_text[:4000],
+        "extraction_method": "regex_note_pattern",
+    }
+
+
