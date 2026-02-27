@@ -402,3 +402,5 @@ def main() :
     print(f"Repaired maturity metrics -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
