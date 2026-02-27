@@ -112,3 +112,17 @@ Important files:
 - `tests/test_roic_materialization_valuation_drivers.py`
 - `tests/test_valuation_action_bridge_wwntbt.py`
 
+## 5. Precedent Retrieval
+
+The precedent system retrieves similar historical action cases. It is not a text search feature; it uses company state, action type, regime context, outcome distributions, mismatch diagnostics, and calibrated confidence.
+
+Important files:
+
+- `src/pipeline/precedent_brain.py`
+- `src/pipeline/precedent_distance_v2_learning.py`
+- `src/pipeline/precedent_quality_learning.py`
+- `tests/test_precedent_brain.py`
+- `tests/test_precedent_distance_v2_learning.py`
+
+The learned-distance layer tunes similarity weights by action family and objective so that analogs are retrieved for the decision being made, not just for superficial similarity.
+
