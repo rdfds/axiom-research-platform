@@ -217,3 +217,131 @@ def repair_debt_due_12_24m(
     return True
 
 
+def _repair_ratio_node(
+    *,
+    target: Dict[str, Any] | None,
+    due_0_12_node: Dict[str, Any] | None,
+    due_12_24_node: Dict[str, Any] | None,
+    denominator_node: Dict[str, Any] | None,
+    denominator_metric: str,
+    computed_at: str,
+    exact_fallback: str,
+    lower_bound_fallback: str,
+) -> Dict[str, Any] | None:
+    if not target or target.get("value") is not None:
+        return None
+
+    due_0_12 = _node_value(due_0_12_node)
+    due_12_24 = _node_value(due_12_24_node)
+    denominator = _node_value(denominator_node)
+    if due_0_12 in (None,) or denominator in (None, 0):
+        return None
+
+    lower_bound_only = due_12_24 is None
+    due_24m = float(due_0_12) + (float(due_12_24) if due_12_24 is not None else 0.0)
+    if due_24m > float(denominator) * 1.25:
+        return None
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = due_24m / float(denominator)
+    repaired["fallback_used"] = lower_bound_fallback if lower_bound_only else exact_fallback
+    repaired["support_mode"] = (
+        "proxy_missing_component"
+        if lower_bound_only or _node_support(denominator_node) != "exact"
+        else "exact"
+    )
+    repaired["provenance"] = _union_provenance(due_0_12_node, due_12_24_node, denominator_node)
+    repaired["component_breakdown"] = {
+        "debt_due_0_12m": float(due_0_12),
+        "debt_due_12_24m": float(due_12_24) if due_12_24 is not None else None,
+        "debt_due_24m": due_24m,
+        "lower_bound_only": lower_bound_only,
+        denominator_metric: float(denominator),
+        "formula": f"(debt_due_0_12m + debt_due_12_24m_or_0) / {denominator_metric}",
+    }
+    repaired["quality_flags"] = ["lower_bound_only"] if lower_bound_only else None
+    return repaired
+
+
+def repair_maturity_and_refi_metrics(
+    *,
+    features: Dict[str, Any],
+    computed_at: str,
+) -> int:
+    repairs = 0
+    due_0_12_node = features.get("capital_structure.debt_due_0_12m")
+    due_12_24_node = features.get("capital_structure.debt_due_12_24m")
+    reported_debt_node = features.get("capital_structure.total_debt_provider_direct")
+    market_debt_node = features.get("capital_structure.debt_like_obligations_normalized") or reported_debt_node
+
+    reported_ratio = _repair_ratio_node(
+        target=features.get("capital_structure.maturity_wall_ratio_24m_reported"),
+        due_0_12_node=due_0_12_node,
+        due_12_24_node=due_12_24_node,
+        denominator_node=reported_debt_node,
+        denominator_metric="reported_debt",
+        computed_at=computed_at,
+        exact_fallback="private_debt_schedule_plus_reported_debt",
+        lower_bound_fallback="current_debt_lower_bound_plus_reported_debt",
+    )
+    if reported_ratio is not None:
+        features["capital_structure.maturity_wall_ratio_24m_reported"] = reported_ratio
+        repairs += 1
+
+    market_ratio = _repair_ratio_node(
+        target=features.get("capital_structure.maturity_wall_ratio_24m_market"),
+        due_0_12_node=due_0_12_node,
+        due_12_24_node=due_12_24_node,
+        denominator_node=market_debt_node,
+        denominator_metric="economic_debt",
+        computed_at=computed_at,
+        exact_fallback="private_debt_schedule_plus_economic_debt",
+        lower_bound_fallback="current_debt_lower_bound_plus_economic_debt",
+    )
+    if market_ratio is not None:
+        features["capital_structure.maturity_wall_ratio_24m_market"] = market_ratio
+        repairs += 1
+
+    target = features.get("capital_structure.maturity_wall_ratio_24m")
+    if target and target.get("value") is None:
+        preferred = market_ratio or features['capital_structure.maturity_wall_ratio_24m_market']
+        fallback = reported_ratio or features.get("capital_structure.maturity_wall_ratio_24m_reported")
+        source = preferred if _node_value(preferred) is not None else fallback
+        if source and _node_value(source) is not None:
+            repaired = _base_repaired_node(target, computed_at=computed_at)
+            repaired["value"] = float(source["value"])
+            repaired["fallback_used"] = source.get("fallback_used")
+            repaired["support_mode"] = source.get("support_mode") or "proxy_missing_component"
+            repaired["provenance"] = _union_provenance(source)
+            repaired["component_breakdown"] = copy.deepcopy(source.get("component_breakdown"))
+            repaired["quality_flags"] = copy.deepcopy(source.get("quality_flags"))
+            features["capital_structure.maturity_wall_ratio_24m"] = repaired
+            repairs += 1
+
+    for metric_name, ratio_metric in [
+        ("capital_structure.refi_pressure_flag_reported", "capital_structure.maturity_wall_ratio_24m_reported"),
+        ("capital_structure.refi_pressure_flag_market", "capital_structure.maturity_wall_ratio_24m_market"),
+        ("capital_structure.refi_pressure_flag", "capital_structure.maturity_wall_ratio_24m"),
+    ]:
+        target_flag = features.get(metric_name)
+        ratio_node = features.get(ratio_metric)
+        ratio_value = _node_value(ratio_node)
+        if not target_flag or target_flag.get("value") is not None or ratio_value is None:
+            continue
+        repaired = _base_repaired_node(target_flag, computed_at=computed_at)
+        repaired["value"] = 1.0 if ratio_value > 0.25 else 0.0
+        repaired["fallback_used"] = ratio_node.get("fallback_used")
+        repaired["support_mode"] = ratio_node.get("support_mode") or "proxy_missing_component"
+        repaired["provenance"] = _union_provenance(ratio_node)
+        repaired["component_breakdown"] = {
+            "maturity_wall_ratio_24m": ratio_value,
+            "threshold": 0.25,
+            "formula": "maturity_wall_ratio_24m > 0.25",
+        }
+        repaired["quality_flags"] = copy.deepcopy(ratio_node.get("quality_flags"))
+        features[metric_name] = repaired
+        repairs += 1
+
+    return repairs
+
+

@@ -178,3 +178,17 @@ def test_repair_maturity_wall_lower_bound_from_current_debt_only():
     assert reported["quality_flags"] == ["lower_bound_only"]
 
 
+def test_load_private_debt_schedule_accepts_company_id_and_metric_names(tmp_path):
+    path = tmp_path / "private_debt_schedule.parquet"
+    pd.DataFrame(
+        {
+            "company_id": ["1750"],
+            "debt_due_0_12m": [10.0],
+            "debt_due_12_24m": [20.0],
+        }
+    ).to_parquet(path, index=False)
+
+    loaded = _load_private_debt_schedule(path)
+
+    assert loaded["0000001750"]["due_0_12"] == 10.0
+    assert loaded["0000001750"]["due_12_24"] == 20.0
