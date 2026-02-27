@@ -200,3 +200,143 @@ def _base_row(doc: Dict[str, object], family: str, metric_key: str, value: float
     }
 
 
+def extract_revolver_note_rows(doc: Dict[str, object]) -> List[Dict[str, object]]:
+    text = str(doc.get("raw_text") or "")
+    rows: List[Dict[str, object]] = []
+    capacity_candidates: List[float] = []
+    outstanding_candidates: List[float] = []
+    blocks = _candidate_blocks(text, REVOLVER_KEYWORDS, radius=3)
+    if not blocks:
+        return rows
+
+    patterns = [
+        (
+            "financial.revolver_undrawn",
+            "undrawn_direct",
+            [
+                re.compile(rf"(?:undrawn|unused commitments?|availability|available borrowings?)[^\n.;$]{{0,80}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,80}}(?:available under|available on|undrawn under|unused under).{{0,40}}(?:revolving credit|credit facility|line of credit)", re.IGNORECASE),
+            ],
+            0.92,
+        ),
+        (
+            "financial.revolver_capacity",
+            "capacity",
+            [
+                re.compile(rf"(?:aggregate commitments? of|commitments? of|revolving credit facility (?:of|with|provides)|line of credit (?:of|with)|credit facility (?:of|with))[^\n.;$]{{0,80}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+            ],
+            0.76,
+        ),
+        (
+            "financial.revolver_outstanding",
+            "outstanding",
+            [
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,80}}(?:was|were)?[^\n.;]{{0,40}}(?:outstanding|drawn under|borrowings outstanding|amount outstanding)", re.IGNORECASE),
+                re.compile(rf"(?:outstanding|drawn under|borrowings outstanding|amount outstanding)[^\n.;$]{{0,80}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+            ],
+            0.82,
+        ),
+    ]
+
+    for block in blocks:
+        for metric_key, pattern_name, regexes, confidence in patterns:
+            for regex in regexes:
+                for match in regex.finditer(block):
+                    value = _match_money_value(match)
+                    if value is None:
+                        continue
+                    rows.append(_base_row(doc, "revolver", metric_key, value, block, pattern_name, confidence))
+                    if metric_key == "financial.revolver_capacity":
+                        capacity_candidates.append(value)
+                    elif metric_key == "financial.revolver_outstanding":
+                        outstanding_candidates.append(value)
+
+    if not any(row["metric_key"] == "financial.revolver_undrawn" for row in rows):
+        if capacity_candidates and outstanding_candidates:
+            derived = max(capacity_candidates) - min(outstanding_candidates)
+            if derived >= 0:
+                evidence = f"Derived from capacity={max(capacity_candidates):,.0f} and outstanding={min(outstanding_candidates):,.0f}"
+                rows.append(_base_row(doc, "revolver", "financial.revolver_undrawn", derived, evidence, "capacity_minus_outstanding", 0.68))
+    return rows
+
+
+def extract_lease_note_rows(doc: Dict[str, object]) -> List[Dict[str, object]]:
+    text = str(doc.get("raw_text") or "")
+    rows: List[Dict[str, object]] = []
+    blocks = _candidate_blocks(text, LEASE_KEYWORDS, radius=4)
+    if not blocks:
+        return rows
+
+    patterns = [
+        (
+            "financial.lease_expense_operating",
+            "operating_lease_cost",
+            [
+                re.compile(rf"operating lease cost[^\n.;$]{{0,60}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,60}}operating lease cost", re.IGNORECASE),
+            ],
+            0.90,
+        ),
+        (
+            "financial.lease_expense_finance",
+            "finance_lease_cost",
+            [
+                re.compile(rf"finance lease cost[^\n.;$]{{0,60}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,60}}finance lease cost", re.IGNORECASE),
+            ],
+            0.90,
+        ),
+        (
+            "financial.lease_liability_current",
+            "lease_liability_current",
+            [
+                re.compile(rf"(?:current portion of )?lease liabilit(?:y|ies)[^\n.;$]{{0,80}}(?:current|short[- ]term)[^\n.;$]{{0,40}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,80}}(?:current|short[- ]term)[^\n.;]{{0,40}}lease liabilit(?:y|ies)", re.IGNORECASE),
+            ],
+            0.86,
+        ),
+        (
+            "financial.lease_liability_noncurrent",
+            "lease_liability_noncurrent",
+            [
+                re.compile(rf"lease liabilit(?:y|ies)[^\n.;$]{{0,80}}(?:noncurrent|long[- ]term)[^\n.;$]{{0,40}}{STRICT_MONEY_CAPTURE}", re.IGNORECASE),
+                re.compile(rf"{STRICT_MONEY_CAPTURE}[^\n.;]{{0,80}}(?:noncurrent|long[- ]term)[^\n.;]{{0,40}}lease liabilit(?:y|ies)", re.IGNORECASE),
+            ],
+            0.86,
+        ),
+    ]
+    schedule_heading = re.compile(r"future lease payments|maturity analysis of lease liabilities", re.IGNORECASE)
+
+    for block in blocks:
+        for metric_key, pattern_name, regexes, confidence in patterns:
+            for regex in regexes:
+                for match in regex.finditer(block):
+                    value = _match_money_value(match)
+                    if value is None:
+                        continue
+                    rows.append(_base_row(doc, "lease", metric_key, value, block, pattern_name, confidence))
+
+        if schedule_heading.search(block):
+            for line in block.splitlines():
+                year_match = YEAR_AMOUNT_RE.search(line)
+                if not year_match:
+                    continue
+                label = year_match.group("label")
+                value = _first_money_value(year_match.group("amount"))
+                if value is None:
+                    continue
+                rows.append(
+                    _base_row(
+                        doc,
+                        "lease",
+                        "financial.lease_payment_due",
+                        value,
+                        block,
+                        "lease_maturity_schedule",
+                        0.84,
+                        bucket_label=label,
+                    )
+                )
+    return rows
+
+

@@ -285,7 +285,7 @@ def parse_companyfacts(
                         if len(end_prefix) == 10 and (end_prefix < start_date_str or end_prefix > end_date_str):
                             continue
 
-                    end = pd.to_datetime(entry['end'], errors="coerce")
+                    end = pd.to_datetime(entry.get("end"), errors="coerce")
                     filed = pd.to_datetime(entry.get("filed"), errors="coerce")
                     form = entry.get("form")
 
