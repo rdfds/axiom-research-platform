@@ -107,3 +107,113 @@ def _pick_column(columns: list[str], *candidates: str) -> str | None:
     return None
 
 
+def _load_private_debt_schedule(path: Path | None) -> dict[str, dict[str, float]]:
+    if path is None or not path.exists():
+        return {}
+    frame = pd.read_parquet(path)
+    if frame.empty:
+        return {}
+    columns = list(frame.columns)
+    company_col = _pick_column(columns, "company_id", "entity_id", "cik")
+    if company_col is None:
+        return {}
+
+    bucket_map = {
+        "due_0_12": _pick_column(columns, "due_0_12", "debt_due_0_12m"),
+        "due_12_24": _pick_column(columns, "due_12_24", "debt_due_12_24m"),
+        "due_24_36": _pick_column(columns, "due_24_36", "debt_due_24_36m"),
+        "due_36_60": _pick_column(columns, "due_36_60", "debt_due_36_60m"),
+        "due_60_plus": _pick_column(columns, "due_60_plus", "debt_due_60m_plus"),
+    }
+
+    schedules: dict[str, dict[str, float]] = {}
+    for _, row in frame.iterrows():
+        company_id = _normalize_company_id(row.get(company_col))
+        if company_id is None:
+            continue
+        entry: dict[str, float] = {}
+        for bucket, column in bucket_map.items():
+            if column is None:
+                continue
+            value = pd.to_numeric(row.get(column), errors="coerce")
+            if pd.isna(value):
+                continue
+            entry[bucket] = float(value)
+        if entry:
+            schedules[company_id] = entry
+    return schedules
+
+
+def repair_debt_due_0_12m(
+    *,
+    features: Dict[str, Any],
+    schedule_entry: dict[str, float] | None,
+    computed_at: str,
+) -> bool:
+    target = features.get("capital_structure.debt_due_0_12m")
+    if not target or target.get("value") is not None:
+        return False
+
+    current_debt_node = features.get("capital_structure.current_debt_statement_direct")
+    current_debt = _node_value(current_debt_node)
+    fallback_used = None
+    support_mode = None
+    component_breakdown = None
+
+    if schedule_entry and schedule_entry.get("due_0_12") is not None:
+        current_debt = float(schedule_entry["due_0_12"])
+        fallback_used = "private_debt_schedule"
+        support_mode = "exact"
+        component_breakdown = {
+            "due_0_12": current_debt,
+            "formula": "private_debt_schedule.due_0_12",
+            "schedule_source": "private_debt_schedule",
+        }
+    elif current_debt is not None:
+        fallback_used = "current_debt_statement_direct_as_due_0_12m"
+        support_mode = _node_support(current_debt_node)
+        component_breakdown = {
+            "current_debt_statement_direct": current_debt,
+            "formula": "current_debt_statement_direct",
+        }
+
+    if current_debt is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = current_debt
+    repaired["fallback_used"] = fallback_used
+    repaired["support_mode"] = support_mode or "proxy_missing_component"
+    repaired["provenance"] = _union_provenance(current_debt_node)
+    repaired["component_breakdown"] = component_breakdown
+    repaired["quality_flags"] = None
+    features["capital_structure.debt_due_0_12m"] = repaired
+    return True
+
+
+def repair_debt_due_12_24m(
+    *,
+    features: Dict[str, Any],
+    schedule_entry: dict[str, float] | None,
+    computed_at: str,
+) -> bool:
+    target = features.get("capital_structure.debt_due_12_24m")
+    if not target or target.get("value") is not None:
+        return False
+    if not schedule_entry or schedule_entry.get("due_12_24") is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = float(schedule_entry["due_12_24"])
+    repaired["fallback_used"] = "private_debt_schedule"
+    repaired["support_mode"] = "exact"
+    repaired["component_breakdown"] = {
+        "due_12_24": float(schedule_entry["due_12_24"]),
+        "formula": "private_debt_schedule.due_12_24",
+        "schedule_source": "private_debt_schedule",
+    }
+    repaired["quality_flags"] = None
+    features["capital_structure.debt_due_12_24m"] = repaired
+    return True
+
+
