@@ -47,3 +47,10 @@ def resolve_data_path(path: Path | str) -> Path:
     return candidate
 
 
+def resolve_companyfacts_root(path: Path | str | None = None) -> Optional[Path]:
+    raw_override = str(os.environ.get(COMPANYFACTS_ROOT_ENV, "") or "").strip()
+    if raw_override:
+        return Path(raw_override).expanduser()
+    if path is None:
+        return None
+    return resolve_data_path(path)
