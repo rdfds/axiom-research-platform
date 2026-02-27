@@ -96,3 +96,49 @@ def pull_accessible_transaction_data(db, accessible_tables):
     return results
 
 
+def pull_compustat_acquisitions(db):
+    """
+    Pull acquisition data from Compustat (AQC field).
+    This is a backup - shows which companies made acquisitions and rough amounts.
+    """
+
+    print("\n" + "="*70)
+    print("PULLING COMPUSTAT ACQUISITION DATA (Backup)")
+    print("="*70)
+
+    query = """
+    SELECT
+        gvkey,
+        datadate,
+        conm,
+        tic,
+        aqc,      -- Acquisitions ($ amount spent)
+        sale,     -- Sales for context
+        at,       -- Total assets for context
+        sic       -- Industry
+    FROM comp.funda
+    WHERE aqc IS NOT NULL
+      AND aqc > 0
+      AND datadate >= '2010-01-01'
+      AND indfmt = 'INDL'
+      AND datafmt = 'STD'
+      AND popsrc = 'D'
+      AND consol = 'C'
+    ORDER BY datadate, aqc DESC
+    """
+
+    try:
+        df = db.raw_sql(query)
+        print(f"Retrieved {len(df):,} company-years with acquisitions")
+
+        # Summary stats
+        print(f"\nUnique acquirers: {df['gvkey'].nunique():,}")
+        print(f"Date range: {df['datadate'].min()} to {df['datadate'].max()}")
+        print(f"Total acquisition value: ${df['aqc'].sum():,.0f}M")
+
+        return df
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+

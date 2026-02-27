@@ -178,3 +178,32 @@ def load_symbol_dates(symbol: str, session: requests.Session) -> List[Dict]:
     return data
 
 
+def load_transcript(symbol: str, year: int, quarter: int, session: requests.Session) -> Optional[Dict]:
+    url = f"{FMP_BASE_URL}/earning-call-transcript"
+    data = _request_json(
+        url,
+        params={"symbol": symbol, "year": year, "quarter": quarter, "apikey": FMP_API_KEY},
+        session=session,
+    )
+    if not data:
+        if FMP_DEBUG:
+            log(f"[debug] transcript empty for {symbol} {year}Q{quarter}")
+        return None
+    if isinstance(data, dict) and data.get("Error Message"):
+        if FMP_DEBUG:
+            log(f"[debug] transcript error for {symbol} {year}Q{quarter}: {data.get('Error Message')}")
+        return None
+    # API returns list with single object
+    if isinstance(data, list) and data:
+        return data[0]
+    if isinstance(data, dict):
+        return data
+    return None
+
+
+def quarter_end_date(year: int, quarter: int) -> pd.Timestamp:
+    month = {1: 3, 2: 6, 3: 9, 4: 12}.get(quarter, 12)
+    day = 31 if month in (3, 12) else 30
+    return pd.Timestamp(year=year, month=month, day=day)
+
+

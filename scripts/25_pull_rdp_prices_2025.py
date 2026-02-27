@@ -38,3 +38,28 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+def pick_best_ric(group: pd.DataFrame) -> pd.DataFrame:
+    def rank_ric(ric: str) -> int:
+        if not isinstance(ric, str):
+            return 99
+        ric = ric.upper()
+        if ric.endswith(".N"):
+            return 0
+        if ric.endswith(".OQ"):
+            return 1
+        if ric.endswith(".Q"):
+            return 2
+        if ric.endswith(".A"):
+            return 3
+        if ric.endswith(".K"):
+            return 4
+        if ric.endswith(".P"):
+            return 5
+        return 9
+
+    grp = group.copy()
+    grp["ric_rank"] = grp["ric"].map(rank_ric)
+    grp = grp.sort_values(["ric_rank", "ric"])
+    return grp.head(1)
+
+

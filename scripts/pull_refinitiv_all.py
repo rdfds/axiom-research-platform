@@ -117,3 +117,22 @@ def ensure_session() :
         return False
 
 
+def _find_ma_probe_universe() -> str:
+    current_year = datetime.now().year
+    for offset in range(MNA_PROBE_MAX_YEARS):
+        year = current_year - offset
+        universe = (
+            "SCREEN(U(IN(Deals)/*UNV:MADEALS*/), "
+            "IN(TR.MnAStatus,\"C\",\"P\"), "
+            f"TR.MnAAnnDate>={year}-01-01, "
+            f"TR.MnAAnnDate<={year}-12-31)"
+        )
+        try:
+            df = rd.get_data(universe=universe, fields=["TR.MnAAnnDate"])
+            if df is not None and len(df) > 0:
+                return universe
+        except Exception as e:
+            log(f"  Probe universe {year} failed: {e}")
+    return ""
+
+
