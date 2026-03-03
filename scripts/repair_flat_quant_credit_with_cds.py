@@ -17,3 +17,12 @@ def _company_id_series(series: pd.Series) -> pd.Series:
     return series.astype(str).str.extract(r"(\d+)")[0].str.zfill(10)
 
 
+def _count_support(series: pd.Series) -> dict[str, int]:
+    vc = series.fillna("unsupported").value_counts()
+    return {
+        "exact": int(vc.get("exact", 0)),
+        "proxy_missing_component": int(vc.get("proxy_missing_component", 0)),
+        "unsupported": int(vc.get("unsupported", 0)),
+    }
+
+
