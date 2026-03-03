@@ -87,3 +87,21 @@ def normalize_int(value) :
         return None
 
 
+def normalize_payload(payload: Dict) -> Dict:
+    cleaned = {}
+    for k, v in payload.items():
+        if isinstance(v, pd.Timestamp):
+            if pd.isna(v):
+                cleaned[k] = None
+            else:
+                cleaned[k] = v.isoformat()
+        elif isinstance(v, (np.integer, np.floating, np.bool_)):
+            cleaned[k] = v.item()
+        else:
+            try:
+                cleaned[k] = None if pd.isna(v) else v
+            except Exception:
+                cleaned[k] = v
+    return cleaned
+
+
