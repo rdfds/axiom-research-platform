@@ -205,3 +205,5 @@ For richer M&A data, options:
     """)
 
 
+if __name__ == "__main__":
+    main()
