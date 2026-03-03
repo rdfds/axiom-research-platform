@@ -351,3 +351,21 @@ def test_grouped_cash_proxy_does_not_promote_when_short_term_investments_are_onl
     assert can_promote is False
 
 
+def test_grouped_cash_proxy_can_complete_with_exact_marketable_securities():
+    can_complete = _grouped_cash_proxy_can_complete_with_exact_marketable_securities(
+        cash_grouped={
+            "support_mode": "proxy_missing_component",
+            "value": 834_000_000.0,
+            "missing_reason": "cash_or_sti_component_missing",
+            "component_breakdown": {
+                "mode": "partial_cash_stack",
+                "cash": {"concept": "Cash"},
+                "short_term_investments": None,
+            },
+        },
+        marketable_value=7_638_000_000.0,
+    )
+
+    assert can_complete is True
+
+
