@@ -340,3 +340,43 @@ def extract_lease_note_rows(doc: Dict[str, object]) -> List[Dict[str, object]]:
     return rows
 
 
+def extract_debt_maturity_rows(doc: Dict[str, object]) -> List[Dict[str, object]]:
+    text = str(doc.get("raw_text") or "")
+    rows: List[Dict[str, object]] = []
+    blocks = _candidate_blocks(text, MATURITY_KEYWORDS, radius=6)
+    if not blocks:
+        return rows
+    for block in blocks:
+        for line in block.splitlines():
+            match = YEAR_AMOUNT_RE.search(line)
+            if not match:
+                continue
+            label = match.group("label")
+            value = _first_money_value(match.group("amount"))
+            if value is None:
+                continue
+            rows.append(
+                _base_row(
+                    doc,
+                    "debt_maturity",
+                    "financial.debt_maturity_bucket",
+                    value,
+                    block,
+                    "debt_maturity_schedule",
+                    0.86,
+                    bucket_label=label,
+                )
+            )
+    return rows
+
+
+def extract_note_pattern_rows(doc: Dict[str, object]) -> Dict[str, List[Dict[str, object]]]:
+    if not _is_likely_sec_filing(doc):
+        return {"revolver": [], "lease": [], "debt_maturity": []}
+    return {
+        "revolver": extract_revolver_note_rows(doc),
+        "lease": extract_lease_note_rows(doc),
+        "debt_maturity": extract_debt_maturity_rows(doc),
+    }
+
+
