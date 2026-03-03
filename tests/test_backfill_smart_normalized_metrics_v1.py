@@ -369,3 +369,44 @@ def test_grouped_cash_proxy_can_complete_with_exact_marketable_securities():
     assert can_complete is True
 
 
+def test_effective_lease_liability_value_infers_zero_when_sec_concept_absent():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_absent",
+        }
+    )
+
+    assert resolved["value"] == 0.0
+    assert resolved["exact"] is True
+    assert resolved["inferred_zero"] is True
+
+
+def test_effective_lease_liability_value_promotes_fresh_reference_without_rou_override():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 33.0,
+                        "components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": False,
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] == 33.0
+    assert resolved["exact"] is True
+    assert resolved["support_override"] == "fresh_liability_total_reference"
+
+
