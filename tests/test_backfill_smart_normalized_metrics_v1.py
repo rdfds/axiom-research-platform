@@ -410,3 +410,83 @@ def test_effective_lease_liability_value_promotes_fresh_reference_without_rou_ov
     assert resolved["support_override"] == "fresh_liability_total_reference"
 
 
+def test_effective_lease_liability_value_infers_zero_when_no_lease_references_are_present():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {"present": False},
+                "finance_reference": {"present": False},
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] == 0.0
+    assert resolved["exact"] is True
+    assert resolved["inferred_zero"] is True
+    assert resolved["support_override"] == "no_lease_references_present"
+
+
+def test_effective_lease_liability_value_promotes_stale_operating_total_with_fresh_rou_asset():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 162_200_000.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                    "right_of_use_asset_reference": {
+                        "components": [{"end": "2024-09-28"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": False,
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] == 162_200_000.0
+    assert resolved["exact"] is True
+    assert resolved["support_override"] == "stale_liability_total_corroborated_by_fresh_rou_asset"
+
+
+def test_effective_lease_liability_value_prefers_fresher_partial_reference_over_stale_direct_total():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 15.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                    "partial_component_reference": {
+                        "value": 24.0,
+                        "current_components": [{"end": "2023-12-31"}],
+                        "noncurrent_components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {"present": False},
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] == 24.0
+    assert resolved["exact"] is True
+    assert resolved["support_override"] == "fresh_liability_total_reference"
+
+

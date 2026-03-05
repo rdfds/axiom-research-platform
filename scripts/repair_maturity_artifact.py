@@ -304,7 +304,7 @@ def repair_maturity_and_refi_metrics(
 
     target = features.get("capital_structure.maturity_wall_ratio_24m")
     if target and target.get("value") is None:
-        preferred = market_ratio or features['capital_structure.maturity_wall_ratio_24m_market']
+        preferred = market_ratio or features.get("capital_structure.maturity_wall_ratio_24m_market")
         fallback = reported_ratio or features.get("capital_structure.maturity_wall_ratio_24m_reported")
         source = preferred if _node_value(preferred) is not None else fallback
         if source and _node_value(source) is not None:
