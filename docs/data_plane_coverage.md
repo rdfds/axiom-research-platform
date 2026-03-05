@@ -43,3 +43,15 @@ So full 2026 text facts require the external chunking pipeline to be re-run.
 
 ---
 
+## Next Steps to Restore 2026
+
+1. Rebuild `warehouse_doc_chunks` for 2026 (from the upstream chunking pipeline).
+2. Rebuild `warehouse_text_signals` for 2026.
+3. Re-run:
+   - `scripts/build_extracted_fact_registry.py --years 2026`
+   - `scripts/enrich_extracted_fact_registry.py --years 2026`
+   - `scripts/build_financial_facts_registry.py --years 2026`
+   - `scripts/build_fact_validity.py --years 2026`
+
+---
+
