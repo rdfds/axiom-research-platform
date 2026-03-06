@@ -164,3 +164,29 @@ def overlay_cds(flat_path: Path, cds_path: Path, redcode_map_path: Path, as_of_d
     return flat, summary
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--flat-path", type=Path, required=True)
+    parser.add_argument("--cds-path", type=Path, required=True)
+    parser.add_argument("--redcode-map-path", type=Path, required=True)
+    parser.add_argument("--out-parquet", type=Path, required=True)
+    parser.add_argument("--out-csv", type=Path, required=True)
+    parser.add_argument("--summary-out", type=Path, required=True)
+    parser.add_argument("--as-of-date", default="2024-12-31")
+    args = parser.parse_args()
+
+    repaired, summary = overlay_cds(
+        flat_path=args.flat_path,
+        cds_path=args.cds_path,
+        redcode_map_path=args.redcode_map_path,
+        as_of_date=args.as_of_date,
+    )
+    args.out_parquet.parent.mkdir(parents=True, exist_ok=True)
+    repaired.to_parquet(args.out_parquet, index=False)
+    repaired.to_csv(args.out_csv, index=False)
+    args.summary_out.write_text(json.dumps(summary, indent=2))
+    print(f"Wrote repaired flat quant export -> {args.out_parquet}")
+
+
+if __name__ == "__main__":
+    main()
