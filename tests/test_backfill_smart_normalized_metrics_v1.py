@@ -490,3 +490,141 @@ def test_effective_lease_liability_value_prefers_fresher_partial_reference_over_
     assert resolved["support_override"] == "fresh_liability_total_reference"
 
 
+def test_effective_lease_liability_value_combines_fresh_and_stale_rou_corroborated_classes():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "partial_component_reference": {
+                        "value": 150.0,
+                        "current_components": [{"end": "2024-09-30"}],
+                        "noncurrent_components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 20.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                    "right_of_use_asset_reference": {
+                        "components": [{"end": "2024-09-30"}],
+                    },
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] == 170.0
+    assert resolved["exact"] is True
+    assert resolved["support_override"] == "hybrid_fresh_and_stale_liability_total_reference"
+
+
+def test_effective_lease_liability_value_promotes_immaterial_stale_finance_tail():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "partial_component_reference": {
+                        "value": 150_000_000.0,
+                        "current_components": [{"end": "2024-09-30"}],
+                        "noncurrent_components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 4_000_000.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+        total_debt_value=2_000_000_000.0,
+    )
+
+    assert resolved["value"] == 154_000_000.0
+    assert resolved["exact"] is True
+    assert resolved["support_override"] == "hybrid_fresh_and_immaterial_stale_liability_total_reference"
+
+
+def test_effective_lease_liability_value_does_not_promote_material_stale_finance_tail():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "partial_component_reference": {
+                        "value": 150_000_000.0,
+                        "current_components": [{"end": "2024-09-30"}],
+                        "noncurrent_components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 60_000_000.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+        total_debt_value=2_000_000_000.0,
+    )
+
+    assert resolved["value"] is None
+    assert resolved["exact"] is False
+    assert resolved["support_override"] is None
+
+
+def test_effective_lease_liability_value_requires_fresh_rou_for_each_present_class():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 150_000_000.0,
+                        "components": [{"end": "2024-09-30"}],
+                    },
+                    "right_of_use_asset_reference": {
+                        "components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": True,
+                    "direct_total_reference": {
+                        "value": 20_000_000.0,
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                    "right_of_use_asset_reference": {
+                        "components": [{"end": "2023-12-31"}],
+                    },
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] is None
+    assert resolved["exact"] is False
+    assert resolved["support_override"] is None
+
+

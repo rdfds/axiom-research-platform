@@ -126,3 +126,28 @@ Important files:
 
 The learned-distance layer tunes similarity weights by action family and objective so that analogs are retrieved for the decision being made, not just for superficial similarity.
 
+## 6. Action Impact Layer
+
+The action-impact layer evaluates whether action setups historically predict measurable outcomes.
+
+Examples:
+
+- short-window abnormal stock returns
+- positive/material return classifiers
+- valuation rerating
+- credit spread movement
+- leverage or rating changes
+- operating metric movement
+
+Important files:
+
+- `src/action_stock_impact_validation.py`
+- `src/action_valuation_rerating_validation.py`
+- `src/causal_impact_model.py`
+- `src/mechanism_brain.py`
+- `tests/test_action_stock_impact_validation.py`
+- `tests/test_action_valuation_rerating_validation.py`
+- `tests/test_mechanism_causal_strict_gate.py`
+
+The system deliberately separates metric-routed decision evidence from generic causal descriptions.
+
