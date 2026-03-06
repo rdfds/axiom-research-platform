@@ -628,3 +628,47 @@ def test_effective_lease_liability_value_requires_fresh_rou_for_each_present_cla
     assert resolved["support_override"] is None
 
 
+def test_effective_lease_liability_value_ignores_partial_reference_without_total_value():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "unsupported",
+            "value": None,
+            "missing_reason": "sec_concept_unavailable",
+            "component_breakdown": {
+                "operating_reference": {
+                    "present": True,
+                    "partial_component_reference": {
+                        "value": None,
+                        "current_components": [],
+                        "noncurrent_components": [{"end": "2024-09-30"}],
+                    },
+                    "right_of_use_asset_reference": {
+                        "components": [{"end": "2024-09-30"}],
+                    },
+                },
+                "finance_reference": {
+                    "present": False,
+                },
+            },
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] is None
+    assert resolved["exact"] is False
+
+
+def test_effective_lease_liability_value_ignores_negative_exact_value():
+    resolved = _effective_lease_liability_value(
+        {
+            "support_mode": "exact",
+            "value": -25.0,
+        },
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert resolved["value"] is None
+    assert resolved["exact"] is False
+    assert resolved["support_override"] == "negative_lease_liability_exact_value_ignored"
+
+
