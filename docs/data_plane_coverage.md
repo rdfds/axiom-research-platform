@@ -55,3 +55,7 @@ So full 2026 text facts require the external chunking pipeline to be re-run.
 
 ---
 
+## Summary
+
+The Data Plane is **complete and validated through 2025**.  
+2026 is missing only because **doc chunks + signals are absent**, not due to pipeline bugs.
