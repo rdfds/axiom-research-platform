@@ -99,7 +99,7 @@ def _latest_cds_snapshot(best_daily: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def overlay_cds(flat_path: Path, cds_path: Path, redcode_map_path: Path, as_of_date: str) :
+def overlay_cds(flat_path: Path, cds_path: Path, redcode_map_path: Path, as_of_date: str) -> tuple[pd.DataFrame, dict]:
     flat = pd.read_parquet(flat_path)
     prior_exact_ids = set(
         flat.loc[

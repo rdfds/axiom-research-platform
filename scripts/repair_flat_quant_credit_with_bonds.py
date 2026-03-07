@@ -322,3 +322,131 @@ def build_bond_credit_overlay(
     ]
 
 
+def main() -> None:
+    args = parse_args()
+
+    flat_path = Path(args.flat_path)
+    out_parquet = Path(args.out_parquet)
+    out_parquet.parent.mkdir(parents=True, exist_ok=True)
+
+    merged = pd.read_parquet(flat_path).copy()
+    merged["company_id"] = merged["company_id"].astype(str)
+
+    overlay = build_bond_credit_overlay(
+        flat_path=flat_path,
+        entity_identifier_path=Path(args.entity_identifier_path),
+        trace_daily_path=Path(args.trace_daily_path),
+        bond_issuances_path=Path(args.bond_issuances_path),
+        raw_timeseries_path=Path(args.raw_timeseries_path),
+        as_of_date=args.as_of_date,
+        current_lookback_days=args.current_lookback_days,
+        history_lookback_days=args.history_lookback_days,
+    )
+    overlay["company_id"] = overlay["company_id"].astype(str)
+
+    merged = merged.merge(overlay, on="company_id", how="left")
+
+    if "market__credit_spread_percentile_2y__value" not in merged.columns:
+        merged["market__credit_spread_percentile_2y__value"] = None
+    if "market__credit_spread_percentile_2y__unit" not in merged.columns:
+        merged["market__credit_spread_percentile_2y__unit"] = "ratio"
+    if "market__credit_spread_percentile_2y__support_mode" not in merged.columns:
+        merged["market__credit_spread_percentile_2y__support_mode"] = "unsupported"
+    if "market__credit_spread_percentile_2y__fallback_used" not in merged.columns:
+        merged["market__credit_spread_percentile_2y__fallback_used"] = None
+
+    merged["market__credit_spread_trade_date"] = merged["credit_spread_trade_date"]
+    merged["market__credit_spread_issue_count__value"] = merged["current_issue_count"]
+    merged["market__credit_spread_issue_count__unit"] = "count"
+    merged["market__credit_spread_issue_count__support_mode"] = merged["current_issue_count"].notna().map(
+        {True: "exact", False: "unsupported"}
+    )
+    merged["market__credit_spread_history_obs__value"] = merged["history_obs"]
+    merged["market__credit_spread_history_obs__unit"] = "trading_days"
+    merged["market__credit_spread_history_obs__support_mode"] = merged["history_obs"].notna().map(
+        {True: "exact", False: "unsupported"}
+    )
+
+    exact_mask = merged["credit_spread_level"].notna()
+    percentile_mask = merged["spread_percentile_2y"].notna()
+
+    merged.loc[exact_mask, "market__credit_spread_level__value"] = merged.loc[exact_mask, "credit_spread_level"]
+    merged.loc[exact_mask, "market__credit_spread_level__unit"] = "pct"
+    merged.loc[exact_mask, "market__credit_spread_level__support_mode"] = "exact"
+    merged.loc[exact_mask, "market__credit_spread_level__fallback_used"] = (
+        f"trace_fisd_volume_weighted_spread_to_matched_treasury_{int(args.current_lookback_days)}d"
+    )
+
+    merged.loc[percentile_mask, "market__credit_spread_percentile_2y__value"] = (
+        merged.loc[percentile_mask, "spread_percentile_2y"]
+    )
+    merged.loc[percentile_mask, "market__credit_spread_percentile_2y__unit"] = "ratio"
+    merged.loc[percentile_mask, "market__credit_spread_percentile_2y__support_mode"] = "exact"
+    merged.loc[percentile_mask, "market__credit_spread_percentile_2y__fallback_used"] = (
+        f"issuer_spread_percentile_over_{int(args.history_lookback_days)}d_trace_history"
+    )
+
+    merged.loc[percentile_mask, "market__credit_window_proxy__value"] = 1.0 - merged.loc[
+        percentile_mask, "spread_percentile_2y"
+    ]
+    merged.loc[percentile_mask, "market__credit_window_proxy__unit"] = "ratio"
+    merged.loc[percentile_mask, "market__credit_window_proxy__support_mode"] = "proxy_missing_component"
+    merged.loc[percentile_mask, "market__credit_window_proxy__fallback_used"] = (
+        f"one_minus_real_bond_spread_percentile_{int(args.history_lookback_days)}d"
+    )
+
+    merged = merged.drop(
+        columns=[
+            "credit_spread_trade_date",
+            "credit_spread_level",
+            "spread_percentile_2y",
+            "current_issue_count",
+            "history_obs",
+        ],
+        errors="ignore",
+    )
+
+    merged.to_parquet(out_parquet, index=False)
+
+    if args.out_csv:
+        out_csv = Path(args.out_csv)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        merged.to_csv(out_csv, index=False)
+
+    if args.summary_out:
+        sample_ids = ["0000006201", "0000003453", "0001637459", "0000909832", "0000003197", "0001639438"]
+        sample = {}
+        for cid in sample_ids:
+            sub = merged[merged["company_id"] == cid]
+            if sub.empty:
+                continue
+            row = sub.iloc[0]
+            sample[cid] = {
+                "company_name": row["company_name"],
+                "credit_spread_level": _json_scalar(row.get("market__credit_spread_level__value")),
+                "credit_spread_support_mode": _json_scalar(row.get("market__credit_spread_level__support_mode")),
+                "credit_spread_trade_date": _json_scalar(row.get("market__credit_spread_trade_date")),
+                "credit_spread_issue_count": _json_scalar(row.get("market__credit_spread_issue_count__value")),
+                "credit_spread_history_obs": _json_scalar(row.get("market__credit_spread_history_obs__value")),
+                "credit_spread_percentile_2y": _json_scalar(row.get("market__credit_spread_percentile_2y__value")),
+                "credit_window_proxy": _json_scalar(row.get("market__credit_window_proxy__value")),
+            }
+
+        summary = {
+            "rows": int(len(merged)),
+            "bond_spread_matches": int(exact_mask.sum()),
+            "bond_spread_percentile_matches": int(percentile_mask.sum()),
+            "current_lookback_days": int(args.current_lookback_days),
+            "history_lookback_days": int(args.history_lookback_days),
+            "market.credit_spread_level": _support_counts(merged["market__credit_spread_level__support_mode"]),
+            "market.credit_spread_percentile_2y": _support_counts(
+                merged["market__credit_spread_percentile_2y__support_mode"]
+            ),
+            "market.credit_window_proxy": _support_counts(merged["market__credit_window_proxy__support_mode"]),
+            "sample": sample,
+        }
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2))
+
+    print(f"Overlayed bond credit spreads -> {out_parquet}")
+
+
