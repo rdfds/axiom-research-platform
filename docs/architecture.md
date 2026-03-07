@@ -151,3 +151,16 @@ Important files:
 
 The system deliberately separates metric-routed decision evidence from generic causal descriptions.
 
+## 7. EvidencePack and CFO Surface
+
+The final product layer packages output into evidence that can be reviewed.
+
+Important files:
+
+- `src/evidence_pack.py`
+- `src/cfo_decision_surface.py`
+- `src/board_ready_dossier.py`
+- `src/recommendation_run_orchestrator.py`
+
+The EvidencePack concept matters because it gives every user-facing claim a bounded data source. It is the bridge between quantitative models and board-ready language.
+
