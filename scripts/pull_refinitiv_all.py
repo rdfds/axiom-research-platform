@@ -136,3 +136,23 @@ def _find_ma_probe_universe() -> str:
     return ""
 
 
+def _probe_ma_fields(universe: str) -> list:
+    if not universe:
+        return []
+    log("  Probing M&A fields...")
+    working = []
+    for field in MNA_FIELD_CANDIDATES:
+        try:
+            _ = rd.get_data(universe=universe, fields=[field])
+            working.append(field)
+        except Exception as e:
+            log(f"    Field not available: {field} ({e})")
+    if not working:
+        return []
+    # Prefer scaled deal value if both present
+    if "TR.MnADealValue(Scale=6)" in working and "TR.MnADealValue" in working:
+        working = [f for f in working if f != "TR.MnADealValue"]
+    log(f"  Working M&A fields: {working}")
+    return working
+
+
