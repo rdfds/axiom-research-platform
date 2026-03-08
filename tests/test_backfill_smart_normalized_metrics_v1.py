@@ -672,3 +672,88 @@ def test_effective_lease_liability_value_ignores_negative_exact_value():
     assert resolved["support_override"] == "negative_lease_liability_exact_value_ignored"
 
 
+def test_materialize_smart_metrics_for_row_promotes_stale_lease_and_updates_debt_metrics():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    row = {
+        "company_id": "123",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {
+                "support_mode": "exact",
+                "value": 100.0,
+                "component_breakdown": {"mode": "current_plus_noncurrent_debt"},
+            },
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_unavailable",
+                "component_breakdown": {
+                    "operating_reference": {
+                        "present": True,
+                        "direct_total_reference": {
+                            "value": 25.0,
+                            "components": [{"end": "2023-12-31"}],
+                        },
+                        "right_of_use_asset_reference": {
+                            "components": [{"end": "2024-09-30"}],
+                        },
+                    },
+                    "finance_reference": {
+                        "present": False,
+                    },
+                },
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {
+                "support_mode": "exact",
+                "value": 20.0,
+            },
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 50.0},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-22T00:00:00Z",
+        provenance_sources=["registry.json"],
+    )
+
+    assert repaired["features"]["capital_structure.debt_like_obligations_normalized"]["support_mode"] == "exact"
+    assert repaired["features"]["capital_structure.debt_like_obligations_normalized"]["value"] == 125.0
+    assert (
+        repaired["features"]["capital_structure.debt_like_obligations_normalized"]["component_breakdown"][
+            "lease_support_override"
+        ]
+        == "stale_liability_total_corroborated_by_fresh_rou_asset"
+    )
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["value"] == 105.0
+    assert repaired["features"]["capital_structure.gross_leverage_normalized"]["value"] == 2.5
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 2.1
+
+
