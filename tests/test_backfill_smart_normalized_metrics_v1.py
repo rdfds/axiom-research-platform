@@ -1153,3 +1153,190 @@ def test_materialize_smart_metrics_for_row_prefers_sec_cash_plus_marketable_when
     assert round(repaired["features"]["capital_structure.net_leverage_normalized"]["value"], 3) == 0.158
 
 
+def test_materialize_smart_metrics_for_row_includes_exact_marketable_securities_when_grouped_cash_is_cash_only_proxy():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    row = {
+        "company_id": "aal-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 31_110_000_000.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_unavailable",
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {
+                "support_mode": "proxy_missing_component",
+                "value": 834_000_000.0,
+                "missing_reason": "cash_or_sti_component_missing",
+                "component_breakdown": {
+                    "mode": "partial_cash_stack",
+                    "cash": {"concept": "Cash"},
+                    "short_term_investments": None,
+                },
+            },
+            "liquidity.cash_and_equivalents_statement_direct": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "statement_fact_unavailable",
+            },
+            "liquidity.restricted_cash_sec_exact": {"support_mode": "exact", "value": 99_000_000.0},
+            "liquidity.marketable_securities_sec_exact": {"support_mode": "exact", "value": 7_638_000_000.0},
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "exact", "value": 2_868_000_000.0},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 4_436_000_000.0},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-22T00:00:00Z",
+        provenance_sources=["registry.json"],
+    )
+
+    available_liquidity = repaired["features"]["liquidity.available_liquidity_normalized"]
+    assert available_liquidity["support_mode"] == "exact"
+    assert available_liquidity["value"] == 11_340_000_000.0
+    assert (
+        available_liquidity["component_breakdown"]["cash_basis_support_override"]
+        == "partial_cash_stack_completed_by_marketable_securities"
+    )
+    assert available_liquidity["component_breakdown"]["restricted_cash_already_excluded_from_cash_basis"] is True
+    assert (
+        available_liquidity["component_breakdown"]["formula"]
+        == "cash_and_short_term_investments_provider_direct_cash_component + marketable_securities_sec_exact + revolver_undrawn_exact"
+    )
+
+
+def test_materialize_smart_metrics_adds_pension_metric_and_inclusive_debt_views_exact():
+    registry = {"metrics": {}}
+    row = {
+        "company_id": "pension-exact-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {"support_mode": "exact", "value": 20.0},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 30.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 30.0},
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 60.0},
+        },
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "DefinedBenefitPensionPlanLiabilitiesNoncurrent": {
+                    "units": {
+                        "USD": [
+                                {
+                                    "end": "2024-12-31",
+                                    "filed": "2024-12-31",
+                                    "val": 15.0,
+                                    "fy": 2024,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-04-01T00:00:00Z",
+        provenance_sources=["registry.json"],
+        companyfacts=companyfacts,
+    )
+
+    pension = repaired["features"]["capital_structure.net_pension_liability"]
+    assert pension["support_mode"] == "exact"
+    assert pension["value"] == 15.0
+    combined_retirement = repaired["features"]["capital_structure.combined_retirement_liability"]
+    assert combined_retirement["support_mode"] == "proxy_missing_component"
+    assert combined_retirement["value"] == 15.0
+    assert combined_retirement["component_breakdown"]["support_override"] == (
+        "combined_retirement_uses_pension_only;single_pension_liability_component"
+    )
+    debt_including_pension = repaired["features"]["capital_structure.debt_like_obligations_including_pension"]
+    assert debt_including_pension["support_mode"] == "exact"
+    assert debt_including_pension["value"] == 135.0
+    assert repaired["features"]["capital_structure.net_debt_including_pension"]["value"] == 105.0
+    assert repaired["features"]["capital_structure.gross_leverage_including_pension"]["value"] == 2.25
+    assert repaired["features"]["capital_structure.net_leverage_including_pension"]["value"] == 1.75
+    debt_including_retirement = repaired["features"]["capital_structure.debt_like_obligations_including_retirement"]
+    assert debt_including_retirement["support_mode"] == "proxy_missing_component"
+    assert debt_including_retirement["value"] == 135.0
+    assert (
+        debt_including_retirement["component_breakdown"]["combined_retirement_support_override"]
+        == "combined_retirement_uses_pension_only;single_pension_liability_component"
+    )
+    assert repaired["features"]["capital_structure.net_debt_including_retirement"]["value"] == 105.0
+    assert repaired["features"]["capital_structure.gross_leverage_including_retirement"]["value"] == 2.25
+    assert repaired["features"]["capital_structure.net_leverage_including_retirement"]["value"] == 1.75
+    assert repaired["features"]["capital_structure.retirement_obligation_regime"]["value"] == "pension_exact"
+
+
+def test_extract_retirement_note_components_from_html_splits_pension_from_other_postretirement():
+    filing = {
+        "cik": "0000000001",
+        "filing_date": "2024-12-01",
+        "form": "10-K",
+        "accession_number": "0000000001-24-000001",
+        "primary_document": "test.htm",
+    }
+    html = """
+    <html>
+      <body>
+        <table>
+          <tr><th></th><th>Pension benefits 2024</th><th>Other benefits 2024</th></tr>
+          <tr><td>Funded status at end of year</td><td>(15)</td><td>(4)</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    parsed = _extract_retirement_note_components_from_html(
+        filing=filing,
+        html=html,
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert parsed is not None
+    assert parsed["pension_value"] == 15.0
+    assert parsed["other_postretirement_value"] == 4.0
+    assert parsed["component_meta"]["pension"]["source_meta"]["mode"] == "funded_status_row"
+    assert parsed["component_meta"]["other_postretirement"]["source_meta"]["mode"] == "funded_status_row"
+
+

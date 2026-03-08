@@ -164,3 +164,14 @@ Important files:
 
 The EvidencePack concept matters because it gives every user-facing claim a bounded data source. It is the bridge between quantitative models and board-ready language.
 
+## Public Packaging Direction
+
+The active repo is still a broad workbench. The GitHub-facing version should emphasize:
+
+- a clean architecture story
+- one polished demo case
+- stable validation summaries
+- sample data rather than private/local artifacts
+- a small command-line path that rebuilds the demo from sample inputs
+
+The core modeling work is strong enough. The highest-return next work is packaging and curation.
