@@ -757,3 +757,399 @@ def test_materialize_smart_metrics_for_row_promotes_stale_lease_and_updates_debt
     assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 2.1
 
 
+def test_materialize_smart_metrics_for_row_floors_debt_like_at_total_debt_when_lease_input_is_negative():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    row = {
+        "company_id": "negative-lease-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {"support_mode": "exact", "value": -20.0},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 40.0},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-04-01T00:00:00Z",
+        provenance_sources=["registry.json"],
+    )
+
+    debt_like = repaired["features"]["capital_structure.debt_like_obligations_normalized"]
+    assert debt_like["support_mode"] == "proxy_missing_component"
+    assert debt_like["value"] == 100.0
+    assert debt_like["component_breakdown"]["lease_negative_input_ignored"] is True
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["value"] == 80.0
+    assert repaired["features"]["capital_structure.gross_leverage_normalized"]["value"] == 2.5
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 2.0
+
+
+def test_materialize_smart_metrics_for_row_repairs_operating_earnings_from_net_income_tax_interest_and_dna():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "InterestExpense": {
+                    "units": {
+                        "USD": [
+                            {"start": "2024-01-01", "end": "2024-12-31", "filed": "2024-12-31", "val": 10.0, "fy": 2024, "fp": "FY"}
+                        ]
+                    }
+                },
+                "IncomeTaxExpenseBenefit": {
+                    "units": {
+                        "USD": [
+                            {"start": "2024-01-01", "end": "2024-12-31", "filed": "2024-12-31", "val": 15.0, "fy": 2024, "fp": "FY"}
+                        ]
+                    }
+                },
+                "DepreciationAndAmortization": {
+                    "units": {
+                        "USD": [
+                            {"start": "2024-01-01", "end": "2024-12-31", "filed": "2024-12-31", "val": 25.0, "fy": 2024, "fp": "FY"}
+                        ]
+                    }
+                },
+            }
+        }
+    }
+    row = {
+        "company_id": "456",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {
+                "support_mode": "exact",
+                "value": 100.0,
+                "component_breakdown": {"mode": "current_plus_noncurrent_debt"},
+            },
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_operating_income_ttm_unavailable",
+            },
+            "earnings.net_income_ttm_provider_direct": {"support_mode": "exact", "value": 50.0},
+            "capital_structure.interest_expense_statement_direct": {"support_mode": "unsupported", "value": None},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-22T00:00:00Z",
+        provenance_sources=["registry.json"],
+        companyfacts=companyfacts,
+    )
+
+    earnings = repaired["features"]["operating.operating_earnings_normalized"]
+    assert earnings["support_mode"] == "exact"
+    assert earnings["value"] == 100.0
+    assert (
+        earnings["component_breakdown"]["earnings_support_override"]
+        == "net_income_plus_interest_tax_depreciation_amortization"
+    )
+    assert repaired["features"]["capital_structure.gross_leverage_normalized"]["support_mode"] == "exact"
+    assert repaired["features"]["capital_structure.gross_leverage_normalized"]["value"] == 1.0
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 0.8
+
+
+def test_materialize_smart_metrics_for_row_promotes_grouped_cash_market_baseline_when_restricted_cash_is_undisclosed():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    row = {
+        "company_id": "market-liquidity-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.cash_and_equivalents_statement_direct": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "statement_fact_unavailable",
+            },
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_unavailable",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 40.0},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-24T00:00:00Z",
+        provenance_sources=["registry.json"],
+    )
+
+    available_liquidity = repaired["features"]["liquidity.available_liquidity_normalized"]
+    assert available_liquidity["support_mode"] == "exact"
+    assert available_liquidity["value"] == 20.0
+    assert (
+        available_liquidity["component_breakdown"]["restricted_cash_support_override"]
+        == "grouped_cash_market_baseline_without_restricted_cash_disclosure"
+    )
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["support_mode"] == "exact"
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["value"] == 80.0
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["support_mode"] == "exact"
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 2.0
+
+
+def test_market_availability_adjustment_matches_effective_window():
+    overrides = {
+        "0000104169": [
+            {
+                "effective_start": "2024-12-06",
+                "effective_end": "2025-03-31",
+                "not_freely_transferable_cash": 3_600_000_000.0,
+                "source": "Walmart 10-Q filed 2024-12-06",
+            }
+        ]
+    }
+
+    adjustment = _market_availability_adjustment(
+        overrides,
+        company_id="0000104169",
+        as_of_time="2024-12-31T00:00:00Z",
+    )
+
+    assert adjustment is not None
+    assert adjustment["value"] == 3_600_000_000.0
+    assert adjustment["source"] == "Walmart 10-Q filed 2024-12-06"
+
+
+def test_materialize_smart_metrics_for_row_applies_market_availability_adjustment():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    row = {
+        "company_id": "0000104169",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 20.0},
+            "liquidity.cash_and_equivalents_statement_direct": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "statement_fact_unavailable",
+            },
+            "liquidity.restricted_cash_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_unavailable",
+            },
+            "liquidity.marketable_securities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 40.0},
+        },
+    }
+    overrides = {
+        "0000104169": [
+            {
+                "effective_start": "2024-12-06",
+                "effective_end": "2025-03-31",
+                "not_freely_transferable_cash": 3.6,
+                "source": "Walmart 10-Q filed 2024-12-06",
+                "reported_period_end": "2024-10-31",
+            }
+        ]
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-24T00:00:00Z",
+        provenance_sources=["registry.json"],
+        market_availability_overrides=overrides,
+    )
+
+    available_liquidity = repaired["features"]["liquidity.available_liquidity_normalized"]
+    assert available_liquidity["support_mode"] == "exact"
+    assert available_liquidity["value"] == 16.4
+    assert available_liquidity["component_breakdown"]["not_freely_transferable_cash_disclosed"] == 3.6
+    assert (
+        available_liquidity["component_breakdown"]["market_availability_adjustment"]["source"]
+        == "Walmart 10-Q filed 2024-12-06"
+    )
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["value"] == 83.6
+    assert repaired["features"]["capital_structure.net_leverage_normalized"]["value"] == 2.09
+
+
+def test_materialize_smart_metrics_for_row_prefers_sec_cash_plus_marketable_when_grouped_cash_is_inconsistent():
+    registry = {
+        "metrics": {
+            "debt_like_obligations_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "available_liquidity_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "operating_earnings_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_debt_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "gross_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+            "net_leverage_normalized": {"status": "partially_feasible", "promotion_rule": "test"},
+        }
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {
+                    "units": {
+                        "USD": [
+                            {"end": "2024-09-30", "filed": "2024-10-31", "val": 6.15, "fy": 2024, "fp": "Q3", "form": "10-Q"}
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    row = {
+        "company_id": "0001543151",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 9.807},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "sec_concept_absent",
+            },
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 6.977},
+            "liquidity.cash_and_equivalents_statement_direct": {
+                "support_mode": "unsupported",
+                "value": None,
+                "missing_reason": "statement_fact_unavailable",
+            },
+            "liquidity.restricted_cash_sec_exact": {"support_mode": "exact", "value": 1.92},
+            "liquidity.marketable_securities_sec_exact": {"support_mode": "exact", "value": 2.913},
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 4.714},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-03-24T00:00:00Z",
+        provenance_sources=["registry.json"],
+        companyfacts=companyfacts,
+    )
+
+    available_liquidity = repaired["features"]["liquidity.available_liquidity_normalized"]
+    assert available_liquidity["support_mode"] == "exact"
+    assert round(available_liquidity["value"], 3) == 9.063
+    assert (
+        available_liquidity["component_breakdown"]["cash_basis_support_override"]
+        == "sec_cash_and_marketable_override_provider_grouped_cash"
+    )
+    assert available_liquidity["component_breakdown"]["restricted_cash_already_excluded_from_cash_basis"] is True
+    assert repaired["features"]["capital_structure.net_debt_normalized"]["support_mode"] == "exact"
+    assert round(repaired["features"]["capital_structure.net_debt_normalized"]["value"], 3) == 0.744
+    assert round(repaired["features"]["capital_structure.net_leverage_normalized"]["value"], 3) == 0.158
+
+
