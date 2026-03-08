@@ -71,3 +71,12 @@ def fetch_financials_asof(
     return pivot
 
 
+def latest_financials_asof(
+    as_of: datetime,
+    warehouse: Optional[AsOfWarehouse] = None,
+) -> pd.DataFrame:
+    df = fetch_financials_asof(as_of, warehouse)
+    if df.empty:
+        return df
+    latest = df.groupby("company_id").head(1).reset_index(drop=True)
+    return latest
