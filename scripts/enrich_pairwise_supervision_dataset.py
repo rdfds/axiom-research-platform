@@ -55,3 +55,80 @@ def _sql_literal(value: str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _load_needed_precedent_outcomes_lookup(
+    outcomes_path: Path,
+    *,
+    rows: List[Dict[str, Any]],
+) -> Dict[tuple[str, str, str], Dict[str, Any]]:
+    company_ids = sorted(
+        {
+            str(value).strip()
+            for row in rows
+            for value in (
+                row.get("positive_precedent_company_id"),
+                row.get("negative_precedent_company_id"),
+            )
+            if str(value or "").strip()
+        }
+    )
+    action_ids = sorted(
+        {
+            str(value).strip()
+            for row in rows
+            for value in (
+                row.get("anchor_action_id"),
+                row.get("competitor_action_id"),
+            )
+            if str(value or "").strip()
+        }
+    )
+    decision_times = [
+        pd.to_datetime(_parse_precedent_decision_time(str(value or "")), utc=True, errors="coerce")
+        for row in rows
+        for value in (
+            row.get("positive_precedent_id"),
+            row.get("negative_precedent_id"),
+        )
+    ]
+    decision_times = [stamp for stamp in decision_times if pd.notna(stamp)]
+    if not company_ids or not action_ids:
+        return {}
+    company_sql = ", ".join(_sql_literal(value) for value in company_ids)
+    action_sql = ", ".join(_sql_literal(value) for value in action_ids)
+    where_clauses = [
+        f"CAST(company_id AS VARCHAR) IN ({company_sql})",
+        f"CAST(normalized_action_id AS VARCHAR) IN ({action_sql})",
+    ]
+    if decision_times:
+        min_date = min(decision_times).date().isoformat()
+        max_date = max(decision_times).date().isoformat()
+        where_clauses.append(
+            f"CAST(action_date AS DATE) BETWEEN DATE '{min_date}' AND DATE '{max_date}'"
+        )
+    query = f"""
+        SELECT *
+        FROM read_parquet(?)
+        WHERE {' AND '.join(where_clauses)}
+    """
+    frame = duckdb.execute(query, [str(outcomes_path)]).df()
+    if frame.empty:
+        return {}
+    frame = augment_precedent_state_vector_columns(frame)
+    frame["company_id"] = frame["company_id"].astype(str)
+    frame["normalized_action_id"] = frame["normalized_action_id"].astype(str)
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    lookup: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    for row in frame.to_dict(orient="records"):
+        action_date = row.get("action_date")
+        if pd.isna(action_date):
+            continue
+        key = (
+            str(row.get("company_id") or "").strip(),
+            str(row.get("normalized_action_id") or "").strip(),
+            _normalize_as_of_time(str(action_date)),
+        )
+        if key[0] and key[1] and key[2] and key not in lookup:
+            lookup[key] = row
+    return lookup
+
+

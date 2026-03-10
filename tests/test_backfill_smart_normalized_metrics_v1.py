@@ -1685,3 +1685,86 @@ def test_materialize_smart_metrics_marks_defined_contribution_only_regime_from_f
     assert regime["component_breakdown"]["regime_source"] == "filing_text_hint"
 
 
+def test_materialize_smart_metrics_falls_back_when_retirement_note_loader_times_out():
+    registry = {"metrics": {}}
+    row = {
+        "company_id": "retirement-timeout-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.restricted_cash_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 50.0},
+            "operating.ebit_statement_direct": {"support_mode": "exact", "value": 40.0},
+            "capital_structure.interest_expense_statement_direct": {"support_mode": "unsupported", "value": None},
+        },
+    }
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "PensionAndOtherPostretirementAndPostemploymentBenefitPlansLiabilitiesNoncurrent": {
+                    "units": {
+                        "USD": [
+                            {
+                                "end": "2024-12-31",
+                                "val": 12.0,
+                                "filed": "2025-02-01",
+                                "form": "10-K",
+                                "fy": 2024,
+                                "fp": "FY",
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    def _timeout_loader():
+        raise smart_mod._CompanyProcessingTimeout("retirement_note_timeout")
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-04-02T00:00:00Z",
+        provenance_sources=["registry.json"],
+        companyfacts=companyfacts,
+        retirement_note_loader=_timeout_loader,
+    )
+
+    assert repaired["features"]["capital_structure.net_pension_liability"]["support_mode"] == "unsupported"
+    combined = repaired["features"]["capital_structure.combined_retirement_liability"]
+    assert combined["support_mode"] == "proxy_missing_component"
+    assert combined["value"] == 12.0
+    assert repaired["features"]["capital_structure.retirement_obligation_regime"]["value"] == "combined_retirement_only"
+
+
+def test_load_companyfacts_returns_none_on_timeout(monkeypatch, tmp_path):
+    path = tmp_path / "companyfacts.json"
+    path.write_text("{}")
+
+    def _raise_timeout(*args, **kwargs):  # noqa: ARG001
+        raise smart_mod.subprocess.TimeoutExpired(cmd="/bin/cat", timeout=1.5)
+
+    monkeypatch.setattr(smart_mod.subprocess, "run", _raise_timeout)
+
+    assert _load_companyfacts(path) is None
+
+
+def test_load_completed_company_ids_reads_partial_output(tmp_path):
+    path = tmp_path / "partial.jsonl"
+    rows = [
+        {"company_id": "0001", "features": {}},
+        {"company_id": "0002", "features": {}},
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    assert _load_completed_company_ids(path) == {"0001", "0002"}
+
+
