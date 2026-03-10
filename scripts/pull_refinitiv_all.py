@@ -105,7 +105,7 @@ def save_parquet(df, name):
     return path
 
 
-def ensure_session() :
+def ensure_session() -> bool:
     """Verify Refinitiv Desktop/Workspace session is actually usable."""
     try:
         _ = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
