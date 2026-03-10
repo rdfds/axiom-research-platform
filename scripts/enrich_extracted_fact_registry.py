@@ -214,3 +214,5 @@ def main() -> None:
     print(f"Saved enriched ExtractedFactRegistry -> {out_root}")
 
 
+if __name__ == "__main__":
+    main()

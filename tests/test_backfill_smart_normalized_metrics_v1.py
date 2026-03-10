@@ -1597,3 +1597,91 @@ def test_materialize_smart_metrics_uses_filing_note_split_to_isolate_pension_fro
     assert regime["component_breakdown"]["classification_reference"]["mode"] == "filing_note_split"
 
 
+def test_materialize_smart_metrics_keeps_other_postretirement_unsupported_when_split_is_unavailable():
+    registry = {"metrics": {}}
+    row = {
+        "company_id": "other-postretirement-unavailable-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.restricted_cash_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.restricted_cash": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 50.0},
+        },
+    }
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-04-02T00:00:00Z",
+        provenance_sources=["registry.json"],
+    )
+
+    other_postretirement = repaired["features"]["capital_structure.other_postretirement_benefit_liability"]
+    assert other_postretirement["support_mode"] == "unsupported"
+    assert other_postretirement["value"] is None
+    combined_retirement = repaired["features"]["capital_structure.combined_retirement_liability"]
+    assert combined_retirement["support_mode"] == "unsupported"
+    assert combined_retirement["value"] is None
+    debt_including_retirement = repaired["features"]["capital_structure.debt_like_obligations_including_retirement"]
+    assert debt_including_retirement["support_mode"] == "proxy_missing_component"
+    assert debt_including_retirement["value"] == 100.0
+    assert debt_including_retirement["component_breakdown"]["combined_retirement_missing_assumed_zero"] is True
+    assert repaired["features"]["capital_structure.net_debt_including_retirement"]["value"] == 75.0
+    assert repaired["features"]["capital_structure.gross_leverage_including_retirement"]["value"] == 2.0
+    assert repaired["features"]["capital_structure.net_leverage_including_retirement"]["value"] == 1.5
+    assert repaired["features"]["capital_structure.retirement_obligation_regime"]["value"] == "retirement_not_surfaced"
+
+
+def test_materialize_smart_metrics_marks_defined_contribution_only_regime_from_filing_hint():
+    registry = {"metrics": {}}
+    row = {
+        "company_id": "defined-contribution-probe",
+        "as_of_time": "2024-12-31T00:00:00Z",
+        "features": {
+            "capital_structure.total_debt_provider_direct": {"support_mode": "exact", "value": 100.0},
+            "capital_structure.current_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.long_term_debt_statement_direct": {"support_mode": "unsupported", "value": None},
+            "capital_structure.lease_liabilities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.cash_and_short_term_investments_provider_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.cash_and_equivalents_statement_direct": {"support_mode": "exact", "value": 25.0},
+            "liquidity.restricted_cash_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.marketable_securities_sec_exact": {"support_mode": "unsupported", "value": None},
+            "liquidity.revolver_undrawn_sec_exact": {"support_mode": "unsupported", "value": None},
+            "operating.ebitda_ltm_provider_direct": {"support_mode": "exact", "value": 60.0},
+            "operating.ebit_statement_direct": {"support_mode": "exact", "value": 50.0},
+            "capital_structure.interest_expense_statement_direct": {"support_mode": "unsupported", "value": None},
+        },
+    }
+
+    repaired = materialize_smart_metrics_for_row(
+        row=row,
+        registry=registry,
+        computed_at="2026-04-02T00:00:00Z",
+        provenance_sources=["registry.json"],
+        companyfacts=None,
+        retirement_note_loader=lambda: {
+            "regime_hint": "defined_contribution_only",
+            "component_meta": {
+                "mode": "defined_contribution_only_filing_text",
+                "carryforward_used": False,
+            },
+        },
+    )
+
+    assert repaired["features"]["capital_structure.net_pension_liability"]["support_mode"] == "unsupported"
+    assert repaired["features"]["capital_structure.combined_retirement_liability"]["support_mode"] == "unsupported"
+    regime = repaired["features"]["capital_structure.retirement_obligation_regime"]
+    assert regime["support_mode"] == "exact"
+    assert regime["value"] == "defined_contribution_only"
+    assert regime["component_breakdown"]["regime_source"] == "filing_text_hint"
+
+

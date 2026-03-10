@@ -36,3 +36,22 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _iter_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def _parse_precedent_decision_time(precedent_id: str) :
+    parts = str(precedent_id or "").split("::")
+    if len(parts) >= 2:
+        return _normalize_as_of_time(parts[1])
+    return ""
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
