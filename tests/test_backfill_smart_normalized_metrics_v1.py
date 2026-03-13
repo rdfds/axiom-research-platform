@@ -1768,3 +1768,22 @@ def test_load_completed_company_ids_reads_partial_output(tmp_path):
     assert _load_completed_company_ids(path) == {"0001", "0002"}
 
 
+def test_summarize_output_rows_counts_fail_open(tmp_path):
+    path = tmp_path / "smart.jsonl"
+    row = {
+        "company_id": "0001",
+        "features": _build_fail_open_smart_metrics(
+            as_of_time="2024-12-31T00:00:00Z",
+            computed_at="2026-03-31T00:00:00Z",
+            provenance_sources=["registry.json"],
+            error_type="company_processing_timeout",
+            error_message="boom",
+        ),
+    }
+    path.write_text(json.dumps(row) + "\n")
+
+    summary = _summarize_output_rows(path)
+
+    assert summary["capital_structure.debt_like_obligations_normalized"]["unsupported"] == 1
+    assert summary["capital_structure.net_leverage_normalized"]["unsupported"] == 1
+    assert summary["row_fail_open"]["company_processing_timeout"] == 1

@@ -365,7 +365,7 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
-def main() :
+def main() -> None:
     args = parse_args()
     artifact_path = Path(args.artifact_path)
     out_path = Path(args.out)
