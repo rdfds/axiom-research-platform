@@ -479,3 +479,68 @@ def extract_note_patterns_from_documents(documents: pd.DataFrame) -> Dict[str, p
     }
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Extract narrow SEC credit-note patterns from document text.")
+    parser.add_argument("--years", required=True, help="Comma-separated years to scan, e.g. 2023,2024")
+    parser.add_argument("--doc-text-map-root", default="data/inputs_layer/doc_text_map")
+    parser.add_argument("--raw-documents-root", default="data/inputs_layer/raw_documents")
+    parser.add_argument("--company-ids", default=None, help="Optional comma-separated entity IDs to retain")
+    parser.add_argument("--limit", type=int, default=None, help="Optional limit of documents to scan after load")
+    parser.add_argument("--out-root", default="data/sec/note_extracts")
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+
+    years = [int(token.strip()) for token in args.years.split(",") if token.strip()]
+    company_ids = [token.strip() for token in (args.company_ids or "").split(",") if token.strip()] or None
+
+    out_root = ROOT / args.out_root
+    out_root.mkdir(parents=True, exist_ok=True)
+    out_paths = {
+        "revolver": out_root / "revolver_note_extracts.parquet",
+        "lease": out_root / "lease_note_extracts.parquet",
+        "debt_maturity": out_root / "debt_maturity_note_extracts.parquet",
+    }
+    if not args.overwrite:
+        existing = [name for name, path in out_paths.items() if path.exists()]
+        if existing:
+            raise SystemExit(f"Output exists for {existing}; pass --overwrite to replace.")
+
+    documents = load_document_texts(
+        years=years,
+        doc_text_map_root=ROOT / args.doc_text_map_root,
+        raw_documents_root=ROOT / args.raw_documents_root if args.raw_documents_root else None,
+        company_ids=company_ids,
+        limit=args.limit,
+    )
+    extracted = extract_note_patterns_from_documents(documents)
+    for name, df in extracted.items():
+        path = out_paths[name]
+        if df.empty:
+            df = pd.DataFrame(
+                columns=[
+                    "document_id",
+                    "entity_id",
+                    "source_type",
+                    "doc_type",
+                    "title",
+                    "url",
+                    "published_at",
+                    "effective_at",
+                    "ingested_at",
+                    "pattern_family",
+                    "metric_key",
+                    "value",
+                    "currency",
+                    "bucket_label",
+                    "pattern_name",
+                    "extraction_confidence",
+                    "evidence_text",
+                    "extraction_method",
+                ]
+            )
+        df.to_parquet(path, index=False)
+        print(f"Wrote {name} note extracts -> {path} ({len(df):,} rows)")
+
+
+if __name__ == "__main__":
+    main()
