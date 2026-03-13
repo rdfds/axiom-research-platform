@@ -380,3 +380,84 @@ def extract_note_pattern_rows(doc: Dict[str, object]) -> Dict[str, List[Dict[str
     }
 
 
+def load_document_texts(
+    *,
+    years: Sequence[int],
+    doc_text_map_root: Path,
+    raw_documents_root: Optional[Path],
+    company_ids: Optional[Sequence[str]] = None,
+    limit: Optional[int] = None,
+) -> pd.DataFrame:
+    text_paths = [doc_text_map_root / f"year={year}" / "part.parquet" for year in years if (doc_text_map_root / f"year={year}" / "part.parquet").exists()]
+    if not text_paths:
+        raise FileNotFoundError(f"No doc_text_map parquet files found under {doc_text_map_root} for years={list(years)}")
+
+    con = duckdb.connect()
+    text_expr = _quoted_paths(text_paths)
+    text_limit_clause = f"LIMIT {int(limit)}" if limit and int(limit) > 0 and not company_ids else ""
+
+    metadata_join = ""
+    metadata_select = ", NULL AS entity_id, NULL AS source_type, NULL AS doc_type, NULL AS title, NULL AS url, NULL AS published_at, NULL AS effective_at, NULL AS ingested_at"
+    raw_cols: set[str] = set()
+    if raw_documents_root and raw_documents_root.exists():
+        raw_paths = sorted((raw_documents_root / f"year={year}").glob("*.parquet") for year in years)
+        raw_paths = [path for group in raw_paths for path in group]
+        if raw_paths:
+            raw_cols = _parquet_columns(raw_paths)
+            raw_expr = _quoted_paths(raw_paths)
+            entity_expr = "CAST(entity_id AS VARCHAR)" if "entity_id" in raw_cols else "NULL"
+            source_type_expr = "CAST(source_type AS VARCHAR)" if "source_type" in raw_cols else "NULL"
+            doc_type_expr = "CAST(doc_type AS VARCHAR)" if "doc_type" in raw_cols else "NULL"
+            title_expr = "CAST(title AS VARCHAR)" if "title" in raw_cols else "NULL"
+            url_expr = "CAST(url AS VARCHAR)" if "url" in raw_cols else "NULL"
+            published_expr = "CAST(published_at AS TIMESTAMP)" if "published_at" in raw_cols else "NULL"
+            effective_expr = "CAST(effective_at AS TIMESTAMP)" if "effective_at" in raw_cols else "NULL"
+            ingested_expr = "CAST(ingested_at AS TIMESTAMP)" if "ingested_at" in raw_cols else "NULL"
+            metadata_join = f"""
+            LEFT JOIN (
+                SELECT
+                    document_id,
+                    {entity_expr} AS entity_id,
+                    {source_type_expr} AS source_type,
+                    {doc_type_expr} AS doc_type,
+                    {title_expr} AS title,
+                    {url_expr} AS url,
+                    {published_expr} AS published_at,
+                    {effective_expr} AS effective_at,
+                    {ingested_expr} AS ingested_at
+                FROM read_parquet({raw_expr}, union_by_name=True)
+                WHERE document_id IN (SELECT document_id FROM text_docs)
+            ) meta USING (document_id)
+            """
+            metadata_select = ", meta.entity_id, meta.source_type, meta.doc_type, meta.title, meta.url, meta.published_at, meta.effective_at, meta.ingested_at"
+            if company_ids and "entity_id" not in raw_cols:
+                print(
+                    f"[warn] metadata root {raw_documents_root} does not expose entity_id; company filter will be skipped",
+                    flush=True,
+                )
+
+    filters = ["text_docs.document_id IS NOT NULL", "text_docs.raw_text IS NOT NULL", "length(text_docs.raw_text) > 0"]
+    if company_ids and raw_documents_root and raw_documents_root.exists() and "entity_id" in raw_cols:
+        quoted = ", ".join("'" + cid.replace("'", "''") + "'" for cid in company_ids)
+        filters.append(f"meta.entity_id IN ({quoted})")
+
+    query = f"""
+    WITH text_docs AS (
+        SELECT document_id, raw_text
+        FROM read_parquet({text_expr}, union_by_name=True)
+        WHERE document_id IS NOT NULL
+          AND raw_text IS NOT NULL
+          AND length(raw_text) > 0
+        {text_limit_clause}
+    )
+    SELECT
+        text_docs.document_id,
+        text_docs.raw_text
+        {metadata_select}
+    FROM text_docs
+    {metadata_join}
+    WHERE {' AND '.join(filters)}
+    """
+    return con.execute(query).fetchdf()
+
+

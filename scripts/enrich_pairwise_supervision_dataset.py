@@ -132,3 +132,18 @@ def _load_needed_precedent_outcomes_lookup(
     return lookup
 
 
+def _gap_summary(target_compact: Dict[str, Any], positive_compact: Dict[str, Any], negative_compact: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for feature in _PAIRWISE_FEATURE_GAP_SUMMARY_FEATURES:
+        target_value = target_compact.get(feature)
+        positive_value = positive_compact.get(feature)
+        negative_value = negative_compact.get(feature)
+        positive_abs_diff = None if target_value is None or positive_value is None else abs(float(target_value) - float(positive_value))
+        negative_abs_diff = None if target_value is None or negative_value is None else abs(float(target_value) - float(negative_value))
+        out[feature] = {
+            "positive_abs_diff": positive_abs_diff,
+            "negative_abs_diff": negative_abs_diff,
+        }
+    return out
+
+
