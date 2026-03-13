@@ -36,7 +36,7 @@ def build_change_vector(action: ActionCandidate, config: Dict[str, Any]) -> Dict
     Convert an ActionCandidate into an expected metric change vector.
     Uses config-defined action_effects and scales by action params.
     """
-    action_effects = config['action_effects']
+    action_effects = config.get("action_effects", {})
     effect_keys = []
     if action.action_id:
         effect_keys.append(action.action_id)

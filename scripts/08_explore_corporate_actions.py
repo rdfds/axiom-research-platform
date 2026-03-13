@@ -97,3 +97,62 @@ Distribution Code Guide:
         return None
 
 
+def explore_compustat_buybacks(db):
+    """
+    Compustat tracks treasury stock - can infer buyback activity.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING COMPUSTAT BUYBACK DATA (Treasury Stock)")
+    print("="*70)
+
+    # Treasury stock changes indicate buyback activity
+    query = """
+    SELECT
+        gvkey,
+        datadate,
+        tic,
+        conm,
+        tstkq as treasury_stock,
+        cshoq as shares_outstanding,
+        prccq as stock_price,
+        mkvaltq as market_cap,
+        -- Cash flow items related to buybacks
+        prstkcy as purchase_common_stock,  -- YTD purchase of common stock
+        sstky as sale_stock  -- YTD sale of stock
+    FROM comp.fundq
+    WHERE datadate >= '2015-01-01'
+      AND tstkq IS NOT NULL
+      AND tstkq > 0
+    ORDER BY datadate DESC
+    LIMIT 500
+    """
+
+    try:
+        df = db.raw_sql(query)
+        print(f"\nCompustat buyback-related data: {len(df):,} records")
+        print("\nColumns available:")
+        print(df.columns.tolist())
+        print(df.head(20))
+        return df
+    except Exception as e:
+        print(f"Error: {e}")
+
+        # Try alternative query
+        print("\nTrying alternative query...")
+        query = """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'comp'
+          AND table_name = 'fundq'
+          AND column_name LIKE '%stk%'
+        """
+        try:
+            cols = db.raw_sql(query)
+            print("Stock-related columns in comp.fundq:")
+            print(cols)
+        except:
+            pass
+
+        return None
+
+
