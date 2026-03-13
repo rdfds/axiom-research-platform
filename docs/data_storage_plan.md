@@ -35,3 +35,17 @@ These are still more naturally local filesystem reads today:
 
 - `data/sec/companyfacts/`
 
+## Current Runtime Support
+
+The codebase now supports rebasing `data/...` paths through `AXIOM_DATA_ROOT`
+for the main builder/runtime defaults. That makes it practical to move data to
+another local volume or mounted data root without rewriting every caller.
+
+Primary integration points:
+
+- `src/company_state_builder.py`
+- `src/recommendation_run.py`
+- `src/named_company_snapshot_builder.py`
+- `src/metric_goldens.py`
+- `src/recommendation_runtime_config.py`
+

@@ -172,7 +172,7 @@ def main() -> None:
                 }
             )
 
-            fiscal_year = normalize_int(row['fyearq'])
+            fiscal_year = normalize_int(row.get("fyearq"))
             fiscal_quarter = normalize_int(row.get("fqtr"))
 
             for col, (statement_type, line_item) in LINE_ITEMS.items():

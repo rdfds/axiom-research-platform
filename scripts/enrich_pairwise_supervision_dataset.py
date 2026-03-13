@@ -147,3 +147,106 @@ def _gap_summary(target_compact: Dict[str, Any], positive_compact: Dict[str, Any
     return out
 
 
+def main() -> None:
+    args = _parse_args()
+    dataset_path = Path(args.dataset_path)
+    out_path = Path(args.out_path)
+    summary_path = Path(args.summary_path) if args.summary_path else None
+    snapshot_catalog_path = Path(args.snapshot_catalog_path) if args.snapshot_catalog_path else None
+    outcomes_path = Path(args.outcomes_path) if args.outcomes_path else None
+
+    rows = list(_iter_jsonl(dataset_path))
+    precedent_outcomes_lookup = (
+        _load_needed_precedent_outcomes_lookup(outcomes_path, rows=rows)
+        if outcomes_path is not None and outcomes_path.exists()
+        else {}
+    )
+    snapshot_index = (
+        _snapshot_catalog_index(str(snapshot_catalog_path))
+        if snapshot_catalog_path is not None and snapshot_catalog_path.exists()
+        else {}
+    )
+
+    coverage_before = {feature: 0 for feature in _STATE_VECTOR_V1_FEATURES}
+    coverage_after = {feature: 0 for feature in _STATE_VECTOR_V1_FEATURES}
+    changed_rows = 0
+    enriched_rows: List[Dict[str, Any]] = []
+
+    for row in rows:
+        original = json.dumps(row, sort_keys=True)
+        enriched = dict(row)
+
+        for feature in _STATE_VECTOR_V1_FEATURES:
+            gap = dict((row.get("feature_gap_summary") or {}).get(feature) or {})
+            if gap.get("positive_abs_diff") is not None and gap.get("negative_abs_diff") is not None:
+                coverage_before[feature] += 1
+
+        if snapshot_index:
+            snapshot_key = (
+                str(row.get("company_id") or "").strip(),
+                _normalize_as_of_time(str(row.get("as_of_time") or "")),
+            )
+            snapshot_row = snapshot_index.get(snapshot_key)
+            if snapshot_row is not None:
+                enriched["target_compact"] = {
+                    feature: _target_compact_values(snapshot_row).get(feature)
+                    for feature in _STATE_VECTOR_V1_FEATURES
+                }
+
+        positive_match = {
+            "company_id": str(row.get("positive_precedent_company_id") or ""),
+            "action_id": str(row.get("anchor_action_id") or ""),
+            "decision_time": _parse_precedent_decision_time(str(row.get("positive_precedent_id") or "")),
+            "key_state_features": dict(row.get("positive_compact") or {}),
+        }
+        negative_match = {
+            "company_id": str(row.get("negative_precedent_company_id") or ""),
+            "action_id": str(row.get("competitor_action_id") or ""),
+            "decision_time": _parse_precedent_decision_time(str(row.get("negative_precedent_id") or "")),
+            "key_state_features": dict(row.get("negative_compact") or {}),
+        }
+        enriched["positive_compact"] = _enrich_match_compact(
+            positive_match,
+            precedent_outcomes_lookup=precedent_outcomes_lookup,
+        )
+        enriched["negative_compact"] = _enrich_match_compact(
+            negative_match,
+            precedent_outcomes_lookup=precedent_outcomes_lookup,
+        )
+        enriched["feature_gap_summary"] = _gap_summary(
+            dict(enriched.get("target_compact") or {}),
+            dict(enriched.get("positive_compact") or {}),
+            dict(enriched.get("negative_compact") or {}),
+        )
+
+        for feature in _STATE_VECTOR_V1_FEATURES:
+            gap = dict((enriched.get("feature_gap_summary") or {}).get(feature) or {})
+            if gap.get("positive_abs_diff") is not None and gap.get("negative_abs_diff") is not None:
+                coverage_after[feature] += 1
+
+        if json.dumps(enriched, sort_keys=True) != original:
+            changed_rows += 1
+        enriched_rows.append(enriched)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w") as handle:
+        for row in enriched_rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+    summary = {
+        "dataset_path": str(dataset_path),
+        "out_path": str(out_path),
+        "row_count": len(rows),
+        "changed_rows": changed_rows,
+        "snapshot_catalog_path": str(snapshot_catalog_path) if snapshot_catalog_path else "",
+        "outcomes_path": str(outcomes_path) if outcomes_path else "",
+        "precedent_outcomes_lookup_size": len(precedent_outcomes_lookup),
+        "feature_gap_coverage_before": coverage_before,
+        "feature_gap_coverage_after": coverage_after,
+    }
+    if summary_path is not None:
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(summary, sort_keys=True))
+
+

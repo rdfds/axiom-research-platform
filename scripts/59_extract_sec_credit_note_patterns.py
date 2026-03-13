@@ -461,3 +461,21 @@ def load_document_texts(
     return con.execute(query).fetchdf()
 
 
+def extract_note_patterns_from_documents(documents: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    revolver_rows: List[Dict[str, object]] = []
+    lease_rows: List[Dict[str, object]] = []
+    maturity_rows: List[Dict[str, object]] = []
+
+    for record in documents.to_dict(orient="records"):
+        extracted = extract_note_pattern_rows(record)
+        revolver_rows.extend(extracted["revolver"])
+        lease_rows.extend(extracted["lease"])
+        maturity_rows.extend(extracted["debt_maturity"])
+
+    return {
+        "revolver": pd.DataFrame(revolver_rows),
+        "lease": pd.DataFrame(lease_rows),
+        "debt_maturity": pd.DataFrame(maturity_rows),
+    }
+
+
