@@ -156,3 +156,24 @@ def _probe_ma_fields(universe: str) -> list:
     return working
 
 
+def _ma_universe_for_range(start_date: str, end_date: str) -> str:
+    return (
+        "SCREEN(U(IN(Deals)/*UNV:MADEALS*/), "
+        "IN(TR.MnAStatus,\"C\"), "
+        f"TR.MnAAnnDate>={start_date}, "
+        f"TR.MnAAnnDate<={end_date})"
+    )
+
+
+def _pull_ma_range(start_date: str, end_date: str, fields: list, label: str) -> pd.DataFrame:
+    try:
+        deals = rd.get_data(
+            universe=_ma_universe_for_range(start_date, end_date),
+            fields=fields,
+        )
+        return deals
+    except Exception as e:
+        log(f"    Error {label}: {e}")
+        return pd.DataFrame()
+
+

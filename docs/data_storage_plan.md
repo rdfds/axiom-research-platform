@@ -49,3 +49,19 @@ Primary integration points:
 - `src/metric_goldens.py`
 - `src/recommendation_runtime_config.py`
 
+## Example
+
+```bash
+export AXIOM_DATA_ROOT=/Volumes/AxiomData/axiom_data
+export AXIOM_COMPANYFACTS_ROOT=/Volumes/AxiomData/axiom_data/sec/companyfacts
+```
+
+Under that setup:
+
+- `data/inputs_layer/raw_timeseries.parquet`
+  becomes
+  `/Volumes/AxiomData/axiom_data/inputs_layer/raw_timeseries.parquet`
+- `data/curated/action_outcomes.parquet`
+  becomes
+  `/Volumes/AxiomData/axiom_data/curated/action_outcomes.parquet`
+

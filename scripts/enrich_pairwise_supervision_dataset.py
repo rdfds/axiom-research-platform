@@ -44,7 +44,7 @@ def _iter_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
-def _parse_precedent_decision_time(precedent_id: str) :
+def _parse_precedent_decision_time(precedent_id: str) -> str:
     parts = str(precedent_id or "").split("::")
     if len(parts) >= 2:
         return _normalize_as_of_time(parts[1])

@@ -462,3 +462,15 @@ def build_corporate_actions_master(universe):
     return filtered
 
 
+def build_prices_master(universe):
+    dataset = load_dataset("msf_*.parquet")
+    if dataset is None:
+        return None
+    table = dataset.to_table()
+    df = table.to_pandas()
+    filtered = filter_by_universe(df, universe, "date", "permno")
+    out_path = CURATED_DIR / "prices_master.parquet"
+    filtered.to_parquet(out_path, index=False)
+    return filtered
+
+
