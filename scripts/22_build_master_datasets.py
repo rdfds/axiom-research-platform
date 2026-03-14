@@ -501,3 +501,51 @@ def build_prices_master_full(universe):
     return filtered
 
 
+def attach_permno_by_gvkey(df, link, date_col="datadate"):
+    if df is None or df.empty or link is None or link.empty:
+        return df
+    link = link.copy()
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce").fillna(pd.Timestamp("2099-12-31"))
+
+    out = df.merge(link, on="gvkey", how="left")
+    out[date_col] = pd.to_datetime(out[date_col], errors="coerce")
+    out = out[(out[date_col] >= out["linkdt"]) & (out[date_col] <= out["linkenddt"])]
+    out = out.rename(columns={"lpermno": "permno", "lpermco": "permco"})
+    return out
+
+
+def attach_gvkey_by_permno(df, link, date_col="action_date"):
+    if df is None or df.empty or link is None or link.empty:
+        return df
+    link = link.copy()
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce").fillna(pd.Timestamp("2099-12-31"))
+
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col], errors="coerce")
+    tmp = out[["permno", date_col]].reset_index()
+    merge = tmp.merge(link, left_on="permno", right_on="lpermno", how="left")
+    merge = merge[(merge[date_col] >= merge["linkdt"]) & (merge[date_col] <= merge["linkenddt"])]
+    merge = merge.sort_values(["index", "linkdt"], ascending=[True, False])
+    merge = merge.drop_duplicates("index", keep="first")
+
+    out = out.merge(
+        merge[["index", "gvkey", "lpermco"]],
+        left_index=True,
+        right_on="index",
+        how="left",
+    )
+    if "gvkey" in out.columns and "gvkey_y" in out.columns:
+        out["gvkey"] = out["gvkey"].fillna(out["gvkey_y"])
+    elif "gvkey_y" in out.columns:
+        out["gvkey"] = out["gvkey_y"]
+    if "lpermco" in out.columns:
+        if "permco" in out.columns:
+            out["permco"] = out["permco"].fillna(out["lpermco"])
+        else:
+            out["permco"] = out["lpermco"]
+    out = out.drop(columns=[c for c in ["index", "gvkey_y", "lpermco"] if c in out.columns])
+    return out
+
+
