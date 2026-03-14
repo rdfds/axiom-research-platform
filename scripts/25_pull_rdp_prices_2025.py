@@ -172,3 +172,55 @@ def attach_gvkey(map_df: pd.DataFrame) -> pd.DataFrame:
     return tmp.drop(columns=["lpermno", "linkdt", "linkenddt"])
 
 
+def extract_prices(tickers: list) -> pd.DataFrame:
+    all_prices = []
+    field_sets = [
+        ["TR.CLOSEPRICE", "TR.TOTRETURN"],
+        ["TR.PRICECLOSE", "TR.TOTRETURN"],
+        ["TR.CLOSEPRICE"],
+        ["TR.PRICECLOSE"],
+    ]
+
+    def try_fetch(batch, fields):
+        try:
+            data = rd.get_history(
+                universe=batch,
+                fields=fields,
+                start=RDP_START,
+                end=RDP_END,
+                interval="monthly",
+            )
+            return data, None
+        except Exception as e:
+            return None, e
+
+    for i in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[i:i + BATCH_SIZE]
+        log(f"Pulling batch {i//BATCH_SIZE + 1}/{(len(tickers)-1)//BATCH_SIZE + 1} ...")
+        data = None
+        err = None
+        for fields in field_sets:
+            data, err = try_fetch(batch, fields)
+            if data is not None and len(data) > 0:
+                break
+        if data is not None and len(data) > 0:
+            all_prices.append(data.reset_index())
+        else:
+            if err:
+                log(f"  Batch error: {err}")
+            if SPLIT_ON_ERROR:
+                for ric in batch:
+                    for fields in field_sets:
+                        single, _ = try_fetch([ric], fields)
+                        if single is not None and len(single) > 0:
+                            all_prices.append(single.reset_index())
+                            break
+        time.sleep(SLEEP)
+
+    if not all_prices:
+        return pd.DataFrame()
+
+    combined = pd.concat(all_prices, ignore_index=True)
+    return combined
+
+

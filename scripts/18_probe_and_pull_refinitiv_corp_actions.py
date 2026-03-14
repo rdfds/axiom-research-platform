@@ -92,3 +92,7 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", flush=True)
 
 
+def batched(items: List[str], batch_size: int) -> List[List[str]]:
+    return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
+
+

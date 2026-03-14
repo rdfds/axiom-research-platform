@@ -177,3 +177,14 @@ def _pull_ma_range(start_date: str, end_date: str, fields: list, label: str) -> 
         return pd.DataFrame()
 
 
+def _month_ranges(year: int):
+    ranges = []
+    for month in range(1, 13):
+        start = pd.Timestamp(year=year, month=month, day=1)
+        end = (start + pd.offsets.MonthEnd(0)).to_pydatetime()
+        ranges.append((start.date().isoformat(), end.date().isoformat(), month))
+    return ranges
+
+# ============================================================================
+# 1. M&A DEALS
+# ============================================================================
