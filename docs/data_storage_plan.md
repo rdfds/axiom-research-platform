@@ -65,3 +65,7 @@ Under that setup:
   becomes
   `/Volumes/AxiomData/axiom_data/curated/action_outcomes.parquet`
 
+## Next Step
+
+After the path rebasing is in place, we can move selected subtrees one at a
+time and validate the main historical replay paths after each move.

@@ -474,3 +474,30 @@ def build_prices_master(universe):
     return filtered
 
 
+def build_prices_master_full(universe):
+    dataset = load_dataset("msf_*.parquet")
+    if dataset is None:
+        return None
+    table = dataset.to_table()
+    crsp = table.to_pandas()
+
+    frames = [crsp]
+
+    rdp_path = DATA_DIR / "prices_monthly_rdp_2025.parquet"
+    if rdp_path.exists():
+        rdp = pd.read_parquet(rdp_path)
+        # Align to CRSP column set
+        for col in crsp.columns:
+            if col not in rdp.columns:
+                rdp[col] = pd.NA
+        # Preserve extra columns from RDP
+        rdp = rdp.reindex(columns=crsp.columns, fill_value=pd.NA)
+        frames.append(rdp)
+
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+    filtered = filter_by_universe_carryforward(combined, universe, "date", "permno")
+    out_path = CURATED_DIR / "prices_master_full.parquet"
+    filtered.to_parquet(out_path, index=False)
+    return filtered
+
+
