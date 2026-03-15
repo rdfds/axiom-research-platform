@@ -207,3 +207,56 @@ def quarter_end_date(year: int, quarter: int) -> pd.Timestamp:
     return pd.Timestamp(year=year, month=month, day=day)
 
 
+def parse_transcript_sections(content: str) -> List[Dict[str, str]]:
+    if not content:
+        return []
+    # Split into lines and detect speaker labels
+    lines = content.splitlines()
+    sections: List[Dict[str, str]] = []
+    current_speaker = None
+    current_role = None
+    current_section = "prepared"
+    buffer: List[str] = []
+
+    def flush():
+        nonlocal buffer, current_speaker, current_role, current_section
+        text = " ".join([b.strip() for b in buffer if b.strip()]).strip()
+        if text:
+            sections.append(
+                {
+                    "speaker": current_speaker,
+                    "speaker_role": current_role,
+                    "section_type": current_section,
+                    "text": text,
+                }
+            )
+        buffer = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if "question-and-answer" in lower or "question and answer" in lower or "q&a" in lower:
+            current_section = "qa"
+            continue
+        m = re.match(r"^([A-Za-z][A-Za-z .,'&-]{1,60}):\\s*(.*)$", line)
+        if m:
+            flush()
+            speaker = m.group(1).strip()
+            rest = m.group(2).strip()
+            current_speaker = speaker
+            if "operator" in speaker.lower():
+                current_role = "operator"
+            elif "analyst" in speaker.lower():
+                current_role = "analyst"
+            else:
+                current_role = "management"
+            if rest:
+                buffer.append(rest)
+            continue
+        buffer.append(line)
+    flush()
+    return sections
+
+
