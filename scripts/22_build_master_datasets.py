@@ -549,3 +549,63 @@ def attach_gvkey_by_permno(df, link, date_col="action_date"):
     return out
 
 
+def attach_names_by_permno(df, date_col="action_date"):
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2024-12-31.parquet"
+    if df is None or df.empty or not names_path.exists():
+        return df
+
+    names = pd.read_parquet(
+        names_path,
+        columns=["permno", "namedt", "nameendt", "comnam", "ticker", "siccd", "cusip", "ncusip"],
+    )
+    names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+    names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+    names["cusip8"] = (
+        names["ncusip"].fillna(names["cusip"]).astype("string").str.replace(r"[^0-9A-Za-z]", "", regex=True).str.upper()
+    )
+    names["cusip8"] = names["cusip8"].where(
+        ~names["cusip8"].str.lower().isin(["", "nan", "none", "<na>"])
+    ).str[:8]
+
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col], errors="coerce")
+    tmp = out[["permno", date_col]].reset_index()
+    merge = tmp.merge(names, on="permno", how="left")
+    merge = merge[(merge[date_col] >= merge["namedt"]) & (merge[date_col] <= merge["nameendt"])]
+    merge = merge.sort_values(["index", "namedt"], ascending=[True, False]).drop_duplicates("index", keep="first")
+
+    merge = merge.rename(
+        columns={
+            "comnam": "company_name_map",
+            "ticker": "ticker_map",
+            "siccd": "sic_map",
+            "cusip8": "cusip_map",
+        }
+    )
+    out = out.merge(
+        merge[["index", "company_name_map", "ticker_map", "sic_map", "cusip_map"]],
+        left_index=True,
+        right_on="index",
+        how="left",
+    )
+    if "company_name" in out.columns:
+        out["company_name"] = out["company_name"].fillna(out["company_name_map"])
+    else:
+        out["company_name"] = out["company_name_map"]
+    if "ticker" in out.columns:
+        out["ticker"] = out["ticker"].fillna(out["ticker_map"])
+    else:
+        out["ticker"] = out["ticker_map"]
+    if "sic" in out.columns:
+        out["sic"] = out["sic"].fillna(out["sic_map"])
+    else:
+        out["sic"] = out["sic_map"]
+    if "cusip" in out.columns:
+        out["cusip"] = out["cusip"].fillna(out["cusip_map"])
+    else:
+        out["cusip"] = out["cusip_map"]
+
+    out = out.drop(columns=[c for c in ["index", "company_name_map", "ticker_map", "sic_map", "cusip_map"] if c in out.columns])
+    return out
+
+

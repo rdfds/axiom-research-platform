@@ -332,3 +332,5 @@ def main() :
     print(f"Saved RawDocumentStore -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
