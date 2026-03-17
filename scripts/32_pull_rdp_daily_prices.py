@@ -72,3 +72,46 @@ def load_ric_map() :
     return ric_map[["ric", "cusip8", "ticker"]]
 
 
+def load_names() -> pd.DataFrame:
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    if not names_path.exists():
+        raise FileNotFoundError("Missing msenames_2000-01-01_to_2026-12-31.parquet")
+    names = pd.read_parquet(
+        names_path,
+        columns=["permno", "namedt", "nameendt", "ncusip", "cusip"],
+    )
+    names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+    names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+    names["cusip8"] = (
+        names["ncusip"]
+        .fillna(names["cusip"])
+        .astype("string")
+        .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+        .str.upper()
+        .str[:8]
+    )
+    names = names[names["cusip8"].notna()]
+    # If CRSP coverage ends before the RDP pull end date, extend the last-known
+    # nameendt to cover the pull range so 2025+ dates can still map.
+    max_end = names["nameendt"].max()
+    target_end = pd.to_datetime(RDP_END, errors="coerce")
+    if pd.notna(max_end) and pd.notna(target_end) and target_end > max_end:
+        names.loc[names["nameendt"] == max_end, "nameendt"] = target_end
+    return names[["permno", "namedt", "nameendt", "cusip8"]]
+
+
+def filter_ric_map(ric_map: pd.DataFrame, names: pd.DataFrame) -> pd.DataFrame:
+    universe_date = pd.to_datetime(RDP_UNIVERSE_DATE, errors="coerce")
+    if pd.isna(universe_date):
+        return ric_map
+    max_end = names["nameendt"].max()
+    if pd.notna(max_end) and universe_date > max_end:
+        universe_date = max_end
+    active = names[(names["namedt"] <= universe_date) & (names["nameendt"] >= universe_date)]
+    active_cusips = set(active["cusip8"].dropna().unique().tolist())
+    filtered = ric_map[ric_map["cusip8"].isin(active_cusips)].copy()
+    if filtered.empty:
+        return ric_map
+    return filtered
+
+

@@ -224,3 +224,115 @@ def extract_prices(tickers: list) -> pd.DataFrame:
     return combined
 
 
+def normalize_prices(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    # Some RDP outputs save columns as tuple-like strings: "('RIC', 'Field')"
+    import ast
+
+    def parse_tuple_str(val):
+        if isinstance(val, str) and val.startswith("(") and val.endswith(")"):
+            try:
+                parsed = ast.literal_eval(val)
+                if isinstance(parsed, tuple) and len(parsed) == 2:
+                    return parsed
+            except Exception:
+                return val
+        return val
+
+    parsed_cols = [parse_tuple_str(c) for c in df.columns]
+    has_tuple_cols = any(isinstance(c, tuple) for c in parsed_cols)
+
+    if has_tuple_cols:
+        # Convert to MultiIndex columns
+        tuples = []
+        for c in parsed_cols:
+            if isinstance(c, tuple):
+                tuples.append(c)
+            else:
+                tuples.append((str(c), ""))
+        df = df.copy()
+        df.columns = pd.MultiIndex.from_tuples(tuples)
+
+        # Identify date column
+        date_col = None
+        for col in df.columns:
+            if str(col[0]).lower() == "date":
+                date_col = col
+                break
+        if date_col is None:
+            raise ValueError("Could not find date column in Refinitiv output.")
+
+        dates = pd.to_datetime(df[date_col], errors="coerce")
+        wide = df.drop(columns=[date_col])
+        wide.index = dates
+        wide.index.name = "date"
+
+        # Stack RIC level into rows => columns become field names
+        long = wide.stack(level=0, future_stack=True).reset_index().rename(columns={"level_1": "ric"})
+
+        close_col = None
+        tr_col = None
+        for c in long.columns:
+            if isinstance(c, str) and c.upper() in ("TR.CLOSEPRICE", "CLOSEPRICE", "PRICE CLOSE", "CLOSE PRICE", "TR.PRICECLOSE"):
+                close_col = c
+            if isinstance(c, str) and c.upper() in ("TR.TOTRETURN", "TOTRETURN", "TOTAL RETURN", "TR.TOTALRETURN"):
+                tr_col = c
+
+        if close_col is None:
+            raise ValueError("Close price column not found in Refinitiv output.")
+
+        out = pd.DataFrame()
+        out["date"] = pd.to_datetime(long["date"], errors="coerce")
+        out["ric"] = long["ric"].astype("string")
+        out["prc"] = pd.to_numeric(long[close_col], errors="coerce")
+
+        if tr_col is not None:
+            out["total_return_index"] = pd.to_numeric(long[tr_col], errors="coerce")
+            out = out.sort_values(["ric", "date"])
+            if out["total_return_index"].notna().any():
+                out["ret"] = out.groupby("ric")["total_return_index"].pct_change()
+            else:
+                out["ret"] = out.groupby("ric")["prc"].pct_change()
+        else:
+            out = out.sort_values(["ric", "date"])
+            out["ret"] = out.groupby("ric")["prc"].pct_change()
+
+    else:
+        cols = {str(c).lower(): c for c in df.columns}
+        date_col = cols.get("date") or cols.get("datetime") or cols.get("index")
+        inst_col = cols.get("instrument") or cols.get("ric")
+
+        close_col = None
+        tr_col = None
+        for c in df.columns:
+            if str(c).upper() in ("TR.CLOSEPRICE", "CLOSEPRICE", "PRICE CLOSE", "CLOSE PRICE", "TR.PRICECLOSE"):
+                close_col = c
+            if str(c).upper() in ("TR.TOTRETURN", "TOTRETURN", "TOTAL RETURN", "TR.TOTALRETURN"):
+                tr_col = c
+
+        if date_col is None or inst_col is None or close_col is None:
+            raise ValueError("Unexpected price data columns from Refinitiv.")
+
+        out = pd.DataFrame()
+        out["date"] = pd.to_datetime(df[date_col], errors="coerce")
+        out["ric"] = df[inst_col].astype("string")
+        out["prc"] = pd.to_numeric(df[close_col], errors="coerce")
+
+        if tr_col is not None:
+            out["total_return_index"] = pd.to_numeric(df[tr_col], errors="coerce")
+            out = out.sort_values(["ric", "date"])
+            if out["total_return_index"].notna().any():
+                out["ret"] = out.groupby("ric")["total_return_index"].pct_change()
+            else:
+                out["ret"] = out.groupby("ric")["prc"].pct_change()
+        else:
+            out = out.sort_values(["ric", "date"])
+            out["ret"] = out.groupby("ric")["prc"].pct_change()
+
+    # Keep only 2025
+    out = out[(out["date"] >= "2025-01-01") & (out["date"] <= "2025-12-31")]
+    return out
+
+
