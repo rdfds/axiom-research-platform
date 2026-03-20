@@ -260,3 +260,44 @@ def parse_transcript_sections(content: str) -> List[Dict[str, str]]:
     return sections
 
 
+def load_mappings() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not names_path.exists() or not link_path.exists():
+        return pd.DataFrame(), pd.DataFrame()
+    names = pd.read_parquet(names_path, columns=["permno", "namedt", "nameendt", "ticker"])
+    names["namedt"] = pd.to_datetime(names["namedt"])
+    names["nameendt"] = pd.to_datetime(names["nameendt"])
+    names["ticker"] = names["ticker"].astype(str).str.upper().str.strip()
+    try:
+        link = pd.read_parquet(link_path, columns=["permno", "gvkey", "linkdt", "linkenddt"])
+    except Exception:
+        link = pd.read_parquet(link_path, columns=["lpermno", "gvkey", "linkdt", "linkenddt"])
+        link = link.rename(columns={"lpermno": "permno"})
+    link["permno"] = pd.to_numeric(link["permno"], errors="coerce")
+    link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+    link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce")
+    return names, link
+
+
+def map_symbol_to_gvkey(symbol: str, call_date: pd.Timestamp, names: pd.DataFrame, link: pd.DataFrame) :
+    if names.empty or link.empty or symbol is None or pd.isna(symbol):
+        return None
+    symbol = str(symbol).upper().strip()
+    candidates = names[names["ticker"] == symbol]
+    if candidates.empty:
+        return None
+    active = candidates[(candidates["namedt"] <= call_date) & (candidates["nameendt"] >= call_date)]
+    if active.empty:
+        active = candidates.sort_values("nameendt").tail(1)
+    permno = active.iloc[0]["permno"]
+    link_rows = link[link["permno"] == permno]
+    if link_rows.empty:
+        return None
+    link_active = link_rows[(link_rows["linkdt"] <= call_date) & (link_rows["linkenddt"] >= call_date)]
+    if link_active.empty:
+        link_active = link_rows.sort_values("linkenddt").tail(1)
+    gvkey = link_active.iloc[0]["gvkey"]
+    return str(gvkey) if pd.notna(gvkey) else None
+
+
