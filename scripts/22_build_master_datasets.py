@@ -609,3 +609,35 @@ def attach_names_by_permno(df, date_col="action_date"):
     return out
 
 
+def build_fundamentals_master(universe):
+    path = DATA_DIR / "fundamentals_quarterly.parquet"
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not path.exists() or not link_path.exists():
+        return None
+    df = pd.read_parquet(path)
+    link = pd.read_parquet(link_path)
+    if "lpermno" not in link.columns:
+        link = link.rename(columns={"permno": "lpermno"}) if "permno" in link.columns else link
+    df = attach_permno_by_gvkey(df, link)
+    filtered = filter_by_universe(df, universe, "datadate", "permno")
+    out_path = CURATED_DIR / "fundamentals_master.parquet"
+    filtered.to_parquet(out_path, index=False)
+    return filtered
+
+
+def build_buybacks_master(universe):
+    path = DATA_DIR / "buybacks_clean.parquet"
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    if not path.exists() or not link_path.exists():
+        return None
+    df = pd.read_parquet(path)
+    link = pd.read_parquet(link_path)
+    if "lpermno" not in link.columns:
+        link = link.rename(columns={"permno": "lpermno"}) if "permno" in link.columns else link
+    df = attach_permno_by_gvkey(df, link)
+    filtered = filter_by_universe(df, universe, "action_date", "permno")
+    out_path = CURATED_DIR / "buybacks_master.parquet"
+    filtered.to_parquet(out_path, index=False)
+    return filtered
+
+
