@@ -336,3 +336,18 @@ def normalize_prices(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def merge_into_prices_monthly(mapped: pd.DataFrame) -> None:
+    prices_path = DATA_DIR / "prices_monthly.parquet"
+    if not prices_path.exists():
+        mapped.to_parquet(prices_path, index=False)
+        log(f"Created {prices_path}")
+        return
+
+    existing = pd.read_parquet(prices_path)
+    combined = pd.concat([existing, mapped], ignore_index=True)
+    combined["date"] = pd.to_datetime(combined["date"], errors="coerce")
+    combined = combined.drop_duplicates(subset=["gvkey", "date"], keep="first")
+    combined.to_parquet(prices_path, index=False)
+    log(f"Updated {prices_path}")
+
+

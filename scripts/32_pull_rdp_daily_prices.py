@@ -54,7 +54,7 @@ def year_chunks(start: str, end: str):
         yield chunk_start, chunk_end
 
 
-def load_ric_map() :
+def load_ric_map() -> pd.DataFrame:
     ric_map_path = REF_DIR / "ric_to_cusip_map.parquet"
     if not ric_map_path.exists():
         raise FileNotFoundError("Missing ric_to_cusip_map.parquet")
