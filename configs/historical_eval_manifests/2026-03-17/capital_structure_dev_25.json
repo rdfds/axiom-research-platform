@@ -1,0 +1,290 @@
+{
+  "manifest_generated_at": "2026-03-17T05:03:50.265478+00:00",
+  "label": "capital_structure_dev_25",
+  "source_reports": [
+    "/tmp/historical_recommendation_eval_prefiltered_25_capstructure_v19.json"
+  ],
+  "case_count": 28,
+  "cases": [
+    {
+      "company_id": "0001326380",
+      "source_company_id": "145049",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-10T00:00:00+00:00",
+      "as_of_time": "2024-08-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001022652",
+      "source_company_id": "141178",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-12T00:00:00+00:00",
+      "as_of_time": "2024-07-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001389050",
+      "source_company_id": "065009",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-11T00:00:00+00:00",
+      "as_of_time": "2024-07-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000874015",
+      "source_company_id": "024040",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-06T00:00:00+00:00",
+      "as_of_time": "2024-07-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001018963",
+      "source_company_id": "010405",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-10-29T00:00:00+00:00",
+      "as_of_time": "2024-07-01T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000088941",
+      "source_company_id": "009599",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-08-27T00:00:00+00:00",
+      "as_of_time": "2024-04-29T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000034088",
+      "source_company_id": "004503",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-08-02T00:00:00+00:00",
+      "as_of_time": "2024-04-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000106040",
+      "source_company_id": "011399",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-07-31T00:00:00+00:00",
+      "as_of_time": "2024-04-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000097210",
+      "source_company_id": "010453",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-07-24T00:00:00+00:00",
+      "as_of_time": "2024-03-26T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000887733",
+      "source_company_id": "025536",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-08T00:00:00+00:00",
+      "as_of_time": "2024-01-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000918541",
+      "source_company_id": "029894",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-06T00:00:00+00:00",
+      "as_of_time": "2024-01-07T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001309402",
+      "source_company_id": "181269",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-03T00:00:00+00:00",
+      "as_of_time": "2024-01-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001401257",
+      "source_company_id": "171059",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-02T00:00:00+00:00",
+      "as_of_time": "2024-01-03T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001606498",
+      "source_company_id": "021352",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-02T00:00:00+00:00",
+      "as_of_time": "2024-01-03T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000899751",
+      "source_company_id": "028295",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-05-01T00:00:00+00:00",
+      "as_of_time": "2024-01-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001009829",
+      "source_company_id": "062745",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-04-24T00:00:00+00:00",
+      "as_of_time": "2023-12-26T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000091419",
+      "source_company_id": "009777",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-02-27T00:00:00+00:00",
+      "as_of_time": "2023-10-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001278027",
+      "source_company_id": "158743",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-11-08T00:00:00+00:00",
+      "as_of_time": "2023-07-11T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001024305",
+      "source_company_id": "012151",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-11-07T00:00:00+00:00",
+      "as_of_time": "2023-07-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000820318",
+      "source_company_id": "014561",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-11-06T00:00:00+00:00",
+      "as_of_time": "2023-07-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000103145",
+      "source_company_id": "011124",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-08-07T00:00:00+00:00",
+      "as_of_time": "2023-04-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001006281",
+      "source_company_id": "062592",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-08-07T00:00:00+00:00",
+      "as_of_time": "2023-04-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000030305",
+      "source_company_id": "004091",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-08-03T00:00:00+00:00",
+      "as_of_time": "2023-04-05T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001524472",
+      "source_company_id": "189491",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-08-02T00:00:00+00:00",
+      "as_of_time": "2023-04-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001089063",
+      "source_company_id": "150139",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-05-23T00:00:00+00:00",
+      "as_of_time": "2023-01-23T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001065059",
+      "source_company_id": "112759",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-05-08T00:00:00+00:00",
+      "as_of_time": "2023-01-08T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001530950",
+      "source_company_id": "170527",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-05-04T00:00:00+00:00",
+      "as_of_time": "2023-01-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000892553",
+      "source_company_id": "025964",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2023-02-24T00:00:00+00:00",
+      "as_of_time": "2022-10-27T00:00:00+00:00"
+    }
+  ]
+}
