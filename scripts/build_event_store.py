@@ -307,3 +307,5 @@ def main() -> None:
     print(f"Wrote Canonical Event Store -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()

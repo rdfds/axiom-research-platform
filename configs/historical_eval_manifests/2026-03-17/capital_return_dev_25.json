@@ -1,0 +1,260 @@
+{
+  "manifest_generated_at": "2026-03-17T05:03:50.203954+00:00",
+  "label": "capital_return_dev_25",
+  "source_reports": [
+    "/tmp/historical_recommendation_eval_prefiltered_25_capreturn_v18.json"
+  ],
+  "case_count": 25,
+  "cases": [
+    {
+      "company_id": "0000028917",
+      "source_company_id": "003964",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_cut",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000310764",
+      "source_company_id": "010115",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000315189",
+      "source_company_id": "003835",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001090872",
+      "source_company_id": "126554",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000063754",
+      "source_company_id": "007146",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-30T00:00:00+00:00",
+      "as_of_time": "2024-09-01T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000737758",
+      "source_company_id": "010618",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-23T00:00:00+00:00",
+      "as_of_time": "2024-08-25T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000075362",
+      "source_company_id": "008253",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-20T00:00:00+00:00",
+      "as_of_time": "2024-08-22T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000056978",
+      "source_company_id": "006509",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-19T00:00:00+00:00",
+      "as_of_time": "2024-08-21T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000031462",
+      "source_company_id": "004213",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-17T00:00:00+00:00",
+      "as_of_time": "2024-08-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000043920",
+      "source_company_id": "005338",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-16T00:00:00+00:00",
+      "as_of_time": "2024-08-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000310158",
+      "source_company_id": "007257",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-16T00:00:00+00:00",
+      "as_of_time": "2024-08-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000915389",
+      "source_company_id": "029392",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-16T00:00:00+00:00",
+      "as_of_time": "2024-08-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000068505",
+      "source_company_id": "007585",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-13T00:00:00+00:00",
+      "as_of_time": "2024-08-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001043509",
+      "source_company_id": "065831",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-13T00:00:00+00:00",
+      "as_of_time": "2024-08-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001122976",
+      "source_company_id": "028194",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-13T00:00:00+00:00",
+      "as_of_time": "2024-08-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000047217",
+      "source_company_id": "005606",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-11T00:00:00+00:00",
+      "as_of_time": "2024-08-13T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000010795",
+      "source_company_id": "002111",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-09T00:00:00+00:00",
+      "as_of_time": "2024-08-11T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001047127",
+      "source_company_id": "110039",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.special_dividend",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-04T00:00:00+00:00",
+      "as_of_time": "2024-08-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001034670",
+      "source_company_id": "064690",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-03T00:00:00+00:00",
+      "as_of_time": "2024-08-05T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000063296",
+      "source_company_id": "030477",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000063908",
+      "source_company_id": "007154",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000320187",
+      "source_company_id": "007906",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000936468",
+      "source_company_id": "006774",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001328581",
+      "source_company_id": "016486",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_cut",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001584509",
+      "source_company_id": "186858",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_return.dividend_increase",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    }
+  ]
+}
