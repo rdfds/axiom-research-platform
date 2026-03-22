@@ -641,3 +641,811 @@ def build_buybacks_master(universe):
     return filtered
 
 
+def build_mna_master(universe):
+    def first_col(frame, *names):
+        for name in names:
+            if name in frame.columns:
+                return frame[name]
+        return None
+
+    def mark_universe_flags(frame, date_col, permno_col, flag_col):
+        tmp = frame[[date_col, permno_col]].copy()
+        tmp[date_col] = pd.to_datetime(tmp[date_col], errors="coerce")
+        tmp["month_end"] = tmp[date_col].dt.to_period("M").dt.to_timestamp("M")
+        tmp[permno_col] = pd.to_numeric(tmp[permno_col], errors="coerce")
+
+        u = universe[["date", "permno"]].copy()
+        u["date"] = pd.to_datetime(u["date"], errors="coerce")
+        u = u.rename(columns={"date": "month_end", "permno": permno_col})
+        u[permno_col] = pd.to_numeric(u[permno_col], errors="coerce")
+        u = u.dropna(subset=["month_end", permno_col]).drop_duplicates()
+
+        u_index = pd.MultiIndex.from_frame(u[["month_end", permno_col]])
+        tmp_index = pd.MultiIndex.from_frame(tmp[["month_end", permno_col]])
+        frame[flag_col] = tmp_index.isin(u_index)
+        return frame
+
+    def load_ciq_identifiers():
+        ciq_dir = DATA_DIR / "wrds" / "ciq"
+        if not ciq_dir.exists():
+            return None
+
+        cached = ciq_dir / "ciq_identifiers_map.parquet"
+        if cached.exists():
+            cached_df = pd.read_parquet(cached)
+            if cached_df is not None and not cached_df.empty:
+                return cached_df
+
+        candidates = []
+        candidates.extend(sorted(ciq_dir.glob("*ident*.*")))
+        candidates.extend(sorted(ciq_dir.glob("*Identifier*.*")))
+        candidates = [c for c in candidates if c.suffix in [".parquet", ".csv", ".gz"]]
+        if not candidates:
+            candidates = [c for c in ciq_dir.iterdir() if c.suffix in [".parquet", ".csv", ".gz"]]
+        if not candidates:
+            return None
+
+        path = candidates[0]
+
+        def _clean_text(series: pd.Series) :
+            s = series.astype("string")
+            s = s.str.strip()
+            s = s.where(~s.str.lower().isin(["", "nan", "none", "<na>"]))
+            return s
+
+        ciq_chunk = int(os.getenv("CIQ_CHUNK", "2000000"))
+        ciq_log_every = int(os.getenv("CIQ_LOG_EVERY", "5000000"))
+
+        if path.suffix != ".parquet":
+            header = pd.read_csv(path, nrows=0, compression="infer")
+            header_cols = list(header.columns)
+            wanted = {
+                "companyid", "symboltypecat", "symbolvalue",
+                "gvkey", "gvkey_id",
+                "cusip", "cusip8", "cusip_8", "cusip9", "cusip_9",
+                "isin", "isin_code",
+                "ticker", "tic", "symbol", "ticker_symbol",
+            }
+            usecols = [c for c in header_cols if c.lower() in wanted]
+
+            if {"companyid", "symboltypecat", "symbolvalue"}.issubset({c.lower() for c in usecols}):
+                log(f"CIQ identifiers: scanning {path.name} for GVKEY map...")
+                total = 0
+                gv_map = {}
+                next_log = ciq_log_every
+                debug = os.getenv("CIQ_DEBUG") == "1"
+                ciq_engine = "python" if os.getenv("CIQ_ENGINE") == "python" else "c"
+                read_kwargs = dict(
+                    usecols=usecols,
+                    chunksize=ciq_chunk,
+                    compression="infer",
+                    dtype=str,
+                    engine=ciq_engine,
+                )
+                if ciq_engine == "c":
+                    read_kwargs["low_memory"] = False
+                for chunk in pd.read_csv(path, **read_kwargs):
+                    total += len(chunk)
+                    chunk.columns = [c.lower() for c in chunk.columns]
+                    chunk["companyid"] = chunk["companyid"].astype("string").str.strip()
+                    chunk["symboltypecat"] = chunk["symboltypecat"].astype("string").str.strip()
+                    chunk["symbolvalue"] = chunk["symbolvalue"].astype("string").str.strip()
+                    gv = chunk[chunk["symboltypecat"].str.contains("GVKEY", case=False, na=False)].copy()
+                    if debug and total == len(chunk):
+                        sample_counts = chunk["symboltypecat"].value_counts().head(5).to_dict()
+                        log(f"CIQ debug: first chunk types {sample_counts}")
+                        log(f"CIQ debug: first chunk gv rows {len(gv):,}")
+                    if not gv.empty:
+                        gv["gvkey"] = gv["symbolvalue"].str.extract(r"(\d+)", expand=False)
+                        gv["gvkey"] = gv["gvkey"].where(~gv["gvkey"].str.lower().isin(["", "nan", "none", "<na>"]))
+                        gv["gvkey"] = gv["gvkey"].str.zfill(6)
+                        gv = gv.dropna(subset=["companyid", "gvkey"]).drop_duplicates("companyid")
+                        gv_map.update(dict(zip(gv["companyid"], gv["gvkey"])))
+                    if total >= next_log:
+                        log(f"CIQ identifiers: scanned {total:,} rows | gvkey companies {len(gv_map):,}")
+                        next_log += ciq_log_every
+
+                if not gv_map:
+                    log("CIQ identifiers: no GVKEY rows found; skipping.")
+                    return None
+
+                log(f"CIQ identifiers: scanning {path.name} for CUSIP/ISIN/TICKER...")
+                total = 0
+                next_log = ciq_log_every
+                cusip_rows = []
+                isin_rows = []
+                ticker_rows = []
+                for chunk in pd.read_csv(path, **read_kwargs):
+                    total += len(chunk)
+                    chunk.columns = [c.lower() for c in chunk.columns]
+                    chunk["companyid"] = chunk["companyid"].astype("string").str.strip()
+                    chunk["symboltypecat"] = chunk["symboltypecat"].astype("string").str.strip()
+                    chunk["symbolvalue"] = chunk["symbolvalue"].astype("string").str.strip()
+                    chunk = chunk[chunk["companyid"].isin(gv_map)]
+                    if chunk.empty:
+                        if total >= next_log:
+                            log(f"CIQ identifiers: scanned {total:,} rows | mappings {len(cusip_rows)+len(isin_rows)+len(ticker_rows):,}")
+                            next_log += ciq_log_every
+                        continue
+                    chunk["gvkey"] = chunk["companyid"].map(gv_map)
+
+                    cus = chunk[chunk["symboltypecat"].str.contains("CUSIP", case=False, na=False)].copy()
+                    if not cus.empty:
+                        cus["cusip8"] = cus["symbolvalue"].str.replace(r"[^0-9A-Za-z]", "", regex=True).str.upper().str.slice(0, 8)
+                        cus = cus.dropna(subset=["gvkey", "cusip8"])
+                        cusip_rows.append(cus[["gvkey", "cusip8"]])
+
+                    isin = chunk[chunk["symboltypecat"].str.contains("ISIN", case=False, na=False)].copy()
+                    if not isin.empty:
+                        isin = isin.dropna(subset=["gvkey", "symbolvalue"])
+                        isin_rows.append(isin[["gvkey", "symbolvalue"]].rename(columns={"symbolvalue": "isin"}))
+
+                    tic = chunk[chunk["symboltypecat"].str.contains("TICKER", case=False, na=False)].copy()
+                    if not tic.empty:
+                        tic = tic.dropna(subset=["gvkey", "symbolvalue"])
+                        ticker_rows.append(tic[["gvkey", "symbolvalue"]].rename(columns={"symbolvalue": "ticker"}))
+
+                    if total >= next_log:
+                        log(f"CIQ identifiers: scanned {total:,} rows | mappings {len(cusip_rows)+len(isin_rows)+len(ticker_rows):,}")
+                        next_log += ciq_log_every
+
+                out_parts = []
+                if cusip_rows:
+                    out_parts.append(pd.concat(cusip_rows, ignore_index=True))
+                if isin_rows:
+                    out_parts.append(pd.concat(isin_rows, ignore_index=True))
+                if ticker_rows:
+                    out_parts.append(pd.concat(ticker_rows, ignore_index=True))
+                if not out_parts:
+                    log("CIQ identifiers: no identifier mappings found.")
+                    return None
+                out = pd.concat(out_parts, ignore_index=True, sort=False)
+                out = out.dropna(subset=["gvkey"]).drop_duplicates()
+                out.to_parquet(cached, index=False)
+                log(f"CIQ identifiers: cached {len(out):,} rows -> {cached}")
+                return out
+
+            # Fall back to loading full file if structure doesn't match expected master table
+            df = pd.read_csv(path, usecols=usecols, compression="infer", dtype=str, low_memory=False)
+        else:
+            df = pd.read_parquet(path)
+
+        cols = {c.lower(): c for c in df.columns}
+
+        def pick(*names):
+            for name in names:
+                if name in cols:
+                    return cols[name]
+            return None
+
+        gvkey_col = pick("gvkey", "gvkey_id")
+        cusip_col = pick("cusip", "cusip8", "cusip_8", "cusip9", "cusip_9")
+        isin_col = pick("isin", "isin_code")
+        ticker_col = pick("ticker", "tic", "symbol", "ticker_symbol")
+
+        if gvkey_col is None:
+            return None
+
+        out = pd.DataFrame()
+        out["gvkey"] = df[gvkey_col]
+        if cusip_col is not None:
+            out["cusip_raw"] = df[cusip_col]
+        if isin_col is not None:
+            out["isin_raw"] = df[isin_col]
+        if ticker_col is not None:
+            out["ticker_raw"] = df[ticker_col]
+
+        out["gvkey"] = clean_text(out["gvkey"].astype("string")).str.extract(r"(\d+)", expand=False)
+        out["gvkey"] = out["gvkey"].where(~out["gvkey"].str.lower().isin(["", "nan", "none", "<na>"]))
+        out["gvkey"] = out["gvkey"].str.zfill(6)
+
+        if "cusip_raw" in out.columns:
+            out["cusip8"] = (
+                clean_text(out["cusip_raw"])
+                .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+                .str.upper()
+                .str.slice(0, 8)
+            )
+            out = out.drop(columns=["cusip_raw"])
+        if "isin_raw" in out.columns:
+            out["isin"] = clean_text(out["isin_raw"]).str.upper()
+            out = out.drop(columns=["isin_raw"])
+        if "ticker_raw" in out.columns:
+            out["ticker"] = clean_text(out["ticker_raw"]).str.upper().str.strip()
+            out = out.drop(columns=["ticker_raw"])
+
+        out = out.dropna(subset=["gvkey"]).drop_duplicates()
+        out.to_parquet(cached, index=False)
+        return out
+
+    if os.getenv("CIQ_BUILD_ONLY") == "1":
+        load_ciq_identifiers()
+        return None
+
+    def flag_us_entity(frame, side):
+        isin_col = f"{side}_isin"
+        country_col = f"{side}_country"
+        cusip_col = f"{side}_cusip"
+        ric_col = f"{side}_ric"
+
+        isin = frame[isin_col].astype("string") if isin_col in frame.columns else pd.Series([pd.NA] * len(frame))
+        country = frame[country_col].astype("string") if country_col in frame.columns else pd.Series([pd.NA] * len(frame))
+        cusip = frame[cusip_col].astype("string") if cusip_col in frame.columns else pd.Series([pd.NA] * len(frame))
+        ric = frame[ric_col].astype("string") if ric_col in frame.columns else pd.Series([pd.NA] * len(frame))
+
+        is_us_isin = isin.str.upper().str.startswith("US", na=False)
+        is_us_country = country.str.upper().str.contains(r"UNITED STATES|USA", na=False)
+        is_us_cusip = cusip.notna() & ~cusip.str.lower().isin(["", "nan", "none", "<na>"])
+        ric_upper = ric.str.upper().fillna("")
+        is_us_ric = ric_upper.str.contains(r"\.(N|OQ|A|B|PK|OB|ARCA|P|Q)(\^|$)")
+
+        return is_us_isin | is_us_country | is_us_cusip | is_us_ric
+
+    def validate_permno_date(frame, permno_col, date_col, permco_col=None, valid_flag_col=None):
+        msenames_path = CRSP_DIR / "msenames_2000-01-01_to_2024-12-31.parquet"
+        if not msenames_path.exists() or permno_col not in frame.columns:
+            return frame
+
+        names = pd.read_parquet(msenames_path, columns=["permno", "namedt", "nameendt"])
+        names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+        names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+        names = names.dropna(subset=["permno"]).drop_duplicates()
+        names = names.groupby("permno", as_index=False).agg(namedt=("namedt", "min"), nameendt=("nameendt", "max"))
+        names = names.rename(columns={"permno": permno_col})
+
+        out = frame.copy()
+        out[date_col] = pd.to_datetime(out[date_col], errors="coerce")
+        out[permno_col] = pd.to_numeric(out[permno_col], errors="coerce")
+        out = out.merge(names, on=permno_col, how="left")
+
+        valid = (out[permno_col].notna()) & (out[date_col] >= out["namedt"]) & (out[date_col] <= out["nameendt"])
+        if valid_flag_col is not None:
+            out[valid_flag_col] = valid
+        out.loc[~valid, permno_col] = pd.NA
+        if permco_col is not None and permco_col in out.columns:
+            out.loc[~valid, permco_col] = pd.NA
+        out = out.drop(columns=["namedt", "nameendt"])
+        return out
+
+    def attach_gvkey_from_ciq(frame, side, ciq):
+        if ciq is None or ciq.empty:
+            return frame
+        gvkey_col = f"{side}_gvkey"
+        cusip_col = f"{side}_cusip"
+        isin_col = f"{side}_isin"
+        us_flag_col = f"{side}_us_flag"
+
+        out = frame.copy()
+        if gvkey_col not in out.columns:
+            out[gvkey_col] = pd.NA
+
+        if cusip_col in out.columns:
+            out[f"{side}_cusip8"] = (
+                out[cusip_col]
+                .astype("string")
+                .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+                .str.upper()
+                .str.slice(0, 8)
+            )
+        if isin_col in out.columns:
+            out[f"{side}_isin_clean"] = clean_text(out[isin_col]).str.upper()
+
+        if us_flag_col in out.columns:
+            if f"{side}_cusip8" in out.columns:
+                out.loc[~out[us_flag_col], f"{side}_cusip8"] = pd.NA
+            if f"{side}_isin_clean" in out.columns:
+                out.loc[~out[us_flag_col], f"{side}_isin_clean"] = pd.NA
+
+        if "cusip8" in ciq.columns and f"{side}_cusip8" in out.columns:
+            keys = out[f"{side}_cusip8"].dropna().unique().tolist()
+            if keys:
+                ciq_cus = ciq.loc[ciq["cusip8"].isin(keys), ["cusip8", "gvkey"]].copy()
+                if not ciq_cus.empty:
+                    ciq_cus["cusip8"] = ciq_cus["cusip8"].astype("string")
+                    ciq_cus["gvkey"] = ciq_cus["gvkey"].astype("string")
+                    ciq_cus = ciq_cus.drop_duplicates("cusip8", keep="first")
+                    cus_map = dict(zip(ciq_cus["cusip8"], ciq_cus["gvkey"]))
+                    out[gvkey_col] = out[gvkey_col].fillna(out[f"{side}_cusip8"].map(cus_map))
+
+        if "isin" in ciq.columns and f"{side}_isin_clean" in out.columns:
+            keys = out[f"{side}_isin_clean"].dropna().unique().tolist()
+            if keys:
+                ciq_isin = ciq.loc[ciq["isin"].isin(keys), ["isin", "gvkey"]].copy()
+                if not ciq_isin.empty:
+                    ciq_isin["isin"] = ciq_isin["isin"].astype("string")
+                    ciq_isin["gvkey"] = ciq_isin["gvkey"].astype("string")
+                    ciq_isin = ciq_isin.drop_duplicates("isin", keep="first")
+                    isin_map = dict(zip(ciq_isin["isin"], ciq_isin["gvkey"]))
+                    out[gvkey_col] = out[gvkey_col].fillna(out[f"{side}_isin_clean"].map(isin_map))
+
+        if "ticker" in ciq.columns and f"{side}_ticker" in out.columns:
+            keys = out[f"{side}_ticker"].dropna().unique().tolist()
+            if keys:
+                ciq_tic = ciq.loc[ciq["ticker"].isin([k.upper() for k in keys]), ["ticker", "gvkey"]].copy()
+                if not ciq_tic.empty:
+                    ciq_tic["ticker"] = ciq_tic["ticker"].astype("string").str.upper()
+                    ciq_tic["gvkey"] = ciq_tic["gvkey"].astype("string")
+                    ciq_tic = ciq_tic.drop_duplicates("ticker", keep="first")
+                    tic_map = dict(zip(ciq_tic["ticker"], ciq_tic["gvkey"]))
+                    out[gvkey_col] = out[gvkey_col].fillna(out[f"{side}_ticker"].str.upper().map(tic_map))
+
+        drop_cols = [c for c in [f"{side}_cusip8", f"{side}_isin_clean"] if c in out.columns]
+        if drop_cols:
+            out = out.drop(columns=drop_cols)
+        return out
+
+    def attach_permno_from_gvkey(frame, gvkey_col, date_col, permno_col, permco_col, link):
+        if frame is None or frame.empty or link is None or link.empty or gvkey_col not in frame.columns:
+            return frame
+        link = link.copy()
+        if "lpermno" not in link.columns and "permno" in link.columns:
+            link = link.rename(columns={"permno": "lpermno"})
+        if "lpermco" not in link.columns and "permco" in link.columns:
+            link = link.rename(columns={"permco": "lpermco"})
+        link["linkdt"] = pd.to_datetime(link["linkdt"], errors="coerce")
+        link["linkenddt"] = pd.to_datetime(link["linkenddt"], errors="coerce").fillna(pd.Timestamp("2099-12-31"))
+
+        tmp = frame[[gvkey_col, date_col]].copy()
+        tmp = tmp.reset_index()
+        tmp[date_col] = pd.to_datetime(tmp[date_col], errors="coerce")
+        tmp["gvkey"] = tmp[gvkey_col]
+
+        merge = tmp.merge(link, on="gvkey", how="left")
+        merge = merge[(merge[date_col] >= merge["linkdt"]) & (merge[date_col] <= merge["linkenddt"])]
+        merge = merge.sort_values(["index", "linkdt"], ascending=[True, False])
+        merge = merge.drop_duplicates("index", keep="first")
+
+        out = frame.merge(
+            merge[["index", "lpermno", "lpermco"]],
+            left_index=True,
+            right_on="index",
+            how="left",
+        )
+        if permno_col in out.columns:
+            out[permno_col] = out[permno_col].fillna(out["lpermno"])
+        else:
+            out[permno_col] = out["lpermno"]
+        if permco_col in out.columns:
+            out[permco_col] = out[permco_col].fillna(out["lpermco"])
+        else:
+            out[permco_col] = out["lpermco"]
+        out = out.drop(columns=[c for c in ["index", "lpermno", "lpermco"] if c in out.columns])
+        return out
+
+    def attach_permno_from_cusip(frame, cusip_col, date_col, permno_col, permco_col):
+        msenames_path = CRSP_DIR / "msenames_2000-01-01_to_2024-12-31.parquet"
+        if not msenames_path.exists():
+            return frame
+
+        names = pd.read_parquet(
+            msenames_path,
+            columns=["permno", "permco", "namedt", "nameendt", "ncusip", "cusip"],
+        )
+        names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+        names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+        names["cusip8"] = (
+            names["ncusip"].fillna(names["cusip"]).astype("string").str.replace(r"[^0-9A-Za-z]", "", regex=True).str.upper()
+        )
+        names["cusip8"] = names["cusip8"].where(
+            ~names["cusip8"].str.lower().isin(["", "nan", "none", "<na>"])
+        ).str[:8]
+        names = names[names["cusip8"].notna()]
+
+        frame = frame.copy()
+        frame[date_col] = pd.to_datetime(frame[date_col], errors="coerce")
+        frame["cusip8"] = (
+            frame[cusip_col]
+            .astype("string")
+            .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+            .str.upper()
+        )
+        frame["cusip8"] = frame["cusip8"].where(
+            ~frame["cusip8"].str.lower().isin(["", "nan", "none", "<na>"])
+        ).str[:8]
+
+        needed = frame["cusip8"].dropna().unique().tolist()
+        if not needed:
+            return frame
+        names = names[names["cusip8"].isin(needed)]
+        if names.empty:
+            return frame
+
+        merge = (
+            frame[["cusip8", date_col]]
+            .reset_index()
+            .merge(names, on="cusip8", how="left")
+        )
+        merge = merge[(merge[date_col] >= merge["namedt"]) & (merge[date_col] <= merge["nameendt"])]
+        merge = merge.sort_values(["index", "namedt"], ascending=[True, False])
+        merge = merge.drop_duplicates("index", keep="first")
+
+        frame = frame.merge(
+            merge[["index", "permno", "permco"]],
+            left_index=True,
+            right_on="index",
+            how="left",
+        )
+        frame[permno_col] = frame[permno_col].fillna(frame["permno"])
+        frame[permco_col] = frame[permco_col].fillna(frame["permco"])
+        frame = frame.drop(columns=["index", "permno", "permco", "cusip8"])
+        return frame
+
+    def attach_permno_from_ticker(frame, ticker_col, date_col, permno_col, permco_col):
+        msenames_path = CRSP_DIR / "msenames_2000-01-01_to_2024-12-31.parquet"
+        if not msenames_path.exists():
+            return frame
+
+        names = pd.read_parquet(
+            msenames_path,
+            columns=["permno", "permco", "namedt", "nameendt", "ticker", "tsymbol"],
+        )
+        names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+        names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+        names["ticker_clean"] = (
+            names["ticker"].fillna(names["tsymbol"]).astype("string").str.upper().str.strip()
+        )
+        names["ticker_clean"] = names["ticker_clean"].where(
+            ~names["ticker_clean"].str.lower().isin(["", "nan", "none", "<na>"])
+        )
+        names = names[names["ticker_clean"].notna()]
+
+        frame = frame.copy()
+        frame[date_col] = pd.to_datetime(frame[date_col], errors="coerce")
+        frame["ticker_clean"] = (
+            frame[ticker_col].astype("string").str.upper().str.strip()
+        )
+        frame["ticker_clean"] = frame["ticker_clean"].where(
+            ~frame["ticker_clean"].str.lower().isin(["", "nan", "none", "<na>"])
+        )
+
+        needed = frame["ticker_clean"].dropna().unique().tolist()
+        if not needed:
+            return frame
+        names = names[names["ticker_clean"].isin(needed)]
+        if names.empty:
+            return frame
+
+        merge = (
+            frame[["ticker_clean", date_col]]
+            .reset_index()
+            .merge(names, on="ticker_clean", how="left")
+        )
+        merge = merge[(merge[date_col] >= merge["namedt"]) & (merge[date_col] <= merge["nameendt"])]
+        merge = merge.sort_values(["index", "namedt"], ascending=[True, False])
+        merge = merge.drop_duplicates("index", keep="first")
+
+        frame = frame.merge(
+            merge[["index", "permno", "permco"]],
+            left_index=True,
+            right_on="index",
+            how="left",
+        )
+        frame[permno_col] = frame[permno_col].fillna(frame["permno"])
+        frame[permco_col] = frame[permco_col].fillna(frame["permco"])
+        frame = frame.drop(columns=["index", "permno", "permco", "ticker_clean"])
+        return frame
+
+    def attach_permno_from_ric(frame, ric_col, date_col, permno_col, permco_col):
+        msenames_path = CRSP_DIR / "msenames_2000-01-01_to_2024-12-31.parquet"
+        if not msenames_path.exists():
+            return frame
+
+        names = pd.read_parquet(
+            msenames_path,
+            columns=["permno", "permco", "namedt", "nameendt", "ticker", "tsymbol"],
+        )
+        names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+        names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+        names["ticker_clean"] = (
+            names["ticker"].fillna(names["tsymbol"]).astype("string").str.upper().str.strip()
+        )
+        names["ticker_clean"] = names["ticker_clean"].where(
+            ~names["ticker_clean"].str.lower().isin(["", "nan", "none", "<na>"])
+        )
+        names["ticker_compact"] = names["ticker_clean"].str.replace(r"[^0-9A-Z]", "", regex=True)
+        names = names[names["ticker_compact"].notna()]
+
+        frame = frame.copy()
+        frame[date_col] = pd.to_datetime(frame[date_col], errors="coerce")
+        ric = frame[ric_col].astype("string").str.upper().str.strip()
+        ric = ric.where(~ric.str.lower().isin(["", "nan", "none", "<na>"]))
+        ric_base = ric.str.split(r"[\\.^]").str[0]
+        frame["ric_compact"] = ric_base.str.replace(r"[^0-9A-Z]", "", regex=True)
+        frame["ric_compact"] = frame["ric_compact"].where(
+            ~frame["ric_compact"].str.lower().isin(["", "nan", "none", "<na>"])
+        )
+
+        needed = frame["ric_compact"].dropna().unique().tolist()
+        if not needed:
+            return frame
+        names = names[names["ticker_compact"].isin(needed)]
+        if names.empty:
+            return frame
+
+        merge = (
+            frame[["ric_compact", date_col]]
+            .reset_index()
+            .merge(names, left_on="ric_compact", right_on="ticker_compact", how="left")
+        )
+        merge = merge[(merge[date_col] >= merge["namedt"]) & (merge[date_col] <= merge["nameendt"])]
+        merge = merge.sort_values(["index", "namedt"], ascending=[True, False])
+        merge = merge.drop_duplicates("index", keep="first")
+
+        frame = frame.merge(
+            merge[["index", "permno", "permco"]],
+            left_index=True,
+            right_on="index",
+            how="left",
+        )
+        frame[permno_col] = frame[permno_col].fillna(frame["permno"])
+        frame[permco_col] = frame[permco_col].fillna(frame["permco"])
+        frame = frame.drop(columns=["index", "permno", "permco", "ric_compact"])
+        return frame
+
+    def apply_permid_map(frame):
+        map_path = DATA_DIR / "refinitiv" / "permid_map.parquet"
+        if not map_path.exists():
+            return frame
+
+        perm_map = pd.read_parquet(map_path)
+        if "permid" not in perm_map.columns:
+            return frame
+        perm_map = perm_map.copy()
+        perm_map["permid"] = perm_map["permid"].astype(str)
+
+        out = frame.copy()
+        for side in ["target", "acquiror"]:
+            id_col = f"{side}_id"
+            if id_col not in out.columns:
+                continue
+            out[id_col] = out[id_col].astype(str)
+            out.loc[out[id_col].isin(["nan", "None", "<NA>"]), id_col] = pd.NA
+            side_map = perm_map.rename(columns={c: f"{side}_{c}_map" for c in perm_map.columns if c != "permid"})
+            out = out.merge(side_map, left_on=id_col, right_on="permid", how="left")
+
+            for field in ["ric", "cusip", "isin", "ticker", "name"]:
+                existing = f"{side}_{field}"
+                mapped = f"{side}_{field}_map"
+                if mapped in out.columns:
+                    out[existing] = out[existing].fillna(out[mapped])
+            if "permid" in out.columns:
+                drop_cols = [c for c in out.columns if c.endswith("_map")] + ["permid"]
+                out = out.drop(columns=drop_cols)
+        return out
+
+    def clean_text(series: pd.Series) -> pd.Series:
+        s = series.astype("string")
+        s = s.str.strip()
+        s = s.where(~s.str.lower().isin(["", "nan", "none", "<na>"]))
+        return s
+
+    def cusip_from_isin(series: pd.Series) -> pd.Series:
+        s = clean_text(series).str.upper()
+        us = s.str.startswith("US", na=False)
+        out = pd.Series([pd.NA] * len(s), index=s.index, dtype="string")
+        out.loc[us] = s.loc[us].str.slice(2, 11)
+        out = out.where(~out.str.lower().isin(["", "nan", "none", "<na>"]))
+        return out
+
+    def apply_ric_cusip_map(frame):
+        map_path = DATA_DIR / "refinitiv" / "ric_to_cusip_map.parquet"
+        if not map_path.exists():
+            return frame
+
+        ric_map = pd.read_parquet(map_path)
+        if "ric" not in ric_map.columns:
+            return frame
+
+        ric_map = ric_map.copy()
+        ric_map["ric_clean"] = clean_text(ric_map["ric"]).str.upper()
+        for col in ["cusip", "isin", "ticker"]:
+            if col in ric_map.columns:
+                ric_map[col] = clean_text(ric_map[col]).str.upper()
+        ric_map = ric_map.dropna(subset=["ric_clean"]).drop_duplicates("ric_clean")
+
+        out = frame.copy()
+        for side in ["target", "acquiror"]:
+            ric_col = f"{side}_ric"
+            if ric_col not in out.columns:
+                continue
+            out[f"{side}_ric_clean"] = clean_text(out[ric_col]).str.upper()
+            out = out.merge(
+                ric_map.rename(
+                    columns={c: f"{side}_{c}_map" for c in ric_map.columns if c != "ric_clean"}
+                ),
+                left_on=f"{side}_ric_clean",
+                right_on="ric_clean",
+                how="left",
+            )
+            for field in ["cusip", "isin", "ticker"]:
+                mapped = f"{side}_{field}_map"
+                if mapped in out.columns:
+                    out[f"{side}_{field}"] = out[f"{side}_{field}"].fillna(out[mapped])
+            drop_cols = [c for c in out.columns if c.endswith("_map")] + [f"{side}_ric_clean", "ric_clean"]
+            out = out.drop(columns=[c for c in drop_cols if c in out.columns])
+        return out
+
+    def standardize_refinitiv(frame):
+        out = pd.DataFrame(index=frame.index)
+        out["source"] = "refinitiv"
+        out["source_id"] = first_col(frame, "Instrument")
+        out["deal_id"] = out["source_id"]
+
+        ann = first_col(frame, "Date Announced", "Announcement Date", "Announced Date")
+        out["event_date"] = pd.to_datetime(ann, errors="coerce")
+        out["announce_date"] = out["event_date"]
+        comp = first_col(frame, "Date Completed", "Date Effective", "Completion Date", "Completion/Effective Date")
+        out["completion_date"] = pd.to_datetime(comp, errors="coerce")
+
+        out["deal_status"] = first_col(frame, "Deal Status")
+        out["deal_type"] = first_col(frame, "M&A Type", "Deal Type")
+        out["deal_value"] = pd.to_numeric(first_col(frame, "Deal Value", "Deal Value (USD)"), errors="coerce")
+        out["deal_value_currency"] = first_col(frame, "Deal Value Currency")
+        out["payment_type"] = first_col(frame, "Payment Type")
+        out["pct_cash"] = pd.to_numeric(first_col(frame, "Percent Cash", "Pct Cash"), errors="coerce")
+        out["pct_stock"] = pd.to_numeric(first_col(frame, "Percent Stock", "Pct Stock"), errors="coerce")
+        out["premium_1day"] = pd.to_numeric(first_col(frame, "Premium 1 Day"), errors="coerce")
+        out["premium_1week"] = pd.to_numeric(first_col(frame, "Premium 1 Week"), errors="coerce")
+        out["premium_4week"] = pd.to_numeric(first_col(frame, "Premium 4 Week", "Premium 4 Weeks"), errors="coerce")
+        out["transaction_nature"] = first_col(frame, "Transaction Nature")
+        out["deal_synopsis"] = first_col(frame, "Deal Synopsis")
+
+        out["target_id"] = first_col(frame, "Target PermID", "Target ID")
+        out["target_name"] = first_col(frame, "Target Full Name", "Target Name", "Target")
+        out["target_ticker"] = first_col(frame, "Target Ticker", "Target RIC")
+        out["target_ric"] = first_col(frame, "Target RIC")
+        out["target_cusip"] = first_col(frame, "Target CUSIP", "Target Cusip", "Target CUSIP 9", "Target CUSIP9")
+        out["target_isin"] = first_col(frame, "Target ISIN")
+        out["target_gvkey"] = pd.NA
+        out["target_permno"] = pd.NA
+        out["target_permco"] = pd.NA
+        out["target_sic"] = first_col(frame, "Target Primary SIC Code")
+        out["target_country"] = first_col(frame, "Target Nation", "Target Country")
+
+        out["acquiror_id"] = first_col(frame, "Acquiror PermID", "Acquiror ID", "Acquirer PermID", "Acquirer ID")
+        out["acquiror_name"] = first_col(frame, "Acquiror Full Name", "Acquiror Name", "Acquirer Name", "Acquiror")
+        out["acquiror_ticker"] = first_col(frame, "Acquiror Ticker", "Acquirer Ticker", "Acquiror RIC")
+        out["acquiror_ric"] = first_col(frame, "Acquiror RIC", "Acquirer RIC")
+        out["acquiror_cusip"] = first_col(frame, "Acquiror CUSIP", "Acquiror Cusip", "Acquirer CUSIP", "Acquirer Cusip")
+        out["acquiror_isin"] = first_col(frame, "Acquiror ISIN", "Acquirer ISIN")
+        out["acquiror_gvkey"] = pd.NA
+        out["acquiror_permno"] = pd.NA
+        out["acquiror_permco"] = pd.NA
+        out["acquiror_sic"] = first_col(frame, "Acquiror Primary SIC Code", "Acquirer Primary SIC Code")
+        out["acquiror_country"] = first_col(frame, "Acquiror Nation", "Acquirer Nation", "Acquiror Country")
+
+        out["action_type"] = "mna"
+        out["action_subtype"] = out["deal_type"]
+        out["universe_filtered"] = False
+        out["year"] = out["event_date"].dt.year
+        out["source_id"] = out["source_id"].astype("string")
+        out["deal_id"] = out["deal_id"].astype("string")
+        out["target_id"] = out["target_id"].astype("string")
+        out["acquiror_id"] = out["acquiror_id"].astype("string")
+        return out
+
+    def standardize_crsp(frame, universe_frame):
+        frame = frame.copy()
+        frame["action_date"] = pd.to_datetime(frame["action_date"], errors="coerce")
+        frame["month_end"] = frame["action_date"].dt.to_period("M").dt.to_timestamp("M")
+
+        u = universe_frame[["date", "permno"]].copy()
+        u["date"] = pd.to_datetime(u["date"], errors="coerce")
+        u = u.rename(columns={"date": "month_end"})
+        u = u.dropna(subset=["month_end", "permno"]).drop_duplicates()
+        merged = frame.merge(u, on=["month_end", "permno"], how="left", indicator=True, sort=False)
+        in_universe = merged["_merge"].eq("both").to_numpy()
+
+        out = pd.DataFrame(index=frame.index)
+        out["source"] = "crsp_delist"
+        out["source_id"] = pd.NA
+        out["deal_id"] = (
+            "crsp_delist:"
+            + frame["permno"].astype(str)
+            + ":"
+            + frame["action_date"].dt.strftime("%Y-%m-%d")
+        )
+
+        out["event_date"] = frame["action_date"]
+        out["announce_date"] = out["event_date"]
+        out["completion_date"] = out["event_date"]
+
+        out["deal_status"] = "Completed"
+        out["deal_type"] = frame.get("action_type")
+        out["deal_value"] = pd.to_numeric(frame.get("deal_amount"), errors="coerce")
+        out["deal_value_currency"] = pd.NA
+
+        out["target_id"] = "permno:" + frame["permno"].astype(str)
+        out["target_name"] = frame.get("company_name")
+        out["target_ticker"] = frame.get("ticker")
+        out["target_permno"] = frame.get("permno")
+        out["target_permco"] = frame.get("permco")
+        out["target_sic"] = frame.get("sic")
+        out["target_country"] = "United States"
+
+        out["acquiror_id"] = pd.NA
+        out["acquiror_name"] = pd.NA
+        out["acquiror_ticker"] = pd.NA
+        out["acquiror_permno"] = pd.NA
+        out["acquiror_permco"] = pd.NA
+        out["acquiror_sic"] = pd.NA
+        out["acquiror_country"] = pd.NA
+
+        out["action_type"] = "acquisition"
+        out["action_subtype"] = frame.get("action_type")
+
+        out["universe_filtered"] = in_universe
+        out["year"] = out["event_date"].dt.year
+        out["source_id"] = out["source_id"].astype("string")
+        out["deal_id"] = out["deal_id"].astype("string")
+        out["target_id"] = out["target_id"].astype("string")
+        out["acquiror_id"] = out["acquiror_id"].astype("string")
+        return out
+
+    frames = []
+    ciq = load_ciq_identifiers()
+    link_path = CRSP_DIR / "ccmxpf_lnkhist.parquet"
+    link = pd.read_parquet(link_path) if link_path.exists() else None
+
+    # Refinitiv M&A (deal-level)
+    ref_path = DATA_DIR / "refinitiv" / "ma_deals_all.parquet"
+    if ref_path.exists():
+        ref = pd.read_parquet(ref_path)
+        ref = standardize_refinitiv(ref)
+        ref = apply_permid_map(ref)
+        for col in ["target_cusip", "target_ticker", "acquiror_cusip", "acquiror_ticker", "target_ric", "acquiror_ric"]:
+            if col in ref.columns:
+                ref[col] = clean_text(ref[col])
+        ref = apply_ric_cusip_map(ref)
+        for side in ["target", "acquiror"]:
+            us_flag = flag_us_entity(ref, side)
+            flag_col = f"{side}_us_flag"
+            ref[flag_col] = us_flag
+            for col in [f"{side}_ticker", f"{side}_ric"]:
+                if col in ref.columns:
+                    ref.loc[~us_flag, col] = pd.NA
+        if "target_cusip" in ref.columns and "target_isin" in ref.columns:
+            derived = cusip_from_isin(ref["target_isin"])
+            ref["target_cusip"] = ref["target_cusip"].fillna(derived)
+        if "acquiror_cusip" in ref.columns and "acquiror_isin" in ref.columns:
+            derived = cusip_from_isin(ref["acquiror_isin"])
+            ref["acquiror_cusip"] = ref["acquiror_cusip"].fillna(derived)
+        ref = attach_permno_from_cusip(ref, "target_cusip", "event_date", "target_permno", "target_permco")
+        ref = attach_permno_from_cusip(ref, "acquiror_cusip", "event_date", "acquiror_permno", "acquiror_permco")
+        ref = attach_permno_from_ticker(ref, "target_ticker", "event_date", "target_permno", "target_permco")
+        ref = attach_permno_from_ticker(ref, "acquiror_ticker", "event_date", "acquiror_permno", "acquiror_permco")
+        ref = attach_permno_from_ric(ref, "target_ric", "event_date", "target_permno", "target_permco")
+        ref = attach_permno_from_ric(ref, "acquiror_ric", "event_date", "acquiror_permno", "acquiror_permco")
+        ref = attach_gvkey_from_ciq(ref, "target", ciq)
+        ref = attach_gvkey_from_ciq(ref, "acquiror", ciq)
+        if link is not None:
+            ref = attach_permno_from_gvkey(ref, "target_gvkey", "event_date", "target_permno", "target_permco", link)
+            ref = attach_permno_from_gvkey(ref, "acquiror_gvkey", "event_date", "acquiror_permno", "acquiror_permco", link)
+        ref = validate_permno_date(ref, "target_permno", "event_date", "target_permco", "target_permno_valid")
+        ref = validate_permno_date(ref, "acquiror_permno", "event_date", "acquiror_permco", "acquiror_permno_valid")
+        if "target_permno" in ref.columns:
+            mask = ref["target_cusip"].notna() | ref["target_ticker"].notna() | ref["target_ric"].notna()
+            ref.loc[~mask, "target_permno"] = pd.NA
+        if "acquiror_permno" in ref.columns:
+            mask = ref["acquiror_cusip"].notna() | ref["acquiror_ticker"].notna() | ref["acquiror_ric"].notna()
+            ref.loc[~mask, "acquiror_permno"] = pd.NA
+        ref = mark_universe_flags(ref, "event_date", "target_permno", "target_in_universe")
+        ref = mark_universe_flags(ref, "event_date", "acquiror_permno", "acquiror_in_universe")
+        ref["universe_filtered"] = ref["target_in_universe"] | ref["acquiror_in_universe"]
+        frames.append(ref)
+
+    # CRSP delisting acquisitions (outcomes)
+    acq_path = DATA_DIR / "acquisitions_clean.parquet"
+    if acq_path.exists():
+        acq = pd.read_parquet(acq_path)
+        frames.append(standardize_crsp(acq, universe))
+
+    if not frames:
+        return None
+
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+    out_path = CURATED_DIR / "mna_master.parquet"
+    combined.to_parquet(out_path, index=False)
+    return combined
+
+
