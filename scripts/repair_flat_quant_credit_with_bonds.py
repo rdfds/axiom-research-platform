@@ -450,3 +450,5 @@ def main() -> None:
     print(f"Overlayed bond credit spreads -> {out_parquet}")
 
 
+if __name__ == "__main__":
+    main()
