@@ -351,3 +351,47 @@ def merge_into_prices_monthly(mapped: pd.DataFrame) -> None:
     log(f"Updated {prices_path}")
 
 
+def main():
+    log("Connecting to Refinitiv...")
+    rd.open_session()
+
+    try:
+        mapping = build_permno_ric_map()
+        mapping = attach_gvkey(mapping)
+        mapping = mapping.dropna(subset=["ric"])
+
+        tickers = mapping["ric"].dropna().unique().tolist()
+        log(f"RICs to pull: {len(tickers):,}")
+
+        raw_out = REF_DIR / "prices_monthly_rdp_2025.parquet"
+        if SKIP_PULL and raw_out.exists():
+            log(f"Using existing raw file -> {raw_out}")
+            raw = pd.read_parquet(raw_out)
+        else:
+            raw = extract_prices(tickers)
+        if raw is None or raw.empty:
+            log("No price rows returned.")
+            return
+
+        raw.to_parquet(raw_out, index=False)
+        log(f"Saved raw RDP prices -> {raw_out}")
+
+        norm = normalize_prices(raw)
+        mapped = norm.merge(mapping, left_on="ric", right_on="ric", how="left")
+        mapped = mapped.dropna(subset=["gvkey"])
+        mapped["source"] = "refinitiv_rdp"
+
+        mapped_out = DATA_DIR / "prices_monthly_rdp_2025.parquet"
+        mapped.to_parquet(mapped_out, index=False)
+        log(f"Saved mapped prices -> {mapped_out}")
+
+        if MERGE:
+            merge_into_prices_monthly(mapped[["gvkey", "date", "prc", "ret", "source"]])
+
+    finally:
+        rd.close_session()
+        log("Refinitiv session closed.")
+
+
+if __name__ == "__main__":
+    main()
