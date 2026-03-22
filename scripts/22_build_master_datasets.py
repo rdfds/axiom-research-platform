@@ -1458,3 +1458,8 @@ def summarize_dataset(name, df, date_col):
     return {"dataset": name, "rows": len(df), "min_date": None, "max_date": None}
 
 
+def log(msg: str) -> None:
+    now = datetime.now().strftime("%H:%M:%S")
+    print(f"[{now}] {msg}")
+
+
