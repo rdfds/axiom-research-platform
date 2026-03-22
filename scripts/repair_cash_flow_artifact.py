@@ -39,7 +39,7 @@ CAPEX_TTM_CONCEPTS = [
 ]
 
 
-def parse_args() :
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-path", required=True, help="Input company-state JSONL artifact")
     parser.add_argument("--companyfacts-root", required=True, help="SEC companyfacts folder")
