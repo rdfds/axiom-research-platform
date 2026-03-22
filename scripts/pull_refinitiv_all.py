@@ -188,3 +188,111 @@ def _month_ranges(year: int):
 # ============================================================================
 # 1. M&A DEALS
 # ============================================================================
+def pull_ma_deals():
+    log("="*60)
+    log("1. PULLING M&A DEALS")
+    log("="*60)
+
+    fields = list(MNA_FIELD_BASE)
+    if MNA_PROBE_FIELDS:
+        probe_universe = _find_ma_probe_universe()
+        probed = _probe_ma_fields(probe_universe)
+        if probed:
+            fields = probed
+        else:
+            log("  M&A field probe failed or empty; falling back to base fields.")
+    else:
+        log("  Skipping M&A field probe (MNA_PROBE_FIELDS=0).")
+
+    all_deals = []
+
+    # Pull completed deals by year to avoid timeout
+    for year in range(MNA_START_YEAR, MNA_END_YEAR + 1):
+        log(f"  Pulling {year} completed deals...")
+        year_path = MNA_YEARLY_DIR / f"ma_deals_{year}.parquet"
+        if MNA_SAVE_BY_YEAR and MNA_SKIP_EXISTING and year_path.exists():
+            log(f"    Skipping {year} (already saved).")
+            continue
+        try:
+            deals = _pull_ma_range(
+                f"{year}-01-01",
+                f"{year}-12-31",
+                fields,
+                str(year),
+            )
+            if deals is None or len(deals) == 0:
+                raise RuntimeError("empty")
+            deals["year"] = year
+            if MNA_SAVE_BY_YEAR:
+                deals.to_parquet(year_path, index=False)
+                log(f"    Found {len(deals):,} deals in {year} (saved {year_path.name})")
+            else:
+                all_deals.append(deals)
+                log(f"    Found {len(deals):,} deals in {year}")
+            time.sleep(1)  # Rate limit
+        except Exception:
+            if not MNA_FALLBACK_MONTHLY:
+                log(f"    Year {year} failed; skipping (MNA_FALLBACK_MONTHLY=0).")
+                continue
+            log(f"    Year {year} failed; falling back to monthly pulls.")
+            month_frames = []
+            for start, end, month in _month_ranges(year):
+                month_path = MNA_YEARLY_DIR / f"ma_deals_{year}_{month:02d}.parquet"
+                if MNA_MONTH_SKIP_EXISTING and month_path.exists():
+                    log(f"      Skipping {year}-{month:02d} (already saved).")
+                    continue
+                deals = _pull_ma_range(start, end, fields, f"{year}-{month:02d}")
+                if deals is None or len(deals) == 0:
+                    continue
+                deals["year"] = year
+                deals.to_parquet(month_path, index=False)
+                month_frames.append(deals)
+                log(f"      Found {len(deals):,} deals in {year}-{month:02d} (saved {month_path.name})")
+                time.sleep(1)
+            # Build year file from monthly parts if any exist
+            month_files = sorted(MNA_YEARLY_DIR.glob(f"ma_deals_{year}_??.parquet"))
+            if month_files:
+                combined_year = pd.concat((pd.read_parquet(p) for p in month_files), ignore_index=True)
+                combined_year.to_parquet(year_path, index=False)
+                log(f"    Built yearly file from months -> {year_path.name} ({len(combined_year):,} rows)")
+
+    if MNA_SAVE_BY_YEAR:
+        year_files = []
+        for y in range(MNA_START_YEAR, MNA_END_YEAR + 1):
+            year_path = MNA_YEARLY_DIR / f"ma_deals_{y}.parquet"
+            if not year_path.exists():
+                month_files = sorted(MNA_YEARLY_DIR.glob(f"ma_deals_{y}_??.parquet"))
+                if month_files:
+                    combined_year = pd.concat((pd.read_parquet(p) for p in month_files), ignore_index=True)
+                    combined_year.to_parquet(year_path, index=False)
+            if year_path.exists():
+                year_files.append(year_path)
+        if year_files:
+            combined = pd.concat((pd.read_parquet(p) for p in year_files), ignore_index=True)
+            save_parquet(combined, 'ma_deals_all')
+            if 'Target Nation' in combined.columns:
+                us_deals = combined[combined['Target Nation'] == 'United States']
+                save_parquet(us_deals, 'ma_deals_us')
+                log(f"  Total: {len(combined):,} deals, {len(us_deals):,} US deals")
+            else:
+                log(f"  Total: {len(combined):,} deals (Target Nation not available)")
+            return combined
+        return pd.DataFrame()
+
+    if all_deals:
+        combined = pd.concat(all_deals, ignore_index=True)
+        save_parquet(combined, 'ma_deals_all')
+
+        # Filter to US deals
+        if 'Target Nation' in combined.columns:
+            us_deals = combined[combined['Target Nation'] == 'United States']
+            save_parquet(us_deals, 'ma_deals_us')
+            log(f"  Total: {len(combined):,} deals, {len(us_deals):,} US deals")
+        else:
+            log(f"  Total: {len(combined):,} deals")
+        return combined
+    return pd.DataFrame()
+
+# ============================================================================
+# 2. DIVIDEND ACTIONS
+# ============================================================================

@@ -1449,3 +1449,12 @@ def build_mna_master(universe):
     return combined
 
 
+def summarize_dataset(name, df, date_col):
+    if df is None or df.empty:
+        return None
+    s = pd.to_datetime(df[date_col], errors="coerce") if date_col in df.columns else None
+    if s is not None and s.notna().any():
+        return {"dataset": name, "rows": len(df), "min_date": s.min(), "max_date": s.max()}
+    return {"dataset": name, "rows": len(df), "min_date": None, "max_date": None}
+
+
