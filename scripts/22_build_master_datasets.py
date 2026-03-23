@@ -687,7 +687,7 @@ def build_mna_master(universe):
 
         path = candidates[0]
 
-        def _clean_text(series: pd.Series) :
+        def _clean_text(series: pd.Series) -> pd.Series:
             s = series.astype("string")
             s = s.str.strip()
             s = s.where(~s.str.lower().isin(["", "nan", "none", "<na>"]))

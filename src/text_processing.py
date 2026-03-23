@@ -336,3 +336,27 @@ def extract_signals(
     return signals
 
 
+def write_partitioned(table: str, records: List[Dict[str, object]], base_dir: Path = WAREHOUSE_DIR) -> int:
+    if not records:
+        return 0
+    df = pd.DataFrame(records)
+    df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+    df["available_time"] = pd.to_datetime(df["available_time"], errors="coerce")
+    df["ingestion_time"] = pd.to_datetime(df["ingestion_time"], errors="coerce")
+    for col in ["quality_flags", "upstream_version_ids", "supporting_chunk_ids"]:
+        if col in df.columns:
+            df[col] = df[col].apply(ensure_list)
+    df["year"] = df["event_time"].dt.year.astype("Int64")
+
+    out_dir = base_dir / table
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = 0
+    for year, ydf in df.groupby("year"):
+        if pd.isna(year):
+            continue
+        year_dir = out_dir / f"year={int(year)}"
+        year_dir.mkdir(parents=True, exist_ok=True)
+        part_path = year_dir / f"part_{int(datetime.utcnow().timestamp())}_{os.getpid()}.parquet"
+        ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+        rows += len(ydf)
+    return rows

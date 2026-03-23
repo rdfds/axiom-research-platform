@@ -518,3 +518,49 @@ def pull_splits():
 # ============================================================================
 # 5. SPINOFFS & DIVESTITURES
 # ============================================================================
+def pull_spinoffs():
+    log("="*60)
+    log("5. PULLING SPINOFFS & DIVESTITURES")
+    log("="*60)
+
+    try:
+        # Spinoffs from M&A database
+        spinoffs = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), TR.MnADealType=="Spinoff Deal", TR.MnAAnnDate>=2020-01-01)',
+            fields=[
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnATargetNation',
+                'TR.MnAStatus'
+            ]
+        )
+        save_parquet(spinoffs, 'spinoffs')
+        log(f"  Found {len(spinoffs):,} spinoff deals")
+    except Exception as e:
+        log(f"  Spinoff error: {e}")
+        spinoffs = pd.DataFrame()
+
+    try:
+        # Divestitures
+        divestitures = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), TR.MnADealType=="Divestiture Deal", TR.MnAAnnDate>=2020-01-01)',
+            fields=[
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnATargetNation',
+                'TR.MnAStatus'
+            ]
+        )
+        save_parquet(divestitures, 'divestitures')
+        log(f"  Found {len(divestitures):,} divestiture deals")
+    except Exception as e:
+        log(f"  Divestiture error: {e}")
+        divestitures = pd.DataFrame()
+
+    return spinoffs, divestitures
+
+# ============================================================================
+# 6. DEBT ISSUANCE
+# ============================================================================
