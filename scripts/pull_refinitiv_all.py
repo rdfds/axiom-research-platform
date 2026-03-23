@@ -296,3 +296,225 @@ def pull_ma_deals():
 # ============================================================================
 # 2. DIVIDEND ACTIONS
 # ============================================================================
+def pull_dividends():
+    log("="*60)
+    log("2. PULLING DIVIDEND ACTIONS")
+    log("="*60)
+
+    # Get S&P 1500 + additional companies
+    log("  Getting universe of dividend-paying companies...")
+
+    # Get companies from index
+    try:
+        sp500 = rd.get_data(
+            universe='0#.SPX',
+            fields=['TR.CommonName', 'TR.TRBCEconomicSector']
+        )
+        log(f"  Found {len(sp500)} S&P 500 companies")
+    except:
+        sp500 = pd.DataFrame()
+
+    try:
+        sp400 = rd.get_data(
+            universe='0#.MID',
+            fields=['TR.CommonName']
+        )
+        log(f"  Found {len(sp400)} S&P 400 companies")
+    except:
+        sp400 = pd.DataFrame()
+
+    try:
+        sp600 = rd.get_data(
+            universe='0#.SML',
+            fields=['TR.CommonName']
+        )
+        log(f"  Found {len(sp600)} S&P 600 companies")
+    except:
+        sp600 = pd.DataFrame()
+
+    # Combine tickers
+    all_tickers = []
+    for df in [sp500, sp400, sp600]:
+        if len(df) > 0 and 'Instrument' in df.columns:
+            all_tickers.extend(df['Instrument'].tolist())
+
+    all_tickers = list(set(all_tickers))
+    log(f"  Total universe: {len(all_tickers)} companies")
+
+    # Pull dividends in batches
+    all_divs = []
+    batch_size = 100
+
+    for i in range(0, len(all_tickers), batch_size):
+        batch = all_tickers[i:i+batch_size]
+        log(f"  Pulling dividends batch {i//batch_size + 1}/{len(all_tickers)//batch_size + 1}...")
+
+        try:
+            divs = rd.get_data(
+                universe=batch,
+                fields=[
+                    'TR.DivExDate',
+                    'TR.DivPayDate',
+                    'TR.DivRecordDate',
+                    'TR.DivAmount',
+                    'TR.DivType',
+                    'TR.DivCurrency',
+                    'TR.DivYield',
+                    'TR.DivFrequency'
+                ],
+                parameters={'SDate': START_DATE, 'EDate': END_DATE}
+            )
+            if len(divs) > 0:
+                all_divs.append(divs)
+        except Exception as e:
+            log(f"    Batch error: {e}")
+
+        time.sleep(0.5)  # Rate limit
+
+    if all_divs:
+        combined = pd.concat(all_divs, ignore_index=True)
+        # Remove rows with no dividend data
+        combined = combined.dropna(subset=['Dividend Ex Date'])
+        save_parquet(combined, 'dividends_all')
+
+        # Categorize dividend actions
+        log("  Categorizing dividend actions...")
+        combined['Ex Date'] = pd.to_datetime(combined['Dividend Ex Date'])
+        combined = combined.sort_values(['Instrument', 'Ex Date'])
+
+        # Calculate dividend changes
+        combined['prev_amount'] = combined.groupby('Instrument')['Dividend Amount'].shift(1)
+        combined['pct_change'] = (combined['Dividend Amount'] - combined['prev_amount']) / combined['prev_amount']
+
+        # Classify actions
+        def classify_div_action(row):
+            if pd.isna(row['prev_amount']):
+                return 'initiation'
+            elif row['pct_change'] > 0.01:
+                return 'increase'
+            elif row['pct_change'] < -0.01:
+                return 'decrease'
+            else:
+                return 'unchanged'
+
+        combined['action_type'] = combined.apply(classify_div_action, axis=1)
+        save_parquet(combined, 'dividends_with_actions')
+
+        log(f"  Total: {len(combined):,} dividend records")
+        log(f"  Action breakdown: {combined['action_type'].value_counts().to_dict()}")
+        return combined
+    return pd.DataFrame()
+
+# ============================================================================
+# 3. SHARE BUYBACKS
+# ============================================================================
+def pull_buybacks():
+    log("="*60)
+    log("3. PULLING BUYBACK DATA")
+    log("="*60)
+
+    # Get companies with buyback activity via screening
+    log("  Searching for companies with buyback activity...")
+
+    try:
+        # Screen for companies that have repurchased shares
+        buybacks = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), TR.MnADealType=="Self Tender Or Recapitalization Deal" OR TR.MnADealType=="Repurchases Deal", TR.MnAAnnDate>=2020-01-01)',
+            fields=[
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnADealType',
+                'TR.MnATargetNation',
+                'TR.MnATargetPrimarySICCode'
+            ]
+        )
+        log(f"  Found {len(buybacks):,} buyback/repurchase deals")
+        save_parquet(buybacks, 'buybacks_deals')
+    except Exception as e:
+        log(f"  Error: {e}")
+        buybacks = pd.DataFrame()
+
+    # Also get share repurchase from fundamentals
+    log("  Pulling quarterly share repurchases from fundamentals...")
+    try:
+        # Get S&P 500 quarterly repurchase data
+        sp500 = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+        tickers = sp500['Instrument'].tolist()[:200]  # Start with 200
+
+        repurchases = rd.get_data(
+            universe=tickers,
+            fields=[
+                'TR.SharesRepurchased',
+                'TR.RepurchaseOfCommonPreferredStock',
+                'TR.CommonSharesOutstanding'
+            ],
+            parameters={'SDate': START_DATE, 'EDate': END_DATE, 'Period': 'FQ0', 'Frq': 'FQ'}
+        )
+        if len(repurchases) > 0:
+            save_parquet(repurchases, 'share_repurchases_quarterly')
+            log(f"  Found {len(repurchases):,} quarterly repurchase records")
+    except Exception as e:
+        log(f"  Quarterly repurchase error: {e}")
+
+    return buybacks
+
+# ============================================================================
+# 4. STOCK SPLITS
+# ============================================================================
+def pull_splits():
+    log("="*60)
+    log("4. PULLING STOCK SPLITS")
+    log("="*60)
+
+    try:
+        # Get S&P 1500 tickers
+        sp500 = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+        sp400 = rd.get_data(universe='0#.MID', fields=['TR.CommonName'])
+        sp600 = rd.get_data(universe='0#.SML', fields=['TR.CommonName'])
+
+        all_tickers = []
+        for df in [sp500, sp400, sp600]:
+            if 'Instrument' in df.columns:
+                all_tickers.extend(df['Instrument'].tolist())
+        all_tickers = list(set(all_tickers))
+
+        all_splits = []
+        batch_size = 200
+
+        for i in range(0, len(all_tickers), batch_size):
+            batch = all_tickers[i:i+batch_size]
+            log(f"  Pulling splits batch {i//batch_size + 1}...")
+
+            try:
+                splits = rd.get_data(
+                    universe=batch,
+                    fields=[
+                        'TR.CAEffectiveDate',
+                        'TR.CAAdjustmentFactor',
+                        'TR.CAAdjustmentType',
+                        'TR.CAExDate'
+                    ],
+                    parameters={'CAType': 'SSP', 'SDate': START_DATE, 'EDate': END_DATE}  # SSP = Stock Split
+                )
+                if len(splits) > 0:
+                    all_splits.append(splits)
+            except Exception as e:
+                log(f"    Batch error: {e}")
+
+            time.sleep(0.5)
+
+        if all_splits:
+            combined = pd.concat(all_splits, ignore_index=True)
+            combined = combined.dropna(subset=['CA Effective Date'])
+            save_parquet(combined, 'stock_splits')
+            log(f"  Total: {len(combined):,} stock splits")
+            return combined
+    except Exception as e:
+        log(f"  Error: {e}")
+
+    return pd.DataFrame()
+
+# ============================================================================
+# 5. SPINOFFS & DIVESTITURES
+# ============================================================================

@@ -1463,3 +1463,12 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}")
 
 
+def _log_stage(label: str, start_ts: float, df) -> None:
+    elapsed = time.time() - start_ts
+    if df is None:
+        log(f"{label}: skipped (no data) in {elapsed:.1f}s")
+        return
+    rows = len(df)
+    log(f"{label}: {rows:,} rows in {elapsed:.1f}s")
+
+
