@@ -65,3 +65,29 @@ def _companyfacts_with_cash_flow(*, operating_cash_flow=300.0, capex=100.0):
     }
 
 
+def test_repair_market_fcf_yield_from_companyfacts_cash_flow():
+    features = {
+        "market.fcf_yield": _node("market.fcf_yield", None),
+        "market.market_cap_provider_direct": _node(
+            "market.market_cap_provider_direct",
+            1000.0,
+            support_mode="exact",
+            unit="usd",
+        ),
+    }
+
+    repaired = repair_market_fcf_yield(
+        features=features,
+        companyfacts=_companyfacts_with_cash_flow(operating_cash_flow=300.0, capex=100.0),
+        companyfacts_path=Path("/tmp/CIK0000000004.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2025-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    node = features["market.fcf_yield"]
+    assert node["value"] == 0.2
+    assert node["support_mode"] == "exact"
+    assert node["fallback_used"] == "sec_companyfacts_free_cash_flow_ttm"
+
+
