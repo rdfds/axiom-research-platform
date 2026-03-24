@@ -102,3 +102,7 @@ def is_string_like(s: pd.Series) -> bool:
     return pd.api.types.is_string_dtype(s) or s.dtype == object
 
 
+def is_datetime_like(s: pd.Series) -> bool:
+    return pd.api.types.is_datetime64_any_dtype(s)
+
+
