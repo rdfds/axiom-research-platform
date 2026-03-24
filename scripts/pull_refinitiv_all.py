@@ -594,3 +594,50 @@ def pull_debt_issuance():
 # ============================================================================
 # 7. EQUITY OFFERINGS (IPO, Secondary)
 # ============================================================================
+def pull_equity_offerings():
+    log("="*60)
+    log("7. PULLING EQUITY OFFERINGS")
+    log("="*60)
+
+    try:
+        # IPOs
+        ipos = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:EQDeals*/), TR.EQOfferType=="IPO", TR.EQOfferDate>=2020-01-01)',
+            fields=[
+                'TR.EQOfferAmount(Scale=6)',
+                'TR.EQOfferDate',
+                'TR.EQOfferPrice',
+                'TR.EQIssuerName',
+                'TR.EQIssuerNation',
+                'TR.EQOfferType'
+            ]
+        )
+        save_parquet(ipos, 'ipos')
+        log(f"  Found {len(ipos):,} IPOs")
+    except Exception as e:
+        log(f"  IPO error: {e}")
+        ipos = pd.DataFrame()
+
+    try:
+        # Secondary offerings
+        secondary = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:EQDeals*/), TR.EQOfferType=="Follow-on", TR.EQOfferDate>=2020-01-01)',
+            fields=[
+                'TR.EQOfferAmount(Scale=6)',
+                'TR.EQOfferDate',
+                'TR.EQOfferPrice',
+                'TR.EQIssuerName',
+                'TR.EQIssuerNation'
+            ]
+        )
+        save_parquet(secondary, 'secondary_offerings')
+        log(f"  Found {len(secondary):,} secondary offerings")
+    except Exception as e:
+        log(f"  Secondary error: {e}")
+        secondary = pd.DataFrame()
+
+    return ipos, secondary
+
+# ============================================================================
+# 8. FUNDAMENTALS (for state profiles)
+# ============================================================================

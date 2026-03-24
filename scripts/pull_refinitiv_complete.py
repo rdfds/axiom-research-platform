@@ -239,3 +239,48 @@ def pull_dividends(tickers):
 # ============================================================================
 # 3. STOCK SPLITS
 # ============================================================================
+def pull_splits(tickers):
+    log("=" * 70)
+    log("3. STOCK SPLITS")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 100
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 500 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(
+                universe=batch,
+                fields=[
+                    'TR.CAEffectiveDate',
+                    'TR.CAAdjustmentFactor',
+                    'TR.CAAdjustmentType',
+                    'TR.CAExDate',
+                    'TR.CAAnnouncementDate',
+                ],
+                parameters={'CAType': 'SSP', 'SDate': START_DATE, 'EDate': END_DATE}
+            )
+            if len(data) > 0 and 'CA Effective Date' in data.columns:
+                data = data.dropna(subset=['CA Effective Date'])
+                if len(data) > 0:
+                    all_data.append(data)
+        except:
+            pass
+
+        time.sleep(0.2)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'stock_splits')
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 4. SHARE BUYBACKS / REPURCHASES
+# ============================================================================
