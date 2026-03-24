@@ -75,3 +75,29 @@ def _node_support(node: Dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _union_provenance(*nodes: Dict[str, Any] | None) -> list[Dict[str, Any]]:
+    merged: list[Dict[str, Any]] = []
+    seen = set()
+    for node in nodes:
+        for prov in (node or {}).get("provenance") or []:
+            key = json.dumps(prov, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(copy.deepcopy(prov))
+    return merged
+
+
+def _companyfacts_provenance(companyfacts_path: Path, *, as_of_time: str, computed_at: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "artifact_type": "SecCompanyFacts",
+            "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+            "source": str(companyfacts_path),
+            "published_at": as_of_time,
+            "ingested_at": computed_at,
+            "hash": None,
+        }
+    ]
+
+
