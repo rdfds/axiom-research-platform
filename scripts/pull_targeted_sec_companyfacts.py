@@ -83,3 +83,5 @@ def main() :
     print(f"done success={success} skipped={skipped} failed={failed}")
 
 
+if __name__ == "__main__":
+    main()

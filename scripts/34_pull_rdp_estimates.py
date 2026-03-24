@@ -91,3 +91,17 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def load_universe() -> List[str]:
+    if EST_TICKERS:
+        return [t.strip() for t in EST_TICKERS.split(",") if t.strip()]
+    path = REF_DIR / "universe_us_active.parquet"
+    if not path.exists():
+        raise FileNotFoundError("Missing universe_us_active.parquet")
+    df = pd.read_parquet(path)
+    if "ric" in df.columns:
+        rics = df["ric"].dropna().astype("string").str.upper().tolist()
+    else:
+        rics = df.iloc[:, 0].dropna().astype("string").str.upper().tolist()
+    return rics
+
+

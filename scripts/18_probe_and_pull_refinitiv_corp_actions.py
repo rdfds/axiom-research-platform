@@ -96,3 +96,105 @@ def batched(items: List[str], batch_size: int) -> List[List[str]]:
     return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
 
 
+def try_screen_universe() -> Tuple[List[str], Dict[str, str]]:
+    """
+    Attempt to build a full US active equity universe using Refinitiv Screen.
+    Returns (tickers, meta). meta is empty if no success.
+    """
+    screen_queries = [
+        ("SCREEN(U(IN(Equity)), TR.ExchangeCountry='United States' AND TR.Status='Active')", "exchange_country_status"),
+        ("SCREEN(U(IN(Equity)), TR.ExchangeCountry='United States')", "exchange_country"),
+        ("SCREEN(U(IN(Equity)), TR.CountryOfIncorporation='United States' AND TR.Status='Active')", "incorporation_country_status"),
+        ("SCREEN(U(IN(Equity)), TR.CountryOfIncorporation='United States')", "incorporation_country"),
+    ]
+
+    for screen, label in screen_queries:
+        try:
+            df = rd.get_data(universe=screen, fields=["TR.CommonName"])
+            if df is None or len(df) == 0:
+                log(f"Screen {label} returned no rows.")
+                continue
+            tickers = df["Instrument"].dropna().unique().tolist()
+            if len(tickers) < 500:
+                log(f"Screen {label} returned only {len(tickers)} tickers (too small).")
+                continue
+            return tickers, {"method": "screen", "label": label}
+        except Exception as e:
+            log(f"Screen {label} failed: {e}")
+
+    return [], {}
+
+
+def universe_from_indices() -> Tuple[List[str], Dict[str, str]]:
+    index_universes = [
+        "0#.SPX",
+        "0#.MID",
+        "0#.SML",
+        "0#.RUI",
+        "0#.RUT",
+        "0#.RUA",
+        "0#.NDX",
+    ]
+    tickers: List[str] = []
+
+    for idx in index_universes:
+        try:
+            df = rd.get_data(universe=idx, fields=["TR.CommonName"])
+            if df is None or len(df) == 0:
+                continue
+            tickers.extend(df["Instrument"].dropna().tolist())
+        except Exception as e:
+            log(f"Index universe {idx} failed: {e}")
+
+    tickers = sorted(list(set(tickers)))
+    return tickers, {"method": "indices", "label": ",".join(index_universes)}
+
+
+def build_universe() -> List[str]:
+    if UNIVERSE_PATH.exists():
+        log(f"Loading cached universe from {UNIVERSE_PATH.name}...")
+        df = pd.read_parquet(UNIVERSE_PATH)
+        return df["ric"].dropna().unique().tolist()
+
+    log("Building US active equity universe...")
+    tickers, meta = try_screen_universe()
+
+    if not tickers:
+        log("Full screen universe failed. Falling back to index constituents.")
+        tickers, meta = universe_from_indices()
+
+    if not tickers:
+        raise RuntimeError("Failed to build any universe from Refinitiv.")
+
+    df = pd.DataFrame({
+        "ric": sorted(list(set(tickers))),
+        "source_method": meta.get("method", "unknown"),
+        "source_label": meta.get("label", "unknown"),
+        "pulled_at": datetime.now().isoformat(),
+    })
+    df.to_parquet(UNIVERSE_PATH, index=False)
+    log(f"Saved universe: {len(df):,} tickers -> {UNIVERSE_PATH.name}")
+    return df["ric"].tolist()
+
+
+def probe_ca_fields(sample_tickers: List[str], start_date: str, end_date: str) -> List[str]:
+    log("Probing corporate action fields...")
+    working_fields = []
+    for field in CA_FIELD_CANDIDATES:
+        try:
+            _ = rd.get_data(
+                universe=sample_tickers,
+                fields=[field],
+                parameters={"SDate": start_date, "EDate": end_date},
+            )
+            working_fields.append(field)
+        except Exception as e:
+            log(f"Field not available: {field} ({e})")
+
+    if not working_fields:
+        raise RuntimeError("No corporate-action fields are available with current entitlements.")
+
+    log(f"Working CA fields: {working_fields}")
+    return working_fields
+
+

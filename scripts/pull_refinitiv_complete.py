@@ -217,7 +217,7 @@ def pull_dividends(tickers):
         combined['prev_amount'] = combined.groupby('Instrument')['Dividend Amount'].shift(1)
 
         def classify(row):
-            if pd.isna(row.get('prev_amount')) or pd.isna(row['Dividend Amount']):
+            if pd.isna(row.get('prev_amount')) or pd.isna(row.get('Dividend Amount')):
                 return 'regular'
             if row['prev_amount'] == 0:
                 return 'initiation'
