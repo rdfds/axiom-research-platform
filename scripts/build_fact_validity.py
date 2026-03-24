@@ -120,7 +120,7 @@ def main() -> None:
             keep.append(f)
         return keep
 
-    def build_for_path(input_path: Path, output_file: Path) :
+    def build_for_path(input_path: Path, output_file: Path) -> None:
         if not input_path.exists():
             print(f"[skip] input missing: {input_path}")
             return
