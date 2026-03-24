@@ -55,3 +55,21 @@ def test_load_with_metadata_returns_raw_hash_and_origin(tmp_path: Path) -> None:
     assert origin == "zip"
 
 
+def test_prefers_zip_when_requested(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "CIK0000123456.json").write_text(json.dumps({"cik": "0000123456", "source": "cache"}))
+
+    zip_path = tmp_path / "companyfacts.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("CIK0000123456.json", json.dumps({"cik": "0000123456", "source": "zip"}))
+
+    with CompanyFactsBulkSource(
+        companyfacts_dir=cache_dir,
+        companyfacts_zip=zip_path,
+        prefer_zip=True,
+    ) as source:
+        payload, _, origin = source.load_with_metadata("0000123456")
+
+    assert payload == {"cik": "0000123456", "source": "zip"}
+    assert origin == "zip"

@@ -47,3 +47,39 @@ def fetch_json(url: str, user_agent: str) -> dict:
         return json.load(response)
 
 
+def main() :
+    args = parse_args()
+    out_root = Path(args.out_root)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    success = 0
+    skipped = 0
+    failed = 0
+
+    for cik in iter_ciks(Path(args.company_ids_file)):
+        out_path = out_root / f"CIK{cik}.json"
+        if out_path.exists() and not args.overwrite:
+            skipped += 1
+            continue
+
+        url = SEC_COMPANYFACTS_URL.format(cik=cik)
+        try:
+            payload = fetch_json(url, args.user_agent)
+            out_path.write_text(json.dumps(payload))
+            success += 1
+            print(f"downloaded {cik} -> {out_path}")
+        except HTTPError as exc:
+            failed += 1
+            print(f"http_error {cik} status={exc.code}")
+        except URLError as exc:
+            failed += 1
+            print(f"url_error {cik} reason={exc.reason}")
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            print(f"error {cik} {exc!r}")
+
+        time.sleep(args.sleep_seconds)
+
+    print(f"done success={success} skipped={skipped} failed={failed}")
+
+
