@@ -292,3 +292,5 @@ def main() -> None:
     build_for_path(in_path, out_path)
 
 
+if __name__ == "__main__":
+    main()

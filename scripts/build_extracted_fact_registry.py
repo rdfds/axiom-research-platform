@@ -239,3 +239,5 @@ def main() :
         print(f"Saved ExtractedFactRegistry -> {out_path_str}")
 
 
+if __name__ == "__main__":
+    main()
