@@ -105,3 +105,94 @@ def compute_profiles_for_actions(actions_df, action_type_name, engine, outcomes)
     return pd.DataFrame()
 
 
+def main():
+    print("=" * 70)
+    print("COMPUTING STATE PROFILES FOR CLEAN CORPORATE ACTIONS")
+    print("=" * 70)
+    print(f"Started at: {datetime.now()}")
+
+    # Initialize engines
+    print("\nInitializing engines...")
+    engine = SignalEngine()
+    outcomes = OutcomeCalculator()
+
+    all_profiles = []
+
+    # 1. Process Buybacks (largest dataset - sample first 20K for speed)
+    buybacks_path = DATA_DIR / 'buybacks_clean.parquet'
+    if buybacks_path.exists():
+        buybacks = pd.read_parquet(buybacks_path)
+        buybacks['action_date'] = buybacks['datadate']
+
+        # Sample to keep compute manageable - take most recent and largest
+        buybacks = buybacks.sort_values('buyback_amount_qtr', ascending=False)
+        buybacks_sample = buybacks.head(20000)  # Top 20K by size
+
+        profiles = compute_profiles_for_actions(
+            buybacks_sample, 'buyback', engine, outcomes
+        )
+        if len(profiles) > 0:
+            all_profiles.append(profiles)
+
+    # 2. Process Acquisitions (all - only 3.7K)
+    acq_path = DATA_DIR / 'acquisitions_linked.parquet'
+    if acq_path.exists():
+        acquisitions = pd.read_parquet(acq_path)
+        # Note: These are TARGET companies that got acquired
+        # We want the state BEFORE acquisition
+
+        profiles = compute_profiles_for_actions(
+            acquisitions, 'acquired', engine, outcomes
+        )
+        if len(profiles) > 0:
+            all_profiles.append(profiles)
+
+    # 3. Process Bankruptcies (all - only 2K)
+    bk_path = DATA_DIR / 'bankruptcies_linked.parquet'
+    if bk_path.exists():
+        bankruptcies = pd.read_parquet(bk_path)
+
+        profiles = compute_profiles_for_actions(
+            bankruptcies, 'bankruptcy', engine, outcomes
+        )
+        if len(profiles) > 0:
+            all_profiles.append(profiles)
+
+    # 4. Process Dividends (sample - 151K is too many)
+    div_path = DATA_DIR / 'dividend_actions.parquet'
+    if div_path.exists():
+        dividends = pd.read_parquet(div_path)
+
+        # Sample: 5K each of increases, cuts, initiations
+        div_sample = pd.concat([
+            dividends[dividends['action_type'] == 'dividend_increase'].head(5000),
+            dividends[dividends['action_type'] == 'dividend_cut'].head(5000),
+            dividends[dividends['action_type'] == 'dividend_initiate'].head(5000),
+        ])
+
+        profiles = compute_profiles_for_actions(
+            div_sample, 'dividend', engine, outcomes
+        )
+        if len(profiles) > 0:
+            all_profiles.append(profiles)
+
+    # Combine all profiles
+    if all_profiles:
+        combined = pd.concat(all_profiles, ignore_index=True)
+
+        # Save
+        output_path = DATA_DIR / 'clean_action_profiles.parquet'
+        combined.to_parquet(output_path)
+
+        print("\n" + "=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        print(f"Total profiles computed: {len(combined):,}")
+        print(f"\nBy action type:")
+        print(combined['action_type'].value_counts().to_string())
+        print(f"\nSaved to: {output_path}")
+        print(f"Completed at: {datetime.now()}")
+    else:
+        print("No profiles computed!")
+
+
