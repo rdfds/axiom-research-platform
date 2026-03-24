@@ -564,3 +564,33 @@ def pull_spinoffs():
 # ============================================================================
 # 6. DEBT ISSUANCE
 # ============================================================================
+def pull_debt_issuance():
+    log("="*60)
+    log("6. PULLING DEBT ISSUANCE")
+    log("="*60)
+
+    try:
+        debt = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:FIDeals*/), TR.FIIssueDate>=2020-01-01)',
+            fields=[
+                'TR.FIPrincipalAmount(Scale=6)',
+                'TR.FIIssueDate',
+                'TR.FIMaturityDate',
+                'TR.FICoupon',
+                'TR.FIIssuerName',
+                'TR.FIIssuerNation',
+                'TR.FIInstrumentType',
+                'TR.FIMoodyRating',
+                'TR.FISPRating'
+            ]
+        )
+        save_parquet(debt, 'debt_issuance')
+        log(f"  Found {len(debt):,} debt issuances")
+        return debt
+    except Exception as e:
+        log(f"  Error: {e}")
+        return pd.DataFrame()
+
+# ============================================================================
+# 7. EQUITY OFFERINGS (IPO, Secondary)
+# ============================================================================

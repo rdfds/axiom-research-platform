@@ -170,3 +170,72 @@ def pull_ma_deals():
 # ============================================================================
 # 2. DIVIDENDS - All types
 # ============================================================================
+def pull_dividends(tickers):
+    log("=" * 70)
+    log("2. DIVIDENDS (All types)")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 75
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        log(f"  Batch {i//batch_size + 1}/{len(tickers)//batch_size + 1} ({pct:.0f}%)...")
+
+        try:
+            data = rd.get_data(
+                universe=batch,
+                fields=[
+                    'TR.DivExDate',
+                    'TR.DivPayDate',
+                    'TR.DivRecordDate',
+                    'TR.DivAnnDate',
+                    'TR.DivAmount',
+                    'TR.DivType',
+                    'TR.DivCurrency',
+                    'TR.DivFrequency',
+                ],
+                parameters={'SDate': START_DATE, 'EDate': END_DATE}
+            )
+            if len(data) > 0:
+                all_data.append(data)
+        except Exception as e:
+            log(f"    Error: {e}")
+
+        time.sleep(0.3)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        combined = combined.dropna(subset=['Dividend Ex Date'])
+        save_parquet(combined, 'dividends_complete')
+
+        # Analyze dividend actions
+        log("  Categorizing dividend changes...")
+        combined['ex_date'] = pd.to_datetime(combined['Dividend Ex Date'])
+        combined = combined.sort_values(['Instrument', 'ex_date'])
+        combined['prev_amount'] = combined.groupby('Instrument')['Dividend Amount'].shift(1)
+
+        def classify(row):
+            if pd.isna(row['prev_amount']) or pd.isna(row['Dividend Amount']):
+                return 'regular'
+            if row['prev_amount'] == 0:
+                return 'initiation'
+            pct = (row['Dividend Amount'] - row['prev_amount']) / row['prev_amount']
+            if pct > 0.01:
+                return 'increase'
+            elif pct < -0.01:
+                return 'decrease'
+            return 'unchanged'
+
+        combined['action_type'] = combined.apply(classify, axis=1)
+        save_parquet(combined, 'dividends_with_actions')
+
+        log(f"  Action types: {combined['action_type'].value_counts().to_dict()}")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 3. STOCK SPLITS
+# ============================================================================
