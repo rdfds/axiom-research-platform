@@ -33,3 +33,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_ciks(path: Path) -> Iterable[str]:
+    for line in path.read_text().splitlines():
+        cik = line.strip()
+        if not cik:
+            continue
+        yield cik.zfill(10)
+
+

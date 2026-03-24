@@ -40,3 +40,18 @@ def test_prefers_local_cache_before_zip(tmp_path: Path) -> None:
     assert loaded == cached_payload
 
 
+def test_load_with_metadata_returns_raw_hash_and_origin(tmp_path: Path) -> None:
+    zip_path = tmp_path / "companyfacts.zip"
+    raw_payload = b'{"cik":"0000123456","source":"zip"}'
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("CIK0000123456.json", raw_payload)
+
+    with CompanyFactsBulkSource(companyfacts_zip=zip_path) as source:
+        payload, raw_hash, origin = source.load_with_metadata("0000123456")
+
+    assert payload == {"cik": "0000123456", "source": "zip"}
+    assert raw_hash is not None
+    assert origin == "zip"
+
+
