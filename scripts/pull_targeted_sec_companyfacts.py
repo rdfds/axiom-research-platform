@@ -47,7 +47,7 @@ def fetch_json(url: str, user_agent: str) -> dict:
         return json.load(response)
 
 
-def main() :
+def main() -> None:
     args = parse_args()
     out_root = Path(args.out_root)
     out_root.mkdir(parents=True, exist_ok=True)

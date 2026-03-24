@@ -179,3 +179,123 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
+def _feature_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+) -> Dict[str, Any]:
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": 1.0 if value is not None else None,
+        "provenance": [
+            {
+                "artifact_type": "SecCompanyFacts",
+                "artifact_id": f"sec_companyfacts:{Path(provenance_source).name}",
+                "source": provenance_source,
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        ],
+        "missing_reason": missing_reason,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": "sec_companyfacts",
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": None,
+        "input_source_owner_id": None,
+        "input_source_owner_name": None,
+        "input_source_classification": "sec_companyfacts",
+        "input_source_formula_basis": None,
+        "input_source_alignment_status": "aligned",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": None,
+        "methodology_execution_reason": None,
+        "input_layer_bucket": "reference",
+        "input_layer_bucket_reason": "sec_companyfacts",
+        "strict_market_defined": None,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+        "view_type": None,
+    }
+
+
+def _computed_metric_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+) -> Dict[str, Any]:
+    node = _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode=support_mode,
+        value=value,
+        unit=unit,
+        missing_reason=missing_reason,
+        component_breakdown=component_breakdown,
+        quality_flags=quality_flags,
+    )
+    provenance = list(node.get("provenance") or [])
+    if provenance:
+        provenance[0]["artifact_type"] = "ComputedMetric"
+        provenance[0]["artifact_id"] = f"computed_metric:{metric_name}"
+    node["provenance"] = provenance
+    node["primary_source_basis"] = "computed_metric"
+    node["input_source_classification"] = "computed_metric"
+    node["input_layer_bucket_reason"] = "computed_from_reference_metrics"
+    return node
+
+
