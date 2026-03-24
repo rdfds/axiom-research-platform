@@ -26,3 +26,11 @@ covenant packages, internal projections, and board constraints.
 
 Full schema: `schemas/inputs_layer/private_overlay_registry.schema.json`
 
+## Overlay Types (examples)
+
+- `covenants`
+- `debt_schedule`
+- `internal_projection`
+- `segment_kpis`
+- `board_constraints`
+

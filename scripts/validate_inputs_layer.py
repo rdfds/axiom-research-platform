@@ -73,7 +73,7 @@ def load_dataset(
     raise ValueError(f"Unsupported file type: {path}")
 
 
-def is_numeric_like(s: pd.Series) :
+def is_numeric_like(s: pd.Series) -> bool:
     if pd.api.types.is_numeric_dtype(s):
         return True
     # soft check for numeric-ish object columns
