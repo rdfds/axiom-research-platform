@@ -37,3 +37,18 @@ def test_build_action_support_report_distinguishes_exact_family_only_and_unsuppo
     assert actions["governance.board_refresh"]["support_mode"] == "unsupported"
 
 
+def test_resolve_action_support_falls_back_to_family_only_when_exact_action_missing():
+    support_report = {
+        "family_counts": {"capital_structure": 10},
+        "relevant_actions": [],
+    }
+
+    resolved = resolve_action_support(
+        action_id="capital_structure.exchange_offer",
+        action_family="capital_structure",
+        support_report=support_report,
+    )
+
+    assert resolved["support_mode"] == "family_only"
+    assert resolved["family_count"] == 10
+    assert resolved["exact_support_status"] == "missing"
