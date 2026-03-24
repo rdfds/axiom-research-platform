@@ -769,3 +769,55 @@ def pull_estimates():
 # ============================================================================
 # 10. HISTORICAL PRICES (for TSR)
 # ============================================================================
+def pull_prices():
+    log("="*60)
+    log("10. PULLING HISTORICAL PRICES")
+    log("="*60)
+
+    # Get S&P 1500
+    sp500 = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+    sp400 = rd.get_data(universe='0#.MID', fields=['TR.CommonName'])
+    sp600 = rd.get_data(universe='0#.SML', fields=['TR.CommonName'])
+
+    all_tickers = []
+    for df in [sp500, sp400, sp600]:
+        if 'Instrument' in df.columns:
+            all_tickers.extend(df['Instrument'].tolist())
+    all_tickers = list(set(all_tickers))
+    log(f"  Universe: {len(all_tickers)} companies")
+
+    all_prices = []
+    batch_size = 50
+
+    for i in range(0, len(all_tickers), batch_size):
+        batch = all_tickers[i:i+batch_size]
+        log(f"  Pulling prices batch {i//batch_size + 1}/{len(all_tickers)//batch_size + 1}...")
+
+        try:
+            prices = rd.get_history(
+                universe=batch,
+                fields=['TR.CLOSEPRICE', 'TR.VOLUME', 'TR.TOTRETURN'],
+                start=START_DATE,
+                end=END_DATE,
+                interval='monthly'
+            )
+            if prices is not None and len(prices) > 0:
+                # Reset index to make it saveable
+                prices_df = prices.reset_index()
+                all_prices.append(prices_df)
+        except Exception as e:
+            log(f"    Batch error: {e}")
+
+        time.sleep(0.5)
+
+    if all_prices:
+        combined = pd.concat(all_prices, ignore_index=True)
+        save_parquet(combined, 'prices_monthly')
+        log(f"  Total: {len(combined):,} price records")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
