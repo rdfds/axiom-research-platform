@@ -821,3 +821,103 @@ def pull_prices():
 # ============================================================================
 # MAIN
 # ============================================================================
+def main():
+    print("="*70)
+    print("REFINITIV COMPREHENSIVE DATA PULL")
+    print("="*70)
+    print(f"Started at: {datetime.now()}")
+    print(f"Date range: {START_DATE} to {END_DATE}")
+    print(f"Output directory: {DATA_DIR}")
+    print()
+
+    # Connect to Refinitiv
+    log("Connecting to Refinitiv...")
+    try:
+        rd.open_session()
+    except Exception as e:
+        log(f"Failed to open Refinitiv session: {e}")
+        return
+    if not ensure_session():
+        rd.close_session()
+        return
+    log("Connected!")
+
+    # Pull everything
+    results = {}
+
+    try:
+        results['ma_deals'] = pull_ma_deals()
+    except Exception as e:
+        log(f"M&A FAILED: {e}")
+
+    if ONLY_MNA:
+        rd.close_session()
+        log("ONLY_MNA=1 set; skipping remaining pulls.")
+        return
+
+    try:
+        results['dividends'] = pull_dividends()
+    except Exception as e:
+        log(f"DIVIDENDS FAILED: {e}")
+
+    try:
+        results['buybacks'] = pull_buybacks()
+    except Exception as e:
+        log(f"BUYBACKS FAILED: {e}")
+
+    try:
+        results['splits'] = pull_splits()
+    except Exception as e:
+        log(f"SPLITS FAILED: {e}")
+
+    try:
+        results['spinoffs'] = pull_spinoffs()
+    except Exception as e:
+        log(f"SPINOFFS FAILED: {e}")
+
+    try:
+        results['debt'] = pull_debt_issuance()
+    except Exception as e:
+        log(f"DEBT FAILED: {e}")
+
+    try:
+        results['equity'] = pull_equity_offerings()
+    except Exception as e:
+        log(f"EQUITY FAILED: {e}")
+
+    try:
+        results['fundamentals'] = pull_fundamentals()
+    except Exception as e:
+        log(f"FUNDAMENTALS FAILED: {e}")
+
+    try:
+        results['estimates'] = pull_estimates()
+    except Exception as e:
+        log(f"ESTIMATES FAILED: {e}")
+
+    try:
+        results['prices'] = pull_prices()
+    except Exception as e:
+        log(f"PRICES FAILED: {e}")
+
+    # Summary
+    print()
+    print("="*70)
+    print("SUMMARY")
+    print("="*70)
+    print(f"Completed at: {datetime.now()}")
+    print(f"Files saved to: {DATA_DIR}")
+    print()
+
+    # List output files
+    for f in sorted(DATA_DIR.glob('*.parquet')):
+        size_mb = f.stat().st_size / 1024 / 1024
+        df = pd.read_parquet(f)
+        print(f"  {f.name}: {len(df):,} rows ({size_mb:.1f} MB)")
+
+    rd.close_session()
+    print()
+    print("DONE!")
+
+if __name__ == '__main__':
+    main()

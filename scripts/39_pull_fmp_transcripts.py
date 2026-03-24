@@ -464,7 +464,7 @@ def main() -> None:
                     "quality_flags": quality_flags,
                     "document_id": document_id,
                     "document_type": "earnings_call",
-                    "title": payload['title'] or f"{symbol} {year}Q{quarter} Earnings Call",
+                    "title": payload.get("title") or f"{symbol} {year}Q{quarter} Earnings Call",
                     "publisher": payload.get("source") or "FMP",
                     "analyst": None,
                     "rating": None,
