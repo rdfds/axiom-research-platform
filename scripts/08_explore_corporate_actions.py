@@ -156,3 +156,122 @@ def explore_compustat_buybacks(db):
         return None
 
 
+def explore_compustat_dividends(db):
+    """
+    Compustat dividend fields.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING COMPUSTAT DIVIDEND DATA")
+    print("="*70)
+
+    query = """
+    SELECT
+        gvkey,
+        datadate,
+        tic,
+        conm,
+        dvpq as dividends_preferred,
+        dvy as dividends_common_annual,
+        dvpspq as div_per_share_preferred,
+        cshoq as shares_out
+    FROM comp.fundq
+    WHERE datadate >= '2015-01-01'
+      AND (dvpq > 0 OR dvy > 0)
+    ORDER BY datadate DESC
+    LIMIT 500
+    """
+
+    try:
+        df = db.raw_sql(query)
+        print(f"\nCompustat dividend data: {len(df):,} records")
+        print(df.head(20))
+        return df
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+
+def explore_ciq_transactions(db):
+    """
+    Capital IQ has various transaction types.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING CAPITAL IQ TRANSACTION TYPES")
+    print("="*70)
+
+    # First check what tables we have access to
+    try:
+        tables = db.list_tables(library='ciqsamp')
+        print(f"\nCIQ sample tables available: {tables}")
+    except Exception as e:
+        print(f"Cannot list CIQ tables: {e}")
+
+    # Check transaction types
+    query = """
+    SELECT
+        transactiontype,
+        COUNT(*) as count
+    FROM ciqsamp_transactions.wrds_transactions
+    GROUP BY transactiontype
+    ORDER BY count DESC
+    """
+
+    try:
+        df = db.raw_sql(query)
+        print("\nTransaction types in CIQ sample:")
+        print(df)
+        return df
+    except Exception as e:
+        print(f"Error querying CIQ transactions: {e}")
+        return None
+
+
+def explore_keydev(db):
+    """
+    Capital IQ Key Developments - news events including corporate actions.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING CAPITAL IQ KEY DEVELOPMENTS")
+    print("="*70)
+
+    # Check what key development types exist
+    query = """
+    SELECT
+        keydevtypename,
+        COUNT(*) as count
+    FROM ciqsamp.ciqkeydev
+    GROUP BY keydevtypename
+    ORDER BY count DESC
+    LIMIT 50
+    """
+
+    try:
+        df = db.raw_sql(query)
+        print("\nKey Development types in CIQ:")
+        print(df)
+
+        # This is potentially very useful - keydev might have:
+        # - Buyback announcements
+        # - Dividend changes
+        # - Spin-off announcements
+        # - Divestiture announcements
+
+        return df
+    except Exception as e:
+        print(f"Error querying CIQ keydev: {e}")
+
+        # Try alternative
+        try:
+            query = """
+            SELECT * FROM ciqsamp.ciqkeydev LIMIT 5
+            """
+            df = db.raw_sql(query)
+            print("\nSample keydev data:")
+            print(df)
+            print("\nColumns:", df.columns.tolist())
+        except Exception as e2:
+            print(f"Alternative also failed: {e2}")
+
+        return None
+
+
