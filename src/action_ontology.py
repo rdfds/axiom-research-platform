@@ -60,3 +60,12 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _percent_field(required: bool = False, minimum: float = 0.0, maximum: float = 1.0) -> Dict[str, Any]:
+    return {
+        "type": "percent",
+        "required": required,
+        "min": minimum,
+        "max": maximum,
+    }
+
+
