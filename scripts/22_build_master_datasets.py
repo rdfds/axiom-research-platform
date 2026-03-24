@@ -1472,3 +1472,68 @@ def _log_stage(label: str, start_ts: float, df) -> None:
     log(f"{label}: {rows:,} rows in {elapsed:.1f}s")
 
 
+def main():
+    if os.getenv("CIQ_BUILD_ONLY") == "1":
+        log("Building CIQ identifiers map only...")
+        build_mna_master(pd.DataFrame({"date": [], "permno": []}))
+        return
+    max_rank_raw = os.getenv("UNIVERSE_MAX_RANK", "3000")
+    try:
+        max_rank = int(max_rank_raw)
+    except ValueError:
+        max_rank = 3000
+    if max_rank <= 0:
+        max_rank = None
+    log(f"Building universe (max_rank={max_rank_raw})...")
+    t0 = time.time()
+    universe = build_r3000_proxy(max_rank=max_rank)
+    _log_stage("universe", t0, universe)
+
+    log("Building corporate actions master...")
+    t0 = time.time()
+    corp_actions = build_corporate_actions_master(universe)
+    _log_stage("corporate_actions_master", t0, corp_actions)
+
+    log("Building prices master...")
+    t0 = time.time()
+    prices = build_prices_master(universe)
+    _log_stage("prices_master", t0, prices)
+
+    log("Building prices master (full)...")
+    t0 = time.time()
+    prices_full = build_prices_master_full(universe)
+    _log_stage("prices_master_full", t0, prices_full)
+
+    log("Building fundamentals master...")
+    t0 = time.time()
+    fundamentals = build_fundamentals_master(universe)
+    _log_stage("fundamentals_master", t0, fundamentals)
+
+    log("Building buybacks master...")
+    t0 = time.time()
+    buybacks = build_buybacks_master(universe)
+    _log_stage("buybacks_master", t0, buybacks)
+
+    log("Building M&A master...")
+    t0 = time.time()
+    mna = build_mna_master(universe)
+    _log_stage("mna_master", t0, mna)
+
+    summary = []
+    summary.append(summarize_dataset("universe_r3000_proxy", universe, "date"))
+    summary.append(summarize_dataset("corporate_actions_master", corp_actions, "action_date"))
+    summary.append(summarize_dataset("prices_master", prices, "date"))
+    summary.append(summarize_dataset("prices_master_full", prices_full, "date"))
+    summary.append(summarize_dataset("fundamentals_master", fundamentals, "datadate"))
+    summary.append(summarize_dataset("buybacks_master", buybacks, "action_date"))
+    summary.append(summarize_dataset("mna_master", mna, "event_date"))
+
+    summary = [s for s in summary if s is not None]
+    summary_df = pd.DataFrame(summary)
+    summary_path = CURATED_DIR / "master_summary.csv"
+    summary_df.to_csv(summary_path, index=False)
+    log(f"Saved master summary -> {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

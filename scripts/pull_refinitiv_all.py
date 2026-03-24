@@ -641,3 +641,131 @@ def pull_equity_offerings():
 # ============================================================================
 # 8. FUNDAMENTALS (for state profiles)
 # ============================================================================
+def pull_fundamentals():
+    log("="*60)
+    log("8. PULLING FUNDAMENTALS")
+    log("="*60)
+
+    # Get S&P 1500
+    log("  Getting company universe...")
+    sp500 = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+    sp400 = rd.get_data(universe='0#.MID', fields=['TR.CommonName'])
+    sp600 = rd.get_data(universe='0#.SML', fields=['TR.CommonName'])
+
+    all_tickers = []
+    for df in [sp500, sp400, sp600]:
+        if 'Instrument' in df.columns:
+            all_tickers.extend(df['Instrument'].tolist())
+    all_tickers = list(set(all_tickers))
+    log(f"  Universe: {len(all_tickers)} companies")
+
+    all_fundamentals = []
+    batch_size = 50
+
+    fields = [
+        'TR.Revenue',
+        'TR.RevenueGrowthRate',
+        'TR.EBITDA',
+        'TR.EBITDAMargin',
+        'TR.NetIncome',
+        'TR.NetProfitMargin',
+        'TR.TotalAssets',
+        'TR.TotalDebt',
+        'TR.TotalEquity',
+        'TR.CashAndSTInvestments',
+        'TR.FreeCashFlow',
+        'TR.CapitalExpenditures',
+        'TR.NetDebtToEBITDA',
+        'TR.TotalDebtToTotalEquity',
+        'TR.CurrentRatio',
+        'TR.ReturnOnEquity',
+        'TR.ReturnOnAssets',
+        'TR.CompanyMarketCap',
+        'TR.EV',
+        'TR.PriceToBookValuePerShare',
+        'TR.EVToEBITDA',
+        'TR.TRBCEconomicSector',
+        'TR.TRBCBusinessSector',
+        'TR.GICSSector'
+    ]
+
+    for i in range(0, len(all_tickers), batch_size):
+        batch = all_tickers[i:i+batch_size]
+        log(f"  Pulling fundamentals batch {i//batch_size + 1}/{len(all_tickers)//batch_size + 1}...")
+
+        try:
+            fund = rd.get_data(
+                universe=batch,
+                fields=fields
+            )
+            if len(fund) > 0:
+                all_fundamentals.append(fund)
+        except Exception as e:
+            log(f"    Batch error: {e}")
+
+        time.sleep(0.5)
+
+    if all_fundamentals:
+        combined = pd.concat(all_fundamentals, ignore_index=True)
+        save_parquet(combined, 'fundamentals_current')
+        log(f"  Total: {len(combined):,} company fundamentals")
+        return combined
+    return pd.DataFrame()
+
+# ============================================================================
+# 9. ANALYST ESTIMATES
+# ============================================================================
+def pull_estimates():
+    log("="*60)
+    log("9. PULLING ANALYST ESTIMATES")
+    log("="*60)
+
+    # Get S&P 500 tickers
+    sp500 = rd.get_data(universe='0#.SPX', fields=['TR.CommonName'])
+    tickers = sp500['Instrument'].tolist()
+
+    all_estimates = []
+    batch_size = 100
+
+    fields = [
+        'TR.EPSMean',
+        'TR.EPSHigh',
+        'TR.EPSLow',
+        'TR.EPSMedian',
+        'TR.EPSActValue',
+        'TR.EPSSurprisePercent',
+        'TR.RevenueMean',
+        'TR.RevenueActValue',
+        'TR.EBITDAMean',
+        'TR.NumberOfEstimates',
+        'TR.RecommendationMean',
+        'TR.NumOfRecommendations',
+        'TR.TargetPriceMean'
+    ]
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        log(f"  Pulling estimates batch {i//batch_size + 1}/{len(tickers)//batch_size + 1}...")
+
+        try:
+            est = rd.get_data(
+                universe=batch,
+                fields=fields
+            )
+            if len(est) > 0:
+                all_estimates.append(est)
+        except Exception as e:
+            log(f"    Batch error: {e}")
+
+        time.sleep(0.5)
+
+    if all_estimates:
+        combined = pd.concat(all_estimates, ignore_index=True)
+        save_parquet(combined, 'analyst_estimates')
+        log(f"  Total: {len(combined):,} estimate records")
+        return combined
+    return pd.DataFrame()
+
+# ============================================================================
+# 10. HISTORICAL PRICES (for TSR)
+# ============================================================================

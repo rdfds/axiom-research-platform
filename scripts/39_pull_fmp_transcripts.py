@@ -280,7 +280,7 @@ def load_mappings() -> Tuple[pd.DataFrame, pd.DataFrame]:
     return names, link
 
 
-def map_symbol_to_gvkey(symbol: str, call_date: pd.Timestamp, names: pd.DataFrame, link: pd.DataFrame) :
+def map_symbol_to_gvkey(symbol: str, call_date: pd.Timestamp, names: pd.DataFrame, link: pd.DataFrame) -> Optional[str]:
     if names.empty or link.empty or symbol is None or pd.isna(symbol):
         return None
     symbol = str(symbol).upper().strip()
