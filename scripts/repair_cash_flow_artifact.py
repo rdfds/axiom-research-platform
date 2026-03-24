@@ -69,3 +69,9 @@ def _node_value(node: Dict[str, Any] | None) -> float | None:
     return float(value)
 
 
+def _node_support(node: Dict[str, Any] | None) -> str:
+    if not node:
+        return "unsupported"
+    return str(node.get("support_mode") or "unsupported")
+
+

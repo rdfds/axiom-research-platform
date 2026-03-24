@@ -91,3 +91,35 @@ def test_repair_market_fcf_yield_from_companyfacts_cash_flow():
     assert node["fallback_used"] == "sec_companyfacts_free_cash_flow_ttm"
 
 
+def test_repair_operating_fcf_conversion_uses_normalized_operating_earnings():
+    features = {
+        "operating.fcf_conversion": _node("operating.fcf_conversion", None),
+        "operating.ebitda_ltm_provider_direct": _node(
+            "operating.ebitda_ltm_provider_direct",
+            None,
+            support_mode="unsupported",
+            unit="usd",
+        ),
+        "operating.operating_earnings_normalized": _node(
+            "operating.operating_earnings_normalized",
+            90.0,
+            support_mode="exact",
+            unit="usd",
+        ),
+    }
+
+    repaired = repair_operating_fcf_conversion(
+        features=features,
+        companyfacts=_companyfacts_with_cash_flow(operating_cash_flow=240.0, capex=60.0),
+        companyfacts_path=Path("/tmp/CIK0000000005.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2025-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    node = features["operating.fcf_conversion"]
+    assert node["value"] == 2.0
+    assert node["support_mode"] == "exact"
+    assert node["fallback_used"] == "sec_companyfacts_fcf_plus_normalized_operating_earnings"
+
+
