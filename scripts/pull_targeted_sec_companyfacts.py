@@ -41,3 +41,9 @@ def iter_ciks(path: Path) -> Iterable[str]:
         yield cik.zfill(10)
 
 
+def fetch_json(url: str, user_agent: str) -> dict:
+    request = Request(url, headers={"User-Agent": user_agent, "Accept-Encoding": "identity"})
+    with urlopen(request, timeout=60) as response:
+        return json.load(response)
+
+
