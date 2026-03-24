@@ -196,3 +196,5 @@ def main():
         print("No profiles computed!")
 
 
+if __name__ == "__main__":
+    main()
