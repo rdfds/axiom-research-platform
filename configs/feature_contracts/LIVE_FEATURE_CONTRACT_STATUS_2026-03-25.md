@@ -27,3 +27,51 @@ Representative source checks for `0000354950` (Home Depot):
 - `issuer_rating_history.parquet`: `204` company rows
 - `entity_graph.parquet`: `5` related rows
 
+## Core Live Features
+
+These are the financially important / market-important live inputs that are already wired into the builder and used by the policy stack.
+
+- `capital_structure.fixed_charge_coverage`
+- `capital_structure.interest_coverage`
+- `capital_structure.net_debt`
+- `capital_structure.net_leverage`
+- `capital_structure.rating_state`
+- `capital_structure.total_debt`
+- `liquidity.available_for_actions`
+- `liquidity.cash`
+- `market.credit_window_proxy`
+- `market.drawdown_90d`
+- `market.equity_window_proxy`
+- `market.market_cap`
+- `market.volatility_30d`
+- `market.volatility_90d`
+- `operating.ebitda_margin_ttm`
+- `operating.fcf_conversion`
+- `operating.revenue_cagr_3y`
+
+## Source-Limited Live Features
+
+These are real live features, but they only populate when the underlying source has enough coverage or disclosure.
+
+- `capital_return.dividend_payer_flag`
+- `capital_return.last_dividend_event_type`
+- `capital_structure.debt_due_0_12m`
+- `capital_structure.debt_due_12_24m`
+- `capital_structure.debt_due_next_24m`
+- `capital_structure.debt_schedule_inconsistency_flag`
+- `capital_structure.debt_schedule_total`
+- `capital_structure.debt_schedule_vs_total_debt`
+- `capital_structure.maturity_wall_ratio_24m`
+- `liquidity.minimum_cash_policy_proxy`
+- `liquidity.runway_months`
+- `market.fcf_yield`
+- `operating.revenue_yoy_last_q`
+- `strategic.action_frequency_24m`
+- `strategic.last_action_type`
+- `strategic.recent_actions_count_24m`
+
+Notes:
+
+- The event-history features above are not broken in the builder; they fail when `event_store.parquet` has no rows for the company.
+- The maturity-wall / debt-due features are intentionally unsupported when the filing does not disclose enough maturity detail.
+
