@@ -448,3 +448,186 @@ def pull_debt():
 # ============================================================================
 # 8. EQUITY OFFERINGS (IPO + Secondary)
 # ============================================================================
+def pull_equity_offerings():
+    log("=" * 70)
+    log("8. EQUITY OFFERINGS")
+    log("=" * 70)
+
+    all_data = []
+
+    for year in range(2020, 2026):
+        log(f"  Pulling {year}...")
+        base_universe = (
+            f"SCREEN(U(IN(Deals)/*UNV:EQDeals*/), "
+            f"TR.EQOfferDate>={year}-01-01, "
+            f"TR.EQOfferDate<={year}-12-31"
+            f")"
+        )
+        country_filter = (
+            f"SCREEN(U(IN(Deals)/*UNV:EQDeals*/), "
+            f"TR.EQOfferDate>={year}-01-01, "
+            f"TR.EQOfferDate<={year}-12-31, "
+            f"TR.EQIssuerNation=\"United States\""
+            f")"
+        )
+        fields = [
+            'TR.EQIssuerName',
+            'TR.EQIssuerTicker',
+            # Avoid Scale= param to prevent formula parsing errors.
+            'TR.EQOfferAmount',
+            'TR.EQOfferDate',
+            'TR.EQOfferPrice',
+            'TR.EQOfferType',
+            'TR.EQOfferMethod',
+            'TR.EQIssuerPrimarySICCode',
+            'TR.EQIssuerNation',
+        ]
+        try:
+            data = rd.get_data(universe=country_filter, fields=fields)
+        except Exception as e:
+            log(f"    Country filter error: {e}")
+            log("    Retrying without country filter (will filter locally)...")
+            try:
+                data = rd.get_data(universe=base_universe, fields=fields)
+            except Exception as e2:
+                log(f"    Error: {e2}")
+                continue
+
+        # Local US filter (if needed)
+        if "TR.EQIssuerNation" in data.columns:
+            data = data[data["TR.EQIssuerNation"].astype(str).str.contains("United States", case=False, na=False)]
+
+        all_data.append(data)
+        log(f"    Found {len(data):,} offerings")
+        time.sleep(1)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'equity_offerings')
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 9. FUNDAMENTALS (Latest + Historical)
+# ============================================================================
+def pull_fundamentals(tickers):
+    log("=" * 70)
+    log("9. FUNDAMENTALS (Current snapshot)")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 50
+
+    fields = [
+        'TR.CommonName',
+        'TR.CompanyName',
+        'TR.Revenue',
+        'TR.RevenueGrowthPct',
+        'TR.EBITDA',
+        'TR.EBITDAMargin',
+        'TR.NetIncome',
+        'TR.NetProfitMargin',
+        'TR.TotalAssets',
+        'TR.TotalDebt',
+        'TR.TotalEquity',
+        'TR.CashAndSTInvestments',
+        'TR.FreeCashFlow',
+        'TR.CapitalExpenditures',
+        'TR.NetDebtToEBITDA',
+        'TR.TotalDebtToTotalEquity',
+        'TR.CurrentRatio',
+        'TR.QuickRatio',
+        'TR.ReturnOnEquity',
+        'TR.ReturnOnAssets',
+        'TR.CompanyMarketCap',
+        'TR.EV',
+        'TR.EVToEBITDA',
+        'TR.PriceToBookValuePerShare',
+        'TR.PERatio',
+        'TR.DividendYield',
+        'TR.GICSSector',
+        'TR.GICSIndustryGroup',
+        'TR.GICSIndustry',
+        'TR.GICSSubIndustry',
+        'TR.TRBCEconomicSector',
+        'TR.TRBCBusinessSector',
+        'TR.OrganizationStatusCode',
+    ]
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 250 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(universe=batch, fields=fields)
+            if len(data) > 0:
+                all_data.append(data)
+        except Exception as e:
+            if i % 500 == 0:
+                log(f"    Error at {i}: {e}")
+
+        time.sleep(0.2)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'fundamentals_current')
+        log(f"  Total: {len(combined):,} companies")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 10. QUARTERLY FUNDAMENTALS (Historical)
+# ============================================================================
+def pull_quarterly_fundamentals(tickers):
+    log("=" * 70)
+    log("10. QUARTERLY FUNDAMENTALS (Historical)")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 30  # Smaller for historical
+
+    fields = [
+        'TR.Revenue',
+        'TR.EBITDA',
+        'TR.NetIncome',
+        'TR.TotalAssets',
+        'TR.TotalDebt',
+        'TR.CashAndSTInvestments',
+        'TR.FreeCashFlow',
+        'TR.CommonSharesOutstanding',
+    ]
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 300 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(
+                universe=batch,
+                fields=fields,
+                parameters={'SDate': START_DATE, 'EDate': END_DATE, 'Period': 'FQ0', 'Frq': 'FQ'}
+            )
+            if len(data) > 0:
+                all_data.append(data)
+        except:
+            pass
+
+        time.sleep(0.3)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'fundamentals_quarterly')
+        log(f"  Total: {len(combined):,} quarterly records")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 11. ANALYST ESTIMATES
+# ============================================================================

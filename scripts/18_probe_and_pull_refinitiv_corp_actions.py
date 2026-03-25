@@ -264,3 +264,17 @@ def _clean_event_fields(df: pd.DataFrame, event_cols: List[str]) -> pd.DataFrame
     return cleaned
 
 
+def filter_event_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    event_cols = _event_columns(df)
+    if not event_cols:
+        return df
+    cleaned = _clean_event_fields(df, event_cols)
+    signal_cols = _event_signal_columns(cleaned, event_cols)
+    if not signal_cols:
+        signal_cols = event_cols
+    mask = cleaned[signal_cols].notna().any(axis=1)
+    return cleaned[mask].copy()
+
+
