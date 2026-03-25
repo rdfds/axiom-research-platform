@@ -248,3 +248,19 @@ def _event_signal_columns(df: pd.DataFrame, event_cols: List[str]) -> List[str]:
     return date_cols + value_cols
 
 
+def _clean_event_fields(df: pd.DataFrame, event_cols: List[str]) -> pd.DataFrame:
+    cleaned = df.copy()
+    placeholders = {
+        "Capital Change Type": pd.NA,
+        "Not Available": pd.NA,
+        "N/A": pd.NA,
+        "NA": pd.NA,
+    }
+    for col in event_cols:
+        if is_string_dtype(cleaned[col]):
+            cleaned[col] = cleaned[col].astype("string")
+            cleaned[col] = cleaned[col].replace(r"^\s*$", pd.NA, regex=True)
+            cleaned[col] = cleaned[col].replace(placeholders)
+    return cleaned
+
+
