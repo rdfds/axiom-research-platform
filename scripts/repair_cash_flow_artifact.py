@@ -142,3 +142,106 @@ def _repairable_fcf_inputs(
     )
 
 
+def repair_market_fcf_yield(
+    *,
+    features: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    companyfacts_path: Path,
+    computed_at: str,
+    as_of_time: str,
+) -> bool:
+    target = features.get("market.fcf_yield")
+    if not target or target.get("value") is not None:
+        return False
+
+    market_cap_node = features.get("market.market_cap_provider_direct")
+    market_cap = _node_value(market_cap_node)
+    fcf_value, operating_cash_flow, capex, fcf_breakdown = _repairable_fcf_inputs(
+        companyfacts=companyfacts,
+        as_of_date=as_of_time[:10],
+    )
+    if market_cap in (None, 0) or fcf_value is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = fcf_value / market_cap
+    repaired["fallback_used"] = "sec_companyfacts_free_cash_flow_ttm"
+    repaired["support_mode"] = "exact" if _node_support(market_cap_node) == "exact" else "proxy_missing_component"
+    repaired["provenance"] = _union_provenance(market_cap_node) + _companyfacts_provenance(
+        companyfacts_path,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+    )
+    repaired["component_breakdown"] = {
+        "market_cap": market_cap,
+        "free_cash_flow_ttm": fcf_value,
+        "operating_cash_flow_ttm": operating_cash_flow,
+        "capex_ttm": capex,
+        "formula": "free_cash_flow_ttm / market_cap_provider_direct",
+        "cash_flow_source": "sec_companyfacts",
+        "cash_flow_context": fcf_breakdown,
+    }
+    repaired["quality_flags"] = None
+    features["market.fcf_yield"] = repaired
+    return True
+
+
+def repair_operating_fcf_conversion(
+    *,
+    features: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    companyfacts_path: Path,
+    computed_at: str,
+    as_of_time: str,
+) -> bool:
+    target = features.get("operating.fcf_conversion")
+    if not target or target.get("value") is not None:
+        return False
+
+    ebitda_node = features.get("operating.ebitda_ltm_provider_direct")
+    normalized_node = features.get("operating.operating_earnings_normalized")
+    denominator = _node_value(ebitda_node)
+    denominator_source = "operating.ebitda_ltm_provider_direct"
+    fallback_used = "sec_companyfacts_fcf_plus_provider_ebitda"
+    denominator_node = ebitda_node
+    if denominator in (None, 0):
+        denominator = _node_value(normalized_node)
+        denominator_source = "operating.operating_earnings_normalized"
+        fallback_used = "sec_companyfacts_fcf_plus_normalized_operating_earnings"
+        denominator_node = normalized_node
+
+    fcf_value, operating_cash_flow, capex, fcf_breakdown = _repairable_fcf_inputs(
+        companyfacts=companyfacts,
+        as_of_date=as_of_time[:10],
+    )
+    if denominator in (None, 0) or fcf_value is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = fcf_value / denominator
+    repaired["fallback_used"] = fallback_used
+    repaired["support_mode"] = (
+        "exact"
+        if _node_support(denominator_node) == "exact"
+        else "proxy_missing_component"
+    )
+    repaired["provenance"] = _union_provenance(ebitda_node, normalized_node) + _companyfacts_provenance(
+        companyfacts_path,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+    )
+    repaired["component_breakdown"] = {
+        "free_cash_flow_ttm": fcf_value,
+        "operating_cash_flow_ttm": operating_cash_flow,
+        "capex_ttm": capex,
+        "ebitda": denominator,
+        "ebitda_source_metric": denominator_source,
+        "formula": "free_cash_flow_ttm / ebitda",
+        "cash_flow_source": "sec_companyfacts",
+        "cash_flow_context": fcf_breakdown,
+    }
+    repaired["quality_flags"] = None
+    features["operating.fcf_conversion"] = repaired
+    return True
+
+

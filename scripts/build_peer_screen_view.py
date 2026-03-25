@@ -25,3 +25,7 @@ def _support_counts(series: pd.Series) :
     return {str(k): int(v) for k, v in support.value_counts(dropna=False).to_dict().items()}
 
 
+def _convert_percent(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce") * 100.0
+
+
