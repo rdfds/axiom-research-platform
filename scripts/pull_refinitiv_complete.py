@@ -407,3 +407,44 @@ def pull_divestitures():
 # ============================================================================
 # 7. DEBT ISSUANCE
 # ============================================================================
+def pull_debt():
+    log("=" * 70)
+    log("7. DEBT ISSUANCE")
+    log("=" * 70)
+
+    all_data = []
+
+    for year in range(2020, 2026):
+        log(f"  Pulling {year}...")
+        try:
+            data = rd.get_data(
+                universe=f'SCREEN(U(IN(Deals)/*UNV:CorpBonds*/), TR.FIIssueDate>={year}-01-01, TR.FIIssueDate<={year}-12-31, TR.FIIssuerNation=="United States")',
+                fields=[
+                    'TR.FIIssuerName',
+                    'TR.FIIssuerTicker',
+                    'TR.FIPrincipalAmount(Scale=6)',
+                    'TR.FIIssueDate',
+                    'TR.FIMaturityDate',
+                    'TR.FICoupon',
+                    'TR.FIInstrumentType',
+                    'TR.FIMoodyRating',
+                    'TR.FISPRating',
+                    'TR.FIIssuerPrimarySICCode',
+                ]
+            )
+            all_data.append(data)
+            log(f"    Found {len(data):,} issuances")
+            time.sleep(1)
+        except Exception as e:
+            log(f"    Error: {e}")
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'debt_issuance')
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 8. EQUITY OFFERINGS (IPO + Secondary)
+# ============================================================================
