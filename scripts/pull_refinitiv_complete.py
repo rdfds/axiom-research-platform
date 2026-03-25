@@ -378,3 +378,32 @@ def pull_spinoffs():
 # ============================================================================
 # 6. DIVESTITURES
 # ============================================================================
+def pull_divestitures():
+    log("=" * 70)
+    log("6. DIVESTITURES")
+    log("=" * 70)
+
+    try:
+        divest = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), TR.MnADealType=="Divestiture Deal", TR.MnAAnnDate>=2020-01-01, TR.MnATargetNation=="United States")',
+            fields=[
+                'TR.MnATarget',
+                'TR.MnATargetTicker',
+                'TR.MnAAcquiror',
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnAStatus',
+            ]
+        )
+        save_parquet(divest, 'divestitures')
+        log(f"  Found {len(divest):,} divestitures")
+        return divest
+    except Exception as e:
+        log(f"  Error: {e}")
+        return pd.DataFrame()
+
+
+# ============================================================================
+# 7. DEBT ISSUANCE
+# ============================================================================

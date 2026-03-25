@@ -241,3 +241,10 @@ def _event_columns(df: pd.DataFrame) -> List[str]:
     return cols
 
 
+def _event_signal_columns(df: pd.DataFrame, event_cols: List[str]) -> List[str]:
+    date_cols = [c for c in event_cols if "date" in c.lower()]
+    value_keywords = ["amount", "ratio", "value", "currency", "factor", "share factor"]
+    value_cols = [c for c in event_cols if any(k in c.lower() for k in value_keywords)]
+    return date_cols + value_cols
+
+
