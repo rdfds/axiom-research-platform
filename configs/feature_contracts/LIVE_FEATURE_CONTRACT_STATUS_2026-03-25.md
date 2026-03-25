@@ -91,3 +91,37 @@ These are the main cleanup targets. They are referenced in the policy stack but 
 - `strategic.segment_count`
 - `strategic.segment_references`
 
+## Known Alias / Namespace Mismatches
+
+These features are close to available today, but the builder and policy use different names.
+
+- Builder emits `ownership_governance.activist_signal`
+  - Policy expects `ownership_governance.activist_presence_flag`
+- Builder emits `peer_context.valuation_z`
+  - Policy expects `market.ev_ebitda_vs_peer_z`
+- Builder emits `peer_context.margin_percentile`
+  - Policy expects `operating.ebitda_margin_percentile_peers`
+- Builder emits peer valuation / leverage / margin context under `peer_context.*`
+  - Policy still expects some older `market.*` / `operating.*` peer-relative aliases
+
+## Recommended Order Of Fixes
+
+1. Wire alias features from existing builder outputs:
+   - `ownership_governance.activist_presence_flag`
+   - `market.ev_ebitda_vs_peer_z`
+   - `operating.ebitda_margin_percentile_peers`
+2. Restore event-history coverage:
+   - `capital_return.dividend_payer_flag`
+   - `capital_return.last_dividend_event_type`
+   - `strategic.last_action_type`
+   - `strategic.recent_actions_count_24m`
+   - `strategic.action_frequency_24m`
+3. Add peer-relative valuation / quality features that are already partly available in `peer_context.*`
+4. Decide whether to wire or remove the remaining truly hollow features:
+   - `capital_return.buyback_capacity_proxy`
+   - `capital_return.share_count_trend`
+   - `market.conglomerate_discount_signal`
+   - `operating.segment_margin_divergence`
+   - `peer_context.relative_positioning.market_share_percentile`
+   - `strategic.segment_count`
+   - `strategic.segment_references`
