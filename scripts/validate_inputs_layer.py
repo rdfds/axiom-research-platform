@@ -126,3 +126,33 @@ def get_dataset_columns(path: Path) -> List[str] | None:
     return None
 
 
+def validate_types(df: pd.DataFrame, schema: Dict) -> List[str]:
+    issues = []
+    props = schema.get("properties", {})
+    for col, spec in props.items():
+        if col not in df.columns:
+            continue
+        expected = spec.get("type")
+        if expected is None:
+            continue
+        if isinstance(expected, str):
+            expected = [expected]
+        expected = [t for t in expected if t != "null"]
+        if not expected:
+            continue
+        s = df[col]
+        if s.notna().sum() == 0:
+            continue
+        ok = True
+        if "number" in expected or "integer" in expected:
+            ok = is_numeric_like(s)
+        elif "boolean" in expected:
+            ok = is_bool_like(s)
+        elif "string" in expected:
+            ok = is_string_like(s) or is_datetime_like(s)
+        # object/array checks are intentionally soft
+        if not ok:
+            issues.append(f"dtype_mismatch:{col}")
+    return issues
+
+
