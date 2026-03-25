@@ -106,3 +106,13 @@ def is_datetime_like(s: pd.Series) -> bool:
     return pd.api.types.is_datetime64_any_dtype(s)
 
 
+def validate_required_columns(
+    df: pd.DataFrame,
+    required: List[str],
+    available_cols: List[str] | None = None,
+) -> Tuple[bool, List[str]]:
+    cols = available_cols if available_cols is not None else list(df.columns)
+    missing = [c for c in required if c not in cols]
+    return (len(missing) == 0), missing
+
+

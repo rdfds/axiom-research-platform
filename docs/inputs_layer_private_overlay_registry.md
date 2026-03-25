@@ -34,3 +34,15 @@ Full schema: `schemas/inputs_layer/private_overlay_registry.schema.json`
 - `segment_kpis`
 - `board_constraints`
 
+## Example Payload (internal projection)
+
+```json
+{
+  "scenario": "base",
+  "horizon_years": 3,
+  "revenue_growth": [0.05, 0.04, 0.03],
+  "ebitda_margin": [0.22, 0.23, 0.24],
+  "capex_pct_sales": [0.04, 0.04, 0.04]
+}
+```
+
