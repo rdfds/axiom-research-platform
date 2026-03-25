@@ -217,3 +217,27 @@ def probe_ca_type_requirement(sample_tickers: List[str], fields: List[str], star
         raise
 
 
+def _event_columns(df: pd.DataFrame) -> List[str]:
+    keywords = [
+        "announcement date",
+        "effective date",
+        "ex date",
+        "record date",
+        "pay date",
+        "adjustment factor",
+        "adjustment type",
+        "action type",
+        "event type",
+        "amount",
+        "ratio",
+        "currency",
+        "status",
+    ]
+    cols = []
+    for c in df.columns:
+        cl = c.lower()
+        if any(k in cl for k in keywords):
+            cols.append(c)
+    return cols
+
+

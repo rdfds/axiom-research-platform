@@ -349,3 +349,32 @@ def pull_buybacks(tickers):
 # ============================================================================
 # 5. SPINOFFS
 # ============================================================================
+def pull_spinoffs():
+    log("=" * 70)
+    log("5. SPINOFFS")
+    log("=" * 70)
+
+    try:
+        spinoffs = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), TR.MnADealType=="Spinoff Deal", TR.MnAAnnDate>=2020-01-01, TR.MnATargetNation=="United States")',
+            fields=[
+                'TR.MnATarget',
+                'TR.MnATargetTicker',
+                'TR.MnAAcquiror',
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnAStatus',
+            ]
+        )
+        save_parquet(spinoffs, 'spinoffs')
+        log(f"  Found {len(spinoffs):,} spinoffs")
+        return spinoffs
+    except Exception as e:
+        log(f"  Error: {e}")
+        return pd.DataFrame()
+
+
+# ============================================================================
+# 6. DIVESTITURES
+# ============================================================================
