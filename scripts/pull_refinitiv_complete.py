@@ -284,3 +284,68 @@ def pull_splits(tickers):
 # ============================================================================
 # 4. SHARE BUYBACKS / REPURCHASES
 # ============================================================================
+def pull_buybacks(tickers):
+    log("=" * 70)
+    log("4. SHARE BUYBACKS")
+    log("=" * 70)
+
+    # Method 1: From deals database
+    log("  Pulling from deals database...")
+    try:
+        buyback_deals = rd.get_data(
+            universe='SCREEN(U(IN(Deals)/*UNV:MADEALS*/), IN(TR.MnADealType,"Repurchases Deal","Self Tender Or Recapitalization Deal"), TR.MnAAnnDate>=2020-01-01, TR.MnATargetNation=="United States")',
+            fields=[
+                'TR.MnATarget',
+                'TR.MnATargetTicker',
+                'TR.MnADealValue(Scale=6)',
+                'TR.MnAAnnDate',
+                'TR.MnACompDate',
+                'TR.MnADealType',
+                'TR.MnATargetPrimarySICCode',
+            ]
+        )
+        save_parquet(buyback_deals, 'buybacks_deals')
+        log(f"    Found {len(buyback_deals):,} buyback deals")
+    except Exception as e:
+        log(f"    Deals error: {e}")
+        buyback_deals = pd.DataFrame()
+
+    # Method 2: Quarterly repurchase data from fundamentals
+    log("  Pulling quarterly repurchase amounts...")
+    all_data = []
+    batch_size = 50
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 500 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(
+                universe=batch,
+                fields=[
+                    'TR.RepurchaseOfCommonPreferredStock',
+                    'TR.CommonSharesOutstanding',
+                    'TR.TreasurySharesNumber',
+                ],
+                parameters={'SDate': START_DATE, 'EDate': END_DATE, 'Period': 'FQ0', 'Frq': 'FQ'}
+            )
+            if len(data) > 0:
+                all_data.append(data)
+        except:
+            pass
+
+        time.sleep(0.2)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'buybacks_quarterly')
+        log(f"    Found {len(combined):,} quarterly records")
+        return combined
+    return buyback_deals
+
+
+# ============================================================================
+# 5. SPINOFFS
+# ============================================================================

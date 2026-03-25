@@ -198,3 +198,22 @@ def probe_ca_fields(sample_tickers: List[str], start_date: str, end_date: str) -
     return working_fields
 
 
+def probe_ca_type_requirement(sample_tickers: List[str], fields: List[str], start_date: str, end_date: str) -> bool:
+    log("Probing whether CAType parameter is required...")
+    try:
+        _ = rd.get_data(
+            universe=sample_tickers,
+            fields=fields,
+            parameters={"SDate": start_date, "EDate": end_date},
+        )
+        log("CAType not required.")
+        return False
+    except Exception as e:
+        msg = str(e).lower()
+        if "catype" in msg or "ca type" in msg:
+            log("CAType appears to be required.")
+            return True
+        log(f"CAType probe failed for other reason: {e}")
+        raise
+
+
