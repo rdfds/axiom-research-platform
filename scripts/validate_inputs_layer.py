@@ -116,3 +116,13 @@ def validate_required_columns(
     return (len(missing) == 0), missing
 
 
+def get_dataset_columns(path: Path) -> List[str] | None:
+    if path.is_dir() or path.suffix == ".parquet":
+        try:
+            dataset = ds.dataset(path, format="parquet")
+            return list(dataset.schema.names)
+        except Exception:
+            return None
+    return None
+
+

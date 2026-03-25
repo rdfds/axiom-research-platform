@@ -46,3 +46,9 @@ Full schema: `schemas/inputs_layer/private_overlay_registry.schema.json`
 }
 ```
 
+## Key Rules
+
+- Overlays **do not overwrite** public data.
+- Every overlay must be versioned and removable.
+- Overlays should expire or be explicitly revoked.
+
