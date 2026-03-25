@@ -576,3 +576,5 @@ def main() -> None:
     print(f"Repaired cash/debt alignment -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()

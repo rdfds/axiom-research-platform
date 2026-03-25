@@ -109,3 +109,36 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _repairable_fcf_inputs(
+    *,
+    companyfacts: Dict[str, Any] | None,
+    as_of_date: str,
+) -> tuple[float | None, float | None, float | None, Dict[str, Any] | None]:
+    operating_cash_flow, operating_cash_flow_meta = _companyfacts_priority_ttm(
+        companyfacts,
+        OPERATING_CASH_FLOW_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    capex_raw, capex_meta = _companyfacts_priority_ttm(
+        companyfacts,
+        CAPEX_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    if operating_cash_flow is None or capex_raw is None:
+        return None, operating_cash_flow, capex_raw, None
+    capex = abs(float(capex_raw))
+    return (
+        float(operating_cash_flow) - capex,
+        float(operating_cash_flow),
+        capex,
+        {
+            "operating_cash_flow_ttm": float(operating_cash_flow),
+            "capex_ttm": capex,
+            "capex_raw_value": float(capex_raw),
+            "operating_cash_flow_meta": operating_cash_flow_meta,
+            "capex_meta": capex_meta,
+            "formula": "operating_cash_flow_ttm - abs(capex_ttm)",
+        },
+    )
+
+
