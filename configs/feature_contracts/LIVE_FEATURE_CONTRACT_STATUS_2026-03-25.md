@@ -75,3 +75,19 @@ Notes:
 - The event-history features above are not broken in the builder; they fail when `event_store.parquet` has no rows for the company.
 - The maturity-wall / debt-due features are intentionally unsupported when the filing does not disclose enough maturity detail.
 
+## Unwired / Contract-Mismatch Features
+
+These are the main cleanup targets. They are referenced in the policy stack but are not cleanly provided by the live builder.
+
+- `capital_return.buyback_capacity_proxy`
+- `capital_return.share_count_trend`
+- `market.conglomerate_discount_signal`
+- `market.ev_ebitda_vs_peer_z`
+- `market.fcf_yield_percentile_peers`
+- `operating.ebitda_margin_percentile_peers`
+- `operating.segment_margin_divergence`
+- `ownership_governance.activist_presence_flag`
+- `peer_context.relative_positioning.market_share_percentile`
+- `strategic.segment_count`
+- `strategic.segment_references`
+
