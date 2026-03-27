@@ -260,3 +260,10 @@ def request_token(session: requests.Session) -> str:
     )
 
 
+def headers(token: str, prefer_async: bool = True) -> Dict[str, str]:
+    hdrs = {"Authorization": f"Token {token}"}
+    if prefer_async:
+        hdrs["Prefer"] = "respond-async"
+    return hdrs
+
+
