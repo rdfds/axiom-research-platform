@@ -105,3 +105,21 @@ def load_universe() -> List[str]:
     return rics
 
 
+def load_ric_map() -> pd.DataFrame:
+    ric_map_path = REF_DIR / "ric_to_cusip_map.parquet"
+    if not ric_map_path.exists():
+        raise FileNotFoundError("Missing ric_to_cusip_map.parquet")
+    ric_map = pd.read_parquet(ric_map_path)
+    ric_map["ric"] = ric_map["ric"].astype("string").str.upper().str.strip()
+    ric_map["cusip8"] = (
+        ric_map["cusip"]
+        .astype("string")
+        .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+        .str.upper()
+        .str[:8]
+    )
+    ric_map = ric_map[ric_map["cusip8"].notna()]
+    ric_map = ric_map.drop_duplicates("ric")
+    return ric_map[["ric", "cusip8", "ticker"]]
+
+
