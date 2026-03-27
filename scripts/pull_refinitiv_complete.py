@@ -729,3 +729,49 @@ def pull_prices(tickers):
 # ============================================================================
 # 13. INSIDER TRANSACTIONS
 # ============================================================================
+def pull_insider_transactions(tickers):
+    log("=" * 70)
+    log("13. INSIDER TRANSACTIONS")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 50
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 500 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(
+                universe=batch,
+                fields=[
+                    'TR.InsiderFilingDate',
+                    'TR.InsiderTransactionType',
+                    'TR.InsiderShares',
+                    'TR.InsiderValue',
+                    'TR.InsiderName',
+                    'TR.InsiderTitle',
+                ],
+                parameters={'SDate': START_DATE, 'EDate': END_DATE}
+            )
+            if len(data) > 0:
+                all_data.append(data)
+        except:
+            pass
+
+        time.sleep(0.2)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        combined = combined.dropna(subset=['Insider Filing Date'])
+        save_parquet(combined, 'insider_transactions')
+        log(f"  Total: {len(combined):,} insider transactions")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
