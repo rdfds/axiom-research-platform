@@ -48,3 +48,60 @@ def extract_relevant_action_ids(
     return sorted(found)
 
 
+def build_action_support_report(
+    *,
+    outcomes_path: str | Path,
+    relevant_action_ids: Optional[Sequence[str]] = None,
+    source_files: Optional[Iterable[Path]] = None,
+) -> Dict[str, Any]:
+    path = Path(outcomes_path)
+    df = pd.read_parquet(path, columns=["normalized_action_family", "normalized_action_id"])
+    relevant_ids = list(relevant_action_ids or extract_relevant_action_ids(source_files=source_files))
+    action_counts = df["normalized_action_id"].value_counts(dropna=True).to_dict()
+    family_counts = {
+        str(key): int(value)
+        for key, value in df["normalized_action_family"].value_counts(dropna=False).items()
+        if pd.notna(key)
+    }
+
+    relevant_actions: List[Dict[str, Any]] = []
+    exact_status_counts: Dict[str, int] = {}
+    support_mode_counts: Dict[str, int] = {}
+    missing_relevant_actions: List[str] = []
+    for action_id in relevant_ids:
+        family = action_id.split(".", 1)[0] if "." in action_id else ""
+        exact_count = int(action_counts.get(action_id, 0))
+        family_count = int(family_counts.get(family, 0))
+        exact_status = coverage_status(exact_count)
+        if exact_count > 0:
+            support_mode = "exact_supported"
+        elif family_count > 0:
+            support_mode = "family_only"
+        else:
+            support_mode = "unsupported"
+        relevant_actions.append(
+            {
+                "action_id": action_id,
+                "family": family,
+                "exact_count": exact_count,
+                "family_count": family_count,
+                "exact_support_status": exact_status,
+                "support_mode": support_mode,
+            }
+        )
+        exact_status_counts[exact_status] = exact_status_counts.get(exact_status, 0) + 1
+        support_mode_counts[support_mode] = support_mode_counts.get(support_mode, 0) + 1
+        if support_mode != "exact_supported":
+            missing_relevant_actions.append(action_id)
+
+    return {
+        "outcomes_path": str(path),
+        "family_counts": family_counts,
+        "relevant_action_count": len(relevant_actions),
+        "exact_status_counts": dict(sorted(exact_status_counts.items())),
+        "support_mode_counts": dict(sorted(support_mode_counts.items())),
+        "relevant_actions": relevant_actions,
+        "non_exact_supported_actions": missing_relevant_actions,
+    }
+
+
