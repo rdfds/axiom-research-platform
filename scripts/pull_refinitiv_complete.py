@@ -631,3 +631,101 @@ def pull_quarterly_fundamentals(tickers):
 # ============================================================================
 # 11. ANALYST ESTIMATES
 # ============================================================================
+def pull_estimates(tickers):
+    log("=" * 70)
+    log("11. ANALYST ESTIMATES (I/B/E/S)")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 75
+
+    fields = [
+        'TR.EPSMean',
+        'TR.EPSHigh',
+        'TR.EPSLow',
+        'TR.EPSMedian',
+        'TR.EPSActValue',
+        'TR.EPSSurprisePercent',
+        'TR.RevenueMean',
+        'TR.RevenueHigh',
+        'TR.RevenueLow',
+        'TR.RevenueActValue',
+        'TR.EBITDAMean',
+        'TR.NumberOfEstimates',
+        'TR.RecommendationMean',
+        'TR.NumOfRecommendations',
+        'TR.NumOfBuys',
+        'TR.NumOfHolds',
+        'TR.NumOfSells',
+        'TR.TargetPriceMean',
+        'TR.TargetPriceHigh',
+        'TR.TargetPriceLow',
+    ]
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 375 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_data(universe=batch, fields=fields)
+            if len(data) > 0:
+                all_data.append(data)
+        except:
+            pass
+
+        time.sleep(0.2)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'analyst_estimates')
+        log(f"  Total: {len(combined):,} estimate records")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 12. HISTORICAL PRICES (Monthly for TSR calculation)
+# ============================================================================
+def pull_prices(tickers):
+    log("=" * 70)
+    log("12. HISTORICAL PRICES (Monthly)")
+    log("=" * 70)
+
+    all_data = []
+    batch_size = 25  # Small batches for history
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        pct = (i + batch_size) / len(tickers) * 100
+        if i % 250 == 0:
+            log(f"  Progress: {pct:.0f}%...")
+
+        try:
+            data = rd.get_history(
+                universe=batch,
+                fields=['TR.PriceClose', 'TR.Volume', 'TR.TotalReturn1Mo'],
+                start=START_DATE,
+                end=END_DATE,
+                interval='monthly'
+            )
+            if data is not None and len(data) > 0:
+                df = data.reset_index()
+                all_data.append(df)
+        except:
+            pass
+
+        time.sleep(0.3)
+
+    if all_data:
+        combined = pd.concat(all_data, ignore_index=True)
+        save_parquet(combined, 'prices_monthly')
+        log(f"  Total: {len(combined):,} price records")
+        return combined
+    return pd.DataFrame()
+
+
+# ============================================================================
+# 13. INSIDER TRANSACTIONS
+# ============================================================================

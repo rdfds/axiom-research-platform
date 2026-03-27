@@ -278,3 +278,193 @@ def filter_event_rows(df: pd.DataFrame) -> pd.DataFrame:
     return cleaned[mask].copy()
 
 
+def probe_event_density(
+    sample_tickers: List[str],
+    fields: List[str],
+    start_date: str,
+    end_date: str,
+    use_ca_type: bool,
+) -> Tuple[int, int, float, int, float]:
+    params = {"SDate": start_date, "EDate": end_date}
+    if use_ca_type:
+        # Try the first CAType as a probe
+        params["CAType"] = CA_TYPE_CANDIDATES[0]
+
+    df = rd.get_data(universe=sample_tickers, fields=fields, parameters=params)
+    if df is None:
+        return 0, 0, 0.0, 0, 0.0
+    df = df.reset_index()
+    event_cols = _event_columns(df)
+    cleaned = _clean_event_fields(df, event_cols) if event_cols else df
+    signal_cols = _event_signal_columns(cleaned, event_cols) if event_cols else []
+    if not signal_cols:
+        signal_cols = event_cols
+    filtered = cleaned[cleaned[signal_cols].notna().any(axis=1)] if signal_cols else cleaned
+    total = len(df)
+    events = len(filtered) if filtered is not None else 0
+    ratio = events / total if total else 0.0
+    date_cols = [c for c in event_cols if "date" in c.lower()]
+    date_events = 0
+    date_ratio = 0.0
+    if date_cols:
+        date_events = int(cleaned[date_cols].notna().any(axis=1).sum())
+        date_ratio = date_events / total if total else 0.0
+    return events, total, ratio, date_events, date_ratio
+
+
+def save_manifest(entry: Dict) -> None:
+    with open(MANIFEST_PATH, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def pull_corporate_actions(
+    tickers: List[str],
+    fields: List[str],
+    start_date: str,
+    end_date: str,
+    use_ca_type: bool,
+) -> None:
+    start_year = int(start_date[:4])
+    end_year = int(end_date[:4])
+
+    batches = batched(tickers, BATCH_SIZE)
+    log(f"Pulling CA data for {len(tickers):,} tickers in {len(batches)} batches...")
+
+    for year in range(start_year, end_year + 1):
+        year_start = f"{year}-01-01"
+        year_end = f"{year}-12-31"
+        if year == end_year:
+            year_end = end_date
+
+        log(f"Year {year}: {year_start} -> {year_end}")
+        empty_batches = 0
+
+        for b_idx, batch in enumerate(batches):
+            if use_ca_type:
+                for ca_type in CA_TYPE_CANDIDATES:
+                    out_path = CA_DIR / f"ca_{ca_type}_{year}_part_{b_idx:04d}.parquet"
+                    if out_path.exists():
+                        continue
+                    try:
+                        df = rd.get_data(
+                            universe=batch,
+                            fields=fields,
+                            parameters={"SDate": year_start, "EDate": year_end, "CAType": ca_type},
+                        )
+                        if df is None or len(df) == 0:
+                            continue
+                        df = df.reset_index()
+                        df = filter_event_rows(df)
+                        if df is None or df.empty:
+                            empty_batches += 1
+                            if empty_batches >= MAX_CONSECUTIVE_EMPTY_BATCHES:
+                                log(f"Detected {MAX_CONSECUTIVE_EMPTY_BATCHES} consecutive empty batches; skipping remainder of year {year}.")
+                                break
+                            continue
+                        df["ca_type"] = ca_type
+                        df["pull_start"] = year_start
+                        df["pull_end"] = year_end
+                        df["batch_index"] = b_idx
+                        df.to_parquet(out_path, index=False)
+                        save_manifest({
+                            "file": out_path.name,
+                            "rows": len(df),
+                            "year": year,
+                            "ca_type": ca_type,
+                            "batch_index": b_idx,
+                            "timestamp": datetime.now().isoformat(),
+                        })
+                        log(f"Saved {len(df):,} rows -> {out_path.name}")
+                    except Exception as e:
+                        log(f"Batch {b_idx} CAType {ca_type} failed: {e}")
+                    time.sleep(SLEEP_SECONDS)
+                if empty_batches >= MAX_CONSECUTIVE_EMPTY_BATCHES:
+                    break
+            else:
+                out_path = CA_DIR / f"ca_{year}_part_{b_idx:04d}.parquet"
+                if out_path.exists():
+                    continue
+                try:
+                    df = rd.get_data(
+                        universe=batch,
+                        fields=fields,
+                        parameters={"SDate": year_start, "EDate": year_end},
+                    )
+                    if df is None or len(df) == 0:
+                        continue
+                    df = df.reset_index()
+                    df = filter_event_rows(df)
+                    if df is None or df.empty:
+                        empty_batches += 1
+                        if empty_batches >= MAX_CONSECUTIVE_EMPTY_BATCHES:
+                            log(f"Detected {MAX_CONSECUTIVE_EMPTY_BATCHES} consecutive empty batches; skipping remainder of year {year}.")
+                            break
+                        continue
+                    df["pull_start"] = year_start
+                    df["pull_end"] = year_end
+                    df["batch_index"] = b_idx
+                    df.to_parquet(out_path, index=False)
+                    save_manifest({
+                        "file": out_path.name,
+                        "rows": len(df),
+                        "year": year,
+                        "batch_index": b_idx,
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                    log(f"Saved {len(df):,} rows -> {out_path.name}")
+                except Exception as e:
+                    log(f"Batch {b_idx} failed: {e}")
+                time.sleep(SLEEP_SECONDS)
+
+
+def main() -> None:
+    log("Opening Refinitiv session...")
+    rd.open_session()
+
+    try:
+        tickers = build_universe()
+
+        sample_tickers = tickers[:50] if len(tickers) >= 50 else tickers
+        log(f"Probe sample tickers: {sample_tickers}")
+
+        probe_start = "2024-01-01"
+        probe_end = "2024-12-31"
+
+        fields = probe_ca_fields(sample_tickers, probe_start, probe_end)
+        use_ca_type = probe_ca_type_requirement(sample_tickers, fields, probe_start, probe_end)
+
+        events, total, ratio, date_events, date_ratio = probe_event_density(
+            sample_tickers, fields, probe_start, probe_end, use_ca_type
+        )
+        log(
+            "Probe event density (signal/date): "
+            f"{events}/{total} ({ratio:.2%}) rows look like events; "
+            f"{date_events}/{total} ({date_ratio:.2%}) rows have dates"
+        )
+        if ABORT_IF_EMPTY_PROBE and (
+            events < MIN_EVENT_ROWS
+            or ratio < MIN_EVENT_RATIO
+            or date_events < MIN_DATE_EVENT_ROWS
+            or date_ratio < MIN_DATE_EVENT_RATIO
+        ):
+            raise RuntimeError(
+                "Corporate action probe returned too few event rows. "
+                "This likely indicates a snapshot feed or missing entitlement. "
+                "Aborting to avoid empty data."
+            )
+
+        pull_corporate_actions(
+            tickers=tickers,
+            fields=fields,
+            start_date=START_DATE,
+            end_date=END_DATE,
+            use_ca_type=use_ca_type,
+        )
+
+    finally:
+        rd.close_session()
+        log("Refinitiv session closed.")
+
+
+if __name__ == "__main__":
+    main()
