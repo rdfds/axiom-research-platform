@@ -150,3 +150,48 @@ def load_names() -> pd.DataFrame:
     return names[["permno", "permco", "namedt", "nameendt", "cusip8"]]
 
 
+def probe_fields(sample: List[str], period: str) -> Dict[str, str]:
+    """
+    Try to find publish time + period end fields that return non-null data.
+    Returns a dict with keys: publish_field, period_field, num_field (optional).
+    """
+    base_fields = [VALUE_FIELDS["eps"][0]]
+    found_publish = None
+    found_period = None
+    found_num = None
+
+    params = {"Period": period}
+    for field in PUBLISH_FIELDS:
+        try:
+            df = rd.get_data(universe=sample, fields=base_fields + [field], parameters=params)
+            if field in df.columns and df[field].notna().any():
+                found_publish = field
+                break
+        except Exception:
+            continue
+
+    for field in PERIOD_FIELDS:
+        try:
+            df = rd.get_data(universe=sample, fields=base_fields + [field], parameters=params)
+            if field in df.columns and df[field].notna().any():
+                found_period = field
+                break
+        except Exception:
+            continue
+
+    for field in NUM_FIELDS:
+        try:
+            df = rd.get_data(universe=sample, fields=base_fields + [field], parameters=params)
+            if field in df.columns and df[field].notna().any():
+                found_num = field
+                break
+        except Exception:
+            continue
+
+    return {
+        "publish_field": found_publish,
+        "period_field": found_period,
+        "num_field": found_num,
+    }
+
+
