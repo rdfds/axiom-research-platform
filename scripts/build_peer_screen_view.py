@@ -29,3 +29,7 @@ def _convert_percent(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce") * 100.0
 
 
+def _convert_bps(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce") * 10000.0
+
+

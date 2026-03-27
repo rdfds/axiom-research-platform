@@ -302,3 +302,5 @@ def main() -> None:
     print(f"Repaired cash-flow metrics -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
