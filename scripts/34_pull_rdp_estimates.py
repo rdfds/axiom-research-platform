@@ -123,3 +123,30 @@ def load_ric_map() -> pd.DataFrame:
     return ric_map[["ric", "cusip8", "ticker"]]
 
 
+def load_names() -> pd.DataFrame:
+    names_path = CRSP_DIR / "msenames_2000-01-01_to_2026-12-31.parquet"
+    if not names_path.exists():
+        raise FileNotFoundError("Missing msenames_2000-01-01_to_2026-12-31.parquet")
+    names = pd.read_parquet(
+        names_path,
+        columns=["permno", "permco", "namedt", "nameendt", "ncusip", "cusip"],
+    )
+    names["namedt"] = pd.to_datetime(names["namedt"], errors="coerce")
+    names["nameendt"] = pd.to_datetime(names["nameendt"], errors="coerce")
+    names["cusip8"] = (
+        names["ncusip"]
+        .fillna(names["cusip"])
+        .astype("string")
+        .str.replace(r"[^0-9A-Za-z]", "", regex=True)
+        .str.upper()
+        .str[:8]
+    )
+    names = names[names["cusip8"].notna()]
+    # Extend CRSP end date to cover estimate end date for mapping
+    max_end = names["nameendt"].max()
+    target_end = pd.to_datetime(EST_END, errors="coerce")
+    if pd.notna(max_end) and pd.notna(target_end) and target_end > max_end:
+        names.loc[names["nameendt"] == max_end, "nameendt"] = target_end
+    return names[["permno", "permco", "namedt", "nameendt", "cusip8"]]
+
+

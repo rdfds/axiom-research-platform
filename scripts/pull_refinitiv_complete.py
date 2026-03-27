@@ -775,3 +775,83 @@ def pull_insider_transactions(tickers):
 # ============================================================================
 # MAIN
 # ============================================================================
+def main():
+    args = parse_args()
+    print("=" * 70)
+    print("REFINITIV COMPLETE DATA PULL")
+    print("=" * 70)
+    print(f"Started: {datetime.now()}")
+    print(f"Period: {START_DATE} to {END_DATE}")
+    print(f"Output: {DATA_DIR}")
+    print()
+
+    # Connect
+    log("Connecting to Refinitiv...")
+    rd.open_session()
+    log("Connected!")
+
+    if args.ecm_only:
+        log("ECM-only mode: pulling equity offerings only.")
+        pull_equity_offerings()
+        rd.close_session()
+        print()
+        print("=" * 70)
+        print("ECM SUMMARY")
+        print("=" * 70)
+        out = DATA_DIR / "equity_offerings.parquet"
+        if out.exists():
+            size_mb = out.stat().st_size / 1024 / 1024
+            df = pd.read_parquet(out)
+            print(f"  equity_offerings.parquet: {len(df):,} rows ({size_mb:.1f} MB)")
+        else:
+            print("  equity_offerings.parquet not found (no data or pull failed).")
+        print()
+        print("DONE!")
+        return
+
+    # Get full universe
+    tickers = get_full_universe()
+
+    # Pull all data types
+    results = {}
+
+    # Corporate Actions from Deals Database
+    results['ma'] = pull_ma_deals()
+    results['spinoffs'] = pull_spinoffs()
+    results['divestitures'] = pull_divestitures()
+    results['debt'] = pull_debt()
+    results['equity'] = pull_equity_offerings()
+
+    # Company-level data
+    results['dividends'] = pull_dividends(tickers)
+    results['splits'] = pull_splits(tickers)
+    results['buybacks'] = pull_buybacks(tickers)
+    results['fundamentals'] = pull_fundamentals(tickers)
+    results['quarterly'] = pull_quarterly_fundamentals(tickers)
+    results['estimates'] = pull_estimates(tickers)
+    results['prices'] = pull_prices(tickers)
+    results['insider'] = pull_insider_transactions(tickers)
+
+    # Summary
+    print()
+    print("=" * 70)
+    print("FINAL SUMMARY")
+    print("=" * 70)
+    print(f"Completed: {datetime.now()}")
+    print()
+
+    total_rows = 0
+    for f in sorted(DATA_DIR.glob('*.parquet')):
+        df = pd.read_parquet(f)
+        size_mb = f.stat().st_size / 1024 / 1024
+        print(f"  {f.name}: {len(df):,} rows ({size_mb:.1f} MB)")
+        total_rows += len(df)
+
+    print()
+    print(f"TOTAL: {total_rows:,} rows across all datasets")
+
+    rd.close_session()
+    print()
+    print("DONE!")
+
+
