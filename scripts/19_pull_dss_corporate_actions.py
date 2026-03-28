@@ -267,3 +267,42 @@ def headers(token: str, prefer_async: bool = True) -> Dict[str, str]:
     return hdrs
 
 
+def get_valid_fields(session: requests.Session, token: str) -> List[str]:
+    url = (
+        f"{DSS_URL}/Extractions/GetValidContentFieldTypes"
+        "(ReportTemplateType=DataScope.Select.Api.Extractions.ReportTemplates.ReportTemplateTypes'CorporateActions')"
+    )
+    resp = session.get(url, headers=headers(token, prefer_async=False), timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    values = data.get("value", [])
+    if DSS_FIELD_NAME_SOURCE.lower() == "code":
+        return [v["Code"] for v in values if "Code" in v]
+    return [v["Name"] for v in values if "Name" in v]
+
+
+def load_fields(session: requests.Session, token: str) -> List[str]:
+    if DSS_FIELDS_FILE:
+        p = Path(DSS_FIELDS_FILE)
+        if not p.exists():
+            raise FileNotFoundError(f"Field list not found: {p}")
+        if p.suffix.lower() in {".json", ".jsonl"}:
+            with open(p, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                fields = data.get("fields", [])
+            else:
+                fields = data
+            return list(fields)
+        with open(p, "r") as f:
+            return [line.strip() for line in f if line.strip()]
+
+    if DSS_USE_ALL_FIELDS:
+        log("Fetching full corporate-actions field list from DSS...")
+        fields = get_valid_fields(session, token)
+        log(f"Loaded {len(fields)} fields.")
+        return fields
+
+    return DEFAULT_FIELDS
+
+

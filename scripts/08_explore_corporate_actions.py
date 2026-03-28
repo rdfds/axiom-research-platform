@@ -275,3 +275,18 @@ def explore_keydev(db):
         return None
 
 
+def explore_tfn_insider(db):
+    """
+    Thomson Financial insider data - may have buyback signals.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING THOMSON FINANCIAL DATA")
+    print("="*70)
+
+    try:
+        tables = db.list_tables(library='tfn')
+        print(f"\nTFN tables available: {tables[:20]}...")  # Limit output
+    except Exception as e:
+        print(f"Cannot list TFN tables: {e}")
+
+
