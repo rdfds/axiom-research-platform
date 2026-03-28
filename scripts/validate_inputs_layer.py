@@ -156,3 +156,17 @@ def validate_types(df: pd.DataFrame, schema: Dict) -> List[str]:
     return issues
 
 
+def parse_datetime_cols(df: pd.DataFrame) -> Tuple[Dict[str, pd.Series], List[str]]:
+    parsed = {}
+    bad = []
+    for col in df.columns:
+        if col.endswith("_at") or col.endswith("_date") or col.endswith("_time"):
+            s = pd.to_datetime(df[col], errors="coerce", utc=True)
+            parsed[col] = s
+            if df[col].notna().any():
+                bad_frac = (df[col].notna() & s.isna()).mean()
+                if bad_frac > 0:
+                    bad.append(f"bad_datetime:{col}:{bad_frac:.2%}")
+    return parsed, bad
+
+
