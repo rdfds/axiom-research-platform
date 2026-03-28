@@ -105,3 +105,28 @@ def build_action_support_report(
     }
 
 
+def resolve_action_support(
+    *,
+    action_id: str,
+    action_family: Optional[str],
+    support_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    normalized_id = str(action_id or "")
+    family = str(action_family or "")
+    if not family and "." in normalized_id:
+        family = normalized_id.split(".", 1)[0]
+    for item in list(support_report.get("relevant_actions", []) or []):
+        if str(item['action_id'] or "") == normalized_id:
+            return dict(item)
+    family_count = int((support_report.get("family_counts", {}) or {}).get(family, 0) or 0)
+    support_mode = "family_only" if family_count > 0 else "unsupported"
+    return {
+        "action_id": normalized_id,
+        "family": family,
+        "exact_count": 0,
+        "family_count": family_count,
+        "exact_support_status": "missing",
+        "support_mode": support_mode,
+    }
+
+
