@@ -693,3 +693,79 @@ def test_cash_and_short_term_investments_subtracts_current_restricted_cash_from_
     assert component_breakdown["restricted_cash_adjustment"]["concept"] == "RestrictedCashAndCashEquivalentsAtCarryingValue"
 
 
+def test_total_debt_uses_combined_including_current_maturities_when_available():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities": {
+                    "units": {"USD": [_instant_fact(310_000_000.0)]}
+                },
+                "FinanceLeaseLiability": {"units": {"USD": [_instant_fact(30_000_000.0)]}},
+                "FinanceLeaseLiabilityCurrent": {"units": {"USD": [_instant_fact(10_000_000.0)]}},
+                "FinanceLeaseLiabilityNoncurrent": {"units": {"USD": [_instant_fact(20_000_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 280_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "combined_debt"
+
+
+def test_total_debt_keeps_combined_capital_lease_total_exact_when_finance_lease_concepts_are_absent():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities": {
+                    "units": {"USD": [_instant_fact(310_000_000.0)]}
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 310_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    assert component_breakdown["mode"] == "combined_debt"
+    assert component_breakdown["finance_lease_adjustment"]["mode"] == "infer_zero_finance_lease_adjustment_due_to_absent_finance_lease_concepts"
+    assert component_breakdown["finance_lease_adjustment_value"] == 0.0
+
+
+def test_total_debt_infers_zero_proxy_when_no_balance_sheet_debt_concepts_are_present():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "ProceedsFromIssuanceOfLongTermDebt": {"units": {"USD": [_instant_fact(50_000_000.0)]}},
+                "RepaymentsOfDebt": {"units": {"USD": [_instant_fact(50_000_000.0)]}},
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "capital_structure.total_debt_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 0.0
+    assert support_mode == "proxy_missing_component"
+    assert missing_reason == "no_debt_balance_concepts_present"
+    assert quality_flags == ["no_debt_balance_concepts_present"]
+    assert component_breakdown["mode"] == "no_debt_balance_concepts_present"
+
+
