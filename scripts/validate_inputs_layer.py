@@ -220,7 +220,7 @@ def main() -> None:
         raise FileNotFoundError(f"Missing config: {config_path}")
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    datasets = config['datasets']
+    datasets = config.get("datasets", [])
     out_path = Path(args.out) if args.out else Path(config.get("output_log_path", "data/inputs_layer/data_integrity_log.parquet"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
