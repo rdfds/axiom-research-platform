@@ -191,3 +191,112 @@ def check_confidence(df: pd.DataFrame) -> List[str]:
     return [f"confidence_out_of_bounds:{bad:.2%}"] if bad > 0 else []
 
 
+def log_entry(dataset: str, check: str, status: str, message: str | None, rows: int | None = None) -> Dict:
+    return {
+        "log_id": str(uuid.uuid4()),
+        "dataset_name": dataset,
+        "check_name": check,
+        "status": status,
+        "message": message,
+        "run_at": utc_now(),
+        "rows_checked": rows,
+        "failure_count": None,
+        "sample_ids": None,
+        "source_id": None,
+        "source_type": None,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/inputs_layer.json")
+    parser.add_argument("--out", default=None, help="Override output log path.")
+    parser.add_argument("--sample-rows", type=int, default=20000, help="Row sample for large datasets.")
+    parser.add_argument("--include-large-cols", action="store_true", help="Read large blob columns (raw_text).")
+    args = parser.parse_args()
+
+    config_path = Path(args.config)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Missing config: {config_path}")
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    datasets = config['datasets']
+    out_path = Path(args.out) if args.out else Path(config.get("output_log_path", "data/inputs_layer/data_integrity_log.parquet"))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logs: List[Dict] = []
+    large_cols_by_dataset = {
+        "RawDocumentStore": ["raw_text", "raw_html", "metadata"],
+    }
+
+    for ds in datasets:
+        name = ds["name"]
+        path = Path(ds["path"])
+        schema_path = Path(ds["schema"])
+        required = bool(ds.get("required", False))
+
+        if not path.exists():
+            status = "fail" if required else "warn"
+            logs.append(log_entry(name, "file_exists", status, f"Missing file: {path}"))
+            continue
+
+        if not schema_path.exists():
+            logs.append(log_entry(name, "schema_exists", "fail", f"Missing schema: {schema_path}"))
+            continue
+
+        available_cols = get_dataset_columns(path)
+        read_cols = None
+        if not args.include_large_cols and name in large_cols_by_dataset and available_cols:
+            read_cols = [c for c in available_cols if c not in large_cols_by_dataset[name]]
+
+        df = load_dataset(path, sample_rows=args.sample_rows if path.is_dir() else None, columns=read_cols)
+        schema = load_schema(schema_path)
+
+        ok, missing = validate_required_columns(df, schema.get("required", []), available_cols=available_cols)
+        if not ok:
+            logs.append(log_entry(name, "required_columns", "fail", f"Missing columns: {missing}", rows=len(df)))
+            continue
+        logs.append(log_entry(name, "required_columns", "pass", None, rows=len(df)))
+
+        dtype_issues = validate_types(df, schema)
+        if dtype_issues:
+            logs.append(log_entry(name, "dtype_check", "warn", ", ".join(dtype_issues), rows=len(df)))
+        else:
+            logs.append(log_entry(name, "dtype_check", "pass", None, rows=len(df)))
+
+        parsed, bad_dt = parse_datetime_cols(df)
+        if bad_dt:
+            logs.append(log_entry(name, "datetime_parse", "warn", ", ".join(bad_dt), rows=len(df)))
+        else:
+            logs.append(log_entry(name, "datetime_parse", "pass", None, rows=len(df)))
+
+        order_issues = check_timestamp_order(parsed)
+        if order_issues:
+            logs.append(log_entry(name, "timestamp_order", "warn", ", ".join(order_issues), rows=len(df)))
+        else:
+            logs.append(log_entry(name, "timestamp_order", "pass", None, rows=len(df)))
+
+        conf_issues = check_confidence(df)
+        if conf_issues:
+            logs.append(log_entry(name, "confidence_bounds", "warn", ", ".join(conf_issues), rows=len(df)))
+        else:
+            logs.append(log_entry(name, "confidence_bounds", "pass", None, rows=len(df)))
+
+        # Missingness warning for required columns
+        req = schema.get("required", [])
+        miss_stats = []
+        for col in req:
+            if col in df.columns:
+                miss = df[col].isna().mean()
+                if miss > 0:
+                    miss_stats.append(f"{col}:{miss:.2%}")
+        if miss_stats:
+            logs.append(log_entry(name, "missing_required_values", "warn", ", ".join(miss_stats), rows=len(df)))
+        else:
+            logs.append(log_entry(name, "missing_required_values", "pass", None, rows=len(df)))
+
+    log_df = pd.DataFrame(logs)
+    log_df.to_parquet(out_path, index=False)
+    print(f"Saved DataIntegrityLog -> {out_path} ({len(log_df):,} rows)")
+
+
