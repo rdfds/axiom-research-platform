@@ -249,7 +249,7 @@ def request_token(session: requests.Session) -> str:
             continue
         resp.raise_for_status()
         data = resp.json()
-        token = data.get("value") or data['Token'] or data.get("token")
+        token = data.get("value") or data.get("Token") or data.get("token")
         if not token:
             raise RuntimeError(f"Token not found in response: {data}")
         return token

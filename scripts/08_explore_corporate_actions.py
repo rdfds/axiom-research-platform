@@ -290,3 +290,18 @@ def explore_tfn_insider(db):
         print(f"Cannot list TFN tables: {e}")
 
 
+def explore_ibes(db):
+    """
+    IBES has analyst data - can be useful for expectations.
+    """
+    print("\n" + "="*70)
+    print("EXPLORING IBES (Analyst Expectations)")
+    print("="*70)
+
+    try:
+        tables = db.list_tables(library='ibes')
+        print(f"\nIBES tables available: {tables[:20]}...")
+    except Exception as e:
+        print(f"Cannot list IBES tables: {e}")
+
+
