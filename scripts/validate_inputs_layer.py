@@ -170,3 +170,24 @@ def parse_datetime_cols(df: pd.DataFrame) -> Tuple[Dict[str, pd.Series], List[st
     return parsed, bad
 
 
+def check_timestamp_order(parsed: Dict[str, pd.Series]) -> List[str]:
+    issues = []
+    if "published_at" in parsed and "ingested_at" in parsed:
+        bad = (parsed["published_at"] > parsed["ingested_at"]).mean()
+        if bad > 0:
+            issues.append(f"published_after_ingested:{bad:.2%}")
+    if "effective_at" in parsed and "ingested_at" in parsed:
+        bad = (parsed["effective_at"] > parsed["ingested_at"]).mean()
+        if bad > 0:
+            issues.append(f"effective_after_ingested:{bad:.2%}")
+    return issues
+
+
+def check_confidence(df: pd.DataFrame) -> List[str]:
+    if "confidence_score" not in df.columns:
+        return []
+    s = pd.to_numeric(df["confidence_score"], errors="coerce")
+    bad = ((s < 0) | (s > 1)).mean()
+    return [f"confidence_out_of_bounds:{bad:.2%}"] if bad > 0 else []
+
+
