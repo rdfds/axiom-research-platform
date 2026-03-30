@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _support_counts(series: pd.Series) :
+def _support_counts(series: pd.Series) -> Dict[str, int]:
     support = series.fillna("unsupported").astype(str)
     return {str(k): int(v) for k, v in support.value_counts(dropna=False).to_dict().items()}
 
