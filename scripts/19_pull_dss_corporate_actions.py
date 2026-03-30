@@ -306,3 +306,32 @@ def load_fields(session: requests.Session, token: str) -> List[str]:
     return DEFAULT_FIELDS
 
 
+def load_condition() -> Dict:
+    if DSS_CONDITION_FILE:
+        p = Path(DSS_CONDITION_FILE)
+        if not p.exists():
+            raise FileNotFoundError(f"Condition file not found: {p}")
+        with open(p, "r") as f:
+            cond = json.load(f)
+        return cond
+
+    return {
+        "ReportDateRangeType": "Range",
+        "RangeStartDate": "{start_date}",
+        "RangeEndDate": "{end_date}",
+        "ExcludeDeletedEvents": True,
+        "IncludeCapitalChangeEvents": True,
+        "IncludeDividendEvents": True,
+        "IncludeEarningsEvents": True,
+        "IncludeMergersAndAcquisitionsEvents": True,
+        "IncludeNominalValueEvents": True,
+        "IncludePublicEquityOfferingsEvents": True,
+        "IncludeSharesOutstandingEvents": True,
+        "IncludeVotingRightsEvents": True,
+        "CorporateActionsCapitalChangeType": "CapitalChangeExDate",
+        "CorporateActionsDividendsType": "DividendPayDate",
+        "CorporateActionsEarningsType": "PeriodEndDate",
+        "ShareAmountTypes": [],
+    }
+
+

@@ -305,3 +305,56 @@ def explore_ibes(db):
         print(f"Cannot list IBES tables: {e}")
 
 
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python 08_explore_corporate_actions.py USERNAME")
+        sys.exit(1)
+
+    WRDS_USERNAME = sys.argv[1]
+
+    print("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=WRDS_USERNAME)
+    print("Connected!\n")
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    # Explore each data source
+    crsp_dist = explore_crsp_distributions(db)
+    buyback_data = explore_compustat_buybacks(db)
+    div_data = explore_compustat_dividends(db)
+    ciq_types = explore_ciq_transactions(db)
+    keydev = explore_keydev(db)
+    explore_tfn_insider(db)
+    explore_ibes(db)
+
+    # Summary
+    print("\n" + "="*70)
+    print("SUMMARY: Corporate Actions Data Availability")
+    print("="*70)
+    print("""
+┌─────────────────────┬──────────────┬─────────────────────────────────┐
+│ Corporate Action    │ Available?   │ Source                          │
+├─────────────────────┼──────────────┼─────────────────────────────────┤
+│ M&A / Acquisitions  │ ✓ YES        │ DealScan, CIQ transactions      │
+│ Debt Issuance       │ ✓ YES        │ DealScan (facility table)       │
+│ Cash Dividends      │ ✓ YES        │ CRSP dsedist (distcd 1xxx)      │
+│ Dividend Changes    │ ~ PARTIAL    │ Infer from CRSP payment changes │
+│ Buybacks            │ ~ PARTIAL    │ Compustat treasury stock changes│
+│ Spin-offs           │ ~ PARTIAL    │ CRSP dsedist (distcd 6xxx)      │
+│ Equity Offerings    │ ? CHECK      │ May be in CIQ keydev            │
+│ Divestitures        │ ? CHECK      │ May be in CIQ keydev            │
+└─────────────────────┴──────────────┴─────────────────────────────────┘
+
+NEXT STEPS:
+1. Pull CRSP dividend history (dsedist with distcd 1xxx)
+2. Build buyback detection from Compustat treasury stock changes
+3. Extract spin-offs from CRSP (distcd 6xxx)
+4. Explore CIQ keydev for announcements
+5. Link all actions to state profiles for outcome analysis
+    """)
+
+    db.close()
+
+
+if __name__ == "__main__":
+    main()
