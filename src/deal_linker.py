@@ -336,3 +336,5 @@ def demo():
         print(f"\nSaved to {output_path}")
 
 
+if __name__ == "__main__":
+    demo()
