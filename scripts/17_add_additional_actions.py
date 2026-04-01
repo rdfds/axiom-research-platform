@@ -90,3 +90,112 @@ def compute_profiles_for_actions(actions_df, action_type_name, engine, outcomes)
     return pd.DataFrame()
 
 
+def main():
+    print("=" * 70)
+    print("ADDING ADDITIONAL CORPORATE ACTIONS TO PROFILE DATABASE")
+    print("=" * 70)
+    print(f"Started at: {datetime.now()}")
+
+    # Check if clean profiles exist
+    clean_path = DATA_DIR / 'clean_action_profiles.parquet'
+    if not clean_path.exists():
+        print("\n⚠️ clean_action_profiles.parquet not found!")
+        print("   Run 15_compute_clean_action_profiles.py first.")
+        return
+
+    # Load existing clean profiles
+    existing = pd.read_parquet(clean_path)
+    print(f"\nExisting clean profiles: {len(existing):,}")
+
+    # Initialize engines
+    print("\nInitializing engines...")
+    engine = SignalEngine()
+    outcomes = OutcomeCalculator()
+
+    new_profiles = []
+
+    # 1. Stock Splits
+    splits_path = DATA_DIR / 'stock_splits_linked.parquet'
+    if splits_path.exists():
+        splits = pd.read_parquet(splits_path)
+        splits = splits.dropna(subset=['gvkey'])
+        splits = splits.head(3000)  # Sample for speed
+
+        profiles = compute_profiles_for_actions(splits, 'stock_split', engine, outcomes)
+        if len(profiles) > 0:
+            new_profiles.append(profiles)
+            print(f"  Added {len(profiles):,} stock split profiles")
+
+    # 2. Special Dividends
+    special_div_path = DATA_DIR / 'special_dividends_linked.parquet'
+    if special_div_path.exists():
+        special = pd.read_parquet(special_div_path)
+        special = special.dropna(subset=['gvkey'])
+        special = special.head(3000)  # Sample
+
+        profiles = compute_profiles_for_actions(special, 'dividend_special', engine, outcomes)
+        if len(profiles) > 0:
+            new_profiles.append(profiles)
+            print(f"  Added {len(profiles):,} special dividend profiles")
+
+    # 3. Return of Capital
+    roc_path = DATA_DIR / 'return_of_capital_linked.parquet'
+    if roc_path.exists():
+        roc = pd.read_parquet(roc_path)
+        roc = roc.dropna(subset=['gvkey'])
+
+        profiles = compute_profiles_for_actions(roc, 'return_of_capital', engine, outcomes)
+        if len(profiles) > 0:
+            new_profiles.append(profiles)
+            print(f"  Added {len(profiles):,} return of capital profiles")
+
+    # 4. Going Private
+    gp_path = DATA_DIR / 'going_private_linked.parquet'
+    if gp_path.exists():
+        gp = pd.read_parquet(gp_path)
+        gp = gp.dropna(subset=['gvkey'])
+
+        profiles = compute_profiles_for_actions(gp, 'going_private', engine, outcomes)
+        if len(profiles) > 0:
+            new_profiles.append(profiles)
+            print(f"  Added {len(profiles):,} going private profiles")
+
+    # 5. Ticker Changes (name changes often accompany strategic actions)
+    ticker_path = DATA_DIR / 'ticker_changes_linked.parquet'
+    if ticker_path.exists():
+        tickers = pd.read_parquet(ticker_path)
+        tickers = tickers.dropna(subset=['gvkey'])
+        tickers = tickers.head(1500)  # Sample
+
+        profiles = compute_profiles_for_actions(tickers, 'ticker_change', engine, outcomes)
+        if len(profiles) > 0:
+            new_profiles.append(profiles)
+            print(f"  Added {len(profiles):,} ticker change profiles")
+
+    # Combine new profiles with existing
+    if new_profiles:
+        all_new = pd.concat(new_profiles, ignore_index=True)
+        combined = pd.concat([existing, all_new], ignore_index=True)
+
+        # Remove duplicates (same gvkey + date)
+        combined = combined.drop_duplicates(
+            subset=['gvkey', 'action_date'], keep='first'
+        )
+
+        # Save
+        combined.to_parquet(clean_path)
+
+        print("\n" + "=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        print(f"Previous profiles: {len(existing):,}")
+        print(f"New profiles added: {len(all_new):,}")
+        print(f"Total after merge: {len(combined):,}")
+        print(f"\nBy action type:")
+        print(combined['action_type'].value_counts().to_string())
+        print(f"\nSaved to: {clean_path}")
+        print(f"Completed at: {datetime.now()}")
+    else:
+        print("\nNo new profiles to add!")
+
+

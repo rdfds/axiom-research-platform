@@ -115,3 +115,280 @@ def filter_ric_map(ric_map: pd.DataFrame, names: pd.DataFrame) -> pd.DataFrame:
     return filtered
 
 
+FIELD_SETS = [
+    ["TR.OPENPRICE", "TR.HIGHPRICE", "TR.LOWPRICE", "TR.CLOSEPRICE", "TR.VOLUME", "TR.TOTRETURN"],
+    ["TR.OPENPRICE", "TR.HIGHPRICE", "TR.LOWPRICE", "TR.PRICECLOSE", "TR.VOLUME", "TR.TOTRETURN"],
+    ["TR.CLOSEPRICE", "TR.VOLUME", "TR.TOTRETURN"],
+    ["TR.PRICECLOSE", "TR.VOLUME", "TR.TOTRETURN"],
+    ["TR.CLOSEPRICE"],
+    ["TR.PRICECLOSE"],
+]
+
+
+def normalize_prices(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    import ast
+    import re
+
+    ric_from_columns_name = None
+    if getattr(df, "columns", None) is not None and df.columns.name:
+        ric_from_columns_name = str(df.columns.name).upper().strip()
+    if RDP_DEBUG:
+        log(f"    raw columns name: {getattr(df.columns, 'name', None)}")
+        try:
+            log(f"    raw head:\n{df.head(2).to_string()}")
+            log(f"    raw dtypes:\n{df.dtypes}")
+        except Exception:
+            pass
+
+    def parse_tuple_str(val):
+        if isinstance(val, str) and val.startswith("(") and val.endswith(")"):
+            try:
+                parsed = ast.literal_eval(val)
+                if isinstance(parsed, tuple) and len(parsed) == 2:
+                    return parsed
+            except Exception:
+                return val
+        return val
+
+    parsed_cols = [parse_tuple_str(c) for c in df.columns]
+    has_tuple_cols = any(isinstance(c, tuple) for c in parsed_cols)
+
+    if has_tuple_cols:
+        tuples = []
+        for c in parsed_cols:
+            if isinstance(c, tuple):
+                tuples.append(c)
+            else:
+                tuples.append((str(c), ""))
+        df = df.copy()
+        df.columns = pd.MultiIndex.from_tuples(tuples)
+
+        # Determine which level is RIC vs field
+        level0 = df.columns.get_level_values(0).unique()
+        level1 = df.columns.get_level_values(1).unique()
+
+        def ric_score(values):
+            vals = [str(v) for v in values if v is not None]
+            if not vals:
+                return 0.0
+            hits = 0
+            for v in vals:
+                v = v.upper()
+                if re.match(r"^[A-Z0-9]{1,6}\\.[A-Z0-9]+$", v):
+                    hits += 1
+            return hits / len(vals)
+
+        ric_level = 0 if ric_score(level0) >= ric_score(level1) else 1
+
+        date_col = None
+        for col in df.columns:
+            if str(col[0]).lower() in ("date", "datetime"):
+                date_col = col
+                break
+
+        if date_col is None:
+            # Some outputs put date on the index (often as strings)
+            idx_dates = pd.to_datetime(df.index, errors="coerce")
+            if idx_dates.notna().any():
+                dates = idx_dates
+                wide = df.copy()
+            else:
+                raise ValueError("Could not find date column in Refinitiv output.")
+        else:
+            dates = pd.to_datetime(df[date_col], errors="coerce")
+            wide = df.drop(columns=[date_col])
+
+        wide.index = dates
+        wide.index.name = "date"
+
+        long = (
+            wide.stack(level=ric_level, future_stack=True)
+            .reset_index()
+            .rename(columns={"level_1": "ric"})
+        )
+    else:
+        cols = {str(c).lower(): c for c in df.columns}
+        date_col = cols.get("date") or cols.get("datetime") or cols.get("index")
+        inst_col = cols.get("instrument") or cols.get("ric")
+        long = df.copy()
+        single_ric_handled = False
+        # Single-RIC response: columns.name holds the RIC; df is indexed by date.
+        if inst_col is None and ric_from_columns_name and re.match(r"^[A-Z0-9]{1,6}\\.[A-Z0-9]+$", ric_from_columns_name):
+            idx_dates = pd.to_datetime(df.index, errors="coerce")
+            if idx_dates.notna().any():
+                long = long.reset_index()
+                # Ensure the first column (index) is named 'date'
+                if long.columns.size > 0:
+                    long = long.rename(columns={long.columns[0]: "date"})
+                long["ric"] = ric_from_columns_name
+                date_col = "date"
+                inst_col = "ric"
+                single_ric_handled = True
+        if date_col is None:
+            idx_dates = pd.to_datetime(df.index, errors="coerce")
+            if idx_dates.notna().any():
+                long = long.reset_index().rename(columns={"index": "date"})
+                date_col = "date"
+            else:
+                raise ValueError(f"Unexpected Refinitiv output columns: {list(df.columns)}")
+        if inst_col is None and not single_ric_handled:
+            # Try to detect instrument column by name heuristic
+            for c in df.columns:
+                name = str(c).lower()
+                if "ric" in name or "instrument" in name or "symbol" in name:
+                    inst_col = c
+                    break
+            if inst_col is None and ric_from_columns_name:
+                # Single-RIC response: columns.name often holds the RIC
+                if re.match(r"^[A-Z0-9]{1,6}\.[A-Z0-9]+$", ric_from_columns_name):
+                    long["ric"] = ric_from_columns_name
+                else:
+                    raise ValueError(f"Unexpected Refinitiv output columns: {list(df.columns)}")
+            elif inst_col is None:
+                raise ValueError(f"Unexpected Refinitiv output columns: {list(df.columns)}")
+        if date_col not in long.columns:
+            idx_dates = pd.to_datetime(df.index, errors="coerce")
+            if idx_dates.notna().any():
+                long = long.reset_index().rename(columns={"index": "date"})
+                date_col = "date"
+            else:
+                raise ValueError(f"Unexpected Refinitiv output columns: {list(df.columns)}")
+        long["date"] = pd.to_datetime(long[date_col], errors="coerce")
+        if long["date"].notna().any() and long["date"].min() < pd.Timestamp("1980-01-01"):
+            idx_dates = pd.to_datetime(df.index, errors="coerce")
+            if idx_dates.notna().any():
+                long["date"] = idx_dates.values
+        if "ric" not in long.columns:
+            long["ric"] = long[inst_col].astype("string").str.upper().str.strip()
+
+    def pick_exact(colnames):
+        for name in colnames:
+            for c in long.columns:
+                if str(c).upper() == name:
+                    return c
+        return None
+
+    def pick_contains(tokens):
+        for c in long.columns:
+            name = str(c).upper()
+            if all(tok in name for tok in tokens):
+                return c
+        return None
+
+    def pick_close_fallback():
+        exclude_tokens = ["OPEN", "HIGH", "LOW", "VOLUME", "TOTRETURN", "TOTALRETURN", "RETURN", "BID", "ASK"]
+        candidates = []
+        for c in long.columns:
+            name = str(c).upper()
+            if name in ("DATE", "DATETIME", "RIC", "INSTRUMENT"):
+                continue
+            if any(tok in name for tok in exclude_tokens):
+                continue
+            # Prefer numeric columns
+            if pd.api.types.is_numeric_dtype(long[c]):
+                candidates.append(c)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        # Pick column with most non-null values
+        counts = {c: long[c].notna().sum() for c in candidates}
+        return max(counts, key=counts.get)
+
+    close_col = pick_exact(["TR.CLOSEPRICE", "CLOSEPRICE", "PRICE CLOSE", "CLOSE PRICE", "TR.PRICECLOSE", "CLOSE", "PX_CLOSE"])
+    if close_col is None:
+        close_col = pick_contains(["CLOSE", "PRICE"]) or pick_contains(["CLOSE"])
+    if close_col is None:
+        close_col = pick_close_fallback()
+
+    open_col = pick_exact(["TR.OPENPRICE", "OPENPRICE", "PRICE OPEN", "OPEN"])
+    if open_col is None:
+        open_col = pick_contains(["OPEN"])
+
+    high_col = pick_exact(["TR.HIGHPRICE", "HIGHPRICE", "HIGH"])
+    if high_col is None:
+        high_col = pick_contains(["HIGH"])
+
+    low_col = pick_exact(["TR.LOWPRICE", "LOWPRICE", "LOW"])
+    if low_col is None:
+        low_col = pick_contains(["LOW"])
+
+    vol_col = pick_exact(["TR.VOLUME", "VOLUME"])
+    if vol_col is None:
+        vol_col = pick_contains(["VOLUME"])
+
+    tr_col = pick_exact(["TR.TOTRETURN", "TOTAL RETURN", "TR.TOTALRETURN"])
+    if tr_col is None:
+        tr_col = pick_contains(["TOTRETURN"]) or pick_contains(["TOTAL", "RETURN"])
+
+    if RDP_DEBUG:
+        log(f"    normalize: columns={list(long.columns)}")
+        log(f"    normalize: close_col={close_col} open_col={open_col} high_col={high_col} low_col={low_col} vol_col={vol_col} tr_col={tr_col}")
+
+    if close_col is None:
+        raise ValueError(f"Close price column not found. Columns: {list(long.columns)}")
+
+    out = pd.DataFrame()
+    out["date"] = pd.to_datetime(long["date"], errors="coerce")
+    out["ric"] = long["ric"].astype("string").str.upper().str.strip()
+    if ric_from_columns_name:
+        out["ric"] = ric_from_columns_name
+    if RDP_DEBUG:
+        sample_ric = out["ric"].dropna().astype("string").unique().tolist()[:5]
+        log(f"    normalize: sample ric values={sample_ric}")
+    out["open"] = pd.to_numeric(long[open_col], errors="coerce") if open_col else np.nan
+    out["high"] = pd.to_numeric(long[high_col], errors="coerce") if high_col else np.nan
+    out["low"] = pd.to_numeric(long[low_col], errors="coerce") if low_col else np.nan
+    out["close"] = pd.to_numeric(long[close_col], errors="coerce")
+    out["volume"] = pd.to_numeric(long[vol_col], errors="coerce") if vol_col else np.nan
+
+    if tr_col is not None:
+        out["total_return_index"] = pd.to_numeric(long[tr_col], errors="coerce")
+    else:
+        out["total_return_index"] = np.nan
+
+    out = out.sort_values(["ric", "date"])
+    if out["total_return_index"].notna().any():
+        out["ret"] = out.groupby("ric")["total_return_index"].pct_change()
+    else:
+        out["ret"] = out.groupby("ric")["close"].pct_change()
+
+    return out
+
+
+def map_to_permno(prices: pd.DataFrame, ric_map: pd.DataFrame, names: pd.DataFrame) -> pd.DataFrame:
+    if prices.empty:
+        return prices
+    if RDP_DEBUG:
+        sample_prices = prices["ric"].dropna().astype("string").str.upper().str.strip().unique().tolist()[:5]
+        sample_map = ric_map["ric"].dropna().astype("string").str.upper().str.strip().unique().tolist()[:5]
+        log(f"    map: sample prices rics={sample_prices}")
+        log(f"    map: sample map rics={sample_map}")
+    merged = prices.merge(ric_map, on="ric", how="left")
+    if RDP_DEBUG:
+        log(f"    map: start {len(prices):,} -> after ric_map {len(merged):,} | cusip8 missing: {merged['cusip8'].isna().mean():.2%}")
+    merged = merged.dropna(subset=["cusip8"])
+    merged = merged.merge(names, on="cusip8", how="left")
+    if RDP_DEBUG:
+        log(f"    map: after names merge {len(merged):,} | permno missing: {merged['permno'].isna().mean():.2%}")
+        log(f"    map: name date null pct namedt={merged['namedt'].isna().mean():.2%} nameendt={merged['nameendt'].isna().mean():.2%}")
+        log(f"    map: date sample min/max={merged['date'].min()} / {merged['date'].max()}")
+        if "namedt" in merged.columns and "nameendt" in merged.columns:
+            log(f"    map: namedt sample min/max={merged['namedt'].min()} / {merged['nameendt'].max()}")
+    if not RDP_RELAX_NAME_FILTER:
+        # Keep rows even if name date bounds are missing
+        lower_ok = merged["namedt"].isna() | (merged["date"] >= merged["namedt"])
+        upper_ok = merged["nameendt"].isna() | (merged["date"] <= merged["nameendt"])
+        merged = merged[lower_ok & upper_ok]
+        if RDP_DEBUG:
+            log(f"    map: after date filter {len(merged):,}")
+    merged = merged.sort_values(["ric", "date", "nameendt"])
+    merged = merged.drop_duplicates(subset=["ric", "date"], keep="last")
+    merged = merged.dropna(subset=["permno"])
+    merged["permno"] = merged["permno"].astype("Int64")
+    return merged
+
+

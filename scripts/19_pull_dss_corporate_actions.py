@@ -335,3 +335,9 @@ def load_condition() -> Dict:
     }
 
 
+def apply_condition_dates(condition: Dict, start_date: str, end_date: str) -> Dict:
+    raw = json.dumps(condition)
+    raw = raw.replace("{start_date}", start_date).replace("{end_date}", end_date)
+    return json.loads(raw)
+
+
