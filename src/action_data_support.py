@@ -130,3 +130,7 @@ def resolve_action_support(
     }
 
 
+def load_action_support_report(path: str | Path) -> Dict[str, Any]:
+    return json.loads(Path(path).read_text())
+
+
