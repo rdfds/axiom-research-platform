@@ -87,3 +87,17 @@ def build_peer_screen_view(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _summarize(df: pd.DataFrame, support_columns: Iterable[str]) -> Dict[str, object]:
+    summary: Dict[str, object] = {
+        "rows": int(len(df)),
+        "columns": int(len(df.columns)),
+        "coverage": {},
+    }
+    for col in support_columns:
+        summary["coverage"][col] = _support_counts(df[col])
+    summary["coverage"]["credit_truth_tier"] = {
+        str(k): int(v) for k, v in df["credit_truth_tier"].fillna("unsupported").astype(str).value_counts().to_dict().items()
+    }
+    return summary
+
+

@@ -769,3 +769,128 @@ def test_total_debt_infers_zero_proxy_when_no_balance_sheet_debt_concepts_are_pr
     assert component_breakdown["mode"] == "no_debt_balance_concepts_present"
 
 
+def test_compute_ttm_prefers_comparative_prior_period_from_newer_filing_even_when_fy_matches_latest():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "DepreciationDepletionAndAmortization": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                45_139.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2023-11-06",
+                                fy=2023,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                45_139_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-11-04",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                58_169_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-26",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                51_936_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-04",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    value, meta = _compute_ttm_from_concept(
+        companyfacts,
+        "DepreciationDepletionAndAmortization",
+        "2024-12-31",
+    )
+
+    assert value == 64_966_000.0
+    assert meta is not None
+    assert meta["prior_same_period"]["filed"] == "2024-11-04"
+    assert meta["prior_same_period"]["value"] == 45_139_000.0
+
+
+def test_ebitda_ttm_downgrades_when_depreciation_bridge_is_stale_latest_fy_only():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "OperatingIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                1_480_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-10-24",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                3_034_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-21",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                2_378_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2023-10-19",
+                                fy=2023,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+                "DepreciationDepletionAndAmortization": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                2_300_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-21",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "operating.ebitda_ltm_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 4_436_000_000.0
+    assert support_mode == "proxy_missing_component"
+    assert missing_reason is None
+    assert "stale_depreciation_amortization_bridge" in (quality_flags or [])
+
+
