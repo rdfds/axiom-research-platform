@@ -295,3 +295,44 @@ class DealLinker:
         print(f"Saved {len(self.linked_deals):,} linked deals to {output_path}")
 
 
+def demo():
+    """Demonstrate the deal linker."""
+    print("="*70)
+    print("DEALSCAN-COMPUSTAT LINKER DEMO")
+    print("="*70)
+
+    linker = DealLinker()
+
+    # Link deals
+    linked = linker.link_deals()
+
+    # Save linked deals
+    linker.save_linked_deals()
+
+    # Compute profiles for a sample
+    print("\n" + "="*70)
+    print("COMPUTING STATE PROFILES FOR SAMPLE DEALS")
+    print("="*70)
+
+    from .signals import SignalEngine
+
+    engine = SignalEngine()
+
+    # Compute profiles for LBO and Takeover deals
+    profiles = linker.build_deal_profiles_batch(
+        engine,
+        max_deals=100,
+        deal_types=['LBO', 'Takeover']
+    )
+
+    if len(profiles) > 0:
+        print(f"\nComputed {len(profiles)} profiles")
+        print("\nSample profiles:")
+        print(profiles[['borrower_name', 'deal_date', 'deal_type', 'composite_score']].head(10))
+
+        # Save profiles
+        output_path = DATA_DIR / 'deal_profiles_sample.parquet'
+        profiles.to_parquet(output_path, index=False)
+        print(f"\nSaved to {output_path}")
+
+
