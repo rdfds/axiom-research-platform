@@ -379,3 +379,21 @@ def extract_with_notes(
     return resp.json(), token
 
 
+def poll_location(session: requests.Session, token: str, location: str) -> Tuple[Dict, str]:
+    for _ in range(MAX_POLL):
+        time.sleep(POLL_SECONDS)
+        resp = session.get(location, headers=headers(token, prefer_async=False), timeout=120)
+        if resp.status_code == 202:
+            continue
+        if resp.status_code == 401 and DSS_TOKEN is None and DSS_USERNAME and DSS_PASSWORD:
+            token = request_token(session)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        if "Contents" in data or "Notes" in data:
+            return data, token
+        if data.get("Status") in {"Completed", "CompletedWithWarnings"}:
+            return data, token
+    raise TimeoutError("Timed out waiting for DSS extraction.")
+
+
