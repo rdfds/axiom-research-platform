@@ -61,7 +61,7 @@ def compute_profiles_for_actions(actions_df, action_type_name, engine, outcomes)
                 'company_name': row.get('company_name', ''),
                 'ticker': row.get('ticker', ''),
                 'deal_value': row.get('deal_value') or row.get('amount'),
-                'sic': row['sic'],
+                'sic': row.get('sic'),
                 'signal_vector': profile['vector'],
                 'composite_score': profile['composite_score'],
             }

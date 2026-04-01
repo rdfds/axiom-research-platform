@@ -341,3 +341,41 @@ def apply_condition_dates(condition: Dict, start_date: str, end_date: str) -> Di
     return json.loads(raw)
 
 
+def extract_with_notes(
+    session: requests.Session,
+    token: str,
+    fields: List[str],
+    identifiers: List[str],
+    condition: Dict,
+) -> Tuple[Dict, str]:
+    url = f"{DSS_URL}/Extractions/ExtractWithNotes"
+    payload = {
+        "ExtractionRequest": {
+            "@odata.type": "#DataScope.Select.Api.Extractions.ExtractionRequests.CorporateActionsStandardExtractionRequest",
+            "ContentFieldNames": fields,
+            "IdentifierList": {
+                "@odata.type": "#DataScope.Select.Api.Extractions.ExtractionRequests.InstrumentIdentifierList",
+                "InstrumentIdentifiers": [
+                    {"Identifier": ric, "IdentifierType": "Ric"} for ric in identifiers
+                ],
+            },
+            "Condition": condition,
+        }
+    }
+
+    resp = session.post(url, headers=headers(token), json=payload, timeout=120)
+    if resp.status_code == 401 and DSS_TOKEN is None and DSS_USERNAME and DSS_PASSWORD:
+        token = request_token(session)
+        resp = session.post(url, headers=headers(token), json=payload, timeout=120)
+
+    if resp.status_code == 202:
+        location = resp.headers.get("Location")
+        if not location:
+            raise RuntimeError("Async response missing Location header.")
+        data, token = poll_location(session, token, location)
+        return data, token
+
+    resp.raise_for_status()
+    return resp.json(), token
+
+
