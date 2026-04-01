@@ -894,3 +894,103 @@ def test_ebitda_ttm_downgrades_when_depreciation_bridge_is_stale_latest_fy_only(
     assert "stale_depreciation_amortization_bridge" in (quality_flags or [])
 
 
+def test_ebitda_ttm_prefers_fresher_direct_depreciation_and_amortization_concept():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "OperatingIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                1_480_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-10-24",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                3_034_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-21",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                2_378_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-10-24",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+                "DepreciationDepletionAndAmortization": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                2_300_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-21",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                        ]
+                    }
+                },
+                "DepreciationAndAmortization": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                1_424_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-10-24",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                1_936_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-21",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                1_456_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-10-24",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "operating.ebitda_ltm_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 4_040_000_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    depreciation_meta = component_breakdown["depreciation_amortization"]
+    assert depreciation_meta["concept"] == "DepreciationAndAmortization"
+    assert depreciation_meta["mode"] == "ytd_plus_prior_fy_minus_prior_ytd"
+
+

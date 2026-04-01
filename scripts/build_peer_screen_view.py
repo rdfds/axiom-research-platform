@@ -101,3 +101,31 @@ def _summarize(df: pd.DataFrame, support_columns: Iterable[str]) -> Dict[str, ob
     return summary
 
 
+def main() -> None:
+    args = parse_args()
+
+    flat_path = Path(args.flat_path)
+    out_parquet = Path(args.out_parquet)
+    out_parquet.parent.mkdir(parents=True, exist_ok=True)
+
+    src = pd.read_parquet(flat_path)
+    out = build_peer_screen_view(src)
+    out.to_parquet(out_parquet, index=False)
+
+    if args.out_csv:
+        out_csv = Path(args.out_csv)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        out.to_csv(out_csv, index=False)
+
+    if args.summary_out:
+        summary_out = Path(args.summary_out)
+        support_columns = [c for c in out.columns if c.endswith("_support_mode")]
+        summary = _summarize(out, support_columns)
+        summary["source"] = flat_path.as_posix()
+        summary_out.write_text(json.dumps(summary, indent=2))
+
+    print(f"Built peer-screen view -> {out_parquet}")
+
+
+if __name__ == "__main__":
+    main()
