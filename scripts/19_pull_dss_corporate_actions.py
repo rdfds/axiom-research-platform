@@ -397,3 +397,8 @@ def poll_location(session: requests.Session, token: str, location: str) -> Tuple
     raise TimeoutError("Timed out waiting for DSS extraction.")
 
 
+def save_manifest(entry: Dict) -> None:
+    with open(MANIFEST_PATH, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+

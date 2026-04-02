@@ -392,3 +392,62 @@ def map_to_permno(prices: pd.DataFrame, ric_map: pd.DataFrame, names: pd.DataFra
     return merged
 
 
+def write_partitioned(df: pd.DataFrame) -> int:
+    if df.empty:
+        return 0
+    df = df.copy()
+    df["event_time"] = pd.to_datetime(df["date"])
+    df["available_time"] = df["event_time"] + pd.Timedelta(hours=16)
+    df["entity_id"] = df["permno"].astype("Int64").astype("string")
+    df["security_id"] = df["entity_id"]
+    df["company_id"] = None
+    df["adjusted_close"] = df["close"]
+    df["source_system"] = "refinitiv_rdp"
+    df["ingestion_time"] = datetime.utcnow()
+    df["raw_payload_hash"] = pd.util.hash_pandas_object(df[["ric", "date", "close"]], index=False).map(lambda x: f"{x:016x}")
+    df["version_id"] = pd.util.hash_pandas_object(df[["entity_id", "date", "raw_payload_hash"]], index=False).map(lambda x: f"{x:016x}")
+    df["upstream_version_ids"] = None
+    df["quality_flags"] = None
+
+    out_cols = [
+        "source_system",
+        "entity_id",
+        "company_id",
+        "security_id",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "version_id",
+        "raw_payload_hash",
+        "upstream_version_ids",
+        "quality_flags",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume",
+        "total_return_index",
+        "ret",
+        "ric",
+        "cusip8",
+        "permno",
+    ]
+    for col in out_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+    df = df[out_cols]
+
+    df["year"] = df["event_time"].dt.year.astype("Int64")
+    rows = 0
+    for year, ydf in df.groupby("year"):
+        if pd.isna(year):
+            continue
+        year_dir = OUT_DIR / f"year={int(year)}"
+        year_dir.mkdir(parents=True, exist_ok=True)
+        part_path = year_dir / f"part_{uuid.uuid4().hex}.parquet"
+        ydf.drop(columns=["year"]).to_parquet(part_path, index=False)
+        rows += len(ydf)
+    return rows
+
+
