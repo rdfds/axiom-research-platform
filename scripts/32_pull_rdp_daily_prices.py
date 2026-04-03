@@ -451,3 +451,25 @@ def write_partitioned(df: pd.DataFrame) -> int:
     return rows
 
 
+def extract_prices_batch(batch, start, end):
+    last_err = None
+    for fields in FIELD_SETS:
+        try:
+            with futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(
+                    rd.get_history,
+                    universe=batch,
+                    fields=fields,
+                    start=start,
+                    end=end,
+                    interval="daily",
+                )
+                data = fut.result(timeout=RDP_TIMEOUT)
+            if data is not None and len(data) > 0:
+                return data
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err if last_err is not None else RuntimeError("No data returned")
+
+
