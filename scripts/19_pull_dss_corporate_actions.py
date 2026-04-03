@@ -402,3 +402,30 @@ def save_manifest(entry: Dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def write_results(
+    data: Dict,
+    out_path: Path,
+    year: int,
+    batch_index: int,
+    start_date: str,
+    end_date: str,
+) :
+    contents = data.get("Contents") or []
+    if not contents:
+        return 0
+    df = pd.DataFrame(contents)
+    df["pull_start"] = start_date
+    df["pull_end"] = end_date
+    df["batch_index"] = batch_index
+    df["year"] = year
+    df.to_parquet(out_path, index=False)
+    save_manifest({
+        "file": out_path.name,
+        "rows": len(df),
+        "year": year,
+        "batch_index": batch_index,
+        "timestamp": datetime.now().isoformat(),
+    })
+    return len(df)
+
+
