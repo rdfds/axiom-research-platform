@@ -429,3 +429,61 @@ def write_results(
     return len(df)
 
 
+def main() -> None:
+    log("Loading universe...")
+    tickers = load_universe()
+    log(f"Universe: {len(tickers):,} RICs")
+
+    session = requests.Session()
+    token = request_token(session)
+
+    fields = load_fields(session, token)
+    log(f"Using {len(fields)} fields.")
+
+    condition_template = load_condition()
+
+    start_date = START_DATE
+    end_date = END_DATE
+
+    if SMOKE_TEST:
+        today = datetime.utcnow().date()
+        start_date = (today - timedelta(days=SMOKE_DAYS)).strftime("%Y-%m-%d")
+        end_date = today.strftime("%Y-%m-%d")
+        tickers = tickers[:SMOKE_TICKERS]
+        log(f"Smoke test enabled: {len(tickers)} tickers, {start_date} -> {end_date}")
+
+    start_year = int(start_date[:4])
+    end_year = int(end_date[:4])
+
+    batches = list(batched(tickers, BATCH_SIZE))
+    if SMOKE_TEST and len(batches) > SMOKE_MAX_BATCHES:
+        batches = batches[:SMOKE_MAX_BATCHES]
+        log(f"Smoke test: limiting to {len(batches)} batch(es)")
+    log(f"Pulling in {len(batches)} batches per year...")
+
+    for year in range(start_year, end_year + 1):
+        year_start = f"{year}-01-01"
+        year_end = f"{year}-12-31"
+        if year == end_year:
+            year_end = end_date
+        if year == start_year:
+            year_start = start_date
+
+        log(f"Year {year}: {year_start} -> {year_end}")
+
+        for b_idx, batch in enumerate(batches):
+            out_path = OUT_DIR / f"ca_{year}_part_{b_idx:04d}.parquet"
+            if out_path.exists():
+                continue
+            condition = apply_condition_dates(condition_template, year_start, year_end)
+            try:
+                data, token = extract_with_notes(session, token, fields, batch, condition)
+                rows = write_results(data, out_path, year, b_idx, year_start, year_end)
+                log(f"Saved {rows:,} rows -> {out_path.name}")
+            except Exception as e:
+                log(f"Batch {b_idx} failed: {e}")
+            time.sleep(SLEEP_SECONDS)
+
+
+if __name__ == "__main__":
+    main()

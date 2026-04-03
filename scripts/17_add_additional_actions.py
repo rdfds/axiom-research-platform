@@ -199,3 +199,5 @@ def main():
         print("\nNo new profiles to add!")
 
 
+if __name__ == "__main__":
+    main()
