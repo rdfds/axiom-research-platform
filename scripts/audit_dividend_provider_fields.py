@@ -69,3 +69,5 @@ def main() :
     print("  green only if there is a single direct provider field for DPS or yield with no required in-house aggregation")
 
 
+if __name__ == "__main__":
+    main()
