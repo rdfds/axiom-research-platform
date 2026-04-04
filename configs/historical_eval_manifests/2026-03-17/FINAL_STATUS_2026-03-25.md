@@ -36,3 +36,22 @@ Topline metrics:
 - capital structure `anchor_primary_family_rate = 0.56`
 - capital structure `unsupported_case_count = 4`
 
+## What Improved
+
+- replay-path market and operating blind spots were fixed
+- capital-return replay recovered to the strong range
+- capital-structure replay recap candidates now rank much better when they are already economically justified
+- support-aware evaluation and canonical outcomes coverage are in much better shape
+- test execution is healthier through the wrapper path
+
+## What Remains
+
+- a small capital-structure replay miss bucket still looks anomaly-shaped or replay-state-shaped
+- those remaining cases are not the same clean bug class as the recap-ranking issue
+- the standard frozen benchmark remains stronger and more trustworthy than the replay path
+
+## Recommendation
+
+- keep `v36` as the main benchmark checkpoint
+- keep `v42` and `v43` as the replay checkpoints
+- stop tuning this thread unless a new broad pattern appears
