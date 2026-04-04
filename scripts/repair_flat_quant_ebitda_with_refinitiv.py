@@ -336,3 +336,5 @@ def main() -> None:
     print(f"Overlayed Refinitiv EBITDA metrics -> {out_parquet}")
 
 
+if __name__ == "__main__":
+    main()

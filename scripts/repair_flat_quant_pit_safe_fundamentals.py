@@ -86,3 +86,21 @@ def _exact_or_proxy_support(*support_modes: str) -> str:
     return "exact" if all(mode == "exact" for mode in support_modes) else "proxy_missing_component"
 
 
+def _support_rank(support_mode: str | None) -> int:
+    if support_mode == "exact":
+        return 2
+    if support_mode == "proxy_missing_component":
+        return 1
+    return 0
+
+
+def _permno_map(entity_identifier_path: Path) -> dict[str, str]:
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
+    ids["permno"] = ids["identifier_value"].astype(str).str.strip()
+    return {
+        str(entity_id): permno
+        for entity_id, permno in ids[["entity_id", "permno"]].drop_duplicates().itertuples(index=False)
+    }
+
+
