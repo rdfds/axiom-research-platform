@@ -153,3 +153,16 @@ def iter_press_release_files() -> List[Path]:
     return filtered
 
 
+def load_checkpoint(path: Path) -> set:
+    processed: set = set()
+    try:
+        with path.open("r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    processed.add(line)
+    except Exception as exc:
+        log(f"Checkpoint read failed ({path}): {exc}. Using {len(processed):,} entries.")
+    return processed
+
+

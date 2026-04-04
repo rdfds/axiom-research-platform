@@ -134,3 +134,10 @@ def load_action_support_report(path: str | Path) -> Dict[str, Any]:
     return json.loads(Path(path).read_text())
 
 
+def write_action_support_report(report: Dict[str, Any], path: str | Path) -> Path:
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2))
+    return out_path
+
+

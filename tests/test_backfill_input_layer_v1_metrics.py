@@ -1490,3 +1490,116 @@ def test_ebitda_ttm_uses_fresh_finance_lease_amortization_with_fresh_depreciatio
     assert depreciation_meta["mode"] == "sum_concepts"
 
 
+def test_ebitda_ttm_uses_capitalized_software_amortization_when_direct_intangible_amortization_is_missing():
+    companyfacts = {
+        "facts": {
+            "us-gaap": {
+                "OperatingIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                20_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                24_000_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-15",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                18_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+                "Depreciation": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                2_000_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                2_900_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-15",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                2_200_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+                "CapitalizedComputerSoftwareAmortization1": {
+                    "units": {
+                        "USD": [
+                            _duration_fact(
+                                10_400_000.0,
+                                start="2024-01-01",
+                                end="2024-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                            _duration_fact(
+                                11_600_000.0,
+                                start="2023-01-01",
+                                end="2023-12-31",
+                                filed="2024-02-15",
+                                fy=2023,
+                                fp="FY",
+                                form="10-K",
+                            ),
+                            _duration_fact(
+                                9_000_000.0,
+                                start="2023-01-01",
+                                end="2023-09-30",
+                                filed="2024-11-06",
+                                fy=2024,
+                                fp="Q3",
+                            ),
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+    value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+        "operating.ebitda_ltm_provider_direct",
+        companyfacts,
+        "2024-12-31",
+    )
+
+    assert value == 41_700_000.0
+    assert support_mode == "exact"
+    assert missing_reason is None
+    assert quality_flags is None
+    depreciation_meta = component_breakdown["depreciation_amortization"]
+    assert depreciation_meta["mode"] == "sum_concepts"
