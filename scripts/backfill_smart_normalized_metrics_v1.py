@@ -281,3 +281,36 @@ def _load_completed_company_ids(path: Path) -> set[str]:
     return completed
 
 
+def _summarize_output_rows(path: Path) -> Dict[str, Dict[str, int]]:
+    counters: Counter[str] = Counter()
+    fail_open: Counter[str] = Counter()
+    for row in iter_snapshot_rows(path):
+        features = row.get("features") or {}
+        row_fail_reason = None
+        for metric_name in SMART_METRIC_NAMES:
+            node = features.get(metric_name) or {}
+            support_mode = str(node.get("support_mode") or "unsupported")
+            if support_mode not in {"exact", "proxy_missing_component", "unsupported"}:
+                support_mode = "unsupported"
+            counters[f"{metric_name}:{support_mode}"] += 1
+            if support_mode == "unsupported":
+                missing_reason = str(node.get("missing_reason") or "")
+                if row_fail_reason is None and missing_reason in {"company_processing_timeout", "company_processing_failed"}:
+                    row_fail_reason = missing_reason
+        if row_fail_reason is not None:
+            fail_open[row_fail_reason] += 1
+
+    summary: Dict[str, Dict[str, int]] = {}
+    for metric_name in SMART_METRIC_NAMES:
+        summary[metric_name] = {
+            "exact": counters[f"{metric_name}:exact"],
+            "proxy_missing_component": counters[f"{metric_name}:proxy_missing_component"],
+            "unsupported": counters[f"{metric_name}:unsupported"],
+        }
+    summary["row_fail_open"] = {
+        "company_processing_timeout": fail_open["company_processing_timeout"],
+        "company_processing_failed": fail_open["company_processing_failed"],
+    }
+    return summary
+
+
