@@ -61,3 +61,95 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def ensure_list(value: Optional[object]) -> List[str]:
+    if value is None:
+        return []
+
+    try:
+        import numpy as np
+    except Exception:
+        np = None  # type: ignore
+
+    try:
+        from pandas.api.types import is_scalar
+    except Exception:
+        def is_scalar(_):  # type: ignore
+            return isinstance(_, (str, int, float, bool))
+
+    if np is not None and isinstance(value, np.ndarray):
+        if value.size == 0:
+            return []
+        items: List[object] = list(value)
+    elif isinstance(value, pd.Series):
+        if value.empty:
+            return []
+        items = value.tolist()
+    else:
+        if is_scalar(value):
+            try:
+                if pd.isna(value):
+                    return []
+            except Exception:
+                pass
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, (tuple, set)):
+            items = list(value)
+        else:
+            items = [value]
+
+    flat: List[str] = []
+    for item in items:
+        if item is None:
+            continue
+        if np is not None and isinstance(item, np.ndarray):
+            if item.size == 0:
+                continue
+            for sub in item.tolist():
+                if sub is None:
+                    continue
+                flat.append(str(sub))
+            continue
+        if isinstance(item, pd.Series):
+            if item.empty:
+                continue
+            for sub in item.tolist():
+                if sub is None:
+                    continue
+                flat.append(str(sub))
+            continue
+        if is_scalar(item):
+            try:
+                if pd.isna(item):
+                    continue
+            except Exception:
+                pass
+        if isinstance(item, list):
+            for sub in item:
+                if sub is None or (isinstance(sub, float) and pd.isna(sub)):
+                    continue
+                flat.append(str(sub))
+        elif isinstance(item, (tuple, set)):
+            flat.extend([str(sub) for sub in item])
+        else:
+            flat.append(str(item))
+    return flat
+
+
+def iter_press_release_files() -> List[Path]:
+    base = WAREHOUSE_DIR / "warehouse_press_releases"
+    if not base.exists():
+        raise FileNotFoundError(f"Missing press releases: {base}")
+    files = sorted(base.glob("year=*/part_*.parquet"))
+    filtered: List[Path] = []
+    for path in files:
+        try:
+            year = int(path.parent.name.split("=")[1])
+        except Exception:
+            continue
+        if year < PR_START_YEAR or year > PR_END_YEAR:
+            continue
+        filtered.append(path)
+    return filtered
+
+
