@@ -116,7 +116,7 @@ def resolve_action_support(
     if not family and "." in normalized_id:
         family = normalized_id.split(".", 1)[0]
     for item in list(support_report.get("relevant_actions", []) or []):
-        if str(item['action_id'] or "") == normalized_id:
+        if str(item.get("action_id") or "") == normalized_id:
             return dict(item)
     family_count = int((support_report.get("family_counts", {}) or {}).get(family, 0) or 0)
     support_mode = "family_only" if family_count > 0 else "unsupported"
