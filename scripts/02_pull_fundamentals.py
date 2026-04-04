@@ -115,3 +115,32 @@ def get_fundamentals(db):
     return df
 
 
+def validate_data(df):
+    """Basic validation checks on the data."""
+    print("\n--- Data Validation ---")
+
+    # Check for rdq (filing date) coverage
+    rdq_missing = df['rdq'].isna().sum()
+    rdq_pct = (1 - rdq_missing / len(df)) * 100
+    print(f"Filing date (rdq) coverage: {rdq_pct:.1f}%")
+
+    if rdq_pct < 90:
+        print("  WARNING: Low rdq coverage may affect as-of logic")
+
+    # Check date range
+    print(f"Date range: {df['datadate'].min()} to {df['datadate'].max()}")
+
+    # Check company count
+    n_companies = df['gvkey'].nunique()
+    print(f"Unique companies: {n_companies:,}")
+
+    # Check for key fields
+    key_fields = ['revtq', 'atq', 'ltq', 'dlttq', 'cheq']
+    for field in key_fields:
+        if field in df.columns:
+            coverage = (1 - df[field].isna().sum() / len(df)) * 100
+            print(f"  {field} coverage: {coverage:.1f}%")
+
+    return True
+
+
