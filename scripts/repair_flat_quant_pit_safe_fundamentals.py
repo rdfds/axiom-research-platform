@@ -68,3 +68,9 @@ def _json_scalar(value: Any) -> Any:
     return value
 
 
+def _raw_support(value: float | None, support_mode: str | None) -> str:
+    if value is None:
+        return "unsupported"
+    return support_mode or "exact"
+
+

@@ -30,3 +30,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _ticker_identifier_map(path: Path) -> pd.DataFrame:
+    identifiers = _read_parquet_with_retries(path)
+    identifiers = identifiers[identifiers["identifier_type"].astype(str).str.lower() == "ticker"].copy()
+    identifiers["ticker"] = identifiers["identifier_value"].astype(str).str.upper().str.strip()
+    return identifiers[["entity_id", "ticker"]].drop_duplicates()
+
+
+def _read_parquet_with_retries(path: Path, attempts: int = 4, sleep_seconds: float = 3.0) -> pd.DataFrame:
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return pd.read_parquet(path).copy()
+        except TimeoutError as exc:
+            last_error = exc
+            if attempt == attempts:
+                raise
+            time.sleep(sleep_seconds)
+    raise last_error
+
+
