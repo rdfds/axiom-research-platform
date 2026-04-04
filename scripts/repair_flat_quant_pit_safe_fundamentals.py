@@ -80,3 +80,9 @@ def _derived_support(*support_modes: str) -> str:
     return "exact" if all(mode == "exact" for mode in support_modes) else "proxy_missing_component"
 
 
+def _exact_or_proxy_support(*support_modes: str) -> str:
+    if not support_modes or any(mode == "unsupported" for mode in support_modes):
+        return "unsupported"
+    return "exact" if all(mode == "exact" for mode in support_modes) else "proxy_missing_component"
+
+

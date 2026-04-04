@@ -14,3 +14,16 @@ It demonstrates:
 
 The question is not simply “why does this company trade at a premium?” It is “which part of the premium is supported by measurable forward expectations, and which part remains outside the model’s driver surface?”
 
+## 2. Point-in-time company state
+
+Open the [company state snapshot example](../examples/company_state_snapshot/README.md).
+
+It demonstrates that every feature carries:
+
+- an as-of timestamp
+- source provenance
+- confidence and fallback metadata
+- units and feature-level interpretation
+
+This is the foundation for leakage-safe backtests and auditable downstream recommendations.
+
