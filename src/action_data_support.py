@@ -141,3 +141,12 @@ def write_action_support_report(report: Dict[str, Any], path: str | Path) -> Pat
     return out_path
 
 
+__all__ = [
+    "DEFAULT_RELEVANT_ACTION_SOURCE_FILES",
+    "build_action_support_report",
+    "coverage_status",
+    "extract_relevant_action_ids",
+    "load_action_support_report",
+    "resolve_action_support",
+    "write_action_support_report",
+]
