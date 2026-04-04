@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _support_counts(series: pd.Series) :
+def _support_counts(series: pd.Series) -> Dict[str, int]:
     values = series.fillna("unsupported").astype(str)
     return {
         "exact": int((values == "exact").sum()),

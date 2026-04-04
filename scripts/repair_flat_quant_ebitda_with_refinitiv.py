@@ -50,3 +50,12 @@ def _read_parquet_with_retries(path: Path, attempts: int = 4, sleep_seconds: flo
     raise last_error
 
 
+def _refinitiv_map(provider_reference_path: Path, entity_identifier_path: Path) -> pd.DataFrame:
+    ref = _read_parquet_with_retries(provider_reference_path)
+    ref["ticker"] = ref["Instrument"].astype(str).str.replace(r"\..*$", "", regex=True).str.upper().str.strip()
+    tickers = _ticker_identifier_map(entity_identifier_path)
+    merged = ref.merge(tickers, on="ticker", how="inner")
+    merged["entity_id"] = merged["entity_id"].astype(str)
+    return merged.sort_values(["entity_id", "Instrument"]).drop_duplicates("entity_id", keep="first")
+
+
