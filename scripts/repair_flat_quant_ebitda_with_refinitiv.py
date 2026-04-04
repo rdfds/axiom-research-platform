@@ -280,7 +280,7 @@ def main() -> None:
             row = sub.iloc[0]
             sample[cid] = {
                 "company_name": row["company_name"],
-                "provider_instrument": _json_scalar(row['Instrument']),
+                "provider_instrument": _json_scalar(row.get("Instrument")),
                 "provider_company_name": _json_scalar(row.get("Company Common Name")),
                 "provider_ebitda": _json_scalar(row.get("provider_ebitda")),
                 "provider_revenue": _json_scalar(row.get("provider_revenue")),

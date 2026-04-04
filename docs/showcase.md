@@ -27,3 +27,9 @@ It demonstrates that every feature carries:
 
 This is the foundation for leakage-safe backtests and auditable downstream recommendations.
 
+## 3. Precedent retrieval
+
+Open the [precedent retrieval example](../examples/precedent_retrieval/README.md).
+
+It demonstrates retrieval over historical corporate actions using company state, action parameters, market regime, sector context, and learned distance weights. The output includes confidence, outcome cohorts, top matches, and mismatch diagnostics—and can say when precedent support is weak.
+

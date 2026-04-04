@@ -104,3 +104,35 @@ def _permno_map(entity_identifier_path: Path) -> dict[str, str]:
     }
 
 
+def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) -> dict[str, pd.DataFrame]:
+    if not permnos:
+        return {}
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(entity_id AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            close
+        FROM read_parquet('{raw_timeseries_path}')
+        WHERE series_type = 'price'
+          AND CAST(entity_id AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    if prices.empty:
+        return {}
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices["date_key"] = prices["trade_date"]
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return {
+        permno: frame.reset_index(drop=True)
+        for permno, frame in prices.groupby("permno")
+    }
+
+
+def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Series | None:
+    eligible = df[df["date_key"] <= date_key]
+    if eligible.empty:
+        return None
+    return eligible.iloc[-1]
+
+
