@@ -48,3 +48,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _support_counts(series: pd.Series) :
+    values = series.fillna("unsupported").astype(str)
+    return {
+        "exact": int((values == "exact").sum()),
+        "proxy_missing_component": int((values == "proxy_missing_component").sum()),
+        "unsupported": int((values == "unsupported").sum()),
+    }
+
+
+def _json_scalar(value: Any) -> Any:
+    if pd.isna(value):
+        return None
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
+
+
