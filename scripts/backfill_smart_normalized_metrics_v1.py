@@ -262,3 +262,22 @@ def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
             yield json.loads(line)
 
 
+def _load_completed_company_ids(path: Path) -> set[str]:
+    completed: set[str] = set()
+    if not path.exists():
+        return completed
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            company_id = row.get("company_id")
+            if company_id is not None:
+                completed.add(str(company_id))
+    return completed
+
+
