@@ -169,7 +169,7 @@ def main():
                     'action_date': action_date,
                     'action_type': action_type,
                     'div_amount': row['div_amount'],
-                    'change_pct': row['change_pct'],
+                    'change_pct': row.get('change_pct'),
                     'source': 'crsp_dividends',
                     'composite_score': profile['composite_score'],
                     'signal_vector': profile['vector'],
