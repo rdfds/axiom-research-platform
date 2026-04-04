@@ -473,3 +473,55 @@ def extract_prices_batch(batch, start, end):
     raise last_err if last_err is not None else RuntimeError("No data returned")
 
 
+def main():
+    ric_map = load_ric_map()
+    names = load_names()
+    ric_map = filter_ric_map(ric_map, names)
+    rics = ric_map["ric"].dropna().unique().tolist()
+    if RDP_LIMIT and RDP_LIMIT > 0:
+        rics = rics[:RDP_LIMIT]
+    log(f"RICs to pull: {len(rics):,}")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    rd.open_session()
+
+    try:
+        for start, end in year_chunks(RDP_START, RDP_END):
+            log(f"Year {start.year}: {start.date()} -> {end.date()}")
+            for i in range(0, len(rics), BATCH_SIZE):
+                batch = rics[i:i + BATCH_SIZE]
+                log(f"  Batch {i//BATCH_SIZE + 1}/{(len(rics)-1)//BATCH_SIZE + 1}")
+                try:
+                    raw = extract_prices_batch(batch, start, end)
+                except Exception as e:
+                    log(f"    Batch error: {e}")
+                    if not SPLIT_ON_ERROR:
+                        continue
+                    for ric in batch:
+                        try:
+                            raw = extract_prices_batch([ric], start, end)
+                            norm = normalize_prices(raw)
+                            mapped = map_to_permno(norm, ric_map, names)
+                            rows = write_partitioned(mapped)
+                            log(f"    {ric}: {rows:,} rows")
+                        except Exception:
+                            continue
+                    time.sleep(SLEEP)
+                    continue
+
+                norm = normalize_prices(raw)
+                if RDP_DEBUG:
+                    ric_count = norm["ric"].nunique() if "ric" in norm.columns else 0
+                    log(f"    Raw rows: {len(raw):,} | Norm rows: {len(norm):,} | RICs: {ric_count:,} | date NA pct: {norm['date'].isna().mean() if 'date' in norm.columns else 'n/a'}")
+                mapped = map_to_permno(norm, ric_map, names)
+                if RDP_DEBUG:
+                    overlap = set(norm["ric"].unique()) & set(ric_map["ric"].unique()) if "ric" in norm.columns else set()
+                    log(f"    Mapped rows: {len(mapped):,} | Overlap RICs: {len(overlap):,}")
+                rows = write_partitioned(mapped)
+                log(f"    Wrote {rows:,} rows")
+                time.sleep(SLEEP)
+    finally:
+        rd.close_session()
+        log("Refinitiv session closed.")
+
+
