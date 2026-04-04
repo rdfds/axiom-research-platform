@@ -409,7 +409,7 @@ def write_results(
     batch_index: int,
     start_date: str,
     end_date: str,
-) :
+) -> int:
     contents = data.get("Contents") or []
     if not contents:
         return 0
