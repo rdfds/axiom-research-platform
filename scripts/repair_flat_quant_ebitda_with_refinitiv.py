@@ -59,3 +59,12 @@ def _refinitiv_map(provider_reference_path: Path, entity_identifier_path: Path) 
     return merged.sort_values(["entity_id", "Instrument"]).drop_duplicates("entity_id", keep="first")
 
 
+def _support_counts(series: pd.Series) -> Dict[str, int]:
+    support = series.fillna("unsupported").astype(str)
+    return {
+        "exact": int((support == "exact").sum()),
+        "proxy_missing_component": int((support == "proxy_missing_component").sum()),
+        "unsupported": int((support == "unsupported").sum()),
+    }
+
+
