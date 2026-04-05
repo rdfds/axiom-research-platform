@@ -144,3 +144,40 @@ def validate_data(df):
     return True
 
 
+def main():
+    if len(sys.argv) > 1:
+        WRDS_USERNAME = sys.argv[1]
+    else:
+        WRDS_USERNAME = input("Enter your WRDS username: ")
+
+    print("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=WRDS_USERNAME)
+    print("Connected!\n")
+
+    print("="*60)
+    print(f"PULLING FUNDAMENTALS FROM {START_DATE}")
+    print("="*60)
+
+    # Pull data
+    df = get_fundamentals(db)
+
+    # Validate
+    validate_data(df)
+
+    # Save
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    output_path = OUTPUT_DIR / 'fundamentals_quarterly.parquet'
+
+    print(f"\nSaving to {output_path}...")
+    df.to_parquet(output_path, index=False)
+    print(f"Saved! File size: {output_path.stat().st_size / 1e6:.1f} MB")
+
+    # Also save a CSV sample for easy inspection
+    sample_path = OUTPUT_DIR / 'fundamentals_sample.csv'
+    df.head(1000).to_csv(sample_path, index=False)
+    print(f"Saved sample CSV: {sample_path}")
+
+    db.close()
+    print("\nDone!")
+
+

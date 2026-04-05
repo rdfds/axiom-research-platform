@@ -33,3 +33,9 @@ Open the [precedent retrieval example](../examples/precedent_retrieval/README.md
 
 It demonstrates retrieval over historical corporate actions using company state, action parameters, market regime, sector context, and learned distance weights. The output includes confidence, outcome cohorts, top matches, and mismatch diagnostics—and can say when precedent support is weak.
 
+## 4. CFO decision surface
+
+Open the [CFO decision surface example](../examples/cfo_decision_surface/README.md).
+
+It demonstrates the product layer: evidence from multiple models becomes action sizing, risk and regret cases, recommendation language, monitoring triggers, and a board-ready dossier.
+

@@ -136,3 +136,9 @@ def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Ser
     return eligible.iloc[-1]
 
 
+def _maybe_float(value: Any) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
