@@ -38,3 +38,10 @@ def _precedent_debug(stage: str, **details: Any) -> None:
     print(json.dumps(payload, default=str), flush=True)
 
 
+def _default_precedent_outcomes_path() -> Path:
+    for candidate in _DEFAULT_PRECEDENT_OUTCOMES_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return _DEFAULT_PRECEDENT_OUTCOMES_CANDIDATES[0]
+
+
