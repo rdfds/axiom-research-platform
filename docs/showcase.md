@@ -39,3 +39,22 @@ Open the [CFO decision surface example](../examples/cfo_decision_surface/README.
 
 It demonstrates the product layer: evidence from multiple models becomes action sizing, risk and regret cases, recommendation language, monitoring triggers, and a board-ready dossier.
 
+## One-command gallery check
+
+From the repository root:
+
+```bash
+python scripts/inspect_examples.py
+```
+
+For applications or interviews, the strongest sequence is:
+
+1. Open the README and architecture diagram.
+2. Rebuild the market-expectations demo.
+3. Show the company-state sample to establish data discipline.
+4. Show precedent retrieval to establish learned analog search.
+5. Finish with the CFO decision surface to establish end-to-end product thinking.
+
+The headline should be:
+
+> Axiom builds an auditable company state, explains valuation gaps, retrieves historical actions, evaluates evidence quality, and packages the result into CFO-grade decisions.

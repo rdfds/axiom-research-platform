@@ -314,3 +314,103 @@ def _summarize_output_rows(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
+@contextmanager
+def _company_processing_guard(timeout_seconds: float | None):
+    if (
+        timeout_seconds is None
+        or timeout_seconds <= 0
+        or not hasattr(signal, "SIGALRM")
+        or not hasattr(signal, "setitimer")
+    ):
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _handle_timeout(signum, frame):  # noqa: ARG001
+        raise _CompanyProcessingTimeout(f"company_processing_timeout_after_{timeout_seconds:g}s")
+
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _feature_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    provenance_sources: list[str],
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+) -> Dict[str, Any]:
+    provenance = []
+    for source in provenance_sources:
+        provenance.append(
+            {
+                "artifact_type": "OntologyDerivedMetric",
+                "artifact_id": f"smart_metric:{Path(source).name}",
+                "source": source,
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        )
+
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": 1.0 if value is not None else None,
+        "provenance": provenance,
+        "missing_reason": missing_reason,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": "smart_normalized_policy",
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": None,
+        "input_source_owner_id": None,
+        "input_source_owner_name": None,
+        "input_source_classification": "smart_normalized_policy",
+        "input_source_formula_basis": None,
+        "input_source_alignment_status": "aligned",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": None,
+        "methodology_execution_reason": None,
+        "input_layer_bucket": "smart_normalized",
+        "input_layer_bucket_reason": "policy_governed_normalization",
+        "strict_market_defined": None,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+        "view_type": None,
+    }
+
+

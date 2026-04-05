@@ -1,0 +1,64 @@
+{
+  "pipeline_name": "precedent_v1",
+  "baseline": {
+    "t0_quarters": 4,
+    "t1_quarters": 4,
+    "post_action_lag_quarters": 1
+  },
+  "outcome": {
+    "primary_metric": "pe",
+    "fallback_metric": "ev_ebitda",
+    "horizons_months": [3, 6, 12],
+    "market_relative": true
+  },
+  "macro_series": {
+    "rate_10y": "DGS10",
+    "rate_2y": "DGS2",
+    "sofr": "SOFR",
+    "fed_funds_effective": "DFF",
+    "real_gdp": "GDPC1",
+    "ig_oas": "BAMLC0A0CM",
+    "hy_oas": "BAMLH0A0HYM2",
+    "vix": "VIXCLS"
+  },
+  "similarity": {
+    "stage1": {
+      "sector_mode": "weighted",
+      "size_decile_window": 1,
+      "leverage_band_window": 1,
+      "margin_band_window": 1,
+      "min_candidates": 200
+    },
+    "stage2": {
+      "distance": "weighted_mahalanobis",
+      "weighting": "learned",
+      "change_weight": 0.8,
+      "profile_weight": 0.2
+    }
+  },
+  "profile_features": [
+    "base_market_cap",
+    "base_margin",
+    "base_leverage",
+    "base_revenue_ttm",
+    "base_roic",
+    "base_fcf_margin",
+    "base_pe"
+  ],
+  "action_effects": {
+    "mna_tuck_in": {
+      "revenue_delta": 0.25,
+      "margin_delta": 0.01,
+      "leverage_delta": 0.5
+    },
+    "mna_transformational": {
+      "revenue_delta": 0.75,
+      "margin_delta": 0.0,
+      "leverage_delta": 1.0
+    },
+    "buyback": {
+      "eps_delta": 0.05,
+      "leverage_delta": 0.3
+    }
+  }
+}
