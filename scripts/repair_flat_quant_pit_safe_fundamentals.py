@@ -142,3 +142,85 @@ def _maybe_float(value: Any) -> float | None:
     return float(value)
 
 
+def _pit_market_cap_metrics(
+    *,
+    company_id: str,
+    as_of_time: str,
+    companyfacts: dict | None,
+    permno_by_company: dict[str, str],
+    price_history_by_permno: dict[str, pd.DataFrame],
+) -> dict[str, Any]:
+    unsupported = {
+        "market_cap": None,
+        "market_cap_support": "unsupported",
+        "market_cap_fallback": "pit_market_cap_unavailable",
+        "market_cap_components": None,
+    }
+    if companyfacts is None:
+        return unsupported
+
+    permno = permno_by_company.get(company_id)
+    if not permno:
+        return unsupported
+    price_history = price_history_by_permno.get(permno)
+    if price_history is None or price_history.empty:
+        return unsupported
+
+    as_of_ts = pd.Timestamp(as_of_time)
+    if as_of_ts.tzinfo is None:
+        as_of_ts = as_of_ts.tz_localize("UTC")
+    else:
+        as_of_ts = as_of_ts.tz_convert("UTC")
+    as_of_date = as_of_ts.normalize()
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    if current_row is None:
+        return unsupported
+
+    current_trade_date = current_row["trade_date"]
+    close_price = _maybe_float(current_row.get("close"))
+    if close_price is None:
+        return unsupported
+    if not market_macro._recent_enough_trade_date(current_trade_date, as_of_date):
+        return {
+            "market_cap": None,
+            "market_cap_support": "unsupported",
+            "market_cap_fallback": "market_timeseries_stale",
+            "market_cap_components": {
+                "permno": permno,
+                "trade_date": str(current_trade_date.date()),
+                "close_price": close_price,
+            },
+        }
+
+    shares_out, shares_meta = market_macro._latest_shares_outstanding(companyfacts, as_of_time[:10])
+    if shares_out is None:
+        return unsupported
+
+    reference_date = None
+    if shares_meta and shares_meta.get("end"):
+        try:
+            reference_date = date.fromisoformat(str(shares_meta["end"]))
+        except ValueError:
+            reference_date = None
+    shares_support, shares_missing_reason = market_macro._shares_support_mode(
+        reference_date=reference_date,
+        as_of_date=as_of_date.date(),
+    )
+    support_mode = _exact_or_proxy_support("exact", shares_support)
+    return {
+        "market_cap": close_price * float(shares_out),
+        "market_cap_support": support_mode,
+        "market_cap_fallback": "raw_timeseries_close_x_companyfacts_shares",
+        "market_cap_components": {
+            "permno": permno,
+            "trade_date": str(current_trade_date.date()),
+            "close_price": close_price,
+            "shares_outstanding": float(shares_out),
+            "shares_support_mode": shares_support,
+            "shares_missing_reason": shares_missing_reason,
+            "shares_meta": shares_meta,
+            "formula": "close_price * latest_shares_outstanding_on_or_before_asof",
+        },
+    }
+
+
