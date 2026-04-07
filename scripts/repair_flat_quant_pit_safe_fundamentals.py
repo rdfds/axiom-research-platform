@@ -224,3 +224,20 @@ def _pit_market_cap_metrics(
     }
 
 
+def _sec_cash_direct_metric(companyfacts: dict | None, as_of_date: str) -> tuple[float | None, str]:
+    if companyfacts is None:
+        return None, "unsupported"
+    candidates = core._instant_candidates(
+        companyfacts,
+        core.CASH_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    if not candidates:
+        return None, "unsupported"
+    candidate = candidates[0]
+    age_days = (date.fromisoformat(as_of_date) - candidate["end_dt"]).days
+    support_mode = "exact" if age_days <= core.EXACT_BALANCE_SHEET_MAX_AGE_DAYS else "proxy_missing_component"
+    return float(candidate["value"]), support_mode
+
+
