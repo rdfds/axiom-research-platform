@@ -78,3 +78,14 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def _normalize_section_type(value: Optional[str]) -> str:
+    if not value:
+        return "prepared"
+    v = str(value).strip().lower()
+    if "q&a" in v or "qa" in v or "questions" in v:
+        return "qa"
+    if "prepared" in v:
+        return "prepared"
+    return v
+
+
