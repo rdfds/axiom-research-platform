@@ -45,3 +45,17 @@ def _default_precedent_outcomes_path() -> Path:
     return _DEFAULT_PRECEDENT_OUTCOMES_CANDIDATES[0]
 
 
+@lru_cache(maxsize=8)
+def _load_outcomes_table_cached(path_str: str) -> pd.DataFrame:
+    started = time.perf_counter()
+    _precedent_debug("load_outcomes_table_cached:start", path=path_str)
+    table = pd.read_parquet(path_str)
+    _precedent_debug(
+        "load_outcomes_table_cached:done",
+        path=path_str,
+        rows=int(len(table)),
+        elapsed_seconds=round(time.perf_counter() - started, 6),
+    )
+    return table
+
+
