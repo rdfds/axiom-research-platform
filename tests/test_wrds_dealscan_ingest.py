@@ -201,3 +201,18 @@ def test_build_active_revolver_artifact_filters_asof_and_latest_row(tmp_path: Pa
     assert result.iloc[0]["max_leverage_ratio"] == "3.50:1"
 
 
+def test_snapshot_prefers_active_dealscan_artifact_when_present(tmp_path: Path):
+    module = _load_snapshot_module()
+    module.ROOT = tmp_path
+
+    dealscan_dir = tmp_path / "data" / "wrds" / "dealscan"
+    dealscan_dir.mkdir(parents=True, exist_ok=True)
+    full_path = dealscan_dir / "loanconnector_revolver_facilities.parquet"
+    active_path = dealscan_dir / "loanconnector_revolver_facilities_active_2024_12_31.parquet"
+    full_path.write_text("full")
+    active_path.write_text("active")
+
+    resolved = module._default_dealscan_revolver_path("2024-12-31")
+    assert resolved == active_path
+
+

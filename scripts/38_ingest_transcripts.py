@@ -150,3 +150,19 @@ def rows_from_docs(docs: List[Dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def load_section_rows(path: Path, fmt: str) -> pd.DataFrame:
+    if fmt == "parquet":
+        return pd.read_parquet(path)
+    if fmt == "csv":
+        return pd.read_csv(path)
+    return pd.DataFrame()
+
+
+def build_documents(df: pd.DataFrame) -> Iterable[Tuple[str, pd.DataFrame]]:
+    if df.empty:
+        return []
+    df = df.copy()
+    df["document_id"] = df["document_id"].astype(str)
+    return df.groupby("document_id")
+
+
