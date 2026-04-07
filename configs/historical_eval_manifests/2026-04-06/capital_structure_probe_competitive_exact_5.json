@@ -1,0 +1,186 @@
+{
+  "manifest_generated_at": "2026-03-17T05:03:50.265584+00:00",
+  "label": "capital_structure_competitive_exact_5",
+  "selection_method": "competitive_exact_probe",
+  "selection_source_manifest": "./out/manual_replay_bundle_20260405_localized/configs/capital_structure_holdout_25.json",
+  "selection_source_search_root": "/tmp/precedent_distance_v2_capstructure_search_stage1n",
+  "selection_eval_id": "001",
+  "selection_filters": {
+    "min_distinct_actions": 2,
+    "require_anchor_family_present": true,
+    "require_anchor_action_present": true,
+    "limit": null
+  },
+  "analysis_count": 29,
+  "case_count": 5,
+  "selection_rankings": [
+    {
+      "company_id": "0001309402",
+      "source_company_id": "181269",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-11-03T00:00:00+00:00",
+      "as_of_time": "2022-07-06T00:00:00+00:00",
+      "distinct_action_count": 3,
+      "distinct_action_ids": [
+        "capital_structure.exchange_offer",
+        "capital_structure.liability_management_exercise",
+        "capital_structure.equity_issuance"
+      ],
+      "anchor_action_present": true,
+      "anchor_family_present": true,
+      "anchor_action_rank": 3,
+      "anchor_action_score": 0.2171060779828293,
+      "anchor_action_margin": -0.06148042096536557,
+      "top_action_id": "capital_structure.exchange_offer",
+      "top_action_score": 0.27858649894819487,
+      "precedent_index_path": "/tmp/precedent_distance_v2_capstructure_search_stage1n/capital_structure_eval_001/artifacts/run_id=f1f8b983-d3d7-448c-88fe-f5a1df2a728b/PrecedentIndex.json"
+    },
+    {
+      "company_id": "0001278027",
+      "source_company_id": "158743",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-08-04T00:00:00+00:00",
+      "as_of_time": "2022-04-06T00:00:00+00:00",
+      "distinct_action_count": 2,
+      "distinct_action_ids": [
+        "capital_structure.equity_issuance",
+        "capital_structure.refinancing"
+      ],
+      "anchor_action_present": true,
+      "anchor_family_present": true,
+      "anchor_action_rank": 1,
+      "anchor_action_score": 0.2954378253964446,
+      "anchor_action_margin": 0.06195379373587015,
+      "top_action_id": "capital_structure.equity_issuance",
+      "top_action_score": 0.2954378253964446,
+      "precedent_index_path": "/tmp/precedent_distance_v2_capstructure_search_stage1n/capital_structure_eval_001/artifacts/run_id=479b0955-d2c6-4ba1-b615-3702dd09ee5e/PrecedentIndex.json"
+    },
+    {
+      "company_id": "0000764065",
+      "source_company_id": "003107",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-04-22T00:00:00+00:00",
+      "as_of_time": "2021-12-23T00:00:00+00:00",
+      "distinct_action_count": 2,
+      "distinct_action_ids": [
+        "capital_structure.equity_issuance",
+        "capital_structure.refinancing"
+      ],
+      "anchor_action_present": true,
+      "anchor_family_present": true,
+      "anchor_action_rank": 1,
+      "anchor_action_score": 0.29712555402930285,
+      "anchor_action_margin": 0.08691956724446165,
+      "top_action_id": "capital_structure.equity_issuance",
+      "top_action_score": 0.29712555402930285,
+      "precedent_index_path": "/tmp/precedent_distance_v2_capstructure_search_stage1n/capital_structure_eval_001/artifacts/run_id=1b747326-7019-4b48-8286-4ccb3de98520/PrecedentIndex.json"
+    },
+    {
+      "company_id": "0001534701",
+      "source_company_id": "170841",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-04-29T00:00:00+00:00",
+      "as_of_time": "2021-12-30T00:00:00+00:00",
+      "distinct_action_count": 2,
+      "distinct_action_ids": [
+        "capital_structure.equity_issuance",
+        "capital_structure.refinancing"
+      ],
+      "anchor_action_present": true,
+      "anchor_family_present": true,
+      "anchor_action_rank": 1,
+      "anchor_action_score": 0.36248557324307895,
+      "anchor_action_margin": 0.09725046210973465,
+      "top_action_id": "capital_structure.equity_issuance",
+      "top_action_score": 0.36248557324307895,
+      "precedent_index_path": "/tmp/precedent_distance_v2_capstructure_search_stage1n/capital_structure_eval_001/artifacts/run_id=3b8eaba6-7b7f-4ce3-98d8-c76d2dd33871/PrecedentIndex.json"
+    },
+    {
+      "company_id": "0000060714",
+      "source_company_id": "006528",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-02-23T00:00:00+00:00",
+      "as_of_time": "2021-10-26T00:00:00+00:00",
+      "distinct_action_count": 2,
+      "distinct_action_ids": [
+        "capital_structure.equity_issuance",
+        "capital_structure.refinancing"
+      ],
+      "anchor_action_present": true,
+      "anchor_family_present": true,
+      "anchor_action_rank": 1,
+      "anchor_action_score": 0.3890762519056665,
+      "anchor_action_margin": 0.1267086686404233,
+      "top_action_id": "capital_structure.equity_issuance",
+      "top_action_score": 0.3890762519056665,
+      "precedent_index_path": "/tmp/precedent_distance_v2_capstructure_search_stage1n/capital_structure_eval_001/artifacts/run_id=5813d410-74a9-4e17-967a-334b39724603/PrecedentIndex.json"
+    }
+  ],
+  "cases": [
+    {
+      "company_id": "0001309402",
+      "source_company_id": "181269",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-11-03T00:00:00+00:00",
+      "as_of_time": "2022-07-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001278027",
+      "source_company_id": "158743",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-08-04T00:00:00+00:00",
+      "as_of_time": "2022-04-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000764065",
+      "source_company_id": "003107",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-04-22T00:00:00+00:00",
+      "as_of_time": "2021-12-23T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001534701",
+      "source_company_id": "170841",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-04-29T00:00:00+00:00",
+      "as_of_time": "2021-12-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000060714",
+      "source_company_id": "006528",
+      "ticker": "",
+      "mapping_method": "",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2022-02-23T00:00:00+00:00",
+      "as_of_time": "2021-10-26T00:00:00+00:00"
+    }
+  ]
+}

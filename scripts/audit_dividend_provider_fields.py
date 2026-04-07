@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() :
+def main() -> None:
     args = parse_args()
     con = duckdb.connect()
     for raw_path in args.files:

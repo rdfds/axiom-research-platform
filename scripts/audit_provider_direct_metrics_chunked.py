@@ -327,7 +327,7 @@ def main() -> None:
         Path(args.taxonomy_reference_path),
         Path(args.entity_identifier_path),
     )
-    snapshot_company_ids = {str(row['company_id']) for row in rows if row.get("company_id")}
+    snapshot_company_ids = {str(row.get("company_id")) for row in rows if row.get("company_id")}
     if snapshot_company_ids:
         provider = provider[provider["entity_id"].astype(str).isin(snapshot_company_ids)].copy()
     provider_by_entity = provider.set_index("entity_id").to_dict(orient="index")
