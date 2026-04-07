@@ -89,3 +89,64 @@ def _normalize_section_type(value: Optional[str]) -> str:
     return v
 
 
+def iter_input_files(path: Path, fmt: str) -> List[Path]:
+    if path.is_file():
+        return [path]
+    if not path.exists():
+        raise FileNotFoundError(f"Missing transcripts input: {path}")
+    if fmt in ("jsonl", "auto"):
+        files = sorted(path.glob("*.jsonl"))
+        if files:
+            return files
+    if fmt in ("parquet", "auto"):
+        files = sorted(path.glob("*.parquet"))
+        if files:
+            return files
+    if fmt in ("csv", "auto"):
+        files = sorted(path.glob("*.csv"))
+        if files:
+            return files
+    raise FileNotFoundError(f"No transcript files found in {path}")
+
+
+def load_jsonl_docs(path: Path) :
+    docs: List[Dict] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            docs.append(json.loads(line))
+    return docs
+
+
+def rows_from_docs(docs: List[Dict]) -> pd.DataFrame:
+    rows = []
+    for doc in docs:
+        document_id = doc.get("document_id") or doc.get("doc_id")
+        company_id = doc.get("company_id") or doc.get("gvkey") or doc.get("cik")
+        call_date = doc.get("call_date") or doc.get("event_time")
+        available_time = doc.get("available_time") or doc.get("release_time") or doc.get("publish_time")
+        title = doc.get("title")
+        publisher = doc.get("publisher")
+        sections = doc.get("sections") or []
+        if not isinstance(sections, list):
+            continue
+        for section in sections:
+            rows.append(
+                {
+                    "document_id": document_id,
+                    "company_id": company_id,
+                    "call_date": call_date,
+                    "available_time": available_time,
+                    "title": title,
+                    "publisher": publisher,
+                    "speaker": section.get("speaker"),
+                    "speaker_role": section.get("speaker_role"),
+                    "section_type": section.get("section_type"),
+                    "text": section.get("text"),
+                }
+            )
+    return pd.DataFrame(rows)
+
+

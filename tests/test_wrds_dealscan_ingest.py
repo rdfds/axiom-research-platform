@@ -147,3 +147,57 @@ def test_build_normalized_outputs_creates_revolver_proxy_dataset(tmp_path: Path)
     assert revolvers.iloc[0]["max_leverage_ratio"] == "3.50:1"
 
 
+def test_build_active_revolver_artifact_filters_asof_and_latest_row(tmp_path: Path):
+    module = _load_active_artifact_module()
+    in_path = tmp_path / "revolvers.parquet"
+    out_path = tmp_path / "active.parquet"
+
+    pd.DataFrame(
+        [
+            {
+                "ticker": "ABC",
+                "loanconnector_tranche_id": "7001",
+                "tranche_active_date": "2024-01-01",
+                "tranche_maturity_date": "2029-01-01",
+                "tranche_amount_converted_usd": 1_000_000_000.0,
+                "max_leverage_ratio": "4.00:1",
+            },
+            {
+                "ticker": "ABC",
+                "loanconnector_tranche_id": "7001",
+                "tranche_active_date": "2024-06-01",
+                "tranche_maturity_date": "2029-01-01",
+                "tranche_amount_converted_usd": 1_200_000_000.0,
+                "max_leverage_ratio": "3.50:1",
+            },
+            {
+                "ticker": "ABC",
+                "loanconnector_tranche_id": "7002",
+                "tranche_active_date": "2025-02-01",
+                "tranche_maturity_date": "2030-01-01",
+                "tranche_amount_converted_usd": 900_000_000.0,
+                "max_leverage_ratio": "5.00:1",
+            },
+            {
+                "ticker": "XYZ",
+                "loanconnector_tranche_id": "8001",
+                "tranche_active_date": "2024-01-01",
+                "tranche_maturity_date": "2028-01-01",
+                "tranche_amount_converted_usd": 500_000_000.0,
+                "max_leverage_ratio": "3.00:1",
+            },
+        ]
+    ).to_parquet(in_path, index=False)
+
+    module.build_active_revolver_artifact(
+        in_path=in_path,
+        out_path=out_path,
+        as_of="2024-12-31",
+        tickers="ABC",
+    )
+    result = pd.read_parquet(out_path)
+    assert list(result["loanconnector_tranche_id"]) == ["7001"]
+    assert float(result.iloc[0]["tranche_amount_converted_usd"]) == 1_200_000_000.0
+    assert result.iloc[0]["max_leverage_ratio"] == "3.50:1"
+
+
