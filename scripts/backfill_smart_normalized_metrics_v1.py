@@ -414,3 +414,20 @@ def _feature_template(
     }
 
 
+def _node(features: Dict[str, Any], metric_name: str) -> Dict[str, Any]:
+    return features.get(metric_name) or {}
+
+
+def _value(node: Dict[str, Any]) -> float | None:
+    value = node.get("value")
+    return None if value is None else float(value)
+
+
+def _exact(node: Dict[str, Any]) -> bool:
+    return node['support_mode'] == "exact"
+
+
+def _is_supported(node: Dict[str, Any]) -> bool:
+    return node.get("support_mode") in {"exact", "proxy_missing_component"}
+
+
