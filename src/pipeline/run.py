@@ -99,3 +99,50 @@ def _load_precedent_runtime_cached(path_str: str) :
     return stores, retrieval_index
 
 
+def _load_precedent_runtime(path: Path) -> Tuple[Dict[str, object], object]:
+    return _load_precedent_runtime_cached(str(path.resolve()))
+
+
+@lru_cache(maxsize=1)
+def _load_precedent_bindings() -> Tuple[Any, Any, Any, Any, Any]:
+    from .actions import build_change_vector
+    from .config import load_config
+    from .features import FeatureBuilder
+    from .precedent import build_precedent_pack
+    from .precedent_brain import build_precedent_pack_v2
+
+    return build_change_vector, load_config, FeatureBuilder, build_precedent_pack, build_precedent_pack_v2
+
+
+def warm_precedent_runtime(path: str | Path) -> Dict[str, Any]:
+    """Warm precedent caches (outcomes table, stores, retrieval index) for this outcomes path."""
+    p = Path(path)
+    _load_precedent_bindings()
+    stores, retrieval_index = _load_precedent_runtime(p)
+    event_store = stores.get("historical_event_store")
+    n_events = 0
+    if event_store is not None and hasattr(event_store, "events"):
+        try:
+            n_events = int(len(getattr(event_store, "events")))
+        except Exception:
+            n_events = 0
+    n_index = int(getattr(retrieval_index, "n_rows", 0) or 0)
+    return {
+        "ok": True,
+        "outcomes_path": str(p.resolve()),
+        "historical_events": n_events,
+        "index_rows": n_index,
+    }
+
+
+def _default_registry() -> ActionSchemaRegistry:
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        _DEFAULT_REGISTRY = build_default_action_schema_registry(version="v1.0")
+    return _DEFAULT_REGISTRY
+
+
+def _parse_date(value: str) -> datetime:
+    return pd.to_datetime(value).to_pydatetime()
+
+

@@ -558,3 +558,177 @@ def _companyfacts_may_need_retirement_note_split(companyfacts: Dict[str, Any] | 
     )
 
 
+def _sec_helpers_available() -> bool:
+    return requests is not None and BeautifulSoup is not None and pd is not None
+
+
+def _normalize_note_label(text: Any) -> str:
+    label = " ".join(str(text or "").replace("\xa0", " ").replace("\u200b", " ").split())
+    label = label.replace("’", "'").replace("–", "-").replace("—", "-")
+    return label.strip(" :")
+
+
+def _retirement_note_column_category(header_text: str) -> str | None:
+    normalized = _normalize_note_label(header_text).lower()
+    if not normalized or normalized in {"nan", "none"}:
+        return None
+    if any(pattern.search(normalized) for pattern in RETIREMENT_NOTE_OTHER_POSTRETIREMENT_COLUMN_PATTERNS):
+        return "other_postretirement"
+    if any(pattern.search(normalized) for pattern in RETIREMENT_NOTE_PENSION_COLUMN_PATTERNS):
+        return "pension"
+    return None
+
+
+def _flatten_note_column_name(column: Any) -> str:
+    if isinstance(column, tuple):
+        parts = [_normalize_note_label(part) for part in column if _normalize_note_label(part) not in {"", "nan", "None"}]
+        return " ".join(parts)
+    return _normalize_note_label(column)
+
+
+def _coerce_note_numeric(value: Any, *, multiplier: float) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return None
+        return float(value) * multiplier
+    if isinstance(value, int):
+        return float(value) * multiplier
+    text = _normalize_note_label(value)
+    if not text or text.lower() in {"nan", "-", "—", "nm", "n/m"}:
+        return None
+    negative = "(" in text and ")" in text
+    stripped = text.replace("$", "").replace(",", "").replace("(", "").replace(")", "").strip()
+    try:
+        numeric = float(stripped)
+    except ValueError:
+        return None
+    return (-numeric if negative else numeric) * multiplier
+
+
+def _load_sec_submissions(
+    cik: str,
+    *,
+    session: Any,
+    cache_dir: Path | None,
+) -> dict[str, Any] | None:
+    cache_path = None if cache_dir is None else cache_dir / f"CIK{cik}.json"
+    if cache_path is not None and cache_path.exists():
+        try:
+            return json.loads(cache_path.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    if os.environ.get("AXIOM_DISABLE_SEC_NETWORK_FALLBACK") == "1":
+        return None
+    if session is None:
+        return None
+    url = SEC_SUBMISSIONS_URL.format(cik=cik)
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:  # noqa: BLE001
+        return None
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(payload))
+    return payload
+
+
+def _latest_sec_filing(
+    *,
+    cik: str,
+    as_of_date: date,
+    session: Any,
+    cache_dir: Path | None,
+) -> dict[str, Any] | None:
+    filings = _recent_sec_filings(
+        cik=cik,
+        as_of_date=as_of_date,
+        session=session,
+        cache_dir=cache_dir,
+    )
+    return None if not filings else filings[0]
+
+
+def _recent_sec_filings(
+    *,
+    cik: str,
+    as_of_date: date,
+    session: Any,
+    cache_dir: Path | None,
+) -> list[dict[str, Any]]:
+    submissions = _load_sec_submissions(cik, session=session, cache_dir=cache_dir)
+    if not submissions:
+        return []
+    recent = (submissions.get("filings") or {}).get("recent") or {}
+    forms = {"10-Q": 2, "10-K": 1}
+    filings: list[tuple[date, int, dict[str, Any]]] = []
+    for filing_date, form, accession, primary_document in zip(
+        recent.get("filingDate", []),
+        recent.get("form", []),
+        recent.get("accessionNumber", []),
+        recent.get("primaryDocument", []),
+    ):
+        if form not in forms:
+            continue
+        filed_dt = _parse_iso_date(filing_date)
+        if filed_dt is None or filed_dt.date() > as_of_date:
+            continue
+        record = {
+            "cik": cik,
+            "filing_date": filing_date,
+            "form": form,
+            "accession_number": accession,
+            "primary_document": primary_document,
+        }
+        filings.append((filed_dt.date(), forms[form], record))
+    filings.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [record for _, _, record in filings]
+
+
+def _fetch_sec_primary_document(
+    filing: dict[str, Any],
+    *,
+    session: Any,
+    cache_dir: Path | None,
+) -> str | None:
+    accession = str(filing["accession_number"])
+    accession_nodash = accession.replace("-", "")
+    cik_no_zeros = str(int(filing["cik"]))
+    primary_document = str(filing["primary_document"])
+    cache_path = None
+    if cache_dir is not None:
+        safe_name = f"{filing['cik']}_{accession_nodash}_{Path(primary_document).name}"
+        cache_path = cache_dir / safe_name
+        if cache_path.exists():
+            return cache_path.read_text(errors="ignore")
+    if os.environ.get("AXIOM_DISABLE_SEC_NETWORK_FALLBACK") == "1":
+        return None
+    if session is None:
+        return None
+    url = f"{SEC_ARCHIVES_BASE}/{cik_no_zeros}/{accession_nodash}/{primary_document}"
+    try:
+        response = session.get(url, timeout=60)
+        response.raise_for_status()
+        html = response.text
+    except Exception:  # noqa: BLE001
+        return None
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(html)
+    return html
+
+
+def _retirement_table_multiplier(table_text: str) -> float:
+    lower = table_text.lower()
+    if "in billions" in lower or "($ in billions)" in lower or "(billions)" in lower:
+        return 1_000_000_000.0
+    if "in millions" in lower or "($ in millions)" in lower or "(millions)" in lower:
+        return 1_000_000.0
+    if "in thousands" in lower or "($ in thousands)" in lower or "(thousands)" in lower:
+        return 1_000.0
+    return 1.0
+
+
