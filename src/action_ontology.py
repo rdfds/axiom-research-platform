@@ -108,3 +108,45 @@ def _date_window(required: bool = False) -> Dict[str, Any]:
     }
 
 
+def _range_field(required: bool = False, unit: Optional[str] = None) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "type": "range",
+        "required": required,
+    }
+    if unit:
+        out["unit"] = unit
+    return out
+
+
+def _channel(
+    channel_id: str,
+    channel_type: str,
+    description: str,
+    activation_signals: List[str],
+    negative_signals: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    return {
+        "channel_id": channel_id,
+        "channel_type": channel_type,
+        "description": description,
+        "activation_signals": activation_signals,
+        "negative_signals": negative_signals or [],
+    }
+
+
+def _rule(
+    rule_type: str,
+    target_action_id: str,
+    condition: Optional[str],
+    strength: str,
+    explanation: str,
+) -> Dict[str, Any]:
+    return {
+        "rule_type": rule_type,
+        "target_action_id": target_action_id,
+        "condition": condition,
+        "strength": strength,
+        "explanation": explanation,
+    }
+
+
