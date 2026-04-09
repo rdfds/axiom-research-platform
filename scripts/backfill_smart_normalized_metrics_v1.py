@@ -1853,3 +1853,102 @@ def _companyfacts_depreciation_ttm(
     return None, None, False, None
 
 
+def _effective_operating_earnings_baseline(
+    *,
+    ebitda: Dict[str, Any],
+    net_income: Dict[str, Any],
+    interest_expense: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    as_of_time: str,
+) -> Dict[str, Any]:
+    ebitda_value = _value(ebitda)
+    if ebitda_value is not None:
+        return {
+            "value": ebitda_value,
+            "exact": _exact(ebitda),
+            "missing_reason": None,
+            "quality_flags": ebitda.get("quality_flags"),
+            "component_breakdown": {
+                "baseline_source_metric": "operating.ebitda_ltm_provider_direct",
+                "baseline_value": ebitda_value,
+                "formula": "provider_direct_ebitda_baseline",
+            },
+        }
+
+    net_income_value = _value(net_income)
+    if net_income.get("support_mode") != "exact" or net_income_value is None:
+        return {
+            "value": None,
+            "exact": False,
+            "missing_reason": "component_unavailable",
+            "quality_flags": ["component_unavailable", "smart_metric_not_promoted"],
+            "component_breakdown": {
+                "formula": "unavailable",
+            },
+        }
+
+    as_of_date = as_of_time[:10]
+    interest_value = _value(interest_expense) if _exact(interest_expense) else None
+    interest_meta = None
+    interest_source = None
+    if interest_value is not None:
+        interest_meta = interest_expense.get("component_breakdown")
+        interest_source = "capital_structure.interest_expense_statement_direct"
+    else:
+        interest_value, interest_meta = _companyfacts_priority_ttm(
+            companyfacts,
+            OPERATING_EARNINGS_INTEREST_CONCEPTS,
+            as_of_date=as_of_date,
+        )
+        if interest_value is not None:
+            interest_source = "sec_companyfacts_interest_expense"
+
+    tax_value, tax_meta = _companyfacts_priority_ttm(
+        companyfacts,
+        OPERATING_EARNINGS_TAX_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    depreciation_value, depreciation_meta, depreciation_exact, depreciation_quality_flags = _companyfacts_depreciation_ttm(
+        companyfacts,
+        as_of_date=as_of_date,
+    )
+
+    if interest_value is None or tax_value is None or depreciation_value is None:
+        return {
+            "value": None,
+            "exact": False,
+            "missing_reason": "component_unavailable",
+            "quality_flags": ["component_unavailable", "smart_metric_not_promoted"],
+            "component_breakdown": {
+                "net_income_ttm_provider_direct": net_income_value,
+                "interest_expense": interest_value,
+                "income_tax_expense_benefit_ttm": tax_value,
+                "depreciation_amortization_ttm": depreciation_value,
+                "formula": "net_income + interest_expense + income_tax_expense_benefit + depreciation_amortization",
+            },
+        }
+
+    quality_flags = list(depreciation_quality_flags or [])
+    exact = depreciation_exact
+    return {
+        "value": float(net_income_value + interest_value + tax_value + depreciation_value),
+        "exact": exact,
+        "missing_reason": None,
+        "quality_flags": quality_flags or None,
+        "component_breakdown": {
+            "baseline_source_metric": "earnings.net_income_ttm_provider_direct",
+            "baseline_value": net_income_value,
+            "net_income_ttm_provider_direct": net_income_value,
+            "interest_expense": interest_value,
+            "interest_expense_source_metric": interest_source,
+            "interest_expense_meta": interest_meta,
+            "income_tax_expense_benefit_ttm": tax_value,
+            "income_tax_expense_benefit_meta": tax_meta,
+            "depreciation_amortization_ttm": depreciation_value,
+            "depreciation_amortization_meta": depreciation_meta,
+            "earnings_support_override": "net_income_plus_interest_tax_depreciation_amortization",
+            "formula": "net_income + interest_expense + income_tax_expense_benefit + depreciation_amortization",
+        },
+    }
+
+

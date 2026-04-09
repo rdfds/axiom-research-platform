@@ -65,7 +65,7 @@ def _load_outcomes_table(path: Path) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=8)
-def _load_precedent_runtime_cached(path_str: str) :
+def _load_precedent_runtime_cached(path_str: str) -> Tuple[Dict[str, object], object]:
     """Build once per outcomes path: historical stores + retrieval index."""
     from .historical_stores import build_historical_stores_from_outcomes
     from .precedent_brain import augment_precedent_state_vector_columns, build_precedent_retrieval_index

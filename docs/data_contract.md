@@ -216,3 +216,68 @@ Temporal semantics:
 - `event_time = announcement_date`
 - `available_time = announcement_timestamp`
 
+## Unstructured Documents
+
+### B4. Press Releases (SEC 8-K)
+`data/warehouse/warehouse_press_releases/`
+
+- `document_id`
+- `release_date`
+- `headline`
+- `text`
+- `form_type`
+- `cik`
+- `accession`
+- `primary_document`
+
+### Documents (planned)
+`data/warehouse/warehouse_documents.parquet`
+
+- `document_id`
+- `source_system`
+- `company_id`
+- `document_type`
+- `event_time`
+- `available_time`
+- `title`
+- `raw_payload_hash`
+- `version_id`
+
+### Document Chunks (planned)
+`data/warehouse/warehouse_doc_chunks.parquet`
+
+- `chunk_id`
+- `document_id`
+- `chunk_index`
+- `text`
+- `speaker`
+- `speaker_role`
+- `section_type`
+- `token_count`
+- `event_time`
+- `available_time`
+- `raw_payload_hash`
+- `version_id`
+
+### Text Signals (planned)
+`data/warehouse/warehouse_text_signals.parquet`
+
+- `signal_name`
+- `value`
+- `confidence`
+- `supporting_chunk_ids`
+
+### Extracted Signals
+`data/warehouse/warehouse_extracted_signals.parquet`
+
+- `signal_id`
+- `document_id`
+- `chunk_id`
+- `signal_name`
+- `value`
+- `confidence`
+- `supporting_chunk_ids` (array)
+- `event_time`
+- `available_time`
+- `version_id`
+
