@@ -1952,3 +1952,1450 @@ def _effective_operating_earnings_baseline(
     }
 
 
+def _grouped_cash_proxy_can_promote_to_exact_cash_baseline(
+    *,
+    cash_grouped: Dict[str, Any],
+    cash_exact: Dict[str, Any],
+    marketable_sec: Dict[str, Any],
+    marketable: Dict[str, Any],
+    marketable_inferred_zero: bool,
+) -> bool:
+    component_breakdown = cash_grouped.get("component_breakdown") or {}
+    return (
+        cash_grouped.get("support_mode") == "proxy_missing_component"
+        and cash_grouped.get("missing_reason") == "cash_or_sti_component_missing"
+        and _value(cash_exact) is None
+        and component_breakdown.get("mode") == "partial_cash_stack"
+        and component_breakdown.get("cash") is not None
+        and component_breakdown.get("short_term_investments") is None
+        and marketable_inferred_zero
+        and marketable_sec.get("missing_reason") == "sec_concept_absent"
+        and marketable.get("support_mode") == "unsupported"
+        and marketable.get("missing_reason") == "not_disclosed"
+    )
+
+
+def _grouped_cash_proxy_can_complete_with_exact_marketable_securities(
+    *,
+    cash_grouped: Dict[str, Any],
+    marketable_value: float | None,
+) -> bool:
+    component_breakdown = cash_grouped.get("component_breakdown") or {}
+    return (
+        cash_grouped.get("support_mode") == "proxy_missing_component"
+        and cash_grouped.get("missing_reason") == "cash_or_sti_component_missing"
+        and marketable_value is not None
+        and component_breakdown.get("mode") == "partial_cash_stack"
+        and component_breakdown.get("cash") is not None
+        and component_breakdown.get("short_term_investments") is None
+    )
+
+
+def _effective_total_debt_baseline(
+    *,
+    total_debt: Dict[str, Any],
+    current_debt: Dict[str, Any],
+    long_term_debt: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None = None,
+    as_of_time: str | None = None,
+) -> Dict[str, Any]:
+    total_debt_value = _value(total_debt)
+    total_debt_exact = _exact(total_debt) and total_debt_value is not None
+    current_debt_value = _value(current_debt)
+    long_term_debt_value = _value(long_term_debt)
+    current_debt_exact = _exact(current_debt) and current_debt_value is not None
+    long_term_debt_exact = _exact(long_term_debt) and long_term_debt_value is not None
+    total_debt_breakdown = total_debt.get("component_breakdown") or {}
+    current_debt_breakdown = current_debt.get("component_breakdown") or {}
+    overlap_delta = (
+        float(total_debt_value - long_term_debt_value)
+        if total_debt_value is not None and long_term_debt_value is not None
+        else None
+    )
+    overlap_is_material = (
+        overlap_delta is not None
+        and overlap_delta > 0.0
+        and overlap_delta > max(1_000_000.0, abs(float(total_debt_value)) * 0.005)
+    )
+    companyfacts_total_debt_value = None
+    companyfacts_total_debt_meta = None
+    companyfacts_total_debt_exact = False
+    if companyfacts is not None and as_of_time is not None:
+        companyfacts_total_debt_value, companyfacts_support_mode, _, companyfacts_total_debt_meta, _ = (
+            _build_sec_core_metric("capital_structure.total_debt_provider_direct", companyfacts, as_of_time[:10])
+        )
+        companyfacts_total_debt_exact = (
+            companyfacts_support_mode == "exact" and companyfacts_total_debt_value is not None
+        )
+    if (
+        total_debt_exact
+        and total_debt_breakdown.get("mode") == "current_plus_noncurrent_debt_plus_short_term_borrowings"
+        and long_term_debt_exact
+        and overlap_is_material
+        and (
+            current_debt_breakdown.get("concept") == "LongTermDebtCurrent"
+            or (total_debt_breakdown.get("current") or {}).get("concept") == "LongTermDebtCurrent"
+        )
+    ):
+        return {
+            "value": long_term_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.long_term_debt_statement_direct",
+            "formula": "exact_long_term_debt_statement_direct_due_to_current_short_term_overlap",
+            "override_reason": "short_term_borrowings_overlap_current_debt",
+        }
+
+    # Never let a fresher companyfacts fallback undercut an already-supported
+    # debt baseline from the artifact. That would make debt-like obligations
+    # smaller than total debt after downstream recomputation.
+    if (
+        total_debt_value is not None
+        and _is_supported(total_debt)
+        and companyfacts_total_debt_exact
+        and companyfacts_total_debt_value is not None
+        and companyfacts_total_debt_value < total_debt_value
+        and not _approximately_equal(companyfacts_total_debt_value, total_debt_value)
+    ):
+        return {
+            "value": total_debt_value,
+            "exact": total_debt_exact,
+            "source_metric": "capital_structure.total_debt_provider_direct",
+            "formula": "baseline_total_debt_provider_direct",
+            "override_reason": "preserve_supported_total_debt_floor",
+        }
+
+    if total_debt_exact and companyfacts_total_debt_exact and _companyfacts_candidate_is_fresher(
+        existing_node=total_debt,
+        companyfacts_meta=companyfacts_total_debt_meta,
+        candidate_value=companyfacts_total_debt_value,
+    ):
+        return {
+            "value": companyfacts_total_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.total_debt_companyfacts_exact",
+            "formula": "companyfacts_total_debt_provider_direct",
+            "override_reason": "fresher_companyfacts_total_debt",
+        }
+
+    if total_debt_exact:
+        return {
+            "value": total_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.total_debt_provider_direct",
+            "formula": "baseline_total_debt_provider_direct",
+            "override_reason": None,
+        }
+
+    if companyfacts_total_debt_exact:
+        return {
+            "value": companyfacts_total_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.total_debt_companyfacts_exact",
+            "formula": "companyfacts_total_debt_provider_direct",
+            "override_reason": "companyfacts_total_debt_fallback",
+        }
+
+    if current_debt_exact and long_term_debt_exact:
+        return {
+            "value": current_debt_value + long_term_debt_value,
+            "exact": True,
+            "source_metric": (
+                "capital_structure.current_debt_statement_direct + "
+                "capital_structure.long_term_debt_statement_direct"
+            ),
+            "formula": "current_debt_statement_direct + long_term_debt_statement_direct",
+            "override_reason": None,
+        }
+
+    total_debt_missing_reason = total_debt.get("missing_reason")
+    total_debt_mode = (total_debt.get("component_breakdown") or {}).get("mode")
+    supports_single_component_override = total_debt_missing_reason in {
+        "debt_component_missing",
+        "debt_component_period_mismatch",
+    } and total_debt_mode in {
+        "partial_debt_stack",
+        "current_plus_noncurrent_debt",
+        "current_plus_noncurrent_debt_plus_short_term_borrowings",
+    }
+
+    if (
+        supports_single_component_override
+        and total_debt_value is not None
+        and current_debt_exact
+        and long_term_debt.get("support_mode") == "unsupported"
+        and _approximately_equal(total_debt_value, current_debt_value)
+    ):
+        return {
+            "value": total_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.current_debt_statement_direct",
+            "formula": "exact_current_debt_statement_direct + 0_inferred_long_term_debt",
+            "override_reason": "single_statement_component_matches_total_debt",
+        }
+
+    if (
+        supports_single_component_override
+        and total_debt_value is not None
+        and long_term_debt_exact
+        and current_debt.get("support_mode") == "unsupported"
+        and _approximately_equal(total_debt_value, long_term_debt_value)
+    ):
+        return {
+            "value": total_debt_value,
+            "exact": True,
+            "source_metric": "capital_structure.long_term_debt_statement_direct",
+            "formula": "exact_long_term_debt_statement_direct + 0_inferred_current_debt",
+            "override_reason": "single_statement_component_matches_total_debt",
+        }
+
+    if total_debt_value is not None:
+        return {
+            "value": total_debt_value,
+            "exact": False,
+            "source_metric": "capital_structure.total_debt_provider_direct",
+            "formula": "baseline_total_debt_provider_direct",
+            "override_reason": None,
+        }
+
+    if current_debt_value is not None or long_term_debt_value is not None:
+        return {
+            "value": float((current_debt_value or 0.0) + (long_term_debt_value or 0.0)),
+            "exact": False,
+            "source_metric": (
+                "capital_structure.current_debt_statement_direct + "
+                "capital_structure.long_term_debt_statement_direct"
+            ),
+            "formula": "sum_available_statement_debt_components",
+            "override_reason": None,
+        }
+
+    return {
+        "value": None,
+        "exact": False,
+        "source_metric": None,
+        "formula": "unavailable",
+        "override_reason": None,
+    }
+
+
+def _row_may_need_companyfacts(features: Dict[str, Any]) -> bool:
+    cash_exact = _node(features, "liquidity.cash_and_equivalents_statement_direct")
+    total_debt = _node(features, "capital_structure.total_debt_provider_direct")
+    ebitda = _node(features, "operating.ebitda_ltm_provider_direct")
+    net_income = _node(features, "earnings.net_income_ttm_provider_direct")
+    pension = _node(features, "capital_structure.net_pension_liability")
+
+    return (
+        cash_exact.get("support_mode") != "exact"
+        or total_debt.get("support_mode") != "exact"
+        or (_value(ebitda) is None and _exact(net_income))
+        or not _is_supported(pension)
+    )
+
+
+def _build_fail_open_smart_metrics(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_sources: list[str],
+    error_type: str,
+    error_message: str,
+) -> Dict[str, Dict[str, Any]]:
+    missing_reason = "company_processing_timeout" if error_type == "company_processing_timeout" else "company_processing_failed"
+    component_breakdown = {
+        "error_type": error_type,
+        "error_message": str(error_message).strip()[:240],
+    }
+    return {
+        metric_name: _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            support_mode="unsupported",
+            value=None,
+            unit=SMART_METRIC_UNITS[metric_name],
+            provenance_sources=provenance_sources,
+            missing_reason=missing_reason,
+            component_breakdown=component_breakdown,
+            quality_flags=["smart_metric_fail_open", error_type],
+        )
+        for metric_name in SMART_METRIC_NAMES
+    }
+
+
+def _effective_lease_liability_value(
+    lease_sec: Dict[str, Any],
+    *,
+    as_of_time: str | None = None,
+    total_debt_value: float | None = None,
+) -> Dict[str, Any]:
+    lease_value = _value(lease_sec)
+    if _exact(lease_sec) and lease_value is not None:
+        if lease_value < 0:
+            return {
+                "value": None,
+                "exact": False,
+                "inferred_zero": False,
+                "support_override": "negative_lease_liability_exact_value_ignored",
+            }
+        return {
+            "value": lease_value,
+            "exact": True,
+            "inferred_zero": False,
+            "support_override": None,
+        }
+    if (
+        lease_sec.get("support_mode") == "unsupported"
+        and lease_sec.get("missing_reason") == "sec_concept_absent"
+    ):
+        return {
+            "value": 0.0,
+            "exact": True,
+            "inferred_zero": True,
+            "support_override": None,
+        }
+    if (
+        as_of_time is not None
+        and lease_sec.get("support_mode") == "unsupported"
+        and lease_sec.get("missing_reason") == "sec_concept_unavailable"
+    ):
+        component_breakdown = lease_sec.get("component_breakdown") or {}
+        operating_reference = component_breakdown.get("operating_reference") or {}
+        finance_reference = component_breakdown.get("finance_reference") or {}
+        aggregate_reference = component_breakdown.get("aggregate_total_reference") or {}
+        operating_present = bool(operating_reference.get("present"))
+        finance_present = bool(finance_reference.get("present"))
+        aggregate_fresh = _fresh_lease_reference_value(aggregate_reference, as_of_time)
+        operating_fresh = _fresh_lease_reference_value(operating_reference, as_of_time)
+        finance_fresh = _fresh_lease_reference_value(finance_reference, as_of_time)
+        operating_stale = _stale_corroborated_lease_reference_value(operating_reference, as_of_time)
+        finance_stale = _stale_corroborated_lease_reference_value(finance_reference, as_of_time)
+
+        if aggregate_fresh is not None and not operating_present and not finance_present:
+            return {
+                "value": float(aggregate_fresh["value"]),
+                "exact": True,
+                "inferred_zero": False,
+                "support_override": "fresh_aggregate_lease_reference",
+            }
+
+        if (
+            (operating_fresh is not None or operating_stale is not None)
+            and (finance_fresh is not None or finance_stale is not None)
+        ) or (
+            (operating_fresh is not None or operating_stale is not None)
+            and not finance_present
+        ) or (
+            (finance_fresh is not None or finance_stale is not None)
+            and not operating_present
+        ):
+            return {
+                "value": float(
+                    (operating_fresh or operating_stale or {}).get("value", 0.0)
+                    + (finance_fresh or finance_stale or {}).get("value", 0.0)
+                ),
+                "exact": True,
+                "inferred_zero": False,
+                "support_override": (
+                    "fresh_liability_total_reference"
+                    if operating_stale is None and finance_stale is None
+                    else (
+                        "stale_liability_total_corroborated_by_fresh_rou_asset"
+                        if operating_fresh is None and finance_fresh is None
+                        else "hybrid_fresh_and_stale_liability_total_reference"
+                    )
+                ),
+            }
+
+        fresh_or_stale_operating = operating_fresh or operating_stale
+        fresh_or_stale_finance = finance_fresh or finance_stale
+        if total_debt_value is not None and total_debt_value > 0:
+            if (
+                fresh_or_stale_operating is not None
+                and finance_present
+                and finance_fresh is None
+                and finance_stale is None
+                and finance_reference.get("present")
+            ):
+                finance_extracted = _extract_lease_reference_value(finance_reference)
+                finance_value = (finance_extracted or {}).get("value")
+                finance_is_immaterial = (
+                    finance_value is not None
+                    and (
+                        finance_value <= LEASE_IMMATERIAL_STALE_COMPONENT_MAX_ABS_USD
+                        or (finance_value / float(total_debt_value))
+                        <= LEASE_IMMATERIAL_STALE_COMPONENT_MAX_RELATIVE_TO_DEBT
+                    )
+                )
+                if finance_is_immaterial:
+                    return {
+                        "value": float(fresh_or_stale_operating.get("value", 0.0) + finance_value),
+                        "exact": True,
+                        "inferred_zero": False,
+                        "support_override": "hybrid_fresh_and_immaterial_stale_liability_total_reference",
+                    }
+
+            if (
+                fresh_or_stale_finance is not None
+                and operating_present
+                and operating_fresh is None
+                and operating_stale is None
+                and operating_reference.get("present")
+            ):
+                operating_extracted = _extract_lease_reference_value(operating_reference)
+                operating_value = (operating_extracted or {}).get("value")
+                operating_is_immaterial = (
+                    operating_value is not None
+                    and (
+                        operating_value <= LEASE_IMMATERIAL_STALE_COMPONENT_MAX_ABS_USD
+                        or (operating_value / float(total_debt_value))
+                        <= LEASE_IMMATERIAL_STALE_COMPONENT_MAX_RELATIVE_TO_DEBT
+                    )
+                )
+                if operating_is_immaterial:
+                    return {
+                        "value": float(operating_value + fresh_or_stale_finance.get("value", 0.0)),
+                        "exact": True,
+                        "inferred_zero": False,
+                        "support_override": "hybrid_fresh_and_immaterial_stale_liability_total_reference",
+                    }
+
+        if not operating_present and not finance_present:
+            return {
+                "value": 0.0,
+                "exact": True,
+                "inferred_zero": True,
+                "support_override": "no_lease_references_present",
+            }
+
+        if (
+            operating_stale is not None
+            and finance_stale is not None
+        ) or (
+            operating_stale is not None
+            and not finance_present
+        ) or (
+            finance_stale is not None
+            and not operating_present
+        ):
+            return {
+                "value": float((operating_stale or {}).get("value", 0.0) + (finance_stale or {}).get("value", 0.0)),
+                "exact": True,
+                "inferred_zero": False,
+                "support_override": "stale_liability_total_corroborated_by_fresh_rou_asset",
+            }
+    return {
+        "value": None,
+        "exact": False,
+        "inferred_zero": False,
+        "support_override": None,
+    }
+
+
+def _smart_value_node(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    registry_status: str,
+    promotion_rule: str,
+    value: float | None,
+    unit: str,
+    component_breakdown: Dict[str, Any],
+    provenance_sources: list[str],
+    exact_ready: bool,
+    missing_reason: str | None,
+) -> Dict[str, Any]:
+    components = dict(component_breakdown)
+    components["registry_status"] = registry_status
+    components["promotion_rule"] = promotion_rule
+
+    if value is None:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            provenance_sources=provenance_sources,
+            missing_reason=missing_reason or "component_unavailable",
+            component_breakdown=components,
+            quality_flags=[missing_reason or "component_unavailable", "smart_metric_not_promoted"],
+        )
+
+    support_mode = "exact" if exact_ready else "proxy_missing_component"
+    quality_flags = None if exact_ready else ["smart_metric_partial_feasible"]
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        support_mode=support_mode,
+        value=float(value),
+        unit=unit,
+        provenance_sources=provenance_sources,
+        missing_reason=None,
+        component_breakdown=components,
+        quality_flags=quality_flags,
+    )
+
+
+def _retirement_regime_feature_node(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_sources: list[str],
+    effective_retirement: Dict[str, Any],
+) -> Dict[str, Any]:
+    regime = str(effective_retirement.get("retirement_regime") or "retirement_not_surfaced")
+    component_breakdown = {
+        "regime_source": effective_retirement.get("retirement_regime_source") or "unavailable",
+        "pension_source_metric": effective_retirement.get("source_metric"),
+        "combined_retirement_source_metric": effective_retirement.get("combined_retirement_source_metric"),
+    }
+    if effective_retirement.get("retirement_regime_component_meta") is not None:
+        component_breakdown["classification_reference"] = effective_retirement["retirement_regime_component_meta"]
+    return _feature_template(
+        metric_name="capital_structure.retirement_obligation_regime",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        support_mode="exact",
+        value=regime,
+        unit="category",
+        provenance_sources=provenance_sources,
+        missing_reason=None,
+        component_breakdown=component_breakdown,
+        quality_flags=None,
+    )
+
+
+def materialize_smart_metrics_for_row(
+    *,
+    row: Dict[str, Any],
+    registry: Dict[str, Any],
+    computed_at: str,
+    provenance_sources: list[str],
+    companyfacts: Dict[str, Any] | None = None,
+    companyfacts_loader: Callable[[], Dict[str, Any] | None] | None = None,
+    retirement_note_loader: Callable[[], Dict[str, Any] | None] | None = None,
+    market_availability_overrides: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    as_of_time = row["as_of_time"]
+    company_id = str(row.get("company_id")) if row.get("company_id") is not None else None
+    features = row.setdefault("features", {})
+    companyfacts_state: Any = companyfacts if companyfacts is not None else _COMPANYFACTS_UNSET
+
+    def _get_companyfacts() -> Dict[str, Any] | None:
+        nonlocal companyfacts_state
+        if companyfacts_state is _COMPANYFACTS_UNSET:
+            if companyfacts_loader is not None:
+                companyfacts_state = companyfacts_loader()
+            else:
+                companyfacts_state = _load_companyfacts(_infer_companyfacts_path_from_features(features))
+        return None if companyfacts_state is _COMPANYFACTS_UNSET else companyfacts_state
+
+    total_debt = _node(features, "capital_structure.total_debt_provider_direct")
+    cash_grouped = _node(features, "liquidity.cash_and_short_term_investments_provider_direct")
+    cash_exact = _node(features, "liquidity.cash_and_equivalents_statement_direct")
+    restricted_cash_sec = _node(features, "liquidity.restricted_cash_sec_exact")
+    marketable_sec = _node(features, "liquidity.marketable_securities_sec_exact")
+    revolver_sec = _node(features, "liquidity.revolver_undrawn_sec_exact")
+    lease_sec = _node(features, "capital_structure.lease_liabilities_sec_exact")
+    restricted_cash = _node(features, "liquidity.restricted_cash")
+    marketable = _node(features, "liquidity.marketable_securities")
+    revolver = _node(features, "liquidity.revolver_undrawn")
+    ebitda = _node(features, "operating.ebitda_ltm_provider_direct")
+    net_income = _node(features, "earnings.net_income_ttm_provider_direct")
+    interest_expense = _node(features, "capital_structure.interest_expense_statement_direct")
+    current_debt = _node(features, "capital_structure.current_debt_statement_direct")
+    long_term_debt = _node(features, "capital_structure.long_term_debt_statement_direct")
+    debt_like_registry = _registry_metric(registry, "debt_like_obligations_normalized")
+    pension_registry = _registry_metric(registry, "net_pension_liability")
+    other_postretirement_registry = _registry_metric(registry, "other_postretirement_benefit_liability")
+    combined_retirement_registry = _registry_metric(registry, "combined_retirement_liability")
+    debt_including_pension_registry = _registry_metric(registry, "debt_like_obligations_including_pension")
+    debt_including_retirement_registry = _registry_metric(registry, "debt_like_obligations_including_retirement")
+    liquidity_registry = _registry_metric(registry, "available_liquidity_normalized")
+    earnings_registry = _registry_metric(registry, "operating_earnings_normalized")
+    net_debt_registry = _registry_metric(registry, "net_debt_normalized")
+    net_debt_including_pension_registry = _registry_metric(registry, "net_debt_including_pension")
+    net_debt_including_retirement_registry = _registry_metric(registry, "net_debt_including_retirement")
+    gross_leverage_registry = _registry_metric(registry, "gross_leverage_normalized")
+    gross_leverage_including_pension_registry = _registry_metric(registry, "gross_leverage_including_pension")
+    gross_leverage_including_retirement_registry = _registry_metric(registry, "gross_leverage_including_retirement")
+    net_leverage_registry = _registry_metric(registry, "net_leverage_normalized")
+    net_leverage_including_pension_registry = _registry_metric(registry, "net_leverage_including_pension")
+    net_leverage_including_retirement_registry = _registry_metric(registry, "net_leverage_including_retirement")
+
+    current_debt_value = _value(current_debt)
+    long_term_debt_value = _value(long_term_debt)
+    effective_total_debt = _effective_total_debt_baseline(
+        total_debt=total_debt,
+        current_debt=current_debt,
+        long_term_debt=long_term_debt,
+        companyfacts=_get_companyfacts() if _row_may_need_companyfacts(features) else None,
+        as_of_time=as_of_time,
+    )
+    effective_lease = _effective_lease_liability_value(
+        lease_sec,
+        as_of_time=as_of_time,
+        total_debt_value=effective_total_debt["value"],
+    )
+    lease_sec_value = effective_lease["value"]
+    lease_exact = bool(effective_lease["exact"])
+    lease_inferred_zero = bool(effective_lease["inferred_zero"])
+    debt_value = effective_total_debt["value"]
+    debt_baseline_value = debt_value
+    debt_base_formula = effective_total_debt["formula"]
+    debt_base_source_metric = effective_total_debt["source_metric"]
+    debt_exact_ready = lease_exact and bool(effective_total_debt["exact"])
+    raw_lease_sec_value = _value(lease_sec)
+    debt_components = {
+        "baseline_source_metric": debt_base_source_metric,
+        "baseline_value": debt_baseline_value,
+        "total_debt_provider_direct": _value(total_debt),
+        "current_debt_statement_direct": current_debt_value,
+        "long_term_debt_statement_direct": long_term_debt_value,
+        "lease_liabilities_sec_exact": lease_sec_value,
+        "lease_liabilities_raw_input_value": raw_lease_sec_value,
+        "lease_liabilities_inferred_zero": lease_inferred_zero,
+        "formula": debt_base_formula
+        + (
+            " + lease_liabilities_sec_exact"
+            if lease_sec_value is not None and not lease_inferred_zero
+            else (" + 0_inferred_lease_liabilities" if lease_inferred_zero else "")
+        ),
+    }
+    if effective_total_debt["override_reason"] is not None:
+        debt_components["baseline_support_override"] = effective_total_debt["override_reason"]
+    if effective_lease.get("support_override") is not None:
+        debt_components["lease_support_override"] = effective_lease["support_override"]
+    if raw_lease_sec_value is not None and raw_lease_sec_value < 0:
+        debt_components["lease_negative_input_ignored"] = True
+        debt_exact_ready = False
+    if debt_value is not None and lease_sec_value is not None:
+        debt_value = debt_value + lease_sec_value
+    if debt_baseline_value is not None and debt_value is not None and debt_value < debt_baseline_value:
+        debt_value = debt_baseline_value
+        debt_components["debt_like_floored_to_total_debt"] = True
+        debt_exact_ready = False
+    features["capital_structure.debt_like_obligations_normalized"] = _smart_value_node(
+        metric_name="capital_structure.debt_like_obligations_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=debt_like_registry["status"],
+        promotion_rule=debt_like_registry["promotion_rule"],
+        value=debt_value,
+        unit="usd",
+        component_breakdown=debt_components,
+        provenance_sources=provenance_sources,
+        exact_ready=debt_exact_ready,
+        missing_reason="component_unavailable" if debt_value is None else None,
+    )
+
+    effective_net_pension = _effective_net_pension_liability_value(
+        _get_companyfacts(),
+        as_of_time=as_of_time,
+        retirement_note_loader=retirement_note_loader,
+    )
+    pension_value = effective_net_pension["value"]
+    pension_exact_ready = bool(effective_net_pension["exact"])
+    pension_components = {
+        "source_metric": effective_net_pension["source_metric"],
+        "formula": effective_net_pension["formula"],
+    }
+    if effective_net_pension.get("component_meta") is not None:
+        pension_components["companyfacts_reference"] = effective_net_pension["component_meta"]
+    if effective_net_pension.get("support_override") is not None:
+        pension_components["support_override"] = effective_net_pension["support_override"]
+    features["capital_structure.net_pension_liability"] = _smart_value_node(
+        metric_name="capital_structure.net_pension_liability",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=pension_registry["status"],
+        promotion_rule=pension_registry["promotion_rule"],
+        value=pension_value,
+        unit="usd",
+        component_breakdown=pension_components,
+        provenance_sources=provenance_sources,
+        exact_ready=pension_exact_ready,
+        missing_reason="component_unavailable" if pension_value is None else None,
+    )
+
+    other_postretirement_value = effective_net_pension.get("other_postretirement_value")
+    other_postretirement_exact_ready = bool(effective_net_pension.get("other_postretirement_exact"))
+    other_postretirement_components = {
+        "source_metric": effective_net_pension.get("other_postretirement_source_metric"),
+        "formula": effective_net_pension.get("other_postretirement_formula") or "unavailable",
+    }
+    if effective_net_pension.get("other_postretirement_component_meta") is not None:
+        other_postretirement_components["companyfacts_reference"] = effective_net_pension["other_postretirement_component_meta"]
+    if effective_net_pension.get("other_postretirement_support_override") is not None:
+        other_postretirement_components["support_override"] = effective_net_pension["other_postretirement_support_override"]
+    features["capital_structure.other_postretirement_benefit_liability"] = _smart_value_node(
+        metric_name="capital_structure.other_postretirement_benefit_liability",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=other_postretirement_registry["status"],
+        promotion_rule=other_postretirement_registry["promotion_rule"],
+        value=other_postretirement_value,
+        unit="usd",
+        component_breakdown=other_postretirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=other_postretirement_exact_ready,
+        missing_reason="component_unavailable" if other_postretirement_value is None else None,
+    )
+
+    combined_retirement_value = effective_net_pension.get("combined_retirement_value")
+    combined_retirement_exact_ready = bool(effective_net_pension.get("combined_retirement_exact"))
+    combined_retirement_components = {
+        "source_metric": effective_net_pension.get("combined_retirement_source_metric"),
+        "formula": effective_net_pension.get("combined_retirement_formula") or "unavailable",
+    }
+    if effective_net_pension.get("combined_retirement_component_meta") is not None:
+        combined_retirement_components["companyfacts_reference"] = effective_net_pension["combined_retirement_component_meta"]
+    if effective_net_pension.get("combined_retirement_support_override") is not None:
+        combined_retirement_components["support_override"] = effective_net_pension["combined_retirement_support_override"]
+    features["capital_structure.combined_retirement_liability"] = _smart_value_node(
+        metric_name="capital_structure.combined_retirement_liability",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=combined_retirement_registry["status"],
+        promotion_rule=combined_retirement_registry["promotion_rule"],
+        value=combined_retirement_value,
+        unit="usd",
+        component_breakdown=combined_retirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=combined_retirement_exact_ready,
+        missing_reason="component_unavailable" if combined_retirement_value is None else None,
+    )
+    features["capital_structure.retirement_obligation_regime"] = _retirement_regime_feature_node(
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_sources=provenance_sources,
+        effective_retirement=effective_net_pension,
+    )
+
+    debt_including_pension_value = None if debt_value is None else float(debt_value + (pension_value or 0.0))
+    debt_including_pension_exact_ready = debt_exact_ready and pension_value is not None and pension_exact_ready
+    debt_including_pension_components = {
+        "debt_like_obligations_normalized": debt_value,
+        "net_pension_liability": pension_value,
+        "formula": (
+            "debt_like_obligations_normalized + net_pension_liability"
+            if pension_value is not None
+            else "debt_like_obligations_normalized + 0_assumed_missing_net_pension_liability"
+        ),
+    }
+    if pension_value is None and debt_including_pension_value is not None:
+        debt_including_pension_components["pension_missing_assumed_zero"] = True
+    if effective_net_pension.get("support_override") is not None:
+        debt_including_pension_components["pension_support_override"] = effective_net_pension["support_override"]
+    features["capital_structure.debt_like_obligations_including_pension"] = _smart_value_node(
+        metric_name="capital_structure.debt_like_obligations_including_pension",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=debt_including_pension_registry["status"],
+        promotion_rule=debt_including_pension_registry["promotion_rule"],
+        value=debt_including_pension_value,
+        unit="usd",
+        component_breakdown=debt_including_pension_components,
+        provenance_sources=provenance_sources,
+        exact_ready=debt_including_pension_exact_ready,
+        missing_reason="component_unavailable" if debt_including_pension_value is None else None,
+    )
+
+    debt_including_retirement_value = (
+        None if debt_value is None else float(debt_value + (combined_retirement_value or 0.0))
+    )
+    debt_including_retirement_exact_ready = (
+        debt_exact_ready and combined_retirement_value is not None and combined_retirement_exact_ready
+    )
+    debt_including_retirement_components = {
+        "debt_like_obligations_normalized": debt_value,
+        "combined_retirement_liability": combined_retirement_value,
+        "formula": (
+            "debt_like_obligations_normalized + combined_retirement_liability"
+            if combined_retirement_value is not None
+            else "debt_like_obligations_normalized + 0_assumed_missing_combined_retirement_liability"
+        ),
+    }
+    if combined_retirement_value is None and debt_including_retirement_value is not None:
+        debt_including_retirement_components["combined_retirement_missing_assumed_zero"] = True
+    if effective_net_pension.get("combined_retirement_support_override") is not None:
+        debt_including_retirement_components["combined_retirement_support_override"] = (
+            effective_net_pension["combined_retirement_support_override"]
+        )
+    features["capital_structure.debt_like_obligations_including_retirement"] = _smart_value_node(
+        metric_name="capital_structure.debt_like_obligations_including_retirement",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=debt_including_retirement_registry["status"],
+        promotion_rule=debt_including_retirement_registry["promotion_rule"],
+        value=debt_including_retirement_value,
+        unit="usd",
+        component_breakdown=debt_including_retirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=debt_including_retirement_exact_ready,
+        missing_reason="component_unavailable" if debt_including_retirement_value is None else None,
+    )
+
+    grouped_cash_value = _value(cash_grouped)
+    effective_cash_exact = _effective_cash_equivalents_value(
+        cash_exact,
+        companyfacts=_get_companyfacts() if _row_may_need_companyfacts(features) else None,
+        as_of_time=as_of_time,
+    )
+    cash_exact_value = effective_cash_exact["value"]
+    liquidity_components_effective = _effective_liquidity_component_values(
+        cash_grouped=cash_grouped,
+        cash_exact=cash_exact,
+        restricted_cash_sec=restricted_cash_sec,
+        marketable_sec=marketable_sec,
+        restricted_cash=restricted_cash,
+        marketable=marketable,
+    )
+    restricted_cash_value = liquidity_components_effective["restricted_cash_value"]
+    marketable_value = liquidity_components_effective["marketable_value"]
+    restricted_cash_inferred_zero = liquidity_components_effective["restricted_cash_inferred_zero"]
+    marketable_inferred_zero = liquidity_components_effective["marketable_inferred_zero"]
+    restricted_cash_zero_reconciled = liquidity_components_effective["restricted_cash_zero_reconciled"]
+    marketable_zero_reconciled = liquidity_components_effective["marketable_zero_reconciled"]
+    restricted_cash_market_default_zero = liquidity_components_effective["restricted_cash_market_default_zero"]
+    revolver_value = _value(revolver_sec) if _exact(revolver_sec) else (_value(revolver) if _exact(revolver) else None)
+    market_availability_adjustment = _market_availability_adjustment(
+        market_availability_overrides,
+        company_id=company_id,
+        as_of_time=as_of_time,
+    )
+    not_freely_transferable_cash_value = (
+        market_availability_adjustment["value"] if market_availability_adjustment is not None else None
+    )
+
+    grouped_cash_exact = _exact(cash_grouped) and grouped_cash_value is not None
+    grouped_cash_promoted_exact = _grouped_cash_proxy_can_promote_to_exact_cash_baseline(
+        cash_grouped=cash_grouped,
+        cash_exact=cash_exact,
+        marketable_sec=marketable_sec,
+        marketable=marketable,
+        marketable_inferred_zero=marketable_inferred_zero,
+    )
+    grouped_cash_completed_with_marketable = _grouped_cash_proxy_can_complete_with_exact_marketable_securities(
+        cash_grouped=cash_grouped,
+        marketable_value=marketable_value,
+    )
+    grouped_cash_effectively_exact = grouped_cash_exact or (
+        grouped_cash_promoted_exact and grouped_cash_value is not None
+    )
+    sec_cash_plus_marketable_override_eligible = (
+        effective_cash_exact.get("support_override") == "companyfacts_cash_exact_fallback"
+        and marketable_value is not None
+        and not marketable_inferred_zero
+    )
+    sec_cash_plus_marketable_value = (
+        cash_exact_value + marketable_value
+        if effective_cash_exact["exact"] and cash_exact_value is not None and marketable_value is not None
+        else None
+    )
+    grouped_cash_inconsistent_with_sec_cash_stack = (
+        grouped_cash_value is not None
+        and sec_cash_plus_marketable_value is not None
+        and not _approximately_equal(grouped_cash_value, sec_cash_plus_marketable_value)
+    )
+    liquidity_base_excludes_restricted_cash = False
+    cash_basis_source_metric_used = None
+    cash_basis_support_override = None
+
+    if sec_cash_plus_marketable_override_eligible and sec_cash_plus_marketable_value is not None and (
+        not grouped_cash_effectively_exact or grouped_cash_inconsistent_with_sec_cash_stack
+    ):
+        liquidity_base = sec_cash_plus_marketable_value
+        liquidity_formula = (
+            effective_cash_exact["formula"]
+            + (
+                " + marketable_securities_sec_exact"
+                if not marketable_inferred_zero
+                else " + 0_inferred_short_term_investments"
+            )
+        )
+        liquidity_base_excludes_restricted_cash = True
+        cash_basis_source_metric_used = effective_cash_exact["source_metric"]
+        cash_basis_support_override = "sec_cash_and_marketable_override_provider_grouped_cash"
+    elif grouped_cash_effectively_exact:
+        liquidity_base = grouped_cash_value
+        liquidity_formula = "cash_and_short_term_investments_provider_direct"
+        cash_basis_source_metric_used = "liquidity.cash_and_short_term_investments_provider_direct"
+        if grouped_cash_promoted_exact:
+            cash_basis_support_override = "partial_cash_stack_without_short_term_investments"
+    elif grouped_cash_completed_with_marketable and grouped_cash_value is not None:
+        liquidity_base = grouped_cash_value + marketable_value
+        liquidity_formula = (
+            "cash_and_short_term_investments_provider_direct_cash_component"
+            + (
+                " + marketable_securities_sec_exact"
+                if not marketable_inferred_zero
+                else " + 0_inferred_short_term_investments"
+            )
+        )
+        liquidity_base_excludes_restricted_cash = True
+        cash_basis_source_metric_used = "liquidity.cash_and_short_term_investments_provider_direct_cash_component"
+        cash_basis_support_override = "partial_cash_stack_completed_by_marketable_securities"
+    elif cash_exact_value is not None and marketable_value is not None:
+        liquidity_base = cash_exact_value + marketable_value
+        liquidity_formula = (
+            effective_cash_exact["formula"] + " + marketable_securities_sec_exact"
+            if not marketable_inferred_zero
+            else effective_cash_exact["formula"] + " + 0_inferred_short_term_investments"
+        )
+        liquidity_base_excludes_restricted_cash = True
+        cash_basis_source_metric_used = effective_cash_exact["source_metric"]
+        cash_basis_support_override = effective_cash_exact.get("support_override")
+    elif cash_exact_value is not None and grouped_cash_value is not None and abs(grouped_cash_value - cash_exact_value) <= 1.0:
+        liquidity_base = cash_exact_value
+        liquidity_formula = effective_cash_exact["formula"]
+        liquidity_base_excludes_restricted_cash = True
+        cash_basis_source_metric_used = effective_cash_exact["source_metric"]
+        cash_basis_support_override = effective_cash_exact.get("support_override")
+    elif grouped_cash_value is not None:
+        liquidity_base = grouped_cash_value
+        liquidity_formula = "cash_and_short_term_investments_provider_direct"
+        cash_basis_source_metric_used = "liquidity.cash_and_short_term_investments_provider_direct"
+    elif cash_exact_value is not None:
+        liquidity_base = cash_exact_value
+        liquidity_formula = effective_cash_exact["formula"]
+        liquidity_base_excludes_restricted_cash = True
+        cash_basis_source_metric_used = effective_cash_exact["source_metric"]
+        cash_basis_support_override = effective_cash_exact.get("support_override")
+    else:
+        liquidity_base = None
+        liquidity_formula = "unavailable"
+
+    available_liquidity_raw = None
+    if liquidity_base is not None:
+        available_liquidity_raw = liquidity_base
+        if restricted_cash_value is not None and not liquidity_base_excludes_restricted_cash:
+            available_liquidity_raw -= restricted_cash_value
+        if not_freely_transferable_cash_value is not None:
+            available_liquidity_raw -= not_freely_transferable_cash_value
+        if revolver_value is not None:
+            available_liquidity_raw += revolver_value
+
+    available_liquidity = available_liquidity_raw
+    negative_floor_applied = available_liquidity_raw is not None and available_liquidity_raw < 0
+    if negative_floor_applied:
+        available_liquidity = 0.0
+
+    liquidity_exact_ready = (
+        restricted_cash_value is not None
+        and (
+            grouped_cash_effectively_exact
+            or grouped_cash_completed_with_marketable
+            or (
+                cash_exact_value is not None
+                and (
+                    marketable_value is not None
+                    or (
+                        grouped_cash_value is not None
+                        and abs(grouped_cash_value - cash_exact_value) <= 1.0
+                    )
+                )
+            )
+        )
+    )
+    if negative_floor_applied:
+        liquidity_exact_ready = False
+    formula_text = (
+        liquidity_formula
+        + (
+            " - restricted_cash_sec_exact"
+            if restricted_cash_value is not None and not restricted_cash_inferred_zero and not liquidity_base_excludes_restricted_cash
+            else (
+                " - 0_market_default_restricted_cash"
+                if restricted_cash_market_default_zero and not liquidity_base_excludes_restricted_cash
+                else (
+                    " - 0_inferred_restricted_cash"
+                    if restricted_cash_inferred_zero and not liquidity_base_excludes_restricted_cash
+                    else ""
+                )
+            )
+        )
+        + (
+            " - not_freely_transferable_cash_disclosed"
+            if not_freely_transferable_cash_value is not None
+            else ""
+        )
+        + (" + revolver_undrawn_exact" if revolver_value is not None else "")
+    )
+    if negative_floor_applied:
+        formula_text = f"max(0, {formula_text})"
+    liquidity_components = {
+        "grouped_cash_provider_direct": grouped_cash_value,
+        "cash_and_equivalents_statement_direct": cash_exact_value,
+        "cash_basis_source_metric": cash_basis_source_metric_used,
+        "restricted_cash_sec_exact": restricted_cash_value,
+        "marketable_securities_sec_exact": marketable_value,
+        "restricted_cash_inferred_zero": restricted_cash_inferred_zero,
+        "marketable_securities_inferred_zero": marketable_inferred_zero,
+        "restricted_cash_zero_reconciled": restricted_cash_zero_reconciled,
+        "marketable_securities_zero_reconciled": marketable_zero_reconciled,
+        "restricted_cash_market_default_zero": restricted_cash_market_default_zero,
+        "restricted_cash_already_excluded_from_cash_basis": liquidity_base_excludes_restricted_cash,
+        "revolver_undrawn_sec_exact": _value(revolver_sec) if _exact(revolver_sec) else None,
+        "revolver_undrawn_exact": revolver_value,
+        "not_freely_transferable_cash_disclosed": not_freely_transferable_cash_value,
+        "raw_value_before_floor": available_liquidity_raw,
+        "formula": formula_text,
+    }
+    if cash_basis_support_override is not None:
+        liquidity_components["cash_basis_support_override"] = cash_basis_support_override
+    if (
+        effective_cash_exact.get("component_meta") is not None
+        and cash_basis_source_metric_used == effective_cash_exact["source_metric"]
+    ):
+        liquidity_components["cash_basis_component_meta"] = effective_cash_exact["component_meta"]
+    if restricted_cash_market_default_zero:
+        liquidity_components["restricted_cash_support_override"] = (
+            "grouped_cash_market_baseline_without_restricted_cash_disclosure"
+        )
+    if market_availability_adjustment is not None:
+        liquidity_components["market_availability_adjustment"] = market_availability_adjustment
+    if negative_floor_applied:
+        liquidity_components["exact_guard_reason"] = "negative_available_liquidity"
+    features["liquidity.available_liquidity_normalized"] = _smart_value_node(
+        metric_name="liquidity.available_liquidity_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=liquidity_registry["status"],
+        promotion_rule=liquidity_registry["promotion_rule"],
+        value=available_liquidity,
+        unit="usd",
+        component_breakdown=liquidity_components,
+        provenance_sources=provenance_sources,
+        exact_ready=liquidity_exact_ready,
+        missing_reason="component_unavailable" if available_liquidity is None else None,
+    )
+
+    effective_operating_earnings = _effective_operating_earnings_baseline(
+        ebitda=ebitda,
+        net_income=net_income,
+        interest_expense=interest_expense,
+        companyfacts=_get_companyfacts() if (_value(ebitda) is None and _exact(net_income)) else None,
+        as_of_time=as_of_time,
+    )
+    earnings_value = effective_operating_earnings["value"]
+    earnings_exact_ready = bool(effective_operating_earnings["exact"])
+    features["operating.operating_earnings_normalized"] = _smart_value_node(
+        metric_name="operating.operating_earnings_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=earnings_registry["status"],
+        promotion_rule=earnings_registry["promotion_rule"],
+        value=earnings_value,
+        unit="usd",
+        component_breakdown=effective_operating_earnings["component_breakdown"],
+        provenance_sources=provenance_sources,
+        exact_ready=earnings_exact_ready,
+        missing_reason=effective_operating_earnings["missing_reason"],
+    )
+    if effective_operating_earnings.get("quality_flags") is not None:
+        features["operating.operating_earnings_normalized"]["quality_flags"] = effective_operating_earnings["quality_flags"]
+
+    net_debt_value = None if debt_value is None or available_liquidity is None else debt_value - available_liquidity
+    net_debt_exact_ready = debt_exact_ready and liquidity_exact_ready
+    features["capital_structure.net_debt_normalized"] = _smart_value_node(
+        metric_name="capital_structure.net_debt_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_debt_registry["status"],
+        promotion_rule=net_debt_registry["promotion_rule"],
+        value=net_debt_value,
+        unit="usd",
+        component_breakdown={
+            "debt_like_obligations_normalized": debt_value,
+            "available_liquidity_normalized": available_liquidity,
+            "formula": "debt_like_obligations_normalized - available_liquidity_normalized",
+        },
+        provenance_sources=provenance_sources,
+        exact_ready=net_debt_exact_ready,
+        missing_reason="component_unavailable" if net_debt_value is None else None,
+    )
+
+    net_debt_including_pension_value = (
+        None
+        if debt_including_pension_value is None or available_liquidity is None
+        else debt_including_pension_value - available_liquidity
+    )
+    net_debt_including_pension_exact_ready = debt_including_pension_exact_ready and liquidity_exact_ready
+    net_debt_including_pension_components = {
+        "debt_like_obligations_including_pension": debt_including_pension_value,
+        "available_liquidity_normalized": available_liquidity,
+        "formula": "debt_like_obligations_including_pension - available_liquidity_normalized",
+    }
+    if pension_value is None and debt_including_pension_value is not None:
+        net_debt_including_pension_components["pension_missing_assumed_zero"] = True
+    features["capital_structure.net_debt_including_pension"] = _smart_value_node(
+        metric_name="capital_structure.net_debt_including_pension",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_debt_including_pension_registry["status"],
+        promotion_rule=net_debt_including_pension_registry["promotion_rule"],
+        value=net_debt_including_pension_value,
+        unit="usd",
+        component_breakdown=net_debt_including_pension_components,
+        provenance_sources=provenance_sources,
+        exact_ready=net_debt_including_pension_exact_ready,
+        missing_reason="component_unavailable" if net_debt_including_pension_value is None else None,
+    )
+
+    net_debt_including_retirement_value = (
+        None
+        if debt_including_retirement_value is None or available_liquidity is None
+        else debt_including_retirement_value - available_liquidity
+    )
+    net_debt_including_retirement_exact_ready = (
+        debt_including_retirement_exact_ready and liquidity_exact_ready
+    )
+    net_debt_including_retirement_components = {
+        "debt_like_obligations_including_retirement": debt_including_retirement_value,
+        "available_liquidity_normalized": available_liquidity,
+        "formula": "debt_like_obligations_including_retirement - available_liquidity_normalized",
+    }
+    if combined_retirement_value is None and net_debt_including_retirement_value is not None:
+        net_debt_including_retirement_components["combined_retirement_missing_assumed_zero"] = True
+    features["capital_structure.net_debt_including_retirement"] = _smart_value_node(
+        metric_name="capital_structure.net_debt_including_retirement",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_debt_including_retirement_registry["status"],
+        promotion_rule=net_debt_including_retirement_registry["promotion_rule"],
+        value=net_debt_including_retirement_value,
+        unit="usd",
+        component_breakdown=net_debt_including_retirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=net_debt_including_retirement_exact_ready,
+        missing_reason="component_unavailable" if net_debt_including_retirement_value is None else None,
+    )
+
+    if debt_value is None or earnings_value is None:
+        gross_lev_value = None
+        gross_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        gross_lev_value = None
+        gross_missing = "non_positive_denominator"
+    else:
+        gross_lev_value = debt_value / earnings_value
+        gross_missing = None
+    gross_lev_exact_ready = debt_exact_ready and earnings_exact_ready and gross_lev_value is not None
+    features["capital_structure.gross_leverage_normalized"] = _smart_value_node(
+        metric_name="capital_structure.gross_leverage_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=gross_leverage_registry["status"],
+        promotion_rule=gross_leverage_registry["promotion_rule"],
+        value=gross_lev_value,
+        unit="x",
+        component_breakdown={
+            "debt_like_obligations_normalized": debt_value,
+            "operating_earnings_normalized": earnings_value,
+            "formula": "debt_like_obligations_normalized / operating_earnings_normalized",
+        },
+        provenance_sources=provenance_sources,
+        exact_ready=gross_lev_exact_ready,
+        missing_reason=gross_missing,
+    )
+
+    if debt_including_pension_value is None or earnings_value is None:
+        gross_lev_including_pension_value = None
+        gross_including_pension_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        gross_lev_including_pension_value = None
+        gross_including_pension_missing = "non_positive_denominator"
+    else:
+        gross_lev_including_pension_value = debt_including_pension_value / earnings_value
+        gross_including_pension_missing = None
+    gross_lev_including_pension_exact_ready = (
+        debt_including_pension_exact_ready and earnings_exact_ready and gross_lev_including_pension_value is not None
+    )
+    gross_lev_including_pension_components = {
+        "debt_like_obligations_including_pension": debt_including_pension_value,
+        "operating_earnings_normalized": earnings_value,
+        "formula": "debt_like_obligations_including_pension / operating_earnings_normalized",
+    }
+    if pension_value is None and debt_including_pension_value is not None:
+        gross_lev_including_pension_components["pension_missing_assumed_zero"] = True
+    features["capital_structure.gross_leverage_including_pension"] = _smart_value_node(
+        metric_name="capital_structure.gross_leverage_including_pension",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=gross_leverage_including_pension_registry["status"],
+        promotion_rule=gross_leverage_including_pension_registry["promotion_rule"],
+        value=gross_lev_including_pension_value,
+        unit="x",
+        component_breakdown=gross_lev_including_pension_components,
+        provenance_sources=provenance_sources,
+        exact_ready=gross_lev_including_pension_exact_ready,
+        missing_reason=gross_including_pension_missing,
+    )
+
+    if debt_including_retirement_value is None or earnings_value is None:
+        gross_lev_including_retirement_value = None
+        gross_including_retirement_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        gross_lev_including_retirement_value = None
+        gross_including_retirement_missing = "non_positive_denominator"
+    else:
+        gross_lev_including_retirement_value = debt_including_retirement_value / earnings_value
+        gross_including_retirement_missing = None
+    gross_lev_including_retirement_exact_ready = (
+        debt_including_retirement_exact_ready and earnings_exact_ready and gross_lev_including_retirement_value is not None
+    )
+    gross_lev_including_retirement_components = {
+        "debt_like_obligations_including_retirement": debt_including_retirement_value,
+        "operating_earnings_normalized": earnings_value,
+        "formula": "debt_like_obligations_including_retirement / operating_earnings_normalized",
+    }
+    if combined_retirement_value is None and gross_lev_including_retirement_value is not None:
+        gross_lev_including_retirement_components["combined_retirement_missing_assumed_zero"] = True
+    features["capital_structure.gross_leverage_including_retirement"] = _smart_value_node(
+        metric_name="capital_structure.gross_leverage_including_retirement",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=gross_leverage_including_retirement_registry["status"],
+        promotion_rule=gross_leverage_including_retirement_registry["promotion_rule"],
+        value=gross_lev_including_retirement_value,
+        unit="x",
+        component_breakdown=gross_lev_including_retirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=gross_lev_including_retirement_exact_ready,
+        missing_reason=gross_including_retirement_missing,
+    )
+
+    if net_debt_value is None or earnings_value is None:
+        net_lev_value = None
+        net_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        net_lev_value = None
+        net_missing = "non_positive_denominator"
+    else:
+        net_lev_value = net_debt_value / earnings_value
+        net_missing = None
+    net_lev_exact_ready = net_debt_exact_ready and earnings_exact_ready and net_lev_value is not None
+    features["capital_structure.net_leverage_normalized"] = _smart_value_node(
+        metric_name="capital_structure.net_leverage_normalized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_leverage_registry["status"],
+        promotion_rule=net_leverage_registry["promotion_rule"],
+        value=net_lev_value,
+        unit="x",
+        component_breakdown={
+            "net_debt_normalized": net_debt_value,
+            "operating_earnings_normalized": earnings_value,
+            "formula": "net_debt_normalized / operating_earnings_normalized",
+        },
+        provenance_sources=provenance_sources,
+        exact_ready=net_lev_exact_ready,
+        missing_reason=net_missing,
+    )
+
+    if net_debt_including_pension_value is None or earnings_value is None:
+        net_lev_including_pension_value = None
+        net_including_pension_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        net_lev_including_pension_value = None
+        net_including_pension_missing = "non_positive_denominator"
+    else:
+        net_lev_including_pension_value = net_debt_including_pension_value / earnings_value
+        net_including_pension_missing = None
+    net_lev_including_pension_exact_ready = (
+        net_debt_including_pension_exact_ready and earnings_exact_ready and net_lev_including_pension_value is not None
+    )
+    net_lev_including_pension_components = {
+        "net_debt_including_pension": net_debt_including_pension_value,
+        "operating_earnings_normalized": earnings_value,
+        "formula": "net_debt_including_pension / operating_earnings_normalized",
+    }
+    if pension_value is None and net_debt_including_pension_value is not None:
+        net_lev_including_pension_components["pension_missing_assumed_zero"] = True
+    features["capital_structure.net_leverage_including_pension"] = _smart_value_node(
+        metric_name="capital_structure.net_leverage_including_pension",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_leverage_including_pension_registry["status"],
+        promotion_rule=net_leverage_including_pension_registry["promotion_rule"],
+        value=net_lev_including_pension_value,
+        unit="x",
+        component_breakdown=net_lev_including_pension_components,
+        provenance_sources=provenance_sources,
+        exact_ready=net_lev_including_pension_exact_ready,
+        missing_reason=net_including_pension_missing,
+    )
+
+    if net_debt_including_retirement_value is None or earnings_value is None:
+        net_lev_including_retirement_value = None
+        net_including_retirement_missing = "component_unavailable"
+    elif earnings_value <= 0:
+        net_lev_including_retirement_value = None
+        net_including_retirement_missing = "non_positive_denominator"
+    else:
+        net_lev_including_retirement_value = net_debt_including_retirement_value / earnings_value
+        net_including_retirement_missing = None
+    net_lev_including_retirement_exact_ready = (
+        net_debt_including_retirement_exact_ready and earnings_exact_ready and net_lev_including_retirement_value is not None
+    )
+    net_lev_including_retirement_components = {
+        "net_debt_including_retirement": net_debt_including_retirement_value,
+        "operating_earnings_normalized": earnings_value,
+        "formula": "net_debt_including_retirement / operating_earnings_normalized",
+    }
+    if combined_retirement_value is None and net_lev_including_retirement_value is not None:
+        net_lev_including_retirement_components["combined_retirement_missing_assumed_zero"] = True
+    features["capital_structure.net_leverage_including_retirement"] = _smart_value_node(
+        metric_name="capital_structure.net_leverage_including_retirement",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        registry_status=net_leverage_including_retirement_registry["status"],
+        promotion_rule=net_leverage_including_retirement_registry["promotion_rule"],
+        value=net_lev_including_retirement_value,
+        unit="x",
+        component_breakdown=net_lev_including_retirement_components,
+        provenance_sources=provenance_sources,
+        exact_ready=net_lev_including_retirement_exact_ready,
+        missing_reason=net_including_retirement_missing,
+    )
+
+    return row
+
+
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    registry_path = Path(args.metric_registry_path)
+    component_policy_path = Path(args.component_policy_path)
+    source_precedence_path = Path(args.source_precedence_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    registry = json.loads(registry_path.read_text())
+    json.loads(component_policy_path.read_text())
+    json.loads(source_precedence_path.read_text())
+    computed_at = _now_iso()
+    provenance_sources = [str(registry_path), str(component_policy_path), str(source_precedence_path)]
+    companyfacts_root = Path(args.companyfacts_root) if args.companyfacts_root else (
+        DEFAULT_LOCAL_COMPANYFACTS_ROOT if DEFAULT_LOCAL_COMPANYFACTS_ROOT.exists() else None
+    )
+    companyfacts_cache: dict[str, Dict[str, Any] | None] = {}
+    retirement_note_cache_root = (
+        Path(args.sec_filing_cache_root)
+        if args.sec_filing_cache_root
+        else DEFAULT_SEC_RETIREMENT_CACHE_ROOT
+    )
+    if retirement_note_cache_root is not None:
+        retirement_note_cache_root.mkdir(parents=True, exist_ok=True)
+    retirement_note_cache: dict[tuple[str, str], Dict[str, Any] | None] = {}
+    sec_session = None
+    if _sec_helpers_available():
+        sec_session = requests.Session()
+        sec_session.headers.update({"User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"})
+    market_availability_overrides_path = (
+        Path(args.market_availability_overrides_path)
+        if args.market_availability_overrides_path
+        else (DEFAULT_MARKET_AVAILABILITY_OVERRIDES_PATH if DEFAULT_MARKET_AVAILABILITY_OVERRIDES_PATH.exists() else None)
+    )
+    market_availability_overrides = _load_market_availability_overrides(market_availability_overrides_path)
+    completed_company_ids = _load_completed_company_ids(out_path) if args.resume_if_exists else set()
+    open_mode = "a" if args.resume_if_exists and out_path.exists() else "w"
+    if open_mode == "w" and out_path.exists() and not args.resume_if_exists:
+        out_path.unlink()
+
+    processed_rows = 0
+    with out_path.open(open_mode, buffering=1) as out_handle:
+        for row in iter_snapshot_rows(snapshot_path):
+            entity_id = str(row.get("company_id")) if row.get("company_id") is not None else None
+            if entity_id is not None and entity_id in completed_company_ids:
+                continue
+
+            try:
+                with _company_processing_guard(args.company_processing_timeout_seconds):
+                    companyfacts_loader = None
+                    retirement_note_loader = None
+                    cached_companyfacts: Dict[str, Any] | None = None
+                    if companyfacts_root is not None and entity_id is not None and _row_may_need_companyfacts(row.setdefault("features", {})):
+                        def _loader(entity_id: str = entity_id) -> Dict[str, Any] | None:
+                            if entity_id not in companyfacts_cache:
+                                companyfacts_cache[entity_id] = _load_companyfacts(companyfacts_root / f"CIK{entity_id}.json")
+                            return companyfacts_cache[entity_id]
+                        companyfacts_loader = _loader
+                        if sec_session is not None:
+                            cached_companyfacts = _loader()
+                    if entity_id is not None and sec_session is not None and _companyfacts_may_need_retirement_note_split(cached_companyfacts):
+                        as_of_time = row["as_of_time"]
+
+                        def _retirement_loader(
+                            entity_id: str = entity_id,
+                            as_of_time: str = as_of_time,
+                        ) -> Dict[str, Any] | None:
+                            cache_key = (entity_id, as_of_time[:10])
+                            if cache_key not in retirement_note_cache:
+                                retirement_note_cache[cache_key] = _load_retirement_note_components(
+                                    cik=entity_id,
+                                    as_of_time=as_of_time,
+                                    session=sec_session,
+                                    cache_dir=retirement_note_cache_root,
+                                )
+                            return retirement_note_cache[cache_key]
+
+                        retirement_note_loader = _retirement_loader
+
+                    row = materialize_smart_metrics_for_row(
+                        row=row,
+                        registry=registry,
+                        computed_at=computed_at,
+                        provenance_sources=provenance_sources,
+                        companyfacts_loader=companyfacts_loader,
+                        retirement_note_loader=retirement_note_loader,
+                        market_availability_overrides=market_availability_overrides,
+                    )
+            except _CompanyProcessingTimeout as exc:
+                row.setdefault("features", {}).update(
+                    _build_fail_open_smart_metrics(
+                        as_of_time=row["as_of_time"],
+                        computed_at=computed_at,
+                        provenance_sources=provenance_sources,
+                        error_type="company_processing_timeout",
+                        error_message=str(exc),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                row.setdefault("features", {}).update(
+                    _build_fail_open_smart_metrics(
+                        as_of_time=row["as_of_time"],
+                        computed_at=computed_at,
+                        provenance_sources=provenance_sources,
+                        error_type="company_processing_failed",
+                        error_message=str(exc),
+                    )
+                )
+
+            out_handle.write(json.dumps(row) + "\n")
+            processed_rows += 1
+
+    summary = _summarize_output_rows(out_path)
+    if args.summary_out:
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2))
+
+    print(f"Wrote smart-normalized layer -> {out_path}")
+    if args.resume_if_exists and completed_company_ids:
+        print(f"resumed_from_existing_rows={len(completed_company_ids)}")
+    print(f"new_rows_processed={processed_rows}")
+    row_fail_open = summary.get("row_fail_open") or {}
+    if row_fail_open.get("company_processing_timeout") or row_fail_open.get("company_processing_failed"):
+        print(
+            "row_fail_open:"
+            f" company_processing_timeout={row_fail_open.get('company_processing_timeout', 0)}"
+            f" company_processing_failed={row_fail_open.get('company_processing_failed', 0)}"
+        )
+
+
+if __name__ == "__main__":
+    main()
