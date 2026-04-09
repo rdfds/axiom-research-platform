@@ -1,0 +1,59 @@
+{
+  "suite": "manual_replay_buyback_omr_benchmark",
+  "version": "2026-03-26",
+  "defaults": {
+    "lookback_days": 365,
+    "alignment_horizon_days": 120,
+    "precedent_top_k": 0,
+    "top_plans": 3,
+    "historical_backfill_mode": true,
+    "enable_market_relevant_smart_normalized_inputs": true,
+    "min_non_missing_core_features": 3
+  },
+  "artifacts": {
+    "outcomes_path": "./out/manual_replay_bundle_20260405_localized/inputs/action_outcomes_with_credit_ratings.normalized_full.parquet",
+    "action_support_manifest": "./out/manual_replay_bundle_20260405_localized/configs/action_data_support_manifest.json",
+    "corporate_actions_master_path": "/tmp/manual_replay_corporate_actions_master_missing.parquet",
+    "entity_graph_path": "./data/inputs_layer/entity_graph.parquet",
+    "entity_identifier_path": "./data/inputs_layer/entity_identifier.parquet",
+    "entity_table_path": "./data/inputs_layer/entity.parquet",
+    "raw_timeseries_path": "./out/manual_replay_bundle_20260405_localized/inputs/raw_timeseries.parquet",
+    "event_store_path": "./data/inputs_layer/event_store.parquet",
+    "ownership_summary_path": "./data/inputs_layer/ownership_13f_summary.parquet",
+    "issuer_ratings_path": "./data/inputs_layer/issuer_rating_history.parquet",
+    "companyfacts_root": "./out/manual_replay_bundle_20260405_localized/inputs/companyfacts_buyback_20260407",
+    "facts_path_candidates": [
+      "./out/manual_replay_bundle_20260405_localized/inputs/facts_asof_2026",
+      "./data/inputs_layer/extracted_fact_registry_validity"
+    ]
+  },
+  "env_override_candidates": {
+    "AXIOM_METRIC_POLICY_PATH": [
+      "/tmp/axiom_local_configs/market_metric_policy_v1.json",
+      "configs/metric_policies/market_metric_policy_v1.json"
+    ],
+    "AXIOM_METHODOLOGY_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/consumer_industrials_canonical_registry_v1.json",
+      "configs/metric_methodologies/consumer_industrials_canonical_registry_v1.json"
+    ],
+    "AXIOM_INPUT_SOURCE_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/company_state_input_source_registry_v1.json",
+      "configs/metric_methodologies/company_state_input_source_registry_v1.json"
+    ],
+    "AXIOM_SMART_METRIC_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/smart_metric_registry_v1.json",
+      "out/smart_metric_registry_v1.json"
+    ],
+    "AXIOM_MARKET_AVAILABILITY_OVERRIDES_PATH": [
+      "/tmp/axiom_local_configs/liquidity_market_availability_overrides.json",
+      "configs/liquidity_market_availability_overrides.json"
+    ]
+  },
+  "benchmarks": {
+    "capital_return_open_market_buyback_holdout": {
+      "label": "Capital Return Open Market Buyback Holdout",
+      "manifest": "./configs/historical_eval_manifests/2026-04-07/capital_return_open_market_buyback_holdout_22.json",
+      "reference_metrics": {}
+    }
+  }
+}
