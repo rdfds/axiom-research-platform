@@ -69,3 +69,42 @@ def _percent_field(required: bool = False, minimum: float = 0.0, maximum: float 
     }
 
 
+def _numeric_field(required: bool = False, unit: Optional[str] = None, minimum: Optional[float] = None) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "type": "numeric",
+        "required": required,
+    }
+    if unit is not None:
+        out["unit"] = unit
+    if minimum is not None:
+        out["min"] = minimum
+    return out
+
+
+def _enum_field(values: List[str], required: bool = False) -> Dict[str, Any]:
+    return {
+        "type": "enum",
+        "required": required,
+        "values": values,
+    }
+
+
+def _funding_mix(required: bool = True) -> Dict[str, Any]:
+    return {
+        "type": "funding_mix_object",
+        "required": required,
+        "fields": {
+            "cash": {"type": "percent"},
+            "debt": {"type": "percent"},
+            "equity": {"type": "percent"},
+        },
+    }
+
+
+def _date_window(required: bool = False) -> Dict[str, Any]:
+    return {
+        "type": "date_window",
+        "required": required,
+    }
+
+
