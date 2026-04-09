@@ -281,3 +281,17 @@ Temporal semantics:
 - `available_time`
 - `version_id`
 
+## Entity ID Mapping
+
+`data/mappings/entity_id_map.parquet`
+
+- `company_id` (gvkey)
+- `security_id` (permno)
+- `ric`
+- `permid`
+- `cusip`
+- `isin`
+- `valid_from`
+- `valid_to`
+- `source_system`
+

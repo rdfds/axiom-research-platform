@@ -146,3 +146,66 @@ def _parse_date(value: str) -> datetime:
     return pd.to_datetime(value).to_pydatetime()
 
 
+_LEGACY_ACTION_ALIASES: Dict[str, str] = {
+    "buyback": "capital_return.open_market_buyback",
+    "asr": "capital_return.accelerated_share_repurchase",
+    "dividend": "capital_return.dividend_increase",
+    "dividend_initiate": "capital_return.dividend_initiate",
+    "debt_issuance": "capital_structure.new_debt_issuance",
+    "refinancing": "capital_structure.refinancing",
+    "equity_issuance": "capital_structure.equity_issuance",
+    "acquisition": "mna.tuck_in_acquisition",
+    "lbo": "mna.go_private_lbo",
+    "go_private_lbo": "mna.go_private_lbo",
+    "divestiture": "portfolio.divestiture_full",
+    "spin_off": "portfolio.spin_off",
+    "asset_sale": "portfolio.asset_sale",
+    "stock_split": "governance.stock_split",
+    "cost_program": "restructuring.cost_program",
+}
+
+
+def _resolve_action_schema(
+    registry: ActionSchemaRegistry,
+    action_type: Optional[str],
+    action_subtype: Optional[str],
+    action_id: Optional[str],
+) -> Dict[str, Any]:
+    if action_id:
+        schema = registry.get_action(action_id)
+        if schema is None:
+            raise ValueError(f"Unknown action_id: {action_id}")
+        return schema
+
+    if action_type and "." in action_type:
+        schema = registry.get_action(action_type)
+        if schema is not None:
+            return schema
+
+    if action_type and action_subtype:
+        aid = f"{action_type}.{action_subtype}"
+        schema = registry.get_action(aid)
+        if schema is not None:
+            return schema
+
+    if action_type:
+        mapped = _LEGACY_ACTION_ALIASES.get(action_type)
+        if mapped:
+            schema = registry.get_action(mapped)
+            if schema is not None:
+                return schema
+        # If an action_type root is provided and has exactly one action, resolve directly.
+        cands = registry.get_actions_by_type(action_type)
+        if len(cands) == 1:
+            return cands[0]
+
+    if action_subtype:
+        cands = registry.get_actions_by_subtype(action_subtype)
+        if len(cands) == 1:
+            return cands[0]
+
+    raise ValueError(
+        "Could not resolve action schema. Provide --action-id or a resolvable --action-type/--action-subtype."
+    )
+
+
