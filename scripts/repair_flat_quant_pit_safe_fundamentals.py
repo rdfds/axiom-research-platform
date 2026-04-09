@@ -692,7 +692,7 @@ def main() -> None:
                 "cash_and_short_term_investments_sec": _json_scalar(
                     row.get("liquidity__cash_and_short_term_investments_sec__value")
                 ),
-                "market_cap_pit_safe": _json_scalar(row['market__market_cap_pit_safe__value']),
+                "market_cap_pit_safe": _json_scalar(row.get("market__market_cap_pit_safe__value")),
                 "enterprise_value": _json_scalar(row.get("market__enterprise_value__value")),
                 "ebitda_ttm_sec": _json_scalar(row.get("operating__ebitda_ttm_sec__value")),
                 "ebitda_ttm_sec_support_mode": _json_scalar(row.get("operating__ebitda_ttm_sec__support_mode")),

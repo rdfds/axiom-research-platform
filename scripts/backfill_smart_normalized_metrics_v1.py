@@ -1553,3 +1553,270 @@ def _effective_cash_equivalents_value(
     }
 
 
+def _market_availability_adjustment(
+    overrides: Dict[str, Any] | None,
+    *,
+    company_id: str | None,
+    as_of_time: str,
+) -> Dict[str, Any] | None:
+    if not overrides or not company_id:
+        return None
+    entries = overrides.get(str(company_id)) or []
+    if not isinstance(entries, list):
+        return None
+    as_of_dt = _parse_iso_date(as_of_time)
+    if as_of_dt is None:
+        return None
+
+    chosen: Dict[str, Any] | None = None
+    chosen_start: datetime | None = None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("not_freely_transferable_cash")
+        if value is None:
+            continue
+        start_dt = _parse_iso_date(entry.get("effective_start") or entry.get("effective_date"))
+        end_dt = _parse_iso_date(entry.get("effective_end") or entry.get("valid_through"))
+        if start_dt is not None and as_of_dt < start_dt:
+            continue
+        if end_dt is not None and as_of_dt > end_dt:
+            continue
+        if chosen is None or (start_dt is not None and (chosen_start is None or start_dt > chosen_start)):
+            chosen = entry
+            chosen_start = start_dt
+
+    if chosen is None:
+        return None
+
+    try:
+        adjustment_value = float(chosen["not_freely_transferable_cash"])
+    except Exception:  # noqa: BLE001
+        return None
+
+    return {
+        "value": adjustment_value,
+        "label": chosen.get("label"),
+        "effective_start": chosen.get("effective_start") or chosen.get("effective_date"),
+        "effective_end": chosen.get("effective_end") or chosen.get("valid_through"),
+        "reported_period_end": chosen.get("reported_period_end"),
+        "filing_date": chosen.get("filing_date"),
+        "source": chosen.get("source"),
+    }
+
+
+def _extract_lease_reference_value(reference: Dict[str, Any]) -> Dict[str, Any] | None:
+    candidates: list[Dict[str, Any]] = []
+
+    direct_total = reference.get("direct_total_reference")
+    if direct_total and direct_total.get("value") is not None:
+        direct_total_value = float(direct_total["value"])
+        if direct_total_value < 0:
+            direct_total_value = None
+        end_dt = max(
+            (
+                _parse_iso_date((component or {}).get("end"))
+                for component in (direct_total.get("components") or [None])
+            ),
+            default=None,
+        )
+        if end_dt is not None and direct_total_value is not None:
+            candidates.append(
+                {
+                    "value": direct_total_value,
+                    "end_dt": end_dt,
+                    "source_mode": "direct_total_reference",
+                }
+            )
+
+    partial = reference.get("partial_component_reference")
+    if partial and partial.get("value") is not None:
+        partial_value = float(partial["value"])
+        if partial_value < 0:
+            partial_value = None
+        end_dt = max(
+            (
+                _parse_iso_date(component.get("end"))
+                for component in ((partial.get("current_components") or []) + (partial.get("noncurrent_components") or []))
+                if component.get("end")
+            ),
+            default=None,
+        )
+        if end_dt is not None and partial_value is not None:
+            candidates.append(
+                {
+                    "value": partial_value,
+                    "end_dt": end_dt,
+                    "source_mode": "partial_component_reference",
+                }
+            )
+
+    payments_due = reference.get("payments_due_reference")
+    if payments_due and payments_due.get("derived_total_value") is not None:
+        derived_total_value = float(payments_due["derived_total_value"])
+        if derived_total_value < 0:
+            derived_total_value = None
+        end_dt = _parse_iso_date((payments_due.get("payments_due") or {}).get("end"))
+        if end_dt is not None and derived_total_value is not None:
+            candidates.append(
+                {
+                    "value": derived_total_value,
+                    "end_dt": end_dt,
+                    "source_mode": "payments_due_reference",
+                }
+            )
+
+    if not candidates:
+        return None
+
+    source_priority = {
+        "partial_component_reference": 2,
+        "direct_total_reference": 1,
+        "payments_due_reference": 0,
+    }
+    candidates.sort(key=lambda candidate: (candidate["end_dt"], source_priority[candidate["source_mode"]]))
+    return candidates[-1]
+
+
+def _fresh_rou_asset_available(reference: Dict[str, Any], as_of_time: str) -> bool:
+    rou_reference = reference.get("right_of_use_asset_reference") or {}
+    component = (rou_reference.get("components") or [None])[0] or {}
+    rou_end_dt = _parse_iso_date(component.get("end"))
+    as_of_dt = _parse_iso_date(as_of_time)
+    if rou_end_dt is None or as_of_dt is None:
+        return False
+    return (as_of_dt - rou_end_dt).days <= LEASE_ROU_FRESH_MAX_AGE_DAYS
+
+
+def _stale_corroborated_lease_reference_value(reference: Dict[str, Any], as_of_time: str) -> Dict[str, Any] | None:
+    extracted = _extract_lease_reference_value(reference)
+    as_of_dt = _parse_iso_date(as_of_time)
+    if extracted is None or extracted["end_dt"] is None or as_of_dt is None:
+        return None
+    age_days = (as_of_dt - extracted["end_dt"]).days
+    if age_days < 0 or age_days > LEASE_STALE_CARRY_FORWARD_MAX_AGE_DAYS:
+        return None
+    if not _fresh_rou_asset_available(reference, as_of_time):
+        return None
+    extracted["age_days"] = age_days
+    return extracted
+
+
+def _fresh_lease_reference_value(reference: Dict[str, Any], as_of_time: str) -> Dict[str, Any] | None:
+    extracted = _extract_lease_reference_value(reference)
+    as_of_dt = _parse_iso_date(as_of_time)
+    if extracted is None or extracted["end_dt"] is None or as_of_dt is None:
+        return None
+    age_days = (as_of_dt - extracted["end_dt"]).days
+    if age_days < 0 or age_days > LEASE_ROU_FRESH_MAX_AGE_DAYS:
+        return None
+    extracted["age_days"] = age_days
+    return extracted
+
+
+def _effective_liquidity_component_values(
+    *,
+    cash_grouped: Dict[str, Any],
+    cash_exact: Dict[str, Any],
+    restricted_cash_sec: Dict[str, Any],
+    marketable_sec: Dict[str, Any],
+    restricted_cash: Dict[str, Any],
+    marketable: Dict[str, Any],
+) -> Dict[str, Any]:
+    grouped_cash_value = _value(cash_grouped)
+    cash_exact_value = _value(cash_exact)
+
+    restricted_cash_inferred_zero = (
+        restricted_cash_sec.get("support_mode") == "unsupported"
+        and restricted_cash_sec.get("missing_reason") == "sec_concept_absent"
+    )
+    marketable_inferred_zero = (
+        marketable_sec.get("support_mode") == "unsupported"
+        and marketable_sec.get("missing_reason") == "sec_concept_absent"
+    )
+
+    restricted_cash_value = (
+        _value(restricted_cash_sec)
+        if _exact(restricted_cash_sec)
+        else (0.0 if restricted_cash_inferred_zero else (_value(restricted_cash) if _exact(restricted_cash) else None))
+    )
+    marketable_value = (
+        _value(marketable_sec)
+        if _exact(marketable_sec)
+        else (0.0 if marketable_inferred_zero else (_value(marketable) if _exact(marketable) else None))
+    )
+
+    restricted_cash_zero_reconciled = False
+    marketable_zero_reconciled = False
+    restricted_cash_market_default_zero = False
+
+    if (
+        restricted_cash_value is None
+        and _exact(cash_grouped)
+        and cash_exact_value is None
+        and restricted_cash_sec.get("support_mode") == "unsupported"
+        and restricted_cash_sec.get("missing_reason") == "sec_concept_unavailable"
+    ):
+        restricted_cash_value = 0.0
+        restricted_cash_inferred_zero = True
+        restricted_cash_market_default_zero = True
+
+    if (
+        restricted_cash_value is None
+        and cash_exact_value is not None
+        and marketable_value is not None
+        and _approximately_equal(grouped_cash_value, cash_exact_value + marketable_value)
+    ):
+        restricted_cash_value = 0.0
+        restricted_cash_inferred_zero = True
+        restricted_cash_zero_reconciled = True
+
+    if (
+        marketable_value is None
+        and cash_exact_value is not None
+        and restricted_cash_value is not None
+        and _approximately_equal(grouped_cash_value, cash_exact_value + restricted_cash_value)
+    ):
+        marketable_value = 0.0
+        marketable_inferred_zero = True
+        marketable_zero_reconciled = True
+
+    if (
+        restricted_cash_value is None
+        and marketable_value is None
+        and cash_exact_value is not None
+        and _approximately_equal(grouped_cash_value, cash_exact_value)
+    ):
+        restricted_cash_value = 0.0
+        marketable_value = 0.0
+        restricted_cash_inferred_zero = True
+        marketable_inferred_zero = True
+        restricted_cash_zero_reconciled = True
+        marketable_zero_reconciled = True
+
+    return {
+        "restricted_cash_value": restricted_cash_value,
+        "marketable_value": marketable_value,
+        "restricted_cash_inferred_zero": restricted_cash_inferred_zero,
+        "marketable_inferred_zero": marketable_inferred_zero,
+        "restricted_cash_zero_reconciled": restricted_cash_zero_reconciled,
+        "marketable_zero_reconciled": marketable_zero_reconciled,
+        "restricted_cash_market_default_zero": restricted_cash_market_default_zero,
+    }
+
+
+def _companyfacts_priority_ttm(
+    companyfacts: Dict[str, Any] | None,
+    concepts: list[str],
+    *,
+    as_of_date: str,
+) -> tuple[float | None, Dict[str, Any] | None]:
+    if companyfacts is None:
+        return None, None
+    for concept_name in concepts:
+        value, meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+        if value is not None:
+            return value, meta
+    return None, None
+
+
