@@ -424,7 +424,7 @@ def _value(node: Dict[str, Any]) -> float | None:
 
 
 def _exact(node: Dict[str, Any]) -> bool:
-    return node['support_mode'] == "exact"
+    return node.get("support_mode") == "exact"
 
 
 def _is_supported(node: Dict[str, Any]) -> bool:

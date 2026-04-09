@@ -262,7 +262,7 @@ def _audit_chunk(
     }
 
 
-def _merge_partials(partials: List[Dict[str, Any]]) :
+def _merge_partials(partials: List[Dict[str, Any]]) -> Dict[str, Any]:
     selected_metrics = list(partials[0]["metrics"].keys()) if partials else []
     merged = _empty_metric_counters(selected_metrics)
     row_count = 0

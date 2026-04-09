@@ -407,3 +407,53 @@ def _support_rank(node: Dict[str, Any] | None) -> int:
     return 0
 
 
+def _merge_quality_flags(*flag_lists: list[str] | None) -> list[str] | None:
+    merged: list[str] = []
+    for values in flag_lists:
+        for value in values or []:
+            value_text = str(value)
+            if value_text and value_text not in merged:
+                merged.append(value_text)
+    return merged or None
+
+
+def _annotate_selected_metric(
+    node: Dict[str, Any],
+    *,
+    metric_name: str,
+    selection_policy: str,
+    comparison_node: Dict[str, Any] | None,
+    extra_quality_flags: list[str] | None = None,
+) -> Dict[str, Any]:
+    selected = deepcopy(node)
+    breakdown = deepcopy(selected.get("component_breakdown")) if isinstance(selected.get("component_breakdown"), dict) else (
+        deepcopy(selected.get("component_breakdown"))
+    )
+    if isinstance(breakdown, dict):
+        breakdown["selection_policy"] = selection_policy
+        if comparison_node is not None:
+            comparison_value = comparison_node.get("value")
+            if comparison_value is not None and selected.get("value") is not None:
+                try:
+                    comparison_gap = float(selected["value"]) - float(comparison_value)
+                except Exception:  # noqa: BLE001
+                    comparison_gap = None
+            else:
+                comparison_gap = None
+            breakdown["comparison_candidate"] = {
+                "primary_source_basis": comparison_node.get("primary_source_basis"),
+                "support_mode": comparison_node.get("support_mode"),
+                "missing_reason": comparison_node.get("missing_reason"),
+                "value": comparison_value,
+                "value_gap_vs_selected": comparison_gap,
+            }
+    selected["component_breakdown"] = breakdown
+    selected["quality_flags"] = _merge_quality_flags(selected.get("quality_flags"), extra_quality_flags)
+    if metric_name == "market.market_cap_provider_direct" and selected.get("primary_source_basis") == "provider_direct":
+        selected["quality_flags"] = _merge_quality_flags(
+            selected.get("quality_flags"),
+            ["market_cap_provider_fallback_used"],
+        )
+    return selected
+
+
