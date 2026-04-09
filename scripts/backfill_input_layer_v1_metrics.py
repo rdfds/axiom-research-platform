@@ -457,3 +457,123 @@ def _annotate_selected_metric(
     return selected
 
 
+def _select_preferred_direct_metric(
+    *,
+    metric_name: str,
+    sec_or_market_node: Dict[str, Any] | None,
+    provider_node: Dict[str, Any],
+) -> Dict[str, Any]:
+    preferred_rank = _support_rank(sec_or_market_node)
+    provider_rank = _support_rank(provider_node)
+
+    if metric_name == "market.market_cap_provider_direct":
+        if preferred_rank >= 2:
+            return _annotate_selected_metric(
+                sec_or_market_node or provider_node,
+                metric_name=metric_name,
+                selection_policy="prefer_exact_pit_market_cap_when_available",
+                comparison_node=provider_node,
+                extra_quality_flags=["provider_direct_superseded_by_pit_market_cap"],
+            )
+        if provider_rank >= 1:
+            return _annotate_selected_metric(
+                provider_node,
+                metric_name=metric_name,
+                selection_policy="retain_provider_when_pit_market_cap_is_only_proxy",
+                comparison_node=sec_or_market_node,
+                extra_quality_flags=["provider_direct_retained_due_to_proxy_pit_market_cap"],
+            )
+        if preferred_rank >= 1:
+            return _annotate_selected_metric(
+                sec_or_market_node or provider_node,
+                metric_name=metric_name,
+                selection_policy="use_proxy_pit_market_cap_when_no_provider_fallback_exists",
+                comparison_node=provider_node,
+                extra_quality_flags=["proxy_pit_market_cap_used_due_to_missing_provider_fallback"],
+            )
+        return _annotate_selected_metric(
+            provider_node,
+            metric_name=metric_name,
+            selection_policy="fallback_to_provider_when_pit_market_cap_unavailable",
+            comparison_node=sec_or_market_node,
+            extra_quality_flags=["provider_direct_retained_due_to_unavailable_pit_market_cap"],
+        )
+
+    if metric_name in {
+        "operating.revenue_ttm_provider_direct",
+        "operating.revenue_ttm_lag_1y",
+        "earnings.net_income_ttm_provider_direct",
+        "liquidity.cash_and_short_term_investments_provider_direct",
+    }:
+        if preferred_rank >= 1:
+            return _annotate_selected_metric(
+                sec_or_market_node or provider_node,
+                metric_name=metric_name,
+                selection_policy="prefer_sec_companyfacts_reconstruction",
+                comparison_node=provider_node,
+                extra_quality_flags=["provider_direct_superseded_by_sec_companyfacts"],
+            )
+        return _annotate_selected_metric(
+            provider_node,
+            metric_name=metric_name,
+            selection_policy="fallback_to_provider_when_sec_unavailable",
+            comparison_node=sec_or_market_node,
+            extra_quality_flags=["provider_direct_retained_due_to_unavailable_sec_companyfacts"],
+        )
+
+    if metric_name == "operating.ebitda_ltm_provider_direct":
+        if preferred_rank >= 2:
+            return _annotate_selected_metric(
+                sec_or_market_node or provider_node,
+                metric_name=metric_name,
+                selection_policy="prefer_exact_sec_ebitda_bridge",
+                comparison_node=provider_node,
+                extra_quality_flags=["provider_direct_superseded_by_exact_sec_bridge"],
+            )
+        if provider_rank >= 1:
+            return _annotate_selected_metric(
+                provider_node,
+                metric_name=metric_name,
+                selection_policy="retain_provider_when_sec_ebitda_is_partial_or_unavailable",
+                comparison_node=sec_or_market_node,
+                extra_quality_flags=["provider_direct_retained_due_to_partial_sec_ebitda_bridge"],
+            )
+        return _annotate_selected_metric(
+            sec_or_market_node or provider_node,
+            metric_name=metric_name,
+            selection_policy="use_partial_sec_ebitda_when_no_provider_fallback_exists",
+            comparison_node=provider_node,
+        )
+
+    if metric_name == "capital_structure.total_debt_provider_direct":
+        if preferred_rank >= 2:
+            return _annotate_selected_metric(
+                sec_or_market_node or provider_node,
+                metric_name=metric_name,
+                selection_policy="prefer_exact_sec_debt_stack",
+                comparison_node=provider_node,
+                extra_quality_flags=["provider_direct_superseded_by_exact_sec_debt_stack"],
+            )
+        if provider_rank >= 1:
+            return _annotate_selected_metric(
+                provider_node,
+                metric_name=metric_name,
+                selection_policy="retain_provider_when_sec_debt_stack_is_partial_or_unavailable",
+                comparison_node=sec_or_market_node,
+                extra_quality_flags=["provider_direct_retained_due_to_partial_sec_debt_stack"],
+            )
+        return _annotate_selected_metric(
+            sec_or_market_node or provider_node,
+            metric_name=metric_name,
+            selection_policy="use_partial_sec_debt_stack_when_no_provider_fallback_exists",
+            comparison_node=provider_node,
+        )
+
+    return _annotate_selected_metric(
+        sec_or_market_node or provider_node,
+        metric_name=metric_name,
+        selection_policy="default_selection_policy",
+        comparison_node=provider_node if sec_or_market_node is not provider_node else None,
+    )
+
+

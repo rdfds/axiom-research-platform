@@ -732,3 +732,304 @@ def _retirement_table_multiplier(table_text: str) -> float:
     return 1.0
 
 
+def _extract_retirement_note_components_from_html(
+    *,
+    filing: dict[str, Any],
+    html: str,
+    as_of_time: str,
+) -> dict[str, Any] | None:
+    if not _sec_helpers_available():
+        return None
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        html_tables = soup.find_all("table")
+        dataframes = pd.read_html(StringIO(html), displayed_only=False)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001
+        return None
+    if not dataframes:
+        return None
+    as_of_year = str(as_of_time[:4])
+    best: tuple[tuple[int, float], dict[str, Any]] | None = None
+    for table_index, dataframe in enumerate(dataframes):
+        table_html = html_tables[table_index] if table_index < len(html_tables) else None
+        table_text = ""
+        if table_html is not None:
+            table_text = " ".join(table_html.get_text(" ", strip=True).split())
+        if table_text and not any(cue in table_text.lower() for cue in RETIREMENT_NOTE_TABLE_CUES):
+            continue
+        frame = dataframe.copy()
+        frame.columns = [_flatten_note_column_name(col) for col in frame.columns]
+        if frame.empty or len(frame.columns) < 2:
+            continue
+        label_col = frame.columns[0]
+        category_columns: dict[str, list[tuple[int, str]]] = {"pension": [], "other_postretirement": []}
+        for idx, column_name in enumerate(frame.columns[1:], start=1):
+            category = _retirement_note_column_category(column_name)
+            if category is not None:
+                category_columns[category].append((idx, column_name))
+        if not category_columns["pension"] and not category_columns["other_postretirement"]:
+            continue
+        for category, cols in list(category_columns.items()):
+            year_specific = [(idx, name) for idx, name in cols if as_of_year in name]
+            if year_specific:
+                category_columns[category] = year_specific
+        multiplier = _retirement_table_multiplier(table_text or frame.to_string())
+        direct_values: dict[str, tuple[float, dict[str, Any]]] = {}
+        obligations: dict[str, tuple[float, dict[str, Any]]] = {}
+        assets: dict[str, tuple[float, dict[str, Any]]] = {}
+
+        for _, raw_row in frame.iterrows():
+            label = _normalize_note_label(raw_row[label_col])
+            if not label or label.lower() in {"nan", "none"}:
+                continue
+            row_values: dict[str, float] = {}
+            row_columns: dict[str, list[str]] = {}
+            for category, cols in category_columns.items():
+                numeric_values: list[float] = []
+                used_headers: list[str] = []
+                for idx, header in cols:
+                    numeric = _coerce_note_numeric(raw_row.iloc[idx], multiplier=multiplier)
+                    if numeric is not None:
+                        numeric_values.append(numeric)
+                        used_headers.append(header)
+                if numeric_values:
+                    row_values[category] = float(sum(numeric_values))
+                    row_columns[category] = used_headers
+            if not row_values:
+                continue
+            if any(pattern.search(label) for pattern in RETIREMENT_FUNDED_STATUS_LABEL_PATTERNS):
+                for category, value in row_values.items():
+                    direct_values[category] = (
+                        max(-value, 0.0),
+                        {
+                            "row_label": label,
+                            "mode": "funded_status_row",
+                            "headers": row_columns.get(category),
+                        },
+                    )
+                continue
+            if any(pattern.search(label) for pattern in RETIREMENT_DIRECT_LIABILITY_LABEL_PATTERNS):
+                for category, value in row_values.items():
+                    direct_values[category] = (
+                        max(value, 0.0),
+                        {
+                            "row_label": label,
+                            "mode": "direct_liability_row",
+                            "headers": row_columns.get(category),
+                        },
+                    )
+                continue
+            if any(pattern.search(label) for pattern in RETIREMENT_BENEFIT_OBLIGATION_LABEL_PATTERNS):
+                for category, value in row_values.items():
+                    obligations[category] = (
+                        value,
+                        {
+                            "row_label": label,
+                            "mode": "benefit_obligation_row",
+                            "headers": row_columns.get(category),
+                        },
+                    )
+                continue
+            if any(pattern.search(label) for pattern in RETIREMENT_PLAN_ASSETS_LABEL_PATTERNS):
+                for category, value in row_values.items():
+                    assets[category] = (
+                        value,
+                        {
+                            "row_label": label,
+                            "mode": "plan_assets_row",
+                            "headers": row_columns.get(category),
+                        },
+                    )
+
+        components: dict[str, dict[str, Any]] = {}
+        for category in ("pension", "other_postretirement"):
+            if category in direct_values:
+                value, source_meta = direct_values[category]
+                components[category] = {
+                    "value": value,
+                    "source_meta": source_meta,
+                }
+            elif category in obligations and category in assets:
+                obligation_value, obligation_meta = obligations[category]
+                asset_value, asset_meta = assets[category]
+                components[category] = {
+                    "value": max(obligation_value - asset_value, 0.0),
+                    "source_meta": {
+                        "mode": "benefit_obligation_minus_plan_assets",
+                        "benefit_obligation": obligation_meta,
+                        "plan_assets": asset_meta,
+                    },
+                }
+        if not components:
+            continue
+        score = 0
+        for component in components.values():
+            mode = component["source_meta"]["mode"]
+            if mode == "funded_status_row":
+                score += 6
+            elif mode == "direct_liability_row":
+                score += 5
+            else:
+                score += 3
+        if "pension" in components:
+            score += 4
+        if "other_postretirement" in components:
+            score += 2
+        pension_value = float(components["pension"]["value"]) if "pension" in components else None
+        candidate = {
+            "pension_value": pension_value,
+            "other_postretirement_value": (
+                float(components["other_postretirement"]["value"])
+                if "other_postretirement" in components
+                else None
+            ),
+            "component_meta": {
+                "mode": "filing_note_retirement_split",
+                "table_index": table_index,
+                "table_excerpt": table_text[:4000],
+                "filing": filing,
+                "pension": components.get("pension"),
+                "other_postretirement": components.get("other_postretirement"),
+            },
+        }
+        rank = (score, pension_value or 0.0)
+        if best is None or rank > best[0]:
+            best = (rank, candidate)
+    return None if best is None else best[1]
+
+
+def _retirement_regime_hint_from_html(html: str) -> dict[str, Any] | None:
+    lower = " ".join(html.lower().split())
+    has_defined_contribution = "defined contribution" in lower or "defined-contribution" in lower
+    has_defined_benefit_signal = any(
+        cue in lower
+        for cue in (
+            "defined benefit",
+            "funded status",
+            "projected benefit obligation",
+            "accumulated benefit obligation",
+            "plan assets",
+            "other postretirement benefit obligation",
+            "postretirement benefit obligation",
+            "pension liability",
+            "net periodic pension",
+        )
+    )
+    if not has_defined_contribution or has_defined_benefit_signal:
+        return None
+    return {
+        "regime_hint": "defined_contribution_only",
+        "text_excerpt": lower[:1000],
+    }
+
+
+def _load_retirement_note_components(
+    *,
+    cik: str | None,
+    as_of_time: str,
+    session: Any,
+    cache_dir: Path | None,
+) -> dict[str, Any] | None:
+    if cik is None or not _sec_helpers_available():
+        return None
+    as_of_dt = _parse_iso_date(as_of_time)
+    if as_of_dt is None:
+        return None
+    filings = _recent_sec_filings(
+        cik=cik,
+        as_of_date=as_of_dt.date(),
+        session=session,
+        cache_dir=cache_dir,
+    )
+    if not filings:
+        return None
+    hinted_regime: dict[str, Any] | None = None
+    for filing_index, filing in enumerate(filings[:RETIREMENT_NOTE_MAX_FILINGS_TO_SCAN]):
+        filed_dt = _parse_iso_date(filing.get("filing_date"))
+        if filed_dt is None:
+            continue
+        filing_age_days = (as_of_dt - filed_dt).days
+        if filing_age_days < 0 or filing_age_days > RETIREMENT_NOTE_CARRYFORWARD_MAX_AGE_DAYS:
+            continue
+        html = _fetch_sec_primary_document(filing, session=session, cache_dir=cache_dir)
+        if not html:
+            continue
+        parsed = _extract_retirement_note_components_from_html(
+            filing=filing,
+            html=html,
+            as_of_time=as_of_time,
+        )
+        if parsed is not None:
+            component_meta = dict(parsed.get("component_meta") or {})
+            component_meta["filing_age_days"] = filing_age_days
+            component_meta["carryforward_used"] = filing_index > 0
+            component_meta["carryforward_source"] = "prior_filing_note" if filing_index > 0 else "current_filing_note"
+            parsed["component_meta"] = component_meta
+            parsed["regime_hint"] = "pension_proxy_split_note"
+            return parsed
+        hint = _retirement_regime_hint_from_html(html)
+        if hint is not None and hinted_regime is None:
+            hinted_regime = {
+                "pension_value": None,
+                "other_postretirement_value": None,
+                "component_meta": {
+                    "mode": "defined_contribution_only_filing_text",
+                    "filing": filing,
+                    "filing_age_days": filing_age_days,
+                    "carryforward_used": filing_index > 0,
+                    "carryforward_source": "prior_filing_note" if filing_index > 0 else "current_filing_note",
+                    "text_excerpt": hint["text_excerpt"],
+                },
+                "regime_hint": hint["regime_hint"],
+            }
+    return hinted_regime
+
+
+def _registry_metric(registry: Dict[str, Any], metric_key: str) -> Dict[str, str]:
+    metrics = registry.get("metrics") if isinstance(registry, dict) else None
+    entry = metrics.get(metric_key) if isinstance(metrics, dict) else None
+    if not isinstance(entry, dict):
+        return {
+            "status": "partially_feasible",
+            "promotion_rule": "registry_entry_missing_defaulted",
+        }
+    return {
+        "status": str(entry.get("status") or "partially_feasible"),
+        "promotion_rule": str(entry.get("promotion_rule") or "registry_entry_missing_defaulted"),
+    }
+
+
+def _load_market_availability_overrides(path: Path | None) -> Dict[str, Any]:
+    if path is None or not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _infer_companyfacts_path_from_features(features: Dict[str, Any]) -> Path | None:
+    candidate_metric_names = [
+        "liquidity.restricted_cash_sec_exact",
+        "liquidity.marketable_securities_sec_exact",
+        "capital_structure.lease_liabilities_sec_exact",
+    ]
+    for metric_name in candidate_metric_names:
+        node = features.get(metric_name) or {}
+        breakdown = node.get("component_breakdown") or {}
+        path_text = breakdown.get("companyfacts_path")
+        if path_text:
+            path = Path(path_text)
+            if path.exists():
+                return path
+        for provenance in node.get("provenance") or []:
+            source = provenance.get("source")
+            if not source or not str(source).endswith(".json"):
+                continue
+            path = Path(source)
+            if path.exists():
+                return path
+    return None
+
+
