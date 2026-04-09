@@ -47,3 +47,14 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def _date_expr(col: str) -> str:
+    # Handle common FISD date formats.
+    return (
+        f"coalesce("
+        f"try_strptime({col}, '%Y-%m-%d'),"
+        f"try_strptime({col}, '%m/%d/%Y'),"
+        f"try_strptime({col}, '%Y%m%d')"
+        f")"
+    )
+
+

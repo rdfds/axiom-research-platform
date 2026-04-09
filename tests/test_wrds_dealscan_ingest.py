@@ -216,3 +216,14 @@ def test_snapshot_prefers_active_dealscan_artifact_when_present(tmp_path: Path):
     assert resolved == active_path
 
 
+def test_snapshot_falls_back_to_full_dealscan_artifact_when_active_missing(tmp_path: Path):
+    module = _load_snapshot_module()
+    module.ROOT = tmp_path
+
+    dealscan_dir = tmp_path / "data" / "wrds" / "dealscan"
+    dealscan_dir.mkdir(parents=True, exist_ok=True)
+    full_path = dealscan_dir / "loanconnector_revolver_facilities.parquet"
+    full_path.write_text("full")
+
+    resolved = module._default_dealscan_revolver_path("2025-12-31")
+    assert resolved == full_path

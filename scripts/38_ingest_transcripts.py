@@ -109,7 +109,7 @@ def iter_input_files(path: Path, fmt: str) -> List[Path]:
     raise FileNotFoundError(f"No transcript files found in {path}")
 
 
-def load_jsonl_docs(path: Path) :
+def load_jsonl_docs(path: Path) -> List[Dict]:
     docs: List[Dict] = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
