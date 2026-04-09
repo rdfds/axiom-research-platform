@@ -295,3 +295,42 @@ Temporal semantics:
 - `valid_to`
 - `source_system`
 
+## As-Of Enforcement (DuckDB Pattern)
+
+All downstream reads must apply:
+
+- `available_time <= as_of`
+- `event_time <= as_of`
+- latest record by `(natural_key, available_time, ingestion_time, version_id)`
+
+Example:
+
+```sql
+WITH filtered AS (
+  SELECT *
+  FROM warehouse_financials
+  WHERE available_time <= :as_of
+    AND event_time     <= :as_of
+),
+ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (
+           PARTITION BY company_id, event_time, statement_type, line_item
+           ORDER BY available_time DESC, ingestion_time DESC, version_id DESC
+         ) AS rn
+  FROM filtered
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+
+Natural keys by table:
+
+- Financials: `(company_id, event_time, statement_type, line_item)`
+- Prices: `(security_id, event_time)`
+- Rates: `(instrument_id, event_time, tenor)`
+- Estimates: `(company_id, metric, period, available_time)`
+- Corp actions: `(company_id, action_type, event_time, announcement_date)`
+- M&A: `(deal_id, announcement_date)`
+- Documents: `(document_id, version_id)`
+- Chunks: `(chunk_id, version_id)`
+- Signals: `(signal_id, chunk_id, version_id)`
