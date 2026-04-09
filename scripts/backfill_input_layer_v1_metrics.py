@@ -585,3 +585,30 @@ def _resolve_local_optional_path(explicit_path: str | None, default_path: Path) 
     return None
 
 
+def _parse_iso_date(text: str | None) -> date | None:
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(str(text)[:10])
+    except ValueError:
+        return None
+
+
+def _load_companyfacts(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _candidate_units_map(companyfacts: dict, concept_name: str, taxonomy: str | None = None) -> dict | None:
+    taxonomies = [taxonomy] if taxonomy else ["us-gaap", "dei", "ifrs-full"]
+    for current_taxonomy in taxonomies:
+        facts = (companyfacts.get("facts") or {}).get(current_taxonomy) or {}
+        if concept_name in facts:
+            return facts[concept_name].get("units") or {}
+    return None
+
+
