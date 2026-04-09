@@ -63,3 +63,10 @@ def _support(node: dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _approx_equal(left: float | None, right: float | None, tolerance: float = 1e-6) :
+    if left is None or right is None:
+        return left is right
+    scale = max(1.0, abs(left), abs(right))
+    return abs(left - right) <= tolerance * scale
+
+
