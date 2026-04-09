@@ -476,3 +476,85 @@ def _latest_node_timestamp(node: Dict[str, Any]) -> datetime | None:
     return latest
 
 
+def _companyfacts_candidate_is_fresher(
+    *,
+    existing_node: Dict[str, Any],
+    companyfacts_meta: Dict[str, Any] | None,
+    candidate_value: float | None,
+) -> bool:
+    if candidate_value is None:
+        return False
+    existing_value = _value(existing_node)
+    if existing_value is None:
+        return True
+    existing_ts = _latest_node_timestamp(existing_node)
+    companyfacts_ts = _latest_recursive_timestamp(companyfacts_meta)
+    if companyfacts_ts is None:
+        return False
+    if existing_ts is None:
+        return not _approximately_equal(existing_value, candidate_value)
+    if companyfacts_ts <= existing_ts:
+        return False
+    gap_days = (companyfacts_ts - existing_ts).days
+    return gap_days >= FRESHER_COMPANYFACTS_OVERRIDE_MIN_GAP_DAYS and not _approximately_equal(
+        existing_value,
+        candidate_value,
+    )
+
+
+def _load_companyfacts(path: Path | None) -> Dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        completed = subprocess.run(
+            ["/bin/cat", str(path)],
+            capture_output=True,
+            timeout=COMPANYFACTS_LOAD_TIMEOUT_SECONDS,
+            check=True,
+        )
+        return json.loads(completed.stdout)
+    except subprocess.TimeoutExpired:
+        return None
+    except subprocess.CalledProcessError:
+        return None
+    except _CompanyProcessingTimeout:
+        return None
+    try:
+        with _company_processing_guard(COMPANYFACTS_LOAD_TIMEOUT_SECONDS):
+            return json.loads(path.read_text())
+    except _CompanyProcessingTimeout:
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _companyfacts_has_any_concepts(companyfacts: Dict[str, Any] | None, concept_names: list[str]) -> bool:
+    if companyfacts is None:
+        return False
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        facts = (companyfacts.get("facts") or {}).get(taxonomy) or {}
+        for concept_name in concept_names:
+            if concept_name in facts:
+                return True
+    return False
+
+
+def _companyfacts_may_need_retirement_note_split(companyfacts: Dict[str, Any] | None) -> bool:
+    if companyfacts is None:
+        return False
+    has_exact = _companyfacts_has_any_concepts(
+        companyfacts,
+        NET_PENSION_LIABILITY_EXACT_TOTAL_CONCEPTS
+        + NET_PENSION_LIABILITY_EXACT_CURRENT_CONCEPTS
+        + NET_PENSION_LIABILITY_EXACT_NONCURRENT_CONCEPTS,
+    )
+    if has_exact:
+        return False
+    return _companyfacts_has_any_concepts(
+        companyfacts,
+        NET_PENSION_LIABILITY_PROXY_TOTAL_CONCEPTS
+        + NET_PENSION_LIABILITY_PROXY_CURRENT_CONCEPTS
+        + NET_PENSION_LIABILITY_PROXY_NONCURRENT_CONCEPTS,
+    )
+
+
