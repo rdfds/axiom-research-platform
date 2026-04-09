@@ -33,3 +33,10 @@ def _slug(name: str) -> str:
     return re.sub(r"_+", "_", text).strip("_").lower()
 
 
+def _normalize_id(series: pd.Series) -> pd.Series:
+    raw = series.astype(str).str.strip()
+    raw = raw.mask(raw.isin({"", "nan", "None", "<NA>"}))
+    raw = raw.str.replace(r"\.0$", "", regex=True)
+    return raw
+
+
