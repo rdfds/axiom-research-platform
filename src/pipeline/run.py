@@ -59,3 +59,43 @@ def _load_outcomes_table_cached(path_str: str) -> pd.DataFrame:
     return table
 
 
+def _load_outcomes_table(path: Path) -> pd.DataFrame:
+    # Keep one in-memory copy per outcomes path for faster repeated precedent calls.
+    return _load_outcomes_table_cached(str(path.resolve()))
+
+
+@lru_cache(maxsize=8)
+def _load_precedent_runtime_cached(path_str: str) :
+    """Build once per outcomes path: historical stores + retrieval index."""
+    from .historical_stores import build_historical_stores_from_outcomes
+    from .precedent_brain import augment_precedent_state_vector_columns, build_precedent_retrieval_index
+
+    started = time.perf_counter()
+    _precedent_debug("load_precedent_runtime_cached:start", path=path_str)
+    full_df = _load_outcomes_table_cached(path_str)
+    full_df = augment_precedent_state_vector_columns(full_df)
+    stores_started = time.perf_counter()
+    _precedent_debug("historical_stores:start", path=path_str, rows=int(len(full_df)))
+    stores = build_historical_stores_from_outcomes(full_df, dataset_version=path_str)
+    _precedent_debug(
+        "historical_stores:done",
+        path=path_str,
+        elapsed_seconds=round(time.perf_counter() - stores_started, 6),
+    )
+    index_started = time.perf_counter()
+    _precedent_debug("retrieval_index:start", path=path_str, rows=int(len(full_df)))
+    retrieval_index = build_precedent_retrieval_index(full_df)
+    _precedent_debug(
+        "retrieval_index:done",
+        path=path_str,
+        index_rows=int(getattr(retrieval_index, "n_rows", 0) or 0),
+        elapsed_seconds=round(time.perf_counter() - index_started, 6),
+    )
+    _precedent_debug(
+        "load_precedent_runtime_cached:done",
+        path=path_str,
+        elapsed_seconds=round(time.perf_counter() - started, 6),
+    )
+    return stores, retrieval_index
+
+
