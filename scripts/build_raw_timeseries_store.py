@@ -27,3 +27,11 @@ def parse_dt(s: pd.Series) -> pd.Series:
     return pd.to_datetime(s, errors="coerce", utc=True)
 
 
+def load_parquet_cols(path: Path, cols: List[str]) -> pd.DataFrame:
+    pf = pq.ParquetFile(path)
+    available = [c for c in cols if c in pf.schema.names]
+    if not available:
+        return pd.DataFrame()
+    return pd.read_parquet(path, columns=available)
+
+
