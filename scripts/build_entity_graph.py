@@ -44,3 +44,45 @@ def build_edges(df: pd.DataFrame, field: str, related_type: str, source_path: Pa
     return out
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--map-path", default="data/mappings/entity_id_map.parquet")
+    parser.add_argument("--out", default="data/inputs_layer/entity_graph.parquet")
+    args = parser.parse_args()
+
+    map_path = ROOT / args.map_path
+    out_path = ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not map_path.exists():
+        raise FileNotFoundError(f"Missing mapping file: {map_path}")
+
+    df = pd.read_parquet(map_path)
+    df = df.reset_index().rename(columns={"index": "row_id"})
+
+    for c in ["namedt", "nameendt"]:
+        if c in df.columns:
+            df[c] = parse_dt(df[c])
+
+    fields: Dict[str, str] = {
+        "permno": "permno",
+        "permco": "permco",
+        "cik": "cik",
+        "ticker": "ticker",
+        "cusip": "cusip",
+    }
+
+    parts: List[pd.DataFrame] = []
+    for field, related_type in fields.items():
+        if field in df.columns:
+            part = build_edges(df, field, related_type, map_path)
+            parts.append(part)
+
+    if not parts:
+        raise RuntimeError("No mapping fields found to build EntityGraph.")
+
+    out_df = pd.concat(parts, ignore_index=True)
+    out_df.to_parquet(out_path, index=False)
+    print(f"Saved EntityGraph -> {out_path} ({len(out_df):,} rows)")
+
+
