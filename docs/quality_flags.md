@@ -52,3 +52,8 @@ apply to a single record.
 - `deal_failed`
 - `value_missing`
 
+## Usage Rules
+
+- Never allow silent failure: errors must emit a flag.
+- Conflicts should prefer earliest `available_time` unless overridden.
+- Missing data must propagate downstream via `quality_flags`.

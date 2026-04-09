@@ -1071,7 +1071,7 @@ def _latest_companyfacts_point_value(
                         "taxonomy": taxonomy,
                         "end": end,
                         "filed": filed,
-                        "fy": entry['fy'],
+                        "fy": entry.get("fy"),
                         "fp": entry.get("fp"),
                         "frame": entry.get("frame"),
                         "form": entry.get("form"),
