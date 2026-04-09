@@ -1085,3 +1085,416 @@ def _latest_companyfacts_point_value(
     return value, meta
 
 
+def _effective_net_pension_liability_value(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_time: str,
+    retirement_note_loader: Callable[[], Dict[str, Any] | None] | None = None,
+) -> Dict[str, Any]:
+    retirement_note_state: Any = _COMPANYFACTS_UNSET
+
+    def _get_retirement_note_components() -> Dict[str, Any] | None:
+        nonlocal retirement_note_state
+        if retirement_note_state is _COMPANYFACTS_UNSET:
+            if retirement_note_loader is None:
+                retirement_note_state = None
+            else:
+                try:
+                    with _company_processing_guard(RETIREMENT_NOTE_PARSE_TIMEOUT_SECONDS):
+                        retirement_note_state = retirement_note_loader()
+                except _CompanyProcessingTimeout:
+                    retirement_note_state = None
+                except Exception:  # noqa: BLE001
+                    retirement_note_state = None
+        return retirement_note_state
+
+    def _with_regime(
+        payload: Dict[str, Any],
+        *,
+        regime: str,
+        regime_source: str,
+        regime_meta: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        enriched = dict(payload)
+        enriched["retirement_regime"] = regime
+        enriched["retirement_regime_source"] = regime_source
+        enriched["retirement_regime_component_meta"] = regime_meta
+        return enriched
+
+    if companyfacts is None and retirement_note_loader is None:
+        return _with_regime({
+            "value": None,
+            "exact": False,
+            "source_metric": None,
+            "formula": "unavailable",
+            "support_override": None,
+            "component_meta": None,
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": None,
+            "other_postretirement_component_meta": None,
+            "combined_retirement_value": None,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": None,
+            "combined_retirement_formula": "unavailable",
+            "combined_retirement_support_override": None,
+            "combined_retirement_component_meta": None,
+        }, regime="retirement_not_surfaced", regime_source="unavailable")
+
+    exact_total_value, exact_total_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_EXACT_TOTAL_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+    exact_current_value, exact_current_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_EXACT_CURRENT_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+    exact_noncurrent_value, exact_noncurrent_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_EXACT_NONCURRENT_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+    proxy_total_value, proxy_total_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_PROXY_TOTAL_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+    proxy_current_value, proxy_current_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_PROXY_CURRENT_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+    proxy_noncurrent_value, proxy_noncurrent_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        NET_PENSION_LIABILITY_PROXY_NONCURRENT_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+
+    def _normalized_nonnegative(value: float | None) -> tuple[float | None, bool]:
+        if value is None:
+            return None, False
+        if value < 0:
+            return 0.0, True
+        return float(value), False
+
+    normalized_exact_total, exact_total_clipped = _normalized_nonnegative(exact_total_value)
+    if normalized_exact_total is not None:
+        return _with_regime({
+            "value": normalized_exact_total,
+            "exact": True,
+            "source_metric": "capital_structure.net_pension_liability_companyfacts_exact",
+            "formula": "latest_exact_net_pension_liability_on_or_before_asof",
+            "support_override": "overfunded_pension_excluded_from_liability_view" if exact_total_clipped else None,
+            "component_meta": {
+                "mode": "exact_total_companyfacts",
+                "exact_total": exact_total_meta,
+            },
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": None,
+            "other_postretirement_component_meta": None,
+            "combined_retirement_value": normalized_exact_total,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": "capital_structure.combined_retirement_liability_from_pension_exact",
+            "combined_retirement_formula": "net_pension_liability_exact + 0_assumed_missing_other_postretirement",
+            "combined_retirement_support_override": "combined_retirement_uses_pension_only",
+            "combined_retirement_component_meta": {
+                "mode": "pension_only_exact_companyfacts",
+                "pension_exact": exact_total_meta,
+                "other_postretirement_missing_assumed_zero": True,
+            },
+        }, regime="pension_exact", regime_source="companyfacts_exact_total", regime_meta={
+            "mode": "pension_exact_companyfacts",
+            "exact_total": exact_total_meta,
+        })
+
+    if exact_current_value is not None or exact_noncurrent_value is not None:
+        current_component, current_clipped = _normalized_nonnegative(exact_current_value)
+        noncurrent_component, noncurrent_clipped = _normalized_nonnegative(exact_noncurrent_value)
+        value = float((current_component or 0.0) + (noncurrent_component or 0.0))
+        exact_ready = exact_current_value is not None or exact_noncurrent_value is not None
+        override = None
+        if current_clipped or noncurrent_clipped:
+            override = "overfunded_pension_excluded_from_liability_view"
+            exact_ready = False
+        elif exact_current_value is None or exact_noncurrent_value is None:
+            override = "single_pension_liability_component"
+        return _with_regime({
+            "value": value,
+            "exact": exact_ready,
+            "source_metric": "capital_structure.net_pension_liability_companyfacts_exact",
+            "formula": "sum_available_exact_pension_liability_components",
+            "support_override": override,
+            "component_meta": {
+                "mode": "exact_split_companyfacts",
+                "current": exact_current_meta,
+                "noncurrent": exact_noncurrent_meta,
+            },
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": None,
+            "other_postretirement_component_meta": None,
+            "combined_retirement_value": value,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": "capital_structure.combined_retirement_liability_from_pension_exact",
+            "combined_retirement_formula": "net_pension_liability_exact + 0_assumed_missing_other_postretirement",
+            "combined_retirement_support_override": (
+                "combined_retirement_uses_pension_only"
+                + (f";{override}" if override else "")
+            ),
+            "combined_retirement_component_meta": {
+                "mode": "pension_only_exact_companyfacts",
+                "pension_exact": {
+                    "current": exact_current_meta,
+                    "noncurrent": exact_noncurrent_meta,
+                },
+                "other_postretirement_missing_assumed_zero": True,
+            },
+        }, regime="pension_exact", regime_source="companyfacts_exact_split", regime_meta={
+            "mode": "pension_exact_companyfacts",
+            "current": exact_current_meta,
+            "noncurrent": exact_noncurrent_meta,
+            "support_override": override,
+        })
+
+    retirement_note_components = _get_retirement_note_components()
+    note_pension_value = None if retirement_note_components is None else retirement_note_components.get("pension_value")
+    note_other_postretirement_value = (
+        None if retirement_note_components is None else retirement_note_components.get("other_postretirement_value")
+    )
+    note_component_meta = None if retirement_note_components is None else retirement_note_components.get("component_meta")
+    note_regime_hint = None if retirement_note_components is None else retirement_note_components.get("regime_hint")
+
+    if note_pension_value is not None:
+        combined_retirement_value = float(note_pension_value + (note_other_postretirement_value or 0.0))
+        return _with_regime({
+            "value": float(note_pension_value),
+            "exact": False,
+            "source_metric": "capital_structure.net_pension_liability_filing_note_proxy",
+            "formula": "latest_filing_note_defined_benefit_pension_liability_on_or_before_asof",
+            "support_override": (
+                "filing_note_defined_benefit_pension_proxy"
+                + (";other_postretirement_excluded_from_pension_metric" if note_other_postretirement_value is not None else "")
+            ),
+            "component_meta": {
+                "mode": "filing_note_split_components",
+                "filing_note_reference": note_component_meta,
+                "combined_proxy_reference": {
+                    "proxy_total": proxy_total_meta,
+                    "proxy_current": proxy_current_meta,
+                    "proxy_noncurrent": proxy_noncurrent_meta,
+                }
+                if proxy_total_meta is not None or proxy_current_meta is not None or proxy_noncurrent_meta is not None
+                else None,
+            },
+            "other_postretirement_value": (
+                None if note_other_postretirement_value is None else float(note_other_postretirement_value)
+            ),
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": (
+                "capital_structure.other_postretirement_benefit_liability_filing_note_proxy"
+                if note_other_postretirement_value is not None
+                else None
+            ),
+            "other_postretirement_formula": (
+                "latest_filing_note_other_postretirement_liability_on_or_before_asof"
+                if note_other_postretirement_value is not None
+                else "unavailable"
+            ),
+            "other_postretirement_support_override": (
+                "filing_note_other_postretirement_proxy"
+                if note_other_postretirement_value is not None
+                else None
+            ),
+            "other_postretirement_component_meta": (
+                {
+                    "mode": "filing_note_split_components",
+                    "filing_note_reference": note_component_meta,
+                }
+                if note_other_postretirement_value is not None
+                else None
+            ),
+            "combined_retirement_value": combined_retirement_value,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": "capital_structure.combined_retirement_liability_filing_note_proxy",
+            "combined_retirement_formula": (
+                "latest_filing_note_defined_benefit_pension_plus_other_postretirement_liability_on_or_before_asof"
+                if note_other_postretirement_value is not None
+                else "latest_filing_note_defined_benefit_pension_liability_on_or_before_asof + 0_assumed_missing_other_postretirement"
+            ),
+            "combined_retirement_support_override": (
+                "filing_note_combined_retirement_proxy"
+                if note_other_postretirement_value is not None
+                else "filing_note_combined_retirement_uses_pension_only"
+            ),
+            "combined_retirement_component_meta": {
+                "mode": "filing_note_split_components",
+                "filing_note_reference": note_component_meta,
+                "proxy_reference": {
+                    "proxy_total": proxy_total_meta,
+                    "proxy_current": proxy_current_meta,
+                    "proxy_noncurrent": proxy_noncurrent_meta,
+                }
+                if proxy_total_meta is not None or proxy_current_meta is not None or proxy_noncurrent_meta is not None
+                else None,
+                "other_postretirement_missing_assumed_zero": note_other_postretirement_value is None,
+            },
+        }, regime="pension_proxy_split_note", regime_source="filing_note_split", regime_meta={
+            "mode": "filing_note_split",
+            "filing_note_reference": note_component_meta,
+            "carryforward_used": bool((note_component_meta or {}).get("carryforward_used")),
+            "filing_age_days": (note_component_meta or {}).get("filing_age_days"),
+        })
+
+    normalized_proxy_total, proxy_total_clipped = _normalized_nonnegative(proxy_total_value)
+    if normalized_proxy_total is not None:
+        return _with_regime({
+            "value": None,
+            "exact": False,
+            "source_metric": "capital_structure.net_pension_liability_companyfacts_proxy",
+            "formula": "combined_proxy_not_promoted_without_pension_specific_or_split_filing_support",
+            "support_override": (
+                "combined_pension_and_postretirement_liability_not_separable"
+                + (";overfunded_pension_excluded_from_liability_view" if proxy_total_clipped else "")
+            ),
+            "component_meta": {
+                "mode": "proxy_total_companyfacts_unseparated",
+                "proxy_total": proxy_total_meta,
+                "filing_note_reference": note_component_meta,
+            },
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": "combined_pension_and_postretirement_liability_not_separable",
+            "other_postretirement_component_meta": {
+                "mode": "proxy_total_companyfacts_unseparated",
+                "proxy_total": proxy_total_meta,
+                "filing_note_reference": note_component_meta,
+            },
+            "combined_retirement_value": normalized_proxy_total,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": "capital_structure.combined_retirement_liability_companyfacts_proxy",
+            "combined_retirement_formula": "latest_combined_retirement_liability_on_or_before_asof",
+            "combined_retirement_support_override": (
+                "combined_retirement_proxy_companyfacts_unseparated"
+                + (";overfunded_retirement_liability_excluded_from_liability_view" if proxy_total_clipped else "")
+            ),
+            "combined_retirement_component_meta": {
+                "mode": "proxy_total_companyfacts_unseparated",
+                "proxy_total": proxy_total_meta,
+                "filing_note_reference": note_component_meta,
+            },
+        }, regime="combined_retirement_only", regime_source="companyfacts_combined_proxy_total", regime_meta={
+            "mode": "combined_retirement_only",
+            "proxy_total": proxy_total_meta,
+            "filing_note_reference": note_component_meta,
+        })
+
+    if proxy_current_value is not None or proxy_noncurrent_value is not None:
+        current_component, current_clipped = _normalized_nonnegative(proxy_current_value)
+        noncurrent_component, noncurrent_clipped = _normalized_nonnegative(proxy_noncurrent_value)
+        combined_proxy_value = float((current_component or 0.0) + (noncurrent_component or 0.0))
+        return _with_regime({
+            "value": None,
+            "exact": False,
+            "source_metric": "capital_structure.net_pension_liability_companyfacts_proxy",
+            "formula": "combined_proxy_not_promoted_without_pension_specific_or_split_filing_support",
+            "support_override": (
+                "combined_pension_and_postretirement_liability_not_separable"
+                + (";overfunded_pension_excluded_from_liability_view" if current_clipped or noncurrent_clipped else "")
+            ),
+            "component_meta": {
+                "mode": "proxy_split_companyfacts_unseparated",
+                "current": proxy_current_meta,
+                "noncurrent": proxy_noncurrent_meta,
+                "filing_note_reference": note_component_meta,
+            },
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": "combined_pension_and_postretirement_liability_not_separable",
+            "other_postretirement_component_meta": {
+                "mode": "proxy_split_companyfacts_unseparated",
+                "current": proxy_current_meta,
+                "noncurrent": proxy_noncurrent_meta,
+                "filing_note_reference": note_component_meta,
+            },
+            "combined_retirement_value": combined_proxy_value,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": "capital_structure.combined_retirement_liability_companyfacts_proxy",
+            "combined_retirement_formula": "sum_available_combined_retirement_liability_components",
+            "combined_retirement_support_override": (
+                "combined_retirement_proxy_companyfacts_unseparated"
+                + (
+                    ";overfunded_retirement_liability_excluded_from_liability_view"
+                    if current_clipped or noncurrent_clipped
+                    else ""
+                )
+            ),
+            "combined_retirement_component_meta": {
+                "mode": "proxy_split_companyfacts_unseparated",
+                "current": proxy_current_meta,
+                "noncurrent": proxy_noncurrent_meta,
+                "filing_note_reference": note_component_meta,
+            },
+        }, regime="combined_retirement_only", regime_source="companyfacts_combined_proxy_split", regime_meta={
+            "mode": "combined_retirement_only",
+            "current": proxy_current_meta,
+            "noncurrent": proxy_noncurrent_meta,
+            "filing_note_reference": note_component_meta,
+        })
+
+    if note_regime_hint == "defined_contribution_only":
+        return _with_regime({
+            "value": None,
+            "exact": False,
+            "source_metric": None,
+            "formula": "defined_contribution_only_filing_text_no_liability_components",
+            "support_override": "defined_contribution_only_no_retirement_liability_components",
+            "component_meta": note_component_meta,
+            "other_postretirement_value": None,
+            "other_postretirement_exact": False,
+            "other_postretirement_source_metric": None,
+            "other_postretirement_formula": "unavailable",
+            "other_postretirement_support_override": None,
+            "other_postretirement_component_meta": None,
+            "combined_retirement_value": None,
+            "combined_retirement_exact": False,
+            "combined_retirement_source_metric": None,
+            "combined_retirement_formula": "unavailable",
+            "combined_retirement_support_override": None,
+            "combined_retirement_component_meta": None,
+        }, regime="defined_contribution_only", regime_source="filing_text_hint", regime_meta=note_component_meta)
+
+    return _with_regime({
+        "value": None,
+        "exact": False,
+        "source_metric": None,
+        "formula": "unavailable",
+        "support_override": None,
+        "component_meta": None,
+        "other_postretirement_value": None,
+        "other_postretirement_exact": False,
+        "other_postretirement_source_metric": None,
+        "other_postretirement_formula": "unavailable",
+        "other_postretirement_support_override": None,
+        "other_postretirement_component_meta": None,
+        "combined_retirement_value": None,
+        "combined_retirement_exact": False,
+        "combined_retirement_source_metric": None,
+        "combined_retirement_formula": "unavailable",
+        "combined_retirement_support_override": None,
+        "combined_retirement_component_meta": None,
+    }, regime="retirement_not_surfaced", regime_source="no_supported_retirement_liability_path")
+
+

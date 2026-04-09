@@ -259,3 +259,60 @@ def _can_promote_cash_only_exact(companyfacts: dict | None, as_of_date: str) -> 
     return not combined_candidates and not sti_candidates
 
 
+def _companyfacts_metrics(
+    *,
+    company_id: str,
+    as_of_date: str,
+    companyfacts_root: Path,
+    cache: dict[str, dict | None],
+) -> dict[str, Any]:
+    if company_id not in cache:
+        cache[company_id] = core._load_companyfacts(companyfacts_root / f"CIK{company_id}.json")
+    companyfacts = cache[company_id]
+    if companyfacts is None:
+        return {
+            "sec_revenue_ttm": None,
+            "sec_revenue_support": "unsupported",
+            "sec_ebitda_ttm": None,
+            "sec_ebitda_support": "unsupported",
+            "sec_fcf_ttm": None,
+            "sec_fcf_support": "unsupported",
+            "sec_cash_sti": None,
+            "sec_cash_sti_support": "unsupported",
+        }
+
+    revenue, revenue_support, _missing, _breakdown, _quality = core._build_sec_core_metric(
+        "operating.revenue_ttm_provider_direct",
+        companyfacts,
+        as_of_date,
+    )
+    ebitda, ebitda_support, _missing, _breakdown, _quality = core._build_sec_core_metric(
+        "operating.ebitda_ltm_provider_direct",
+        companyfacts,
+        as_of_date,
+    )
+    fcf, _ocf, _capex, _fcf_breakdown = cashflow._repairable_fcf_inputs(
+        companyfacts=companyfacts,
+        as_of_date=as_of_date,
+    )
+    cash_direct, cash_direct_support = _sec_cash_direct_metric(companyfacts, as_of_date)
+    cash_sti, cash_sti_support, _missing, _breakdown, _quality = core._build_sec_core_metric(
+        "liquidity.cash_and_short_term_investments_provider_direct",
+        companyfacts,
+        as_of_date,
+    )
+
+    return {
+        "sec_revenue_ttm": revenue,
+        "sec_revenue_support": _raw_support(revenue, revenue_support),
+        "sec_ebitda_ttm": ebitda,
+        "sec_ebitda_support": _raw_support(ebitda, ebitda_support),
+        "sec_fcf_ttm": fcf,
+        "sec_fcf_support": "exact" if fcf is not None else "unsupported",
+        "sec_cash_direct": cash_direct,
+        "sec_cash_direct_support": cash_direct_support,
+        "sec_cash_sti": cash_sti,
+        "sec_cash_sti_support": _raw_support(cash_sti, cash_sti_support),
+    }
+
+
