@@ -20,3 +20,35 @@ apply to a single record.
 - `estimated_company_id`
 - `schema_violation`
 
+## Domain-Specific Flags
+
+### Financial Statements
+
+- `balance_sheet_unbalanced`
+- `cash_flow_mismatch`
+- `missing_line_item`
+
+### Market Prices
+
+- `halted_session`
+- `missing_trade_day`
+- `price_outlier`
+
+### Rates / Spreads / Volatility
+
+- `curve_non_monotonic`
+- `jump_outlier`
+
+### Corporate Actions
+
+- `authorization_only`
+- `execution_only`
+- `open_ended`
+- `missing_size`
+
+### M&A
+
+- `withdrawn`
+- `deal_failed`
+- `value_missing`
+

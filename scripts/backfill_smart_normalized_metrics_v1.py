@@ -1498,3 +1498,58 @@ def _effective_net_pension_liability_value(
     }, regime="retirement_not_surfaced", regime_source="no_supported_retirement_liability_path")
 
 
+def _effective_cash_equivalents_value(
+    cash_exact: Dict[str, Any],
+    *,
+    companyfacts: Dict[str, Any] | None,
+    as_of_time: str,
+) -> Dict[str, Any]:
+    companyfacts_value, companyfacts_meta = _latest_companyfacts_point_value(
+        companyfacts,
+        CASH_EQ_COMPANYFACTS_CONCEPTS,
+        as_of_time=as_of_time,
+    )
+
+    if _exact(cash_exact) and _value(cash_exact) is not None:
+        if _companyfacts_candidate_is_fresher(
+            existing_node=cash_exact,
+            companyfacts_meta=companyfacts_meta,
+            candidate_value=companyfacts_value,
+        ):
+            return {
+                "value": companyfacts_value,
+                "exact": True,
+                "source_metric": "liquidity.cash_and_equivalents_companyfacts_exact",
+                "formula": "cash_and_equivalents_companyfacts_exact",
+                "support_override": "companyfacts_cash_exact_newer_than_provider_direct",
+                "component_meta": companyfacts_meta,
+            }
+        return {
+            "value": _value(cash_exact),
+            "exact": True,
+            "source_metric": "liquidity.cash_and_equivalents_statement_direct",
+            "formula": "cash_and_equivalents_statement_direct",
+            "support_override": None,
+            "component_meta": cash_exact.get("component_breakdown"),
+        }
+
+    if companyfacts_value is not None:
+        return {
+            "value": companyfacts_value,
+            "exact": True,
+            "source_metric": "liquidity.cash_and_equivalents_companyfacts_exact",
+            "formula": "cash_and_equivalents_companyfacts_exact",
+            "support_override": "companyfacts_cash_exact_fallback",
+            "component_meta": companyfacts_meta,
+        }
+
+    return {
+        "value": _value(cash_exact),
+        "exact": False,
+        "source_metric": "liquidity.cash_and_equivalents_statement_direct",
+        "formula": "cash_and_equivalents_statement_direct",
+        "support_override": None,
+        "component_meta": cash_exact.get("component_breakdown"),
+    }
+
+
