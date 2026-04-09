@@ -241,3 +241,21 @@ def _sec_cash_direct_metric(companyfacts: dict | None, as_of_date: str) -> tuple
     return float(candidate["value"]), support_mode
 
 
+def _can_promote_cash_only_exact(companyfacts: dict | None, as_of_date: str) -> bool:
+    if companyfacts is None:
+        return False
+    combined_candidates = core._instant_candidates(
+        companyfacts,
+        core.COMBINED_CASH_STI_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    sti_candidates = core._instant_candidates(
+        companyfacts,
+        core.STI_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    return not combined_candidates and not sti_candidates
+
+
