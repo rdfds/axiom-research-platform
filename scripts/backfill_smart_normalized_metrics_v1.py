@@ -1033,3 +1033,55 @@ def _infer_companyfacts_path_from_features(features: Dict[str, Any]) -> Path | N
     return None
 
 
+def _latest_companyfacts_point_value(
+    companyfacts: Dict[str, Any] | None,
+    concept_names: list[str],
+    *,
+    as_of_time: str,
+) -> tuple[float | None, Dict[str, Any] | None]:
+    if companyfacts is None:
+        return None, None
+    as_of_date = as_of_time[:10]
+    as_of_dt = _parse_iso_date(as_of_time)
+    if as_of_dt is None:
+        return None, None
+
+    candidates: list[tuple[str, str, float, Dict[str, Any]]] = []
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        facts = (companyfacts.get("facts") or {}).get(taxonomy) or {}
+        for concept_name in concept_names:
+            concept = facts.get(concept_name) or {}
+            units = concept.get("units") or {}
+            for unit, entries in units.items():
+                if str(unit).upper() != "USD":
+                    continue
+                for entry in entries:
+                    end = entry.get("end")
+                    filed = entry.get("filed")
+                    value = entry.get("val")
+                    if end is None or value is None or end > as_of_date:
+                        continue
+                    if filed is not None and filed > as_of_date:
+                        continue
+                    end_dt = _parse_iso_date(end)
+                    if end_dt is None or (as_of_dt - end_dt).days > 550:
+                        continue
+                    meta = {
+                        "concept": concept_name,
+                        "taxonomy": taxonomy,
+                        "end": end,
+                        "filed": filed,
+                        "fy": entry['fy'],
+                        "fp": entry.get("fp"),
+                        "frame": entry.get("frame"),
+                        "form": entry.get("form"),
+                        "unit": unit,
+                    }
+                    candidates.append((end, filed or "", float(value), meta))
+    if not candidates:
+        return None, None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    _, _, value, meta = candidates[-1]
+    return value, meta
+
+
