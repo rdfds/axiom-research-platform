@@ -577,3 +577,11 @@ def _select_preferred_direct_metric(
     )
 
 
+def _resolve_local_optional_path(explicit_path: str | None, default_path: Path) -> Path | None:
+    if explicit_path:
+        return Path(explicit_path)
+    if default_path.exists():
+        return default_path
+    return None
+
+

@@ -1820,3 +1820,36 @@ def _companyfacts_priority_ttm(
     return None, None
 
 
+def _companyfacts_depreciation_ttm(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[float | None, Dict[str, Any] | None, bool, list[str] | None]:
+    if companyfacts is None:
+        return None, None, False, None
+    for concept_group in DEPRECIATION_TTM_CONCEPT_GROUPS:
+        if len(concept_group) == 1:
+            value, meta = _compute_ttm_from_concept(companyfacts, concept_group[0], as_of_date)
+            if value is not None:
+                if concept_group[0] == "Depreciation":
+                    return value, meta, False, ["partial_depreciation_without_full_amortization"]
+                return value, meta, True, None
+        else:
+            parts = []
+            parts_meta = []
+            for concept_name in concept_group:
+                part_value, part_meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+                if part_value is None:
+                    parts = []
+                    break
+                parts.append(part_value)
+                parts_meta.append(part_meta)
+            if parts:
+                return float(sum(parts)), {
+                    "mode": "sum_concepts",
+                    "components": parts_meta,
+                    "formula": "sum_component_ttm_values",
+                }, True, None
+    return None, None, False, None
+
+
