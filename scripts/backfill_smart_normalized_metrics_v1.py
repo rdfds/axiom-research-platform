@@ -431,3 +431,48 @@ def _is_supported(node: Dict[str, Any]) -> bool:
     return node.get("support_mode") in {"exact", "proxy_missing_component"}
 
 
+def _approximately_equal(left: float | None, right: float | None, tolerance: float = RECONCILIATION_TOLERANCE) -> bool:
+    return left is not None and right is not None and abs(left - right) <= tolerance
+
+
+def _parse_iso_date(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    normalized = value[:10]
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _latest_recursive_timestamp(payload: Any) -> datetime | None:
+    latest: datetime | None = None
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key in {"end", "filed", "published_at", "as_of_time", "period_end"}:
+                parsed = _parse_iso_date(str(value) if value is not None else None)
+                if parsed is not None and (latest is None or parsed > latest):
+                    latest = parsed
+            nested = _latest_recursive_timestamp(value)
+            if nested is not None and (latest is None or nested > latest):
+                latest = nested
+    elif isinstance(payload, list):
+        for item in payload:
+            nested = _latest_recursive_timestamp(item)
+            if nested is not None and (latest is None or nested > latest):
+                latest = nested
+    return latest
+
+
+def _latest_node_timestamp(node: Dict[str, Any]) -> datetime | None:
+    latest: datetime | None = None
+    for provenance in node.get("provenance") or []:
+        parsed = _parse_iso_date(provenance.get("published_at"))
+        if parsed is not None and (latest is None or parsed > latest):
+            latest = parsed
+    component_latest = _latest_recursive_timestamp(node.get("component_breakdown"))
+    if component_latest is not None and (latest is None or component_latest > latest):
+        latest = component_latest
+    return latest
+
+
