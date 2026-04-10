@@ -253,3 +253,45 @@ def _materialize_action_params(schema: Dict[str, Any], action_params: Dict[str, 
     return merged, assumptions
 
 
+def _snapshot_constraint_tokens(snapshot: CompanyStateSnapshot) -> List[str]:
+    tokens: List[str] = []
+    cs = snapshot.constraint_set
+    if isinstance(cs, dict):
+        for bucket in ("hard", "soft"):
+            for item in cs.get(bucket, []) or []:
+                if isinstance(item, dict):
+                    if item.get("name"):
+                        tokens.append(str(item["name"]))
+                    if item.get("constraint_id"):
+                        tokens.append(str(item["constraint_id"]))
+                elif item is not None:
+                    tokens.append(str(item))
+    elif isinstance(cs, list):
+        for item in cs:
+            if isinstance(item, dict):
+                if item.get("name"):
+                    tokens.append(str(item["name"]))
+                if item.get("constraint_id"):
+                    tokens.append(str(item["constraint_id"]))
+            elif item is not None:
+                tokens.append(str(item))
+    return list(dict.fromkeys(tokens))
+
+
+def _infer_evidence_classes(snapshot: CompanyStateSnapshot) -> List[str]:
+    classes = {"financial_disclosure"}
+    prov = snapshot.provenance if isinstance(snapshot.provenance, dict) else {}
+    inputs = prov.get("inputs_used", {}) if isinstance(prov.get("inputs_used"), dict) else {}
+    if inputs.get("facts"):
+        classes.update({"management_statement", "capital_policy_statement", "liquidity_disclosure"})
+    if inputs.get("timeseries") or inputs.get("macro"):
+        classes.add("market_signal")
+    if inputs.get("events"):
+        classes.update({"recent_action_history", "peer_context_signal"})
+    if inputs.get("issuer_ratings"):
+        classes.add("rating_disclosure")
+    if inputs.get("ownership"):
+        classes.add("recent_action_history")
+    return sorted(classes)
+
+
