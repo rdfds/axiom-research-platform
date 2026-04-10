@@ -799,3 +799,51 @@ def _candidate_approximately_matches(candidate: dict[str, Any] | None, value: fl
     return _approx_equal(float(candidate["value"]), float(value))
 
 
+def _candidate_has_concept(candidate: dict[str, Any] | None, concept_name: str) -> bool:
+    if candidate is None:
+        return False
+    return (candidate.get("meta") or {}).get("concept") == concept_name
+
+
+def _has_any_concepts(companyfacts: dict, concepts: set[str] | list[str]) -> bool:
+    for concept_name in concepts:
+        if _candidate_units_map(companyfacts, concept_name):
+            return True
+    return False
+
+
+def _concept_includes_capital_lease(meta: dict[str, Any] | None) -> bool:
+    concept = str((meta or {}).get("concept") or "")
+    return "CapitalLease" in concept
+
+
+def _exact_finance_lease_stack(companyfacts: dict, as_of_date: str) -> dict[str, tuple[float, dict[str, Any]]]:
+    stack: dict[str, tuple[float, dict[str, Any]]] = {}
+    current_value, current_meta = _latest_instant_value(
+        companyfacts,
+        FINANCE_LEASE_CURRENT_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    noncurrent_value, noncurrent_meta = _latest_instant_value(
+        companyfacts,
+        FINANCE_LEASE_NONCURRENT_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    total_value, total_meta = _latest_instant_value(
+        companyfacts,
+        FINANCE_LEASE_TOTAL_CONCEPTS,
+        as_of_date=as_of_date,
+        unit_filter="USD",
+    )
+    if current_value is not None and current_meta is not None:
+        stack["current"] = (float(current_value), current_meta)
+    if noncurrent_value is not None and noncurrent_meta is not None:
+        stack["noncurrent"] = (float(noncurrent_value), noncurrent_meta)
+    if total_value is not None and total_meta is not None:
+        stack["total"] = (float(total_value), total_meta)
+    return stack
+    return None, None
+
+
