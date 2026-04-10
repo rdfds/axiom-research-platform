@@ -1,0 +1,237 @@
+{
+  "manifest_generated_at": "2026-04-10T17:16:27.614291+00:00",
+  "label": "mna_tuck_in_acquisition_holdout_22",
+  "source_reports": [
+    "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "selection_metadata": {
+    "alignment_horizon_days": 365,
+    "lookback_days": 120,
+    "max_cases_per_company": 1,
+    "eligible_rows_before_resolution": 7136,
+    "eligible_rows_after_resolution": 3601
+  },
+  "cases": [
+    {
+      "company_id": "0000355811",
+      "source_company_id": "005116",
+      "ticker": "GNTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-18T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-20T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001029142",
+      "source_company_id": "141496",
+      "ticker": "DVAX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-12T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001609550",
+      "source_company_id": "033435",
+      "ticker": "INSP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-12T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001099800",
+      "source_company_id": "133366",
+      "ticker": "EW",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-06T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000899751",
+      "source_company_id": "028295",
+      "ticker": "TWI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-21T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-06-23T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000936468",
+      "source_company_id": "006774",
+      "ticker": "LMT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-15T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-17T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000096943",
+      "source_company_id": "010407",
+      "ticker": "TFX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-02T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001001316",
+      "source_company_id": "061711",
+      "ticker": "TGTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-02T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001921963",
+      "source_company_id": "042033",
+      "ticker": "ATMU",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-18T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-03-20T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000940944",
+      "source_company_id": "031846",
+      "ticker": "DRI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-17T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-03-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000059478",
+      "source_company_id": "006730",
+      "ticker": "LLY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-08T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-03-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000012927",
+      "source_company_id": "002285",
+      "ticker": "BA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-01T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-03-03T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000885725",
+      "source_company_id": "025279",
+      "ticker": "BSX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-06-18T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-02-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001831651",
+      "source_company_id": "037646",
+      "ticker": "SHLS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-06-11T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-02-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000824142",
+      "source_company_id": "021542",
+      "ticker": "AAON",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-06-04T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-02-05T00:00:00+00:00"
+    },
+    {
+      "company_id": "0002007919",
+      "source_company_id": "035306",
+      "ticker": "INBX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-29T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001001115",
+      "source_company_id": "065896",
+      "ticker": "GEOS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-09T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000865752",
+      "source_company_id": "024316",
+      "ticker": "MNST",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-02T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-03T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000908255",
+      "source_company_id": "028742",
+      "ticker": "BWA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-30T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-01T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001094285",
+      "source_company_id": "126721",
+      "ticker": "TDY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-24T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-12-26T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000875320",
+      "source_company_id": "024344",
+      "ticker": "VRTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-10T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-12-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000200406",
+      "source_company_id": "006266",
+      "ticker": "JNJ",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-05T00:00:00+00:00",
+      "anchor_action_id": "mna.tuck_in_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-12-07T00:00:00+00:00"
+    }
+  ]
+}

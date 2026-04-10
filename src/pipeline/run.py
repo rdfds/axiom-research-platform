@@ -209,3 +209,32 @@ def _resolve_action_schema(
     )
 
 
+def _default_param_value(pdef: Dict[str, Any]) -> Any:
+    ptype = pdef.get("type")
+    if ptype == "percent":
+        lo = pdef.get("min")
+        hi = pdef.get("max")
+        if lo is not None and hi is not None:
+            return float(lo) if float(lo) == float(hi) else float(lo + (hi - lo) * 0.25)
+        if lo is not None:
+            return float(lo)
+        return 0.1
+    if ptype == "numeric":
+        if pdef.get("min") is not None:
+            v = float(pdef.get("min"))
+            return 1.0 if v == 0.0 else v
+        return 1.0
+    if ptype == "boolean":
+        return False
+    if ptype == "enum":
+        vals = pdef.get("values", [])
+        return vals[0] if vals else None
+    if ptype == "funding_mix_object":
+        return {"cash": 1.0, "debt": 0.0, "equity": 0.0}
+    if ptype == "date_window":
+        return {"start": None, "end": None}
+    if ptype == "range":
+        return {"min": 0.0, "max": 1.0}
+    return None
+
+
