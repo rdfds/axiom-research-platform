@@ -612,3 +612,190 @@ def _candidate_units_map(companyfacts: dict, concept_name: str, taxonomy: str | 
     return None
 
 
+def _latest_instant_value(
+    companyfacts: dict,
+    concepts: list[tuple[str | None, str]] | list[str],
+    *,
+    as_of_date: str,
+    unit_filter: str,
+) -> tuple[float | None, dict[str, Any] | None]:
+    as_of_dt = date.fromisoformat(as_of_date)
+    normalized: list[tuple[str | None, str]] = []
+    for concept in concepts:
+        if isinstance(concept, tuple):
+            normalized.append(concept)
+        else:
+            normalized.append((None, concept))
+
+    best_candidate = None
+    for priority, (taxonomy, concept_name) in enumerate(normalized):
+        units_map = _candidate_units_map(companyfacts, concept_name, taxonomy)
+        if not units_map:
+            continue
+        for unit, entries in units_map.items():
+            if unit.lower() != unit_filter.lower():
+                continue
+            for entry in entries:
+                end_text = entry.get("end")
+                filed_text = entry.get("filed")
+                value = entry.get("val")
+                if end_text is None or value is None:
+                    continue
+                end_dt = _parse_iso_date(end_text)
+                filed_dt = _parse_iso_date(filed_text)
+                if end_dt is None or end_dt > as_of_dt:
+                    continue
+                if filed_dt is not None and filed_dt > as_of_dt:
+                    continue
+                if (as_of_dt - end_dt).days > MAX_SEC_FACT_AGE_DAYS:
+                    continue
+                candidate = (
+                    end_dt,
+                    filed_dt or end_dt,
+                    -priority,
+                    entry,
+                    unit,
+                    taxonomy or "us-gaap",
+                    concept_name,
+                )
+                if best_candidate is None or candidate[:3] > best_candidate[:3]:
+                    best_candidate = candidate
+    if best_candidate is None:
+        return None, None
+    end_dt, filed_dt, _, chosen, unit, chosen_taxonomy, chosen_concept = best_candidate
+    return float(chosen["val"]), {
+        "concept": chosen_concept,
+        "taxonomy": chosen_taxonomy,
+        "end": end_dt.isoformat(),
+        "filed": filed_dt.isoformat(),
+        "fy": chosen.get("fy"),
+        "fp": chosen.get("fp"),
+        "frame": chosen.get("frame"),
+        "form": chosen.get("form"),
+        "unit": unit,
+        "formula": "latest_instant_value_on_or_before_asof",
+    }
+
+
+def _instant_candidates(
+    companyfacts: dict,
+    concepts: list[tuple[str | None, str]] | list[str],
+    *,
+    as_of_date: str,
+    unit_filter: str,
+) -> list[dict[str, Any]]:
+    as_of_dt = date.fromisoformat(as_of_date)
+    normalized: list[tuple[str | None, str]] = []
+    for concept in concepts:
+        if isinstance(concept, tuple):
+            normalized.append(concept)
+        else:
+            normalized.append((None, concept))
+
+    candidates: list[dict[str, Any]] = []
+    for priority, (taxonomy, concept_name) in enumerate(normalized):
+        units_map = _candidate_units_map(companyfacts, concept_name, taxonomy)
+        if not units_map:
+            continue
+        for unit, entries in units_map.items():
+            if unit.lower() != unit_filter.lower():
+                continue
+            for entry in entries:
+                end_text = entry.get("end")
+                filed_text = entry.get("filed")
+                value = entry.get("val")
+                if end_text is None or value is None:
+                    continue
+                end_dt = _parse_iso_date(end_text)
+                filed_dt = _parse_iso_date(filed_text)
+                if end_dt is None or end_dt > as_of_dt:
+                    continue
+                if filed_dt is not None and filed_dt > as_of_dt:
+                    continue
+                if (as_of_dt - end_dt).days > MAX_SEC_FACT_AGE_DAYS:
+                    continue
+                candidates.append(
+                    {
+                        "value": float(value),
+                        "meta": {
+                            "concept": concept_name,
+                            "taxonomy": taxonomy or "us-gaap",
+                            "end": end_dt.isoformat(),
+                            "filed": (filed_dt or end_dt).isoformat(),
+                            "fy": entry.get("fy"),
+                            "fp": entry.get("fp"),
+                            "frame": entry.get("frame"),
+                            "form": entry.get("form"),
+                            "unit": unit,
+                            "formula": "latest_instant_value_on_or_before_asof",
+                        },
+                        "end_dt": end_dt,
+                        "filed_dt": filed_dt or end_dt,
+                        "priority": priority,
+                    }
+                )
+    candidates.sort(
+        key=lambda item: (item["end_dt"], item["filed_dt"], -item["priority"]),
+        reverse=True,
+    )
+    return candidates
+
+
+def _select_aligned_instant_pair(
+    left_candidates: list[dict[str, Any]],
+    right_candidates: list[dict[str, Any]],
+    *,
+    max_gap_days: int = DEBT_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    best_pair: tuple[dict[str, Any], dict[str, Any]] | None = None
+    best_key = None
+    for left in left_candidates:
+        for right in right_candidates:
+            gap_days = abs((left["end_dt"] - right["end_dt"]).days)
+            if gap_days > max_gap_days:
+                continue
+            pair_key = (
+                max(left["end_dt"], right["end_dt"]),
+                max(left["filed_dt"], right["filed_dt"]),
+                -gap_days,
+                -left["priority"],
+                -right["priority"],
+            )
+            if best_key is None or pair_key > best_key:
+                best_key = pair_key
+                best_pair = (left, right)
+    if best_pair is None:
+        return None, None
+    return best_pair
+
+
+def _select_aligned_instant_candidate(
+    candidates: list[dict[str, Any]],
+    *,
+    target_end_dt: date,
+    max_gap_days: int = DEBT_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+) -> dict[str, Any] | None:
+    best_candidate = None
+    best_key = None
+    for candidate in candidates:
+        gap_days = abs((candidate["end_dt"] - target_end_dt).days)
+        if gap_days > max_gap_days:
+            continue
+        candidate_key = (
+            -gap_days,
+            candidate["end_dt"],
+            candidate["filed_dt"],
+            -candidate["priority"],
+        )
+        if best_key is None or candidate_key > best_key:
+            best_key = candidate_key
+            best_candidate = candidate
+    return best_candidate
+
+
+def _candidate_approximately_matches(candidate: dict[str, Any] | None, value: float | None) -> bool:
+    if candidate is None or value is None:
+        return False
+    return _approx_equal(float(candidate["value"]), float(value))
+
+
