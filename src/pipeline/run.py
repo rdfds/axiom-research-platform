@@ -295,3 +295,9 @@ def _infer_evidence_classes(snapshot: CompanyStateSnapshot) -> List[str]:
     return sorted(classes)
 
 
+def _extract_feature_value(feature_obj: Any) -> Any:
+    if isinstance(feature_obj, dict):
+        return feature_obj.get("value")
+    return feature_obj
+
+
