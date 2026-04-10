@@ -394,3 +394,473 @@ class CorporateActionsDB:
         }
 
 
+class ActionAnalyzer:
+    """
+    Analyzes what actions companies in similar states took.
+
+    This is the "what happened to companies like this?" engine.
+    """
+
+    def __init__(self, actions_db: Optional[CorporateActionsDB] = None):
+        """Initialize with actions database."""
+        if actions_db is None:
+            actions_db = CorporateActionsDB()
+        self.actions = actions_db
+
+        # Load pre-computed profiles for fast lookup
+        # Priority order:
+        # 1. clean_action_profiles (new clean data with certain sources)
+        # 2. action_profiles_with_outcomes (old inferred data)
+        # 3. deal_profiles_with_outcomes (M&A only)
+        clean_profiles_path = DATA_DIR / 'clean_action_profiles.parquet'
+        action_profiles_path = DATA_DIR / 'action_profiles_with_outcomes.parquet'
+        deal_profiles_path = DATA_DIR / 'deal_profiles_with_outcomes.parquet'
+
+        self.deal_profiles = None
+        self.has_outcomes = False
+
+        # Try clean profiles first (preferred - certain data)
+        if clean_profiles_path.exists():
+            self.deal_profiles = pd.read_parquet(clean_profiles_path)
+            self.has_outcomes = True
+            print(f"Loaded {len(self.deal_profiles):,} CLEAN action profiles")
+            print("  Sources: Compustat buybacks, CRSP acquisitions/bankruptcies, CRSP dividends")
+
+        # Fall back to old action profiles
+        elif action_profiles_path.exists():
+            action_profiles = pd.read_parquet(action_profiles_path)
+            print(f"Loaded {len(action_profiles):,} action profiles (legacy)")
+
+            # Also load deal profiles for M&A-specific data
+            if deal_profiles_path.exists():
+                deal_profiles = pd.read_parquet(deal_profiles_path)
+                print(f"Loaded {len(deal_profiles):,} deal profiles")
+
+                # Combine them
+                self.deal_profiles = pd.concat(
+                    [action_profiles, deal_profiles], ignore_index=True
+                )
+                # Remove duplicates (same gvkey + date)
+                if 'action_date' in self.deal_profiles.columns:
+                    self.deal_profiles = self.deal_profiles.drop_duplicates(
+                        subset=['gvkey', 'action_date'], keep='first'
+                    )
+            else:
+                self.deal_profiles = action_profiles
+
+            self.has_outcomes = True
+            print(f"Total profiles available: {len(self.deal_profiles):,}")
+
+        elif deal_profiles_path.exists():
+            self.deal_profiles = pd.read_parquet(deal_profiles_path)
+            self.has_outcomes = True
+            print(f"Loaded {len(self.deal_profiles):,} deal profiles with TSR outcomes")
+        else:
+            # Try non-outcome versions
+            for path in [
+                DATA_DIR / 'action_profiles_all.parquet',
+                DATA_DIR / 'deal_profiles_all.parquet'
+            ]:
+                if path.exists():
+                    self.deal_profiles = pd.read_parquet(path)
+                    print(f"Loaded {len(self.deal_profiles):,} profiles (no outcomes)")
+                    break
+
+    def analyze_similar_states(
+        self,
+        query_profile: Dict,
+        min_similarity: float = 0.85,
+        max_results: int = 100,
+        sector_filter: Optional[str] = None,
+        weight_actions: bool = True,
+    ) -> Dict:
+        """
+        Find companies in similar states and what actions they took.
+
+        Parameters
+        ----------
+        query_profile : dict
+            State profile from SignalEngine
+        min_similarity : float
+            Minimum cosine similarity threshold
+        max_results : int
+            Max results to return
+        sector_filter : str, optional
+            2-digit SIC code to filter by sector (e.g., '35' for industrial machinery)
+        weight_actions : bool
+            If True, apply weighting to correct for data imbalance
+
+        Returns
+        -------
+        dict with:
+        - 'action_distribution': {action_type: frequency %}
+        - 'similar_cases': list of similar company-action pairs
+        - 'n_similar': total similar cases found
+        """
+        query_vector = query_profile['vector']
+
+        # Use pre-computed profiles for speed
+        if self.deal_profiles is not None and len(self.deal_profiles) > 0:
+            similar = self._find_similar_from_profiles(
+                query_vector, min_similarity, max_results * 3,  # Get more, then filter
+                sector_filter=sector_filter
+            )
+        else:
+            similar = []
+
+        if len(similar) == 0:
+            return {
+                'action_distribution': {},
+                'similar_cases': [],
+                'n_similar': 0,
+            }
+
+        # Compute action distribution with optional weighting
+        actions = [s['action_type'] for s in similar]
+        action_counts = pd.Series(actions).value_counts()
+
+        if weight_actions:
+            # Weight to correct for data imbalance in clean action profiles
+            # Data distribution: dividends 70%, buybacks 25%, others ~5%
+            # Target: more balanced view of capital allocation decisions
+            #
+            # Weights based on actual corporate action frequency in practice:
+            # - Dividends are very frequent but routine (downweight)
+            # - Buybacks are common but tracked (slight downweight)
+            # - M&A/acquisitions are rare but important (upweight)
+            # - Bankruptcies/distress are rare but critical (upweight)
+            # - Special actions (splits, special divs) are rare (upweight)
+            action_weights = {
+                # Dividend actions - very high volume, downweight
+                'dividend_increase': 0.3,
+                'dividend_cut': 0.5,       # More significant, less downweight
+                'dividend_initiate': 0.4,
+                'dividend_suspend': 0.6,   # Rare and significant
+                'dividend_special': 0.8,   # Rare
+                'dividend_irregular': 0.8,
+                'dividend_liquidating': 1.0,
+                # Buybacks - high volume, moderate downweight
+                'buyback': 0.4,
+                # Acquisitions/M&A - rare, upweight
+                'acquisition': 3.0,
+                'acquired': 3.0,           # Target side
+                'acquisition_merger': 3.0,
+                'acquisition_tender': 3.0,
+                'acquisition_lbo': 3.0,
+                'Takeover': 3.0,
+                'Acquis. line': 3.0,
+                'LBO': 3.0,
+                # Distress - rare but critical
+                'bankruptcy': 4.0,
+                'bankruptcy_chapter': 4.0,
+                'distress_other': 3.0,
+                # Other capital actions
+                'stock_split': 2.0,
+                'reverse_split': 2.5,      # Often signals distress
+                'spinoff': 3.0,
+                'return_of_capital': 2.0,
+                'going_private': 3.0,
+                # Debt actions
+                'debt_refinance': 1.5,
+            }
+
+            weighted_counts = action_counts.copy().astype(float)
+            for action in weighted_counts.index:
+                weight = action_weights.get(action, 1.0)
+                weighted_counts[action] = weighted_counts[action] * weight
+
+            action_pct = (weighted_counts / weighted_counts.sum() * 100).round(1)
+        else:
+            action_pct = (action_counts / len(similar) * 100).round(1)
+
+        # Limit results after computing distribution
+        similar = similar[:max_results]
+
+        return {
+            'action_distribution': action_pct.to_dict(),
+            'similar_cases': similar,
+            'n_similar': len(similar),
+            'weighted': weight_actions,
+        }
+
+    def _find_similar_from_profiles(
+        self,
+        query_vector: List,
+        min_similarity: float,
+        max_results: int,
+        sector_filter: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Find similar cases from pre-computed profiles.
+
+        Parameters
+        ----------
+        query_vector : list
+            Signal vector to match against
+        min_similarity : float
+            Minimum cosine similarity threshold
+        max_results : int
+            Max results to return
+        sector_filter : str, optional
+            2-digit SIC code to filter by sector. If provided, only returns
+            companies in the same broad industry sector.
+        """
+        from scipy.spatial.distance import cosine
+
+        # Build sector lookup if needed
+        sector_lookup = None
+        if sector_filter:
+            sector_lookup = self._build_sector_lookup()
+
+        similar = []
+
+        for idx, row in self.deal_profiles.iterrows():
+            try:
+                gvkey = row.get('gvkey')
+
+                # Apply sector filter if specified
+                if sector_filter and sector_lookup is not None:
+                    company_sic = sector_lookup.get(str(gvkey))
+                    if company_sic is None:
+                        continue
+                    # Match on 2-digit SIC (broad industry sector)
+                    if str(company_sic)[:2] != str(sector_filter)[:2]:
+                        continue
+
+                # Get deal vector
+                deal_vector = row['signal_vector']
+                if isinstance(deal_vector, str):
+                    import ast
+                    deal_vector = ast.literal_eval(deal_vector)
+
+                if len(deal_vector) != len(query_vector):
+                    continue
+
+                # Compute similarity
+                similarity = 1 - cosine(query_vector, deal_vector)
+
+                if similarity >= min_similarity:
+                    # Handle different column naming conventions
+                    company_name = row.get('company_name') or row['borrower_name'] or 'Unknown'
+                    action_date = row.get('action_date') or row.get('deal_date')
+                    action_type = row.get('action_type') or row.get('deal_type') or 'acquisition'
+                    deal_value = row.get('deal_value') or row.get('facility_amount')
+
+                    result_entry = {
+                        'company_name': company_name,
+                        'gvkey': gvkey,
+                        'date': action_date,
+                        'action_type': action_type,
+                        'deal_value': deal_value,
+                        'similarity': round(similarity, 3),
+                        'composite_score': row.get('composite_score'),
+                        'tsr_1m': row.get('tsr_1m'),
+                        'tsr_3m': row.get('tsr_3m'),
+                        'tsr_6m': row.get('tsr_6m'),
+                        'tsr_12m': row.get('tsr_12m'),
+                    }
+
+                    # Add sector info if available
+                    if sector_lookup and gvkey:
+                        result_entry['sic'] = sector_lookup.get(str(gvkey))
+
+                    similar.append(result_entry)
+
+            except Exception:
+                continue
+
+        # Sort by similarity
+        similar.sort(key=lambda x: x['similarity'], reverse=True)
+        return similar[:max_results]
+
+    def _build_sector_lookup(self) -> Dict[str, str]:
+        """
+        Build gvkey -> SIC code lookup from fundamentals.
+
+        Returns dict mapping gvkey to 4-digit SIC code.
+        """
+        if hasattr(self, '_sector_cache'):
+            return self._sector_cache
+
+        fund_path = DATA_DIR / 'fundamentals_quarterly.parquet'
+        if not fund_path.exists():
+            return {}
+
+        # Load fundamentals and extract SIC codes
+        fund = pd.read_parquet(fund_path)
+
+        # Get most recent SIC for each company
+        # sic is the Compustat column for Standard Industrial Classification
+        if 'sic' not in fund.columns:
+            return {}
+
+        fund = fund.dropna(subset=['sic'])
+        fund = fund.sort_values('datadate', ascending=False)
+        fund = fund.drop_duplicates('gvkey', keep='first')
+
+        self._sector_cache = fund.set_index('gvkey')['sic'].astype(str).to_dict()
+        return self._sector_cache
+
+    def get_company_sector(self, gvkey: str) -> Optional[str]:
+        """
+        Get the 2-digit SIC sector code for a company.
+
+        Returns None if not found.
+        """
+        sector_lookup = self._build_sector_lookup()
+        sic = sector_lookup.get(str(gvkey))
+        if sic:
+            return str(sic)[:2]
+        return None
+
+    def get_sector_name(self, sic_2digit: str) -> str:
+        """Convert 2-digit SIC to readable sector name."""
+        sic_names = {
+            '01': 'Agriculture',
+            '10': 'Mining',
+            '13': 'Oil & Gas',
+            '14': 'Mining (Non-metallic)',
+            '15': 'Construction',
+            '20': 'Food Products',
+            '21': 'Tobacco',
+            '22': 'Textiles',
+            '23': 'Apparel',
+            '24': 'Lumber & Wood',
+            '25': 'Furniture',
+            '26': 'Paper',
+            '27': 'Printing & Publishing',
+            '28': 'Chemicals',
+            '29': 'Petroleum Refining',
+            '30': 'Rubber & Plastics',
+            '31': 'Leather',
+            '32': 'Stone, Clay, Glass',
+            '33': 'Primary Metals',
+            '34': 'Fabricated Metals',
+            '35': 'Industrial Machinery',
+            '36': 'Electronics',
+            '37': 'Transportation Equipment',
+            '38': 'Instruments',
+            '39': 'Misc. Manufacturing',
+            '40': 'Railroads',
+            '42': 'Trucking',
+            '44': 'Water Transportation',
+            '45': 'Air Transportation',
+            '47': 'Transportation Services',
+            '48': 'Communications',
+            '49': 'Utilities',
+            '50': 'Wholesale - Durables',
+            '51': 'Wholesale - Nondurables',
+            '52': 'Building Materials Retail',
+            '53': 'General Merchandise',
+            '54': 'Food Stores',
+            '55': 'Auto Dealers',
+            '56': 'Apparel Stores',
+            '57': 'Furniture Stores',
+            '58': 'Eating Places',
+            '59': 'Misc. Retail',
+            '60': 'Banks',
+            '61': 'Credit Institutions',
+            '62': 'Securities',
+            '63': 'Insurance',
+            '64': 'Insurance Agents',
+            '65': 'Real Estate',
+            '67': 'Holding Companies',
+            '70': 'Hotels',
+            '72': 'Personal Services',
+            '73': 'Business Services',
+            '75': 'Auto Repair',
+            '78': 'Motion Pictures',
+            '79': 'Amusement',
+            '80': 'Health Services',
+            '81': 'Legal Services',
+            '82': 'Educational Services',
+            '83': 'Social Services',
+            '87': 'Engineering & Accounting',
+            '99': 'Non-classifiable',
+        }
+        return sic_names.get(sic_2digit, f'SIC {sic_2digit}')
+
+    def generate_action_report(
+        self,
+        query_profile: Dict,
+        min_similarity: float = 0.85,
+    ) -> str:
+        """
+        Generate a readable report of what similar companies did.
+
+        This is the output that would go to a banker.
+        """
+        result = self.analyze_similar_states(query_profile, min_similarity)
+
+        report = []
+        report.append("=" * 60)
+        report.append("HISTORICAL ACTION ANALYSIS")
+        report.append("=" * 60)
+        report.append("\nQuery Company State:")
+        report.append(f"  Composite Score: {query_profile['composite_score']}/100")
+        report.append(f"  As of: {query_profile['as_of_date']}")
+
+        if result['n_similar'] == 0:
+            report.append("\n⚠️ No similar historical cases found.")
+            report.append("   Try lowering the similarity threshold.")
+            return "\n".join(report)
+
+        report.append(f"\n📊 Found {result['n_similar']} companies in similar states")
+        report.append(f"   (Similarity threshold: {min_similarity:.0%})")
+
+        report.append("\n" + "-" * 60)
+        report.append("WHAT THEY DID AND HOW IT TURNED OUT:")
+        report.append("-" * 60)
+
+        # Group by action and compute outcome stats
+        similar_df = pd.DataFrame(result['similar_cases'])
+
+        if 'tsr_12m' in similar_df.columns:
+            outcome_stats = similar_df.groupby('action_type').agg({
+                'similarity': 'count',
+                'tsr_12m': 'median'
+            }).rename(columns={'similarity': 'count', 'tsr_12m': 'median_tsr'})
+
+            for action, pct in sorted(
+                result['action_distribution'].items(),
+                key=lambda x: -x[1]
+            ):
+                bar = "█" * int(pct / 5)
+                if action in outcome_stats.index:
+                    tsr = outcome_stats.loc[action, 'median_tsr']
+                    if pd.notna(tsr):
+                        tsr_str = f"{tsr:+.1f}% 12M TSR"
+                    else:
+                        tsr_str = ""
+                else:
+                    tsr_str = ""
+                report.append(f"  {action:20} {pct:5.1f}%  {bar}  {tsr_str}")
+        else:
+            for action, pct in sorted(
+                result['action_distribution'].items(),
+                key=lambda x: -x[1]
+            ):
+                bar = "█" * int(pct / 5)
+                report.append(f"  {action:20} {pct:5.1f}%  {bar}")
+
+        report.append("\n" + "-" * 60)
+        report.append("TOP SIMILAR CASES:")
+        report.append("-" * 60)
+
+        for i, case in enumerate(result['similar_cases'][:10], 1):
+            date_str = case['date'].strftime('%Y-%m-%d') if case['date'] else 'N/A'
+            value_str = f"${case['deal_value']:,.0f}M" if case.get('deal_value') else ''
+
+            # TSR outcome
+            tsr = case.get('tsr_12m')
+            tsr_str = f"→ {tsr:+.1f}%" if pd.notna(tsr) else ""
+
+            report.append(
+                f"  {i}. {case['company_name'][:25]:25} "
+                f"{date_str}  {case['action_type']:12} {tsr_str}"
+            )
+            report.append(f"     Similarity: {case['similarity']:.1%}  {value_str}")
+
+        return "\n".join(report)
+
+
