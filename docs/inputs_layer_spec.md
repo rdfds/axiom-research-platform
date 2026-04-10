@@ -60,3 +60,11 @@ Include EPS, revenue, EBITDA estimates and revisions with as-of correctness.
 **G. News / Regulatory / Legal Events**
 Extract litigation, DOJ/FTC, approvals, fines, and geopolitical impacts with materiality scores and forward-looking risk flags.
 
+## Optional Private Overlays
+
+Private overlays do not overwrite public truth. They add constraints and scenario assumptions.
+Each overlay must include versioning, expiration, author, and timestamps, and remain separable from the base state.
+
+Examples:
+Covenant packages, detailed debt schedules, internal projections, non-public segment KPIs, and explicit board constraints.
+
