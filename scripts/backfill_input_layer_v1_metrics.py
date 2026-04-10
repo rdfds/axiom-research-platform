@@ -847,3 +847,44 @@ def _exact_finance_lease_stack(companyfacts: dict, as_of_date: str) -> dict[str,
     return None, None
 
 
+def _collect_duration_entries(companyfacts: dict, concept_name: str, as_of_date: str) -> list[dict[str, Any]]:
+    units_map = _candidate_units_map(companyfacts, concept_name)
+    if not units_map:
+        return []
+    as_of_dt = date.fromisoformat(as_of_date)
+    rows: list[dict[str, Any]] = []
+    for unit, entries in units_map.items():
+        if unit.upper() != "USD":
+            continue
+        for entry in entries:
+            start_dt = _parse_iso_date(entry.get("start"))
+            end_dt = _parse_iso_date(entry.get("end"))
+            filed_dt = _parse_iso_date(entry.get("filed"))
+            value = entry.get("val")
+            if start_dt is None or end_dt is None or value is None:
+                continue
+            if end_dt > as_of_dt:
+                continue
+            if filed_dt is not None and filed_dt > as_of_dt:
+                continue
+            if (as_of_dt - end_dt).days > MAX_SEC_FACT_AGE_DAYS:
+                continue
+            duration_days = max(1, (end_dt - start_dt).days + 1)
+            rows.append(
+                {
+                    "concept": concept_name,
+                    "start": start_dt,
+                    "end": end_dt,
+                    "filed": filed_dt or end_dt,
+                    "value": float(value),
+                    "fy": entry.get("fy"),
+                    "fp": entry.get("fp"),
+                    "frame": entry.get("frame"),
+                    "form": entry.get("form"),
+                    "duration_days": duration_days,
+                }
+            )
+    rows.sort(key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    return rows
+
+

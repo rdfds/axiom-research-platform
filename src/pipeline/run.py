@@ -238,3 +238,18 @@ def _default_param_value(pdef: Dict[str, Any]) -> Any:
     return None
 
 
+def _materialize_action_params(schema: Dict[str, Any], action_params: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    merged = dict(action_params or {})
+    assumptions: List[str] = []
+    for pname, pdef in schema.get("parameter_schema", {}).items():
+        if pname in merged:
+            continue
+        if bool(pdef.get("required", False)):
+            default_value = _default_param_value(pdef)
+            if default_value is None and pdef.get("type") in {"entity_reference", "segment_reference"}:
+                continue
+            merged[pname] = default_value
+            assumptions.append(f"default_param:{pname}")
+    return merged, assumptions
+
+

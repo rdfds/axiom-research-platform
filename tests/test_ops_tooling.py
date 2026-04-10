@@ -34,3 +34,10 @@ def test_build_causal_rescue_plan_adds_low_row_blocklist_entries():
     assert out["suggested_blocklist"] == ["a.high", "a.low"]
 
 
+def test_train_action_allowlist_helpers():
+    allowlist = train._parse_action_id_allowlist("capital_return.*,mna.platform_acquisition", "")
+    assert train._matches_action_allowlist("capital_return.special_dividend", allowlist) is True
+    assert train._matches_action_allowlist("mna.platform_acquisition", allowlist) is True
+    assert train._matches_action_allowlist("capital_structure.refinancing", allowlist) is False
+
+
