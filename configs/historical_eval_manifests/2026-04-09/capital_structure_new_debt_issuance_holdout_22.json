@@ -1,0 +1,237 @@
+{
+  "manifest_generated_at": "2026-04-09T18:20:02.908575+00:00",
+  "label": "capital_structure_new_debt_issuance_holdout_22",
+  "source_reports": [
+    "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "selection_metadata": {
+    "alignment_horizon_days": 365,
+    "lookback_days": 120,
+    "max_cases_per_company": 1,
+    "eligible_rows_before_resolution": 12519,
+    "eligible_rows_after_resolution": 7864
+  },
+  "cases": [
+    {
+      "company_id": "0001158114",
+      "source_company_id": "018564",
+      "ticker": "AAOI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-19T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-21T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001868941",
+      "source_company_id": "039751",
+      "ticker": "FLNC",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-12T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000028823",
+      "source_company_id": "003946",
+      "ticker": "DBD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-11T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-13T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000827054",
+      "source_company_id": "027965",
+      "ticker": "MCHP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-11T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-13T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000936468",
+      "source_company_id": "006774",
+      "ticker": "LMT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-04T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001116132",
+      "source_company_id": "140541",
+      "ticker": "TPR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-04T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000008063",
+      "source_company_id": "001823",
+      "ticker": "ATRO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-03T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-05T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001964738",
+      "source_company_id": "045167",
+      "ticker": "SOLV",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001140859",
+      "source_company_id": "031673",
+      "ticker": "COR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-02T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-08-04T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000027996",
+      "source_company_id": "003863",
+      "ticker": "DLX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-20T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-23T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001490281",
+      "source_company_id": "187363",
+      "ticker": "GRPN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-19T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-22T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000817720",
+      "source_company_id": "142814",
+      "ticker": "SYNA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-19T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-22T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000040704",
+      "source_company_id": "005071",
+      "ticker": "GIS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-18T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-21T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000012927",
+      "source_company_id": "002285",
+      "ticker": "BA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-18T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-21T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000721371",
+      "source_company_id": "002751",
+      "ticker": "CAH",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001136869",
+      "source_company_id": "144559",
+      "ticker": "ZBH",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000882095",
+      "source_company_id": "024856",
+      "ticker": "GILD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001501585",
+      "source_company_id": "186310",
+      "ticker": "HII",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001627223",
+      "source_company_id": "022741",
+      "ticker": "CC",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001065059",
+      "source_company_id": "112759",
+      "ticker": "LEU",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-07T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001022652",
+      "source_company_id": "141178",
+      "ticker": "INSG",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-06T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000008818",
+      "source_company_id": "001913",
+      "ticker": "AVY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-30T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.new_debt_issuance",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2024-07-02T00:00:00+00:00"
+    }
+  ]
+}

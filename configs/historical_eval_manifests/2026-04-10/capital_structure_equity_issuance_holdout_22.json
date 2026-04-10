@@ -1,0 +1,230 @@
+{
+  "manifest_generated_at": "2026-04-10T00:00:00+00:00",
+  "label": "capital_structure_equity_issuance_holdout_22",
+  "source_reports": [
+    "generated_from_action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "cases": [
+    {
+      "company_id": "162233",
+      "source_company_id": "162233",
+      "ticker": "DGLY",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-30",
+      "as_of_time": "2024-12-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "038661",
+      "source_company_id": "038661",
+      "ticker": "UPXI",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-19",
+      "as_of_time": "2024-12-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "034163",
+      "source_company_id": "034163",
+      "ticker": "BACK",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-18",
+      "as_of_time": "2024-12-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "034621",
+      "source_company_id": "034621",
+      "ticker": "YCBD",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-18",
+      "as_of_time": "2024-12-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "041270",
+      "source_company_id": "041270",
+      "ticker": "HSCS",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-16",
+      "as_of_time": "2024-12-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "043159",
+      "source_company_id": "043159",
+      "ticker": "INHD",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-09",
+      "as_of_time": "2024-12-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "062553",
+      "source_company_id": "062553",
+      "ticker": "OCC",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-23",
+      "as_of_time": "2024-12-23T00:00:00+00:00"
+    },
+    {
+      "company_id": "039121",
+      "source_company_id": "039121",
+      "ticker": "MOBX",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-19",
+      "as_of_time": "2024-12-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "039912",
+      "source_company_id": "039912",
+      "ticker": "NRSN",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-18",
+      "as_of_time": "2024-12-18T00:00:00+00:00"
+    },
+    {
+      "company_id": "032247",
+      "source_company_id": "032247",
+      "ticker": "NMTC",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-17",
+      "as_of_time": "2024-12-17T00:00:00+00:00"
+    },
+    {
+      "company_id": "260737",
+      "source_company_id": "260737",
+      "ticker": "OPTT",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-16",
+      "as_of_time": "2024-12-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "035008",
+      "source_company_id": "035008",
+      "ticker": "ENLV",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-29",
+      "as_of_time": "2024-11-29T00:00:00+00:00"
+    },
+    {
+      "company_id": "045158",
+      "source_company_id": "045158",
+      "ticker": "NNE",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-30",
+      "as_of_time": "2024-12-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "040321",
+      "source_company_id": "040321",
+      "ticker": "ENGN",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-19",
+      "as_of_time": "2024-12-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "025430",
+      "source_company_id": "025430",
+      "ticker": "FCEL",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-19",
+      "as_of_time": "2024-12-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "035223",
+      "source_company_id": "035223",
+      "ticker": "RCAT",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-16",
+      "as_of_time": "2024-12-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "030435",
+      "source_company_id": "030435",
+      "ticker": "JILL",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-11",
+      "as_of_time": "2024-12-11T00:00:00+00:00"
+    },
+    {
+      "company_id": "179819",
+      "source_company_id": "179819",
+      "ticker": "NX",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-12",
+      "as_of_time": "2024-12-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "145049",
+      "source_company_id": "145049",
+      "ticker": "GME",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-12-10",
+      "as_of_time": "2024-12-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "037664",
+      "source_company_id": "037664",
+      "ticker": "PCT",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-15",
+      "as_of_time": "2024-11-15T00:00:00+00:00"
+    },
+    {
+      "company_id": "022604",
+      "source_company_id": "022604",
+      "ticker": "ASND",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-14",
+      "as_of_time": "2024-11-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "033810",
+      "source_company_id": "033810",
+      "ticker": "LQDA",
+      "mapping_method": "outcomes_parquet_latest_company_row_stratified",
+      "anchor_action_id": "capital_structure.equity_issuance",
+      "anchor_action_family": "capital_structure",
+      "anchor_action_date": "2024-11-13",
+      "as_of_time": "2024-11-13T00:00:00+00:00"
+    }
+  ]
+}

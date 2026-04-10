@@ -1,0 +1,237 @@
+{
+  "manifest_generated_at": "2026-04-10T17:40:13.503364+00:00",
+  "label": "capital_structure_revolver_draw_or_resize_holdout_22",
+  "source_reports": [
+    "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "selection_metadata": {
+    "alignment_horizon_days": 365,
+    "lookback_days": 120,
+    "max_cases_per_company": 1,
+    "eligible_rows_before_resolution": 4723,
+    "eligible_rows_after_resolution": 2785
+  },
+  "cases": [
+    {
+      "company_id": "0001023128",
+      "source_company_id": "064175",
+      "ticker": "LAD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-07-01T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-03-03T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001319947",
+      "source_company_id": "024171",
+      "ticker": "DBI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-29T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-03-01T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000794367",
+      "source_company_id": "004611",
+      "ticker": "M",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-08T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-02-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000018498",
+      "source_company_id": "005109",
+      "ticker": "GCO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-05T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-02-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000055785",
+      "source_company_id": "006435",
+      "ticker": "KMB",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-05T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-02-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000097745",
+      "source_company_id": "010530",
+      "ticker": "TMO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-05T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-02-06T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000793952",
+      "source_company_id": "012389",
+      "ticker": "HOG",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-06-01T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-02-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000047217",
+      "source_company_id": "005606",
+      "ticker": "HPQ",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-29T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-30T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001037038",
+      "source_company_id": "064891",
+      "ticker": "RL",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-26T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-27T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000920371",
+      "source_company_id": "030260",
+      "ticker": "SSD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-21T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-22T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000096021",
+      "source_company_id": "010247",
+      "ticker": "SYY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-20T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-21T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000858877",
+      "source_company_id": "020779",
+      "ticker": "CSCO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-15T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001467858",
+      "source_company_id": "005073",
+      "ticker": "GM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000004281",
+      "source_company_id": "028192",
+      "ticker": "HWM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-13T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000719955",
+      "source_company_id": "011511",
+      "ticker": "WSM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-11T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001058090",
+      "source_company_id": "165914",
+      "ticker": "CMG",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-08T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000029905",
+      "source_company_id": "004058",
+      "ticker": "DOV",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-06T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-07T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000101829",
+      "source_company_id": "010983",
+      "ticker": "RTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-06T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-07T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000026172",
+      "source_company_id": "003650",
+      "ticker": "CMI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-01T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000745732",
+      "source_company_id": "009248",
+      "ticker": "ROST",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-01T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000060519",
+      "source_company_id": "006821",
+      "ticker": "LPX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-05-01T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000310764",
+      "source_company_id": "010115",
+      "ticker": "SYK",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2020-04-30T00:00:00+00:00",
+      "anchor_action_id": "capital_structure.revolver_draw_or_resize",
+      "anchor_action_family": "capital_structure",
+      "as_of_time": "2020-01-01T00:00:00+00:00"
+    }
+  ]
+}
