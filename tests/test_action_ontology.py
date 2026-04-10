@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from src.action_ontology import build_default_action_schema_registry
+
+
+def test_registry_contains_all_required_actions():
+    registry = build_default_action_schema_registry()
+    action_ids = {a["action_id"] for a in registry.actions}
+
+    expected = {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.tender_offer_buyback",
+        "capital_return.dividend_increase",
+        "capital_return.dividend_cut",
+        "capital_return.special_dividend",
+        "capital_return.dividend_initiate",
+        "capital_structure.new_debt_issuance",
+        "capital_structure.refinancing",
+        "capital_structure.tender_offer_debt",
+        "capital_structure.exchange_offer",
+        "capital_structure.liability_management_exercise",
+        "capital_structure.revolver_draw_or_resize",
+        "capital_structure.equity_issuance",
+        "capital_structure.convertible_issuance",
+        "capital_structure.preferred_issuance",
+        "mna.tuck_in_acquisition",
+        "mna.platform_acquisition",
+        "mna.transformational_acquisition",
+        "mna.go_private_lbo",
+        "mna.minority_investment",
+        "portfolio.divestiture_full",
+        "portfolio.divestiture_partial",
+        "portfolio.asset_sale",
+        "portfolio.spin_off",
+        "portfolio.carve_out_ipo",
+        "portfolio.joint_venture",
+        "restructuring.cost_program",
+        "restructuring.workforce_reduction",
+        "restructuring.footprint_optimization",
+        "restructuring.working_capital_program",
+        "restructuring.asset_impairment_or_write_down",
+        "restructuring.chapter_pathway",
+        "restructuring.out_of_court_restructuring",
+        "governance.board_refresh",
+        "governance.activist_settlement",
+        "governance.poison_pill_or_defensive_action",
+        "governance.ceo_transition",
+        "governance.capital_allocation_policy_reset",
+        "governance.stock_split",
+    }
+    assert expected.issubset(action_ids)
+    assert len(action_ids) == 40
+
+

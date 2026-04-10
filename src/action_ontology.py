@@ -150,3 +150,56 @@ def _rule(
     }
 
 
+def _lead_time(minimum_days: int, median_days: int, p90_days: int, conditional_adjustments: Optional[List[dict]] = None) -> Dict[str, Any]:
+    return {
+        "minimum_days": minimum_days,
+        "median_days": median_days,
+        "p90_days": p90_days,
+        "conditional_adjustments": conditional_adjustments or [],
+    }
+
+
+def _complexity(
+    base_complexity_score: int,
+    drivers: List[str],
+    organizational_burden: str,
+    cross_functional_dependencies: List[str],
+) -> Dict[str, Any]:
+    return {
+        "base_complexity_score": base_complexity_score,
+        "drivers": drivers,
+        "organizational_burden": organizational_burden,
+        "cross_functional_dependencies": cross_functional_dependencies,
+    }
+
+
+def _prerequisites(
+    state_conditions: List[dict],
+    required_features: List[str],
+    required_evidence: Optional[List[str]] = None,
+    required_disclosures: Optional[List[str]] = None,
+    forbidden_constraints: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    return {
+        "state_conditions": state_conditions,
+        "required_features": required_features,
+        "required_evidence": required_evidence or [],
+        "required_disclosures": required_disclosures or [],
+        "forbidden_constraints": forbidden_constraints or [],
+    }
+
+
+def _evidence(
+    minimum_classes_required: List[str],
+    optional_supporting_classes: Optional[List[str]] = None,
+    must_have_features: Optional[List[str]] = None,
+    allow_heuristic_if_missing: bool = True,
+) -> Dict[str, Any]:
+    return {
+        "minimum_classes_required": minimum_classes_required,
+        "optional_supporting_classes": optional_supporting_classes or [],
+        "must_have_features": must_have_features or [],
+        "allow_heuristic_if_missing": allow_heuristic_if_missing,
+    }
+
+
