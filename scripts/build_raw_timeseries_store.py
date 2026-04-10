@@ -35,3 +35,101 @@ def load_parquet_cols(path: Path, cols: List[str]) -> pd.DataFrame:
     return pd.read_parquet(path, columns=available)
 
 
+def build_prices(path: Path) -> pd.DataFrame:
+    cols = [
+        "source_system",
+        "entity_id",
+        "company_id",
+        "security_id",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "trade_date",
+        "close",
+        "adjusted_close",
+        "volume",
+        "ret",
+        "retx",
+        "cusip",
+    ]
+    df = load_parquet_cols(path, cols)
+    if df.empty:
+        return df
+
+    df = df.reset_index().rename(columns={"index": "row_id"})
+    for c in ["event_time", "available_time", "ingestion_time", "trade_date"]:
+        if c in df.columns:
+            df[c] = parse_dt(df[c])
+
+    date = df["trade_date"] if "trade_date" in df.columns else df["event_time"]
+    df["_date"] = date
+
+    value_vars = [c for c in ["close", "adjusted_close", "volume", "ret", "retx"] if c in df.columns]
+    m = df.melt(
+        id_vars=[
+            "row_id",
+            "source_system",
+            "entity_id",
+            "company_id",
+            "security_id",
+            "cusip",
+            "event_time",
+            "available_time",
+            "ingestion_time",
+            "_date",
+        ],
+        value_vars=value_vars,
+        var_name="metric",
+        value_name="value",
+    )
+
+    m = m[m["value"].notna()].copy()
+    unit_map: Dict[str, str] = {
+        "close": "price",
+        "adjusted_close": "price",
+        "volume": "shares",
+        "ret": "pct",
+        "retx": "pct",
+    }
+
+    m["series_id"] = "price." + m["metric"].astype("string")
+    m["series_type"] = "price"
+    m["entity_id_type"] = "entity_id"
+    m["date"] = m["_date"]
+    m["unit"] = m["metric"].map(unit_map)
+    m["currency"] = pd.NA
+    m["frequency"] = "D"
+    m["published_at"] = m["available_time"].combine_first(m["event_time"])
+    m["effective_at"] = m["_date"]
+    m["ingested_at"] = m["ingestion_time"]
+    m["confidence_score"] = 1.0
+    m["raw_pointer"] = f"{path.as_posix()}#row=" + m["row_id"].astype("string") + ":" + m["metric"].astype("string")
+    m["revision_flag"] = pd.NA
+    m["release_lag_days"] = pd.NA
+
+    return m[
+        [
+            "series_id",
+            "series_type",
+            "entity_id",
+            "entity_id_type",
+            "date",
+            "value",
+            "unit",
+            "currency",
+            "frequency",
+            "published_at",
+            "effective_at",
+            "ingested_at",
+            "confidence_score",
+            "raw_pointer",
+            "revision_flag",
+            "release_lag_days",
+            "company_id",
+            "security_id",
+            "cusip",
+            "source_system",
+        ]
+    ]
+
+
