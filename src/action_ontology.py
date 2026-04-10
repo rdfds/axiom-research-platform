@@ -234,3 +234,19 @@ def _action(
     }
 
 
+@dataclass
+class CandidateValidationResult:
+    action_id: str
+    valid: bool
+    errors: List[str]
+    warnings: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "action_id": self.action_id,
+            "valid": self.valid,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
+
+
