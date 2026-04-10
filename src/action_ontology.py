@@ -203,3 +203,34 @@ def _evidence(
     }
 
 
+def _action(
+    action_type: str,
+    action_subtype: str,
+    label: str,
+    description: str,
+    parameter_schema: Dict[str, Any],
+    feasibility_prerequisites: Dict[str, Any],
+    mechanism_channels: List[Dict[str, Any]],
+    lead_time_prior: Dict[str, Any],
+    execution_complexity_prior: Dict[str, Any],
+    dependency_rules: List[Dict[str, Any]],
+    minimum_evidence_requirements: Dict[str, Any],
+    validation_rules: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "action_type": action_type,
+        "action_subtype": action_subtype,
+        "action_id": f"{action_type}.{action_subtype}",
+        "label": label,
+        "description": description,
+        "parameter_schema": parameter_schema,
+        "feasibility_prerequisites": feasibility_prerequisites,
+        "mechanism_channels": mechanism_channels,
+        "lead_time_prior": lead_time_prior,
+        "execution_complexity_prior": execution_complexity_prior,
+        "dependency_rules": dependency_rules,
+        "minimum_evidence_requirements": minimum_evidence_requirements,
+        "validation_rules": validation_rules,
+    }
+
+
