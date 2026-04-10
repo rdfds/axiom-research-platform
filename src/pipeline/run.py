@@ -301,3 +301,38 @@ def _extract_feature_value(feature_obj: Any) -> Any:
     return feature_obj
 
 
+def _baseline_from_world_model_features(features: Dict[str, Any]) -> Dict[str, Any]:
+    # Map world-model features into precedent baseline keys expected by stage1/stage2.
+    out: Dict[str, Any] = {}
+    if not isinstance(features, dict):
+        return out
+
+    def fv(name: str) -> Any:
+        return resolve_feature_value(features, name)
+
+    def first_value(*names: str) -> Any:
+        for name in names:
+            value = fv(name)
+            if value is not None:
+                return value
+        return None
+
+    out["market_cap"] = first_value(
+        "scale.market_cap",
+        "market.market_cap_provider_direct",
+        "market.market_cap",
+        "base_market_cap",
+    )
+    out["ebitda_margin"] = fv("operating.ebitda_margin_ttm")
+    out["leverage_net_debt_ebitda"] = fv("capital_structure.net_leverage")
+    out["fcf_margin"] = fv("operating.fcf_conversion")
+    out["pe"] = fv("market.pe")
+    out["revenue_ttm"] = fv("operating.revenue_ttm")
+    out["roic"] = fv("operating.roic")
+    out["sector"] = first_value("taxonomy.sector", "sector")
+    out["subsector"] = first_value("taxonomy.subsector", "subsector", "industry")
+    for key in _STATE_VECTOR_V1_FEATURES:
+        out[key] = fv(key)
+    return out
+
+
