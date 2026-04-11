@@ -74,3 +74,37 @@ def _event_ts(event: Dict[str, Any]) -> float | None:
         return None
 
 
+def _run_stage_seconds(runs_root: Path, run_id: str) -> Dict[str, float]:
+    p = runs_root / "runs" / f"run_id={run_id}.json"
+    if not p.exists():
+        return {}
+    try:
+        run = json.loads(p.read_text())
+    except Exception:
+        return {}
+    events = run.get("audit_log") or []
+    if not isinstance(events, list):
+        return {}
+
+    by_type: Dict[str, float] = {}
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        t = str(e.get("event_type", "") or "")
+        ts = _event_ts(e)
+        if t and ts is not None:
+            by_type[t] = ts
+
+    out: Dict[str, float] = {}
+    def _dur(start: str, end: str, key: str) -> None:
+        if start in by_type and end in by_type:
+            out[key] = round(max(0.0, by_type[end] - by_type[start]), 3)
+
+    _dur("snapshot_frozen", "candidate_generation_started", "snapshot_load")
+    _dur("candidate_generation_started", "candidate_generation_completed", "candidate_generation")
+    _dur("feasibility_eval_started", "feasibility_eval_completed", "feasibility")
+    _dur("precedent_retrieval_started", "precedent_retrieval_completed", "precedent")
+    _dur("planning_started", "planning_completed", "planning")
+    return out
+
+
