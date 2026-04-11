@@ -350,3 +350,20 @@ def _id_aliases(raw_id: str) -> List[str]:
     return list(dict.fromkeys(out))
 
 
+def _is_materialized_local(path: Path) -> bool:
+    if not path.exists() or not path.is_file():
+        return False
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    if st.st_size <= 0:
+        return False
+    try:
+        with path.open("rb") as f:
+            f.read(1024)
+    except Exception:
+        return False
+    return True
+
+
