@@ -53,3 +53,9 @@ def test_registry_contains_all_required_actions():
     assert len(action_ids) == 40
 
 
+def test_registry_schema_and_integrity_validation_pass():
+    registry = build_default_action_schema_registry()
+    assert registry.validate_schema() == []
+    assert registry.validate_registry_integrity() == []
+
+

@@ -2959,3 +2959,5 @@ def _default_actions() -> List[Dict[str, Any]]:
     return actions
 
 
+def build_default_action_schema_registry(version: str = "v1.0") -> ActionSchemaRegistry:
+    return ActionSchemaRegistry(version=version, actions=_default_actions(), last_updated_at=_utc_now_iso())
