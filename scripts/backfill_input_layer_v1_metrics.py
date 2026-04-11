@@ -1054,3 +1054,14 @@ def _ttm_meta_rank(meta: dict[str, Any] | None, *, concept_priority: int) -> tup
     return (end_dt, filed_dt, unframed, ytd_mode, -concept_priority)
 
 
+def _ttm_meta_is_latest_fy_only(meta: dict[str, Any] | None) -> bool:
+    if not isinstance(meta, dict):
+        return False
+    if meta.get("mode") == "latest_fy":
+        return True
+    components = meta.get("components")
+    if isinstance(components, list) and components:
+        return all(_ttm_meta_is_latest_fy_only(component) for component in components)
+    return False
+
+

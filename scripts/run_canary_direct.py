@@ -108,3 +108,19 @@ def _run_stage_seconds(runs_root: Path, run_id: str) -> Dict[str, float]:
     return out
 
 
+def _build_keyed_snapshot_loader(snapshot_root: Path):
+    def _loader(company_id: str, as_of_time: datetime) -> Dict[str, Any]:
+        as_of_date = as_of_time.strftime("%Y-%m-%d")
+        p = (
+            snapshot_root
+            / "keyed"
+            / f"as_of_date={as_of_date}"
+            / f"company_id={company_id}.json"
+        )
+        if not p.exists():
+            raise FileNotFoundError(f"Keyed snapshot not found: {p}")
+        return json.loads(p.read_text())
+
+    return _loader
+
+

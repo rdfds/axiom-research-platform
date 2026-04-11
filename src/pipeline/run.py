@@ -434,7 +434,7 @@ def _resolve_company_id_aliases_from_cik_gvkey(
     out: List[str] = []
     for _, row in matches.iterrows():
         gv = str(row.get("gvkey", "")).strip()
-        cik = str(row['cik']).strip()
+        cik = str(row.get("cik", "")).strip()
         if gv:
             out.extend(_id_aliases(gv))
         if cik:

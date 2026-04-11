@@ -301,7 +301,7 @@ def main() -> None:
             "negative_net_pension_liability_supported_rows": 0,
         }
         for row in iter_rows(out_path):
-            features = row['features'] or {}
+            features = row.get("features") or {}
             pension = _value(features.get("capital_structure.net_pension_liability"))
             debt = _value(features.get("capital_structure.debt_like_obligations_normalized"))
             debt_incl = _value(features.get("capital_structure.debt_like_obligations_including_pension"))
