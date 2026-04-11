@@ -28,3 +28,7 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def iter_files(base: Path, pattern: str) -> List[Path]:
+    return sorted(base.rglob(pattern))
+
+
