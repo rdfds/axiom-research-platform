@@ -108,3 +108,26 @@ def _ensure_source_event_id(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _select_cols(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
+    keep = [c for c in cols if c in df.columns]
+    if not keep:
+        return pd.DataFrame()
+    return df[keep].copy()
+
+
+@dataclass(frozen=True)
+class HistoricalEventStore:
+    events: pd.DataFrame
+    dataset_version: str
+
+    def filter_by_action_subtype(self, action_keys: List[str]) -> pd.DataFrame:
+        if self.events.empty:
+            return self.events.copy()
+        out = self.events.copy()
+        mask = pd.Series(False, index=out.index)
+        for col in ("action_subtype", "action_type", "action_id"):
+            if col in out.columns:
+                mask = mask | out[col].astype(str).isin(action_keys)
+        return out.loc[mask].copy()
+
+

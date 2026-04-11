@@ -1168,3 +1168,675 @@ def _select_depreciation_ttm_candidate(companyfacts: dict, as_of_date: str) -> t
     return best_value, best_meta, best_support_mode, best_quality_flags
 
 
+def _approx_equal(a: float | None, b: float | None, *, rel_tol: float = 1e-3, abs_tol: float = 1e6) -> bool:
+    if a is None or b is None:
+        return False
+    return abs(float(a) - float(b)) <= max(abs_tol, rel_tol * max(abs(float(a)), abs(float(b)), 1.0))
+
+
+def _build_sec_core_metric(metric_name: str, companyfacts: dict, as_of_date: str) -> tuple[float | None, str, str | None, dict[str, Any] | None, list[str] | None]:
+    if metric_name == "market.market_cap_provider_direct":
+        return None, "unsupported", "recomputed_in_market_layer", {"formula": "price_spot * shares_outstanding_asof"}, ["recomputed_in_market_layer"]
+
+    if metric_name == "operating.revenue_ttm_provider_direct":
+        value, meta = _latest_nonnegative_ttm_from_priority(companyfacts, REVENUE_TTM_CONCEPTS, as_of_date)
+        if value is None:
+            return None, "unsupported", "sec_nonnegative_ttm_unavailable", None, ["sec_nonnegative_ttm_unavailable"]
+        if meta.get("mode") == "latest_fy" and meta.get("frame"):
+            return value, "proxy_missing_component", "framed_latest_fy_value", meta, ["framed_latest_fy_value"]
+        return value, "exact", None, meta, None
+
+    if metric_name == "operating.revenue_ttm_lag_1y":
+        lagged_as_of_date = _one_year_prior_as_of_date(as_of_date)
+        value, meta = _latest_nonnegative_ttm_from_priority(companyfacts, REVENUE_TTM_CONCEPTS, lagged_as_of_date)
+        if value is None:
+            return None, "unsupported", "sec_prior_year_nonnegative_ttm_unavailable", None, [
+                "sec_prior_year_nonnegative_ttm_unavailable"
+            ]
+        enriched_meta = dict(meta or {})
+        enriched_meta["lagged_as_of_date"] = lagged_as_of_date
+        enriched_meta["formula"] = "latest_nonnegative_ttm_asof_prior_year"
+        if meta.get("mode") == "latest_fy" and meta.get("frame"):
+            return value, "proxy_missing_component", "framed_latest_fy_value", enriched_meta, ["framed_latest_fy_value"]
+        return value, "exact", None, enriched_meta, None
+
+    if metric_name == "earnings.net_income_ttm_provider_direct":
+        value, meta = _latest_ttm_from_priority(companyfacts, NET_INCOME_TTM_CONCEPTS, as_of_date)
+        if value is None:
+            return None, "unsupported", "sec_ttm_unavailable", None, ["sec_ttm_unavailable"]
+        return value, "exact", None, meta, None
+
+    if metric_name == "operating.ebitda_ltm_provider_direct":
+        operating_income, operating_meta = _latest_ttm_from_priority(companyfacts, OPERATING_INCOME_TTM_CONCEPTS, as_of_date)
+        if operating_income is None:
+            return None, "unsupported", "sec_operating_income_ttm_unavailable", None, ["sec_operating_income_ttm_unavailable"]
+        depreciation_value, depreciation_meta, depreciation_support_mode, depreciation_quality_flags = _select_depreciation_ttm_candidate(
+            companyfacts,
+            as_of_date,
+        )
+        if depreciation_value is None:
+            return None, "unsupported", "sec_depreciation_ttm_unavailable", None, ["sec_depreciation_ttm_unavailable"]
+        operating_latest_meta = _ttm_meta_latest_record(operating_meta)
+        operating_end = _parse_iso_date(operating_latest_meta.get("end")) if isinstance(operating_latest_meta, dict) else None
+        depreciation_latest_meta = _ttm_meta_latest_record(depreciation_meta)
+        depreciation_end = _parse_iso_date(depreciation_latest_meta.get("end")) if isinstance(depreciation_latest_meta, dict) else None
+        if depreciation_support_mode == "exact" and operating_end is not None:
+            latest_fy_only_stale = (
+                _ttm_meta_is_latest_fy_only(depreciation_meta)
+                and depreciation_end is not None
+                and depreciation_end < operating_end
+            )
+            mixed_stale_components = _ttm_meta_has_stale_latest_fy_component(depreciation_meta, operating_end)
+            if latest_fy_only_stale or mixed_stale_components:
+                depreciation_support_mode = "proxy_missing_component"
+                depreciation_quality_flags = list(depreciation_quality_flags or [])
+                depreciation_quality_flags.append("stale_depreciation_amortization_bridge")
+        return float(operating_income + depreciation_value), depreciation_support_mode, None, {
+            "mode": "operating_income_plus_depreciation_amortization",
+            "operating_income": operating_meta,
+            "depreciation_amortization": depreciation_meta,
+            "formula": "operating_income_ttm + depreciation_amortization_ttm",
+        }, depreciation_quality_flags or None
+
+    if metric_name == "liquidity.cash_and_short_term_investments_provider_direct":
+        as_of_dt = date.fromisoformat(as_of_date)
+        combined_candidates = _instant_candidates(
+            companyfacts,
+            COMBINED_CASH_STI_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        latest_combined_candidate = combined_candidates[0] if combined_candidates else None
+        combined_cash_restricted_candidates = _instant_candidates(
+            companyfacts,
+            COMBINED_CASH_RESTRICTED_TOTAL_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        latest_combined_cash_restricted_candidate = (
+            combined_cash_restricted_candidates[0] if combined_cash_restricted_candidates else None
+        )
+        cash_candidates = _instant_candidates(
+            companyfacts,
+            CASH_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        sti_candidates = _instant_candidates(
+            companyfacts,
+            STI_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        restricted_cash_candidates = _instant_candidates(
+            companyfacts,
+            RESTRICTED_CASH_TOTAL_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        cash_value = cash_candidates[0]["value"] if cash_candidates else None
+        cash_meta = cash_candidates[0]["meta"] if cash_candidates else None
+        sti_value = sti_candidates[0]["value"] if sti_candidates else None
+        sti_meta = sti_candidates[0]["meta"] if sti_candidates else None
+        aligned_cash_candidate, aligned_sti_candidate = _select_aligned_instant_pair(
+            cash_candidates,
+            sti_candidates,
+            max_gap_days=CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+        )
+        aligned_cash_value = aligned_cash_candidate["value"] if aligned_cash_candidate is not None else None
+        aligned_cash_meta = aligned_cash_candidate["meta"] if aligned_cash_candidate is not None else None
+        aligned_sti_value = aligned_sti_candidate["value"] if aligned_sti_candidate is not None else None
+        aligned_sti_meta = aligned_sti_candidate["meta"] if aligned_sti_candidate is not None else None
+        if latest_combined_candidate is not None:
+            combined_age_days = (as_of_dt - latest_combined_candidate["end_dt"]).days
+            freshest_separate_end = max(
+                [candidate["end_dt"] for candidate in (cash_candidates[:1] + sti_candidates[:1])] or [latest_combined_candidate["end_dt"]]
+            )
+            freshness_gap_days = (freshest_separate_end - latest_combined_candidate["end_dt"]).days
+            if (
+                combined_age_days <= EXACT_BALANCE_SHEET_MAX_AGE_DAYS
+                and freshness_gap_days <= CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS
+            ):
+                return latest_combined_candidate["value"], "exact", None, latest_combined_candidate["meta"], None
+        if latest_combined_cash_restricted_candidate is not None:
+            combined_cash_restricted_age_days = (as_of_dt - latest_combined_cash_restricted_candidate["end_dt"]).days
+            if combined_cash_restricted_age_days <= EXACT_BALANCE_SHEET_MAX_AGE_DAYS:
+                aligned_restricted_candidate = _select_aligned_instant_candidate(
+                    restricted_cash_candidates,
+                    target_end_dt=latest_combined_cash_restricted_candidate["end_dt"],
+                    max_gap_days=CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+                )
+                aligned_combined_sti_candidate = _select_aligned_instant_candidate(
+                    sti_candidates,
+                    target_end_dt=latest_combined_cash_restricted_candidate["end_dt"],
+                    max_gap_days=CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+                )
+                restricted_value = aligned_restricted_candidate["value"] if aligned_restricted_candidate is not None else 0.0
+                unrestricted_cash_value = latest_combined_cash_restricted_candidate["value"] - restricted_value
+                if unrestricted_cash_value >= -1e-6:
+                    combined_cash_restricted_meta = {
+                        "mode": "combined_cash_restricted_less_restricted_plus_short_term_investments",
+                        "cash_and_restricted_total": latest_combined_cash_restricted_candidate["meta"],
+                        "restricted_cash_adjustment": (
+                            aligned_restricted_candidate["meta"]
+                            if aligned_restricted_candidate is not None
+                            else {
+                                "mode": "infer_zero_restricted_cash_due_to_absent_current_restricted_cash_concept",
+                                "value": 0.0,
+                            }
+                        ),
+                        "short_term_investments": (
+                            aligned_combined_sti_candidate["meta"] if aligned_combined_sti_candidate is not None else None
+                        ),
+                        "formula": "cash_and_restricted_total - restricted_cash + short_term_investments",
+                    }
+                    return (
+                        float(unrestricted_cash_value + (aligned_combined_sti_candidate["value"] if aligned_combined_sti_candidate is not None else 0.0)),
+                        "exact",
+                        None,
+                        combined_cash_restricted_meta,
+                        None,
+                    )
+        if cash_value is None and sti_value is None:
+            return None, "unsupported", "sec_cash_components_unavailable", None, ["sec_cash_components_unavailable"]
+        if aligned_cash_value is not None and aligned_sti_value is not None:
+            pair_end_dt = max(aligned_cash_candidate["end_dt"], aligned_sti_candidate["end_dt"])
+            pair_age_days = (as_of_dt - pair_end_dt).days
+            if (
+                pair_age_days <= EXACT_BALANCE_SHEET_MAX_AGE_DAYS
+                and aligned_cash_candidate is cash_candidates[0]
+                and aligned_sti_candidate is sti_candidates[0]
+            ):
+                return float(aligned_cash_value + aligned_sti_value), "exact", None, {
+                    "mode": "cash_plus_short_term_investments",
+                    "cash": aligned_cash_meta,
+                    "short_term_investments": aligned_sti_meta,
+                    "formula": "cash + short_term_investments",
+                }, None
+        if cash_value is not None and sti_value is not None:
+            cash_end = _parse_iso_date((cash_meta or {}).get("end"))
+            sti_end = _parse_iso_date((sti_meta or {}).get("end"))
+            gap_days = abs((cash_end - sti_end).days) if cash_end is not None and sti_end is not None else None
+            if gap_days is not None and gap_days > CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS:
+                if cash_end is not None and sti_end is not None and cash_end > sti_end:
+                    return float(cash_value), "proxy_missing_component", "short_term_investment_component_stale", {
+                        "mode": "partial_cash_stack",
+                        "cash": cash_meta,
+                        "short_term_investments": sti_meta,
+                        "alignment_gap_days": gap_days,
+                        "formula": "latest_cash_only_due_to_stale_short_term_investments",
+                    }, ["short_term_investment_component_stale"]
+                if cash_end is not None and sti_end is not None and sti_end > cash_end:
+                    return float(sti_value), "proxy_missing_component", "cash_component_stale", {
+                        "mode": "partial_short_term_investments_stack",
+                        "cash": cash_meta,
+                        "short_term_investments": sti_meta,
+                        "alignment_gap_days": gap_days,
+                        "formula": "latest_short_term_investments_only_due_to_stale_cash",
+                    }, ["cash_component_stale"]
+            return float(cash_value + sti_value), "proxy_missing_component", "cash_component_period_mismatch", {
+                "mode": "cash_plus_short_term_investments_period_mismatch",
+                "cash": cash_meta,
+                "short_term_investments": sti_meta,
+                "alignment_gap_days": gap_days,
+                "formula": "latest_cash + latest_short_term_investments",
+            }, ["cash_component_period_mismatch"]
+        return float(cash_value or sti_value or 0.0), "proxy_missing_component", "cash_or_sti_component_missing", {
+            "mode": "partial_cash_stack",
+            "cash": cash_meta,
+            "short_term_investments": sti_meta,
+            "formula": "partial_cash_stack",
+        }, ["cash_or_sti_component_missing"]
+
+    if metric_name == "capital_structure.total_debt_provider_direct":
+        combined_value, combined_meta = _latest_instant_value(companyfacts, TOTAL_DEBT_COMBINED_CONCEPTS, as_of_date=as_of_date, unit_filter="USD")
+        short_term_borrowings_candidates = _instant_candidates(
+            companyfacts,
+            SHORT_TERM_BORROWINGS_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        current_candidates = _instant_candidates(
+            companyfacts,
+            DEBT_CURRENT_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        noncurrent_candidates = _instant_candidates(
+            companyfacts,
+            DEBT_NONCURRENT_CONCEPTS,
+            as_of_date=as_of_date,
+            unit_filter="USD",
+        )
+        short_term_borrowings_value = short_term_borrowings_candidates[0]["value"] if short_term_borrowings_candidates else None
+        short_term_borrowings_meta = short_term_borrowings_candidates[0]["meta"] if short_term_borrowings_candidates else None
+        current_value = current_candidates[0]["value"] if current_candidates else None
+        current_meta = current_candidates[0]["meta"] if current_candidates else None
+        noncurrent_value = noncurrent_candidates[0]["value"] if noncurrent_candidates else None
+        noncurrent_meta = noncurrent_candidates[0]["meta"] if noncurrent_candidates else None
+        aligned_current_candidate, aligned_noncurrent_candidate = _select_aligned_instant_pair(
+            current_candidates,
+            noncurrent_candidates,
+        )
+        aligned_current_value = aligned_current_candidate["value"] if aligned_current_candidate is not None else None
+        aligned_current_meta = aligned_current_candidate["meta"] if aligned_current_candidate is not None else None
+        aligned_noncurrent_value = aligned_noncurrent_candidate["value"] if aligned_noncurrent_candidate is not None else None
+        aligned_noncurrent_meta = aligned_noncurrent_candidate["meta"] if aligned_noncurrent_candidate is not None else None
+        aligned_pair_end_dt = max(aligned_current_candidate["end_dt"], aligned_noncurrent_candidate["end_dt"]) if aligned_current_candidate is not None and aligned_noncurrent_candidate is not None else None
+        aligned_short_term_candidate = (
+            _select_aligned_instant_candidate(
+                short_term_borrowings_candidates,
+                target_end_dt=aligned_pair_end_dt,
+            )
+            if aligned_pair_end_dt is not None
+            else None
+        )
+        aligned_short_term_with_noncurrent_candidate, aligned_noncurrent_with_short_term_candidate = _select_aligned_instant_pair(
+            short_term_borrowings_candidates,
+            noncurrent_candidates,
+        )
+        aligned_short_term_borrowings_value = aligned_short_term_candidate["value"] if aligned_short_term_candidate is not None else None
+        aligned_short_term_borrowings_meta = aligned_short_term_candidate["meta"] if aligned_short_term_candidate is not None else None
+        aligned_short_term_to_noncurrent_value = (
+            aligned_short_term_with_noncurrent_candidate["value"]
+            if aligned_short_term_with_noncurrent_candidate is not None
+            else None
+        )
+        aligned_short_term_to_noncurrent_meta = (
+            aligned_short_term_with_noncurrent_candidate["meta"]
+            if aligned_short_term_with_noncurrent_candidate is not None
+            else None
+        )
+        aligned_noncurrent_with_short_term_value = (
+            aligned_noncurrent_with_short_term_candidate["value"]
+            if aligned_noncurrent_with_short_term_candidate is not None
+            else None
+        )
+        aligned_noncurrent_with_short_term_meta = (
+            aligned_noncurrent_with_short_term_candidate["meta"]
+            if aligned_noncurrent_with_short_term_candidate is not None
+            else None
+        )
+        finance_lease_stack = _exact_finance_lease_stack(companyfacts, as_of_date)
+        noncurrent_total_only_candidate = next(
+            (
+                candidate
+                for candidate in noncurrent_candidates
+                if ((candidate.get("meta") or {}).get("concept") in NONCURRENT_TOTAL_ONLY_EXACT_CONCEPTS)
+            ),
+            None,
+        )
+
+        def _finance_adjustment_for_debt_stack() -> tuple[float | None, dict[str, Any] | None]:
+            combined_overlap = _concept_includes_capital_lease(combined_meta)
+            current_overlap = _concept_includes_capital_lease(current_meta)
+            noncurrent_overlap = _concept_includes_capital_lease(noncurrent_meta)
+            finance_lease_concepts_present = _has_any_concepts(companyfacts, FINANCE_LEASE_ANY_CONCEPTS)
+            if combined_overlap:
+                if "total" in finance_lease_stack:
+                    value, meta = finance_lease_stack["total"]
+                    return value, {
+                        "mode": "subtract_finance_lease_total_from_combined_debt",
+                        "finance_lease_total": meta,
+                    }
+                if not finance_lease_concepts_present:
+                    return 0.0, {
+                        "mode": "infer_zero_finance_lease_adjustment_due_to_absent_finance_lease_concepts",
+                    }
+                return None, None
+            if current_overlap and noncurrent_overlap:
+                if "total" in finance_lease_stack:
+                    value, meta = finance_lease_stack["total"]
+                    return value, {
+                        "mode": "subtract_finance_lease_total_from_current_and_noncurrent_debt",
+                        "finance_lease_total": meta,
+                    }
+                if "current" in finance_lease_stack and "noncurrent" in finance_lease_stack:
+                    current_finance_value, current_finance_meta = finance_lease_stack["current"]
+                    noncurrent_finance_value, noncurrent_finance_meta = finance_lease_stack["noncurrent"]
+                    return current_finance_value + noncurrent_finance_value, {
+                        "mode": "subtract_finance_lease_current_plus_noncurrent",
+                        "finance_lease_current": current_finance_meta,
+                        "finance_lease_noncurrent": noncurrent_finance_meta,
+                    }
+                if not finance_lease_concepts_present:
+                    return 0.0, {
+                        "mode": "infer_zero_finance_lease_adjustment_due_to_absent_finance_lease_concepts",
+                    }
+                return None, None
+            if current_overlap:
+                if "current" in finance_lease_stack:
+                    value, meta = finance_lease_stack["current"]
+                    return value, {
+                        "mode": "subtract_finance_lease_current",
+                        "finance_lease_current": meta,
+                    }
+                if not finance_lease_concepts_present:
+                    return 0.0, {
+                        "mode": "infer_zero_finance_lease_adjustment_due_to_absent_finance_lease_concepts",
+                    }
+                return None, None
+            if noncurrent_overlap:
+                if "noncurrent" in finance_lease_stack:
+                    value, meta = finance_lease_stack["noncurrent"]
+                    return value, {
+                        "mode": "subtract_finance_lease_noncurrent",
+                        "finance_lease_noncurrent": meta,
+                    }
+                if not finance_lease_concepts_present:
+                    return 0.0, {
+                        "mode": "infer_zero_finance_lease_adjustment_due_to_absent_finance_lease_concepts",
+                    }
+                return None, None
+            return 0.0, None
+
+        finance_adjustment_value, finance_adjustment_meta = _finance_adjustment_for_debt_stack()
+        short_term_borrowings_duplicate_current = (
+            aligned_short_term_candidate is not None
+            and aligned_current_candidate is not None
+            and aligned_short_term_candidate["end_dt"] == aligned_current_candidate["end_dt"]
+            and _candidate_approximately_matches(aligned_short_term_candidate, aligned_current_value)
+        )
+
+        def _apply_finance_adjustment(
+            base_value: float,
+            *,
+            support_mode: str,
+            missing_reason: str | None,
+            component_breakdown: dict[str, Any],
+            quality_flags: list[str] | None,
+        ) -> tuple[float, str, str | None, dict[str, Any], list[str] | None]:
+            if finance_adjustment_value == 0.0 and finance_adjustment_meta is None:
+                return base_value, support_mode, missing_reason, component_breakdown, quality_flags
+            if finance_adjustment_value is None:
+                flags = list(quality_flags or [])
+                if "finance_lease_adjustment_unavailable" not in flags:
+                    flags.append("finance_lease_adjustment_unavailable")
+                breakdown = {
+                    **component_breakdown,
+                    "capital_lease_overlap_detected": True,
+                    "formula_before_finance_adjustment": component_breakdown.get("formula"),
+                }
+                return base_value, "proxy_missing_component", "finance_lease_adjustment_unavailable", breakdown, flags
+            adjusted_value = float(base_value - finance_adjustment_value)
+            if adjusted_value < 0:
+                flags = list(quality_flags or [])
+                if "finance_lease_adjustment_exceeds_debt" not in flags:
+                    flags.append("finance_lease_adjustment_exceeds_debt")
+                breakdown = {
+                    **component_breakdown,
+                    "finance_lease_adjustment": finance_adjustment_meta,
+                    "finance_lease_adjustment_value": finance_adjustment_value,
+                    "formula_before_finance_adjustment": component_breakdown.get("formula"),
+                }
+                return base_value, "proxy_missing_component", "finance_lease_adjustment_exceeds_debt", breakdown, flags
+            breakdown = {
+                **component_breakdown,
+                "finance_lease_adjustment": finance_adjustment_meta,
+                "finance_lease_adjustment_value": finance_adjustment_value,
+                "formula_before_finance_adjustment": component_breakdown.get("formula"),
+                "formula": f"{component_breakdown.get('formula')} - finance_lease_liabilities_exact",
+            }
+            return adjusted_value, support_mode, missing_reason, breakdown, quality_flags
+
+        if combined_value is not None:
+            if (
+                aligned_short_term_borrowings_value is not None
+                and aligned_current_value is not None
+                and aligned_noncurrent_value is not None
+                and _approx_equal(combined_value, float(aligned_current_value + aligned_noncurrent_value))
+                and not short_term_borrowings_duplicate_current
+            ):
+                total_value = float(combined_value + aligned_short_term_borrowings_value)
+                total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                    total_value,
+                    support_mode="exact",
+                    missing_reason=None,
+                    component_breakdown={
+                        "mode": "combined_debt_plus_short_term_borrowings",
+                        "combined_debt": combined_meta,
+                        "current": aligned_current_meta,
+                        "noncurrent": aligned_noncurrent_meta,
+                        "short_term_borrowings": aligned_short_term_borrowings_meta,
+                        "formula": "combined_debt + short_term_borrowings",
+                    },
+                    quality_flags=None,
+                )
+                return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+            total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                combined_value,
+                support_mode="exact",
+                missing_reason=None,
+                component_breakdown={
+                    "mode": "combined_debt",
+                    "combined_debt": combined_meta,
+                    "formula": "combined_debt",
+                },
+                quality_flags=None,
+            )
+            return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+        if (
+            current_value is None
+            and short_term_borrowings_value is None
+            and noncurrent_total_only_candidate is not None
+        ):
+            noncurrent_total_meta = noncurrent_total_only_candidate["meta"]
+            noncurrent_total_concept = noncurrent_total_meta.get("concept")
+            if noncurrent_total_concept == "LongTermDebt":
+                component_breakdown = {
+                    "mode": "long_term_debt_total_only",
+                    "long_term_debt_total": noncurrent_total_meta,
+                    "formula": "exact_long_term_debt_total",
+                }
+            else:
+                component_breakdown = {
+                    "mode": "noncurrent_debt_total_only",
+                    "noncurrent_debt_total": noncurrent_total_meta,
+                    "formula": "exact_noncurrent_debt_total",
+                }
+            total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                float(noncurrent_total_only_candidate["value"]),
+                support_mode="exact",
+                missing_reason=None,
+                component_breakdown=component_breakdown,
+                quality_flags=None,
+            )
+            return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+        if current_value is None and noncurrent_value is None:
+            if short_term_borrowings_value is not None:
+                return float(short_term_borrowings_value), "proxy_missing_component", "long_term_debt_components_missing", {
+                    "mode": "short_term_borrowings_only",
+                    "short_term_borrowings": short_term_borrowings_meta,
+                    "formula": "short_term_borrowings_only",
+                }, ["long_term_debt_components_missing"]
+            if not _has_any_concepts(companyfacts, DEBT_BALANCE_CONCEPTS):
+                return 0.0, "proxy_missing_component", "no_debt_balance_concepts_present", {
+                    "mode": "no_debt_balance_concepts_present",
+                    "formula": "infer_zero_debt_when_no_balance_sheet_debt_concepts_are_present",
+                }, ["no_debt_balance_concepts_present"]
+            return None, "unsupported", "sec_debt_components_unavailable", None, ["sec_debt_components_unavailable"]
+        if aligned_current_value is not None and aligned_noncurrent_value is not None:
+            if (
+                short_term_borrowings_duplicate_current
+                and noncurrent_total_only_candidate is not None
+                and aligned_current_candidate is not None
+                and noncurrent_total_only_candidate["end_dt"] == aligned_current_candidate["end_dt"]
+            ):
+                total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                    float(noncurrent_total_only_candidate["value"]),
+                    support_mode="exact",
+                    missing_reason=None,
+                    component_breakdown={
+                        "mode": "long_term_debt_with_overlapping_short_term_borrowings",
+                        "current": aligned_current_meta,
+                        "noncurrent": aligned_noncurrent_meta,
+                        "short_term_borrowings": aligned_short_term_borrowings_meta,
+                        "long_term_debt_total": noncurrent_total_only_candidate["meta"],
+                        "formula": "exact_long_term_debt_total_due_to_current_short_term_overlap",
+                    },
+                    quality_flags=None,
+                )
+                return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+            total_value = float(aligned_current_value + aligned_noncurrent_value)
+            component_breakdown = {
+                "mode": "current_plus_noncurrent_debt",
+                "current": aligned_current_meta,
+                "noncurrent": aligned_noncurrent_meta,
+                "formula": "debt_current + debt_noncurrent",
+            }
+            if (
+                aligned_short_term_borrowings_value is not None
+                and (
+                    (aligned_current_meta or {}).get("concept") == "LongTermDebtCurrent"
+                    or (aligned_short_term_borrowings_meta or {}).get("concept") in ADDITIVE_SHORT_TERM_BORROWINGS_CONCEPTS
+                )
+                and not short_term_borrowings_duplicate_current
+            ):
+                total_value += float(aligned_short_term_borrowings_value)
+                component_breakdown = {
+                    "mode": "current_plus_noncurrent_debt_plus_short_term_borrowings",
+                    "current": aligned_current_meta,
+                    "noncurrent": aligned_noncurrent_meta,
+                    "short_term_borrowings": aligned_short_term_borrowings_meta,
+                    "formula": "debt_current + debt_noncurrent + short_term_borrowings",
+                }
+            total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                total_value,
+                support_mode="exact",
+                missing_reason=None,
+                component_breakdown=component_breakdown,
+                quality_flags=None,
+            )
+            return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+        if (
+            aligned_current_value is None
+            and aligned_noncurrent_with_short_term_value is not None
+            and aligned_short_term_to_noncurrent_value is not None
+        ):
+            total_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                float(aligned_noncurrent_with_short_term_value + aligned_short_term_to_noncurrent_value),
+                support_mode="exact",
+                missing_reason=None,
+                component_breakdown={
+                    "mode": "short_term_borrowings_plus_noncurrent_debt",
+                    "noncurrent": aligned_noncurrent_with_short_term_meta,
+                    "short_term_borrowings": aligned_short_term_to_noncurrent_meta,
+                    "formula": "short_term_borrowings + debt_noncurrent",
+                },
+                quality_flags=None,
+            )
+            return total_value, support_mode, missing_reason, component_breakdown, quality_flags
+        if current_value is not None and noncurrent_value is not None:
+            partial_value = float(current_value + noncurrent_value)
+            if short_term_borrowings_value is not None:
+                partial_value += float(short_term_borrowings_value)
+            partial_breakdown = {
+                "mode": "partial_debt_stack_period_mismatch",
+                "current": current_meta,
+                "noncurrent": noncurrent_meta,
+                "short_term_borrowings": short_term_borrowings_meta,
+                "formula": "latest_current + latest_noncurrent + optional_short_term_borrowings",
+            }
+            partial_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+                partial_value,
+                support_mode="proxy_missing_component",
+                missing_reason="debt_component_period_mismatch",
+                component_breakdown=partial_breakdown,
+                quality_flags=["debt_component_period_mismatch"],
+            )
+            return partial_value, support_mode, missing_reason, component_breakdown, quality_flags
+        partial_value = float(current_value or noncurrent_value or 0.0)
+        if short_term_borrowings_value is not None:
+            partial_value += float(short_term_borrowings_value)
+        partial_breakdown = {
+            "mode": "partial_debt_stack",
+            "current": current_meta,
+            "noncurrent": noncurrent_meta,
+            "short_term_borrowings": short_term_borrowings_meta,
+            "formula": "partial_debt_stack_with_short_term_borrowings",
+        }
+        partial_value, support_mode, missing_reason, component_breakdown, quality_flags = _apply_finance_adjustment(
+            partial_value,
+            support_mode="proxy_missing_component",
+            missing_reason="debt_component_missing",
+            component_breakdown=partial_breakdown,
+            quality_flags=["debt_component_missing"],
+        )
+        return partial_value, support_mode, missing_reason, component_breakdown, quality_flags
+
+    return None, "unsupported", "unsupported_metric", None, ["unsupported_metric"]
+
+
+def _build_legacy_provider_metric(
+    metric_name: str,
+    provider_row: pd.Series | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+) -> Dict[str, Any]:
+    source_column = LEGACY_PROVIDER_SOURCE_COLUMNS.get(metric_name)
+    if source_column is None:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="provider_direct_field_not_defined_for_metric",
+            component_breakdown={"source_column": None},
+            quality_flags=["provider_direct_field_not_defined_for_metric"],
+        )
+    if provider_row is None:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="provider_row_unavailable",
+            component_breakdown={"source_column": source_column},
+            quality_flags=["provider_row_unavailable"],
+        )
+
+    raw_value = provider_row.get(source_column)
+    if pd.isna(raw_value):
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="provider_field_unavailable",
+            component_breakdown={
+                "source_column": source_column,
+                "reference_instrument": provider_row.get("Instrument"),
+            },
+            quality_flags=["provider_field_unavailable"],
+        )
+
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode="exact",
+        value=float(raw_value),
+        unit=unit,
+        missing_reason=None,
+        component_breakdown={
+            "provider_field": source_column,
+            "reference_instrument": provider_row.get("Instrument"),
+            "provider_company_name": provider_row.get("Company Common Name"),
+            "formula": "legacy_provider_direct_field",
+        },
+        quality_flags=["legacy_provider_direct_fallback"],
+    )
+
+
