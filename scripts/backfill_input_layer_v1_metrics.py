@@ -1065,3 +1065,106 @@ def _ttm_meta_is_latest_fy_only(meta: dict[str, Any] | None) -> bool:
     return False
 
 
+def _ttm_meta_has_stale_latest_fy_component(meta: dict[str, Any] | None, reference_end: date | None) -> bool:
+    if not isinstance(meta, dict) or reference_end is None:
+        return False
+    if meta.get("mode") == "latest_fy":
+        latest = _ttm_meta_latest_record(meta)
+        end_dt = _parse_iso_date(latest.get("end")) if isinstance(latest, dict) else None
+        value = latest.get("value") if isinstance(latest, dict) else None
+        if value is not None and abs(float(value)) < 1e-9:
+            return False
+        return end_dt is not None and end_dt < reference_end
+    components = meta.get("components")
+    if isinstance(components, list) and components:
+        return any(_ttm_meta_has_stale_latest_fy_component(component, reference_end) for component in components)
+    return False
+
+
+def _latest_ttm_from_priority(companyfacts: dict, concepts: list[str], as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    best_value = None
+    best_meta = None
+    best_key = None
+    for priority, concept_name in enumerate(concepts):
+        value, meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+        if value is None:
+            continue
+        candidate_key = _ttm_meta_rank(meta, concept_priority=priority)
+        if best_key is None or candidate_key > best_key:
+            best_key = candidate_key
+            best_value = value
+            best_meta = meta
+    return best_value, best_meta
+
+
+def _latest_nonnegative_ttm_from_priority(companyfacts: dict, concepts: list[str], as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    best_value = None
+    best_meta = None
+    best_key = None
+    for priority, concept_name in enumerate(concepts):
+        value, meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+        if value is None:
+            continue
+        if value >= 0:
+            candidate_key = _ttm_meta_rank(meta, concept_priority=priority)
+            if best_key is None or candidate_key > best_key:
+                best_key = candidate_key
+                best_value = value
+                best_meta = meta
+    return best_value, best_meta
+
+
+def _select_depreciation_ttm_candidate(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None, str, list[str] | None]:
+    best_value = None
+    best_meta = None
+    best_support_mode = "unsupported"
+    best_quality_flags: list[str] | None = None
+    best_key = None
+
+    for group_priority, concept_group in enumerate(DEPRECIATION_TTM_CONCEPT_GROUPS):
+        candidate_value = None
+        candidate_meta = None
+        candidate_support_mode = "exact"
+        candidate_quality_flags: list[str] = []
+
+        if len(concept_group) == 1:
+            candidate_value, candidate_meta = _latest_ttm_from_priority(companyfacts, concept_group, as_of_date)
+            if candidate_value is None:
+                continue
+            if concept_group[0] == "Depreciation":
+                candidate_support_mode = "proxy_missing_component"
+                candidate_quality_flags.append("partial_depreciation_without_full_amortization")
+        else:
+            parts = []
+            parts_meta = []
+            for concept_name in concept_group:
+                part_value, part_meta = _latest_ttm_from_priority(companyfacts, [concept_name], as_of_date)
+                if part_value is None:
+                    parts = []
+                    break
+                parts.append(part_value)
+                parts_meta.append(part_meta)
+            if not parts:
+                continue
+            candidate_value = float(sum(parts))
+            candidate_meta = {
+                "mode": "sum_concepts",
+                "components": parts_meta,
+                "formula": "sum_component_ttm_values",
+            }
+
+        candidate_key = _ttm_meta_rank(candidate_meta, concept_priority=0) + (
+            1 if candidate_support_mode == "exact" else 0,
+            len(concept_group),
+            -group_priority,
+        )
+        if best_key is None or candidate_key > best_key:
+            best_key = candidate_key
+            best_value = candidate_value
+            best_meta = candidate_meta
+            best_support_mode = candidate_support_mode
+            best_quality_flags = candidate_quality_flags or None
+
+    return best_value, best_meta, best_support_mode, best_quality_flags
+
+

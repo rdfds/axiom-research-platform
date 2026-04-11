@@ -84,7 +84,7 @@ CRSP_DISTCD_DOCS = {
 
 def map_distcd(row):
     distcd = row.get("distcd")
-    facpr = row['facpr']
+    facpr = row.get("facpr")
     if pd.isna(distcd):
         return "distribution_other", "unknown"
     distcd = int(distcd)

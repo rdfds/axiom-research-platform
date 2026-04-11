@@ -120,7 +120,7 @@ class CorporateActionsDB:
 
         return None
 
-    def _extract_company_from_headline(self, headline: str) :
+    def _extract_company_from_headline(self, headline: str) -> Optional[str]:
         """Extract company name from headline."""
         if pd.isna(headline):
             return None
