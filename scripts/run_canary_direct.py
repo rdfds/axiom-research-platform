@@ -59,3 +59,8 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _safe_run_ids_write(path: Path, pairs: List[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(pairs) + ("\n" if pairs else ""))
+
+

@@ -336,3 +336,17 @@ def _baseline_from_world_model_features(features: Dict[str, Any]) -> Dict[str, A
     return out
 
 
+def _id_aliases(raw_id: str) -> List[str]:
+    cid = str(raw_id)
+    out: List[str] = [cid]
+    if cid.isdigit():
+        stripped = cid.lstrip("0")
+        if stripped:
+            out.append(stripped)
+            for w in (6, 8, 9, 10):
+                out.append(stripped.zfill(w))
+        for w in (6, 8, 9, 10):
+            out.append(cid.zfill(w))
+    return list(dict.fromkeys(out))
+
+
