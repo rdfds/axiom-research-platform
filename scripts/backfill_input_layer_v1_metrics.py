@@ -1043,3 +1043,14 @@ def _ttm_meta_is_ytd_bridge(meta: dict[str, Any] | None) -> bool:
     return False
 
 
+def _ttm_meta_rank(meta: dict[str, Any] | None, *, concept_priority: int) -> tuple[date, date, int, int, int]:
+    if not isinstance(meta, dict):
+        return (date.min, date.min, 0, 0, -concept_priority)
+    latest = _ttm_meta_latest_record(meta) or meta
+    end_dt = _parse_iso_date(latest.get("end")) or date.min
+    filed_dt = _parse_iso_date(latest.get("filed")) or end_dt
+    unframed = 1 if not latest.get("frame") else 0
+    ytd_mode = 1 if _ttm_meta_is_ytd_bridge(meta) else 0
+    return (end_dt, filed_dt, unframed, ytd_mode, -concept_priority)
+
+

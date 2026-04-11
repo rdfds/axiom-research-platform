@@ -529,3 +529,340 @@ def _outcome_aliases(action: ActionCandidate) -> List[str]:
     return list(dict.fromkeys([x for x in out if x]))
 
 
+def run_precedent(
+    company_id: str,
+    as_of_date: str,
+    action_type: Optional[str] = None,
+    action_subtype: Optional[str] = None,
+    action_id: Optional[str] = None,
+    action_params: Optional[Dict[str, Any]] = None,
+    config_path: Optional[str] = None,
+    outcomes_path: Optional[str] = None,
+    state_snapshot_root: Optional[str] = None,
+    state_snapshot_path: Optional[str] = None,
+    state_snapshot: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
+) -> PrecedentPack:
+    wrapper_started = time.perf_counter()
+    _precedent_debug(
+        "run_precedent:start",
+        company_id=company_id,
+        as_of_date=as_of_date,
+        action_id=action_id,
+        action_type=action_type,
+        action_subtype=action_subtype,
+        run_id=run_id,
+        candidate_id=candidate_id,
+    )
+    build_change_vector, load_config, FeatureBuilder, build_precedent_pack, build_precedent_pack_v2 = (
+        _load_precedent_bindings()
+    )
+
+    config_started = time.perf_counter()
+    _precedent_debug("config_load:start", config_path=config_path)
+    config = load_config(config_path)
+    _precedent_debug("config_load:done", elapsed_seconds=round(time.perf_counter() - config_started, 6))
+    as_of = _parse_date(as_of_date)
+    action_params = action_params or {}
+
+    available_features: List[str] = []
+    snapshot_for_validation: CompanyStateSnapshot
+    baseline_features: Dict[str, Any]
+
+    snapshot_row: Optional[Dict[str, Any]] = None
+    if isinstance(state_snapshot, dict) and state_snapshot:
+        snapshot_row = dict(state_snapshot)
+    if snapshot_row is None and state_snapshot_root:
+        snapshot_root = Path(state_snapshot_root)
+        keyed_started = time.perf_counter()
+        _precedent_debug(
+            "keyed_snapshot_lookup:start",
+            snapshot_root=str(snapshot_root),
+            company_id=company_id,
+            as_of_date=as_of_date,
+        )
+        snapshot_row = _load_company_state_keyed_snapshot_row(
+            snapshot_root=snapshot_root,
+            company_id=company_id,
+            as_of=as_of,
+        )
+        _precedent_debug(
+            "keyed_snapshot_lookup:done",
+            found=bool(snapshot_row),
+            elapsed_seconds=round(time.perf_counter() - keyed_started, 6),
+        )
+        if snapshot_row is None:
+            alias_started = time.perf_counter()
+            aliases = []
+            aliases.extend(_resolve_company_id_aliases_from_entity_identifier(company_id))
+            aliases.extend(_resolve_company_id_aliases_from_cik_gvkey(company_id))
+            aliases = list(dict.fromkeys(aliases))
+            _precedent_debug("keyed_snapshot_aliases:resolved", alias_count=len(aliases), aliases=aliases[:20])
+            for alias in aliases:
+                snapshot_row = _load_company_state_keyed_snapshot_row(
+                    snapshot_root=snapshot_root,
+                    company_id=alias,
+                    as_of=as_of,
+                )
+                if snapshot_row is not None:
+                    break
+            _precedent_debug(
+                "keyed_snapshot_aliases:done",
+                found=bool(snapshot_row),
+                elapsed_seconds=round(time.perf_counter() - alias_started, 6),
+            )
+
+    if snapshot_row is None and state_snapshot_path:
+        snapshot_path = Path(state_snapshot_path)
+        # Prefer keyed snapshot root if available; otherwise use jsonl path fallback.
+        if snapshot_row is None:
+            snapshot_started = time.perf_counter()
+            _precedent_debug(
+                "snapshot_path_lookup:start",
+                snapshot_path=str(snapshot_path),
+                company_id=company_id,
+                as_of_date=as_of_date,
+            )
+            snapshot_row = _load_company_state_snapshot_row(snapshot_path, company_id=company_id, as_of=as_of)
+            _precedent_debug(
+                "snapshot_path_lookup:done",
+                found=bool(snapshot_row),
+                elapsed_seconds=round(time.perf_counter() - snapshot_started, 6),
+            )
+        if snapshot_row is None:
+            alias_started = time.perf_counter()
+            aliases = []
+            aliases.extend(_resolve_company_id_aliases_from_entity_identifier(company_id))
+            aliases.extend(_resolve_company_id_aliases_from_cik_gvkey(company_id))
+            aliases = list(dict.fromkeys(aliases))
+            _precedent_debug("snapshot_path_aliases:resolved", alias_count=len(aliases), aliases=aliases[:20])
+            for alias in aliases:
+                snapshot_row = _load_company_state_snapshot_row(snapshot_path, company_id=alias, as_of=as_of)
+                if snapshot_row is not None:
+                    break
+            _precedent_debug(
+                "snapshot_path_aliases:done",
+                found=bool(snapshot_row),
+                elapsed_seconds=round(time.perf_counter() - alias_started, 6),
+            )
+            if snapshot_row is None:
+                tried = [company_id] + aliases[:20]
+                raise ValueError(
+                    f"company_id={company_id} as_of={as_of_date} not found in snapshot file: {snapshot_path}. "
+                    f"Tried aliases: {tried}"
+                )
+
+    if snapshot_row is not None:
+        snapshot_build_started = time.perf_counter()
+        _precedent_debug("snapshot_materialize:start", source="snapshot_row")
+        adapted_snapshot_row, _ = adapt_snapshot(snapshot_row)
+        adapted_snapshot_row = attach_model_feature_bundle(adapted_snapshot_row)
+        raw_features = feature_view_from_snapshot(adapted_snapshot_row, view_name="precedent")
+        available_features = list(raw_features.keys())
+        baseline_features = _baseline_from_world_model_features(raw_features)
+        snapshot_for_validation = CompanyStateSnapshot(
+            company_id=str(adapted_snapshot_row.get("company_id")),
+            as_of_time=pd.to_datetime(adapted_snapshot_row.get("as_of_time")).to_pydatetime(),
+            features=baseline_features,
+            regime=(
+                adapted_snapshot_row.get("regime", {})
+                if isinstance(adapted_snapshot_row.get("regime"), dict)
+                else {}
+            ),
+            constraint_set=adapted_snapshot_row.get("constraint_set", []),
+            provenance=(
+                adapted_snapshot_row.get("provenance", {})
+                if isinstance(adapted_snapshot_row.get("provenance"), dict)
+                else {}
+            ),
+        )
+        _precedent_debug(
+            "snapshot_materialize:done",
+            source="snapshot_row",
+            feature_count=len(available_features),
+            elapsed_seconds=round(time.perf_counter() - snapshot_build_started, 6),
+        )
+    else:
+        snapshot_build_started = time.perf_counter()
+        _precedent_debug("snapshot_materialize:start", source="feature_builder")
+        builder = FeatureBuilder()
+        macro_series = config.get("macro_series", {})
+        snapshot_for_validation = builder.build_company_state(company_id, as_of, macro_series)
+        adapted_snapshot, _ = adapt_snapshot(snapshot_for_validation.to_dict())
+        adapted_snapshot = attach_model_feature_bundle(adapted_snapshot)
+        precedent_features = feature_view_from_snapshot(adapted_snapshot, view_name="precedent")
+        snapshot_for_validation = CompanyStateSnapshot(
+            company_id=str(adapted_snapshot.get("company_id", snapshot_for_validation.company_id)),
+            as_of_time=pd.to_datetime(
+                adapted_snapshot.get("as_of_time", snapshot_for_validation.as_of_time)
+            ).to_pydatetime(),
+            features=precedent_features,
+            regime=adapted_snapshot.get("regime", {}) if isinstance(adapted_snapshot.get("regime"), dict) else {},
+            constraint_set=adapted_snapshot.get("constraint_set", []),
+            provenance=(
+                adapted_snapshot.get("provenance", {})
+                if isinstance(adapted_snapshot.get("provenance"), dict)
+                else {}
+            ),
+        )
+        baseline_features = snapshot_for_validation.features
+        available_features = list((snapshot_for_validation.features or {}).keys())
+        _precedent_debug(
+            "snapshot_materialize:done",
+            source="feature_builder",
+            feature_count=len(available_features),
+            elapsed_seconds=round(time.perf_counter() - snapshot_build_started, 6),
+        )
+
+    schema_started = time.perf_counter()
+    _precedent_debug("resolve_action_schema:start", action_id=action_id, action_type=action_type, action_subtype=action_subtype)
+    registry = _default_registry()
+    schema = _resolve_action_schema(registry, action_type=action_type, action_subtype=action_subtype, action_id=action_id)
+    resolved_params, assumptions = _materialize_action_params(schema, action_params)
+    _precedent_debug(
+        "resolve_action_schema:done",
+        resolved_action_id=str(schema["action_id"]),
+        elapsed_seconds=round(time.perf_counter() - schema_started, 6),
+    )
+
+    validation_started = time.perf_counter()
+    _precedent_debug("candidate_validation:start", resolved_action_id=str(schema["action_id"]))
+    validation = registry.validate_candidate(
+        {
+            "action_id": schema["action_id"],
+            "parameters": resolved_params,
+            "available_features": available_features,
+            "available_evidence_classes": _infer_evidence_classes(snapshot_for_validation),
+            "constraints": _snapshot_constraint_tokens(snapshot_for_validation),
+        },
+        strict_evidence=False,
+    )
+    _precedent_debug(
+        "candidate_validation:done",
+        valid=bool(validation.valid),
+        error_count=len(validation.errors),
+        elapsed_seconds=round(time.perf_counter() - validation_started, 6),
+    )
+    if not validation.valid:
+        raise ValueError(
+            f"Action candidate validation failed for {schema['action_id']}: "
+            + "; ".join(validation.errors)
+        )
+
+    action = ActionCandidate(
+        action_type=schema["action_type"],
+        action_subtype=schema["action_subtype"],
+        action_id=schema["action_id"],
+        params=resolved_params,
+        assumed_preconditions=assumptions,
+    )
+    change_vector = build_change_vector(action, config)
+
+    outcomes_path = Path(outcomes_path) if outcomes_path else _default_precedent_outcomes_path()
+    if not outcomes_path.exists():
+        raise FileNotFoundError(f"Missing action outcomes dataset: {outcomes_path}")
+    runtime_started = time.perf_counter()
+    _precedent_debug("precedent_runtime:start", outcomes_path=str(outcomes_path))
+    stores, retrieval_index = _load_precedent_runtime(outcomes_path)
+    _precedent_debug(
+        "precedent_runtime:done",
+        elapsed_seconds=round(time.perf_counter() - runtime_started, 6),
+        index_rows=int(getattr(retrieval_index, "n_rows", 0) or 0),
+    )
+    # Precedent Brain v2 artifact (keeps legacy distributions for compatibility).
+    try:
+        v2_started = time.perf_counter()
+        _precedent_debug("precedent_brain_v2:start", action_id=str(schema["action_id"]))
+        pack = build_precedent_pack_v2(
+            candidate_id=str(candidate_id or f"{company_id}:{schema['action_id']}:{as_of_date}"),
+            run_id=str(run_id or ""),
+            company_id=str(company_id),
+            action_id=str(schema["action_id"]),
+            action_subtype=str(schema.get("action_subtype") or ""),
+            action_params=resolved_params,
+            candidate_features=baseline_features if isinstance(baseline_features, dict) else {},
+            candidate_regime=snapshot_for_validation.regime if isinstance(snapshot_for_validation.regime, dict) else {},
+            historical_event_store=stores["historical_event_store"],
+            historical_state_store=stores["historical_state_store"],
+            historical_outcome_store=stores["historical_outcome_store"],
+            regime_history=stores["regime_history"],
+            retrieval_index=retrieval_index,
+            top_k=30,
+            min_k=10,
+        )
+        _precedent_debug(
+            "precedent_brain_v2:done",
+            action_id=str(schema["action_id"]),
+            elapsed_seconds=round(time.perf_counter() - v2_started, 6),
+            total_wrapper_seconds=round(time.perf_counter() - wrapper_started, 6),
+        )
+        return pack
+    except Exception as exc:
+        # Conservative fallback to legacy pack to avoid pipeline interruptions.
+        _precedent_debug(
+            "precedent_brain_v2:fallback_legacy",
+            action_id=str(schema["action_id"]),
+            error_type=type(exc).__name__,
+            error=str(exc),
+            traceback=traceback.format_exc(limit=20) if _PRECEDENT_DEBUG else None,
+            total_wrapper_seconds=round(time.perf_counter() - wrapper_started, 6),
+        )
+        outcomes_started = time.perf_counter()
+        _precedent_debug("outcomes_table:start", outcomes_path=str(outcomes_path))
+        full_df = _load_outcomes_table(outcomes_path)
+        _precedent_debug(
+            "outcomes_table:done",
+            rows=int(len(full_df)),
+            elapsed_seconds=round(time.perf_counter() - outcomes_started, 6),
+        )
+        df = full_df
+        aliases = _outcome_aliases(action)
+        _precedent_debug("outcome_aliases", aliases=aliases)
+        filter_columns = (
+            ("normalized_action_id", "outcomes_filter:normalized_action_id"),
+            ("normalized_action_subfamily", "outcomes_filter:normalized_action_subfamily"),
+            ("normalized_action_family", "outcomes_filter:normalized_action_family"),
+            ("action_id", "outcomes_filter:action_id"),
+            ("raw_action_subtype", "outcomes_filter:raw_action_subtype"),
+            ("action_subtype", "outcomes_filter:action_subtype"),
+            ("raw_action_type", "outcomes_filter:raw_action_type"),
+            ("action_type", "outcomes_filter:action_type"),
+        )
+        for col, stage in filter_columns:
+            if col not in df.columns:
+                continue
+            matched = df[df[col].astype(str).isin(aliases)]
+            if matched.empty:
+                continue
+            df = matched
+            _precedent_debug(stage, rows=int(len(df)))
+            break
+
+        outcome_cfg = config.get("outcome", {})
+        metric = outcome_cfg.get("primary_metric", "pe")
+        horizons = outcome_cfg.get("horizons_months", [3, 6, 12])
+        outcome_cols = [f"outcome_{metric}_{h}m" for h in horizons if h]
+
+        target_col = outcome_cols[-1] if outcome_cols else f"outcome_{metric}_12m"
+        legacy_started = time.perf_counter()
+        _precedent_debug(
+            "legacy_precedent_pack:start",
+            rows=int(len(df)),
+            target_col=target_col,
+            outcome_cols=outcome_cols,
+        )
+        legacy_pack = build_precedent_pack(
+            df=df,
+            change_vector=change_vector,
+            baseline=baseline_features,
+            config=config.get("similarity", {}),
+            target_col=target_col,
+            outcome_cols=outcome_cols,
+            top_n=50,
+        )
+        _precedent_debug(
+            "legacy_precedent_pack:done",
+            elapsed_seconds=round(time.perf_counter() - legacy_started, 6),
+        )
+        return legacy_pack
