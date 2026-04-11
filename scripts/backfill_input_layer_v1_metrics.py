@@ -1003,3 +1003,43 @@ def _compute_ttm_from_concept(companyfacts: dict, concept_name: str, as_of_date:
     }
 
 
+def _one_year_prior_as_of_date(as_of_date: str) -> str:
+    current = date.fromisoformat(as_of_date)
+    try:
+        prior = current.replace(year=current.year - 1)
+    except ValueError:
+        prior = current.replace(month=2, day=28, year=current.year - 1)
+    return prior.isoformat()
+
+
+def _ttm_meta_latest_record(meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(meta, dict):
+        return None
+    latest = meta.get("latest")
+    if isinstance(latest, dict):
+        return latest
+    components = meta.get("components")
+    if isinstance(components, list) and components:
+        best_component = None
+        best_key = None
+        for component in components:
+            candidate_key = _ttm_meta_rank(component, concept_priority=0)
+            if best_key is None or candidate_key > best_key:
+                best_key = candidate_key
+                best_component = _ttm_meta_latest_record(component)
+        if isinstance(best_component, dict):
+            return best_component
+    return meta
+
+
+def _ttm_meta_is_ytd_bridge(meta: dict[str, Any] | None) -> bool:
+    if not isinstance(meta, dict):
+        return False
+    if meta.get("mode") == "ytd_plus_prior_fy_minus_prior_ytd":
+        return True
+    components = meta.get("components")
+    if isinstance(components, list) and components:
+        return all(_ttm_meta_is_ytd_bridge(component) for component in components)
+    return False
+
+

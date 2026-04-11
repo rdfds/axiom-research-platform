@@ -68,3 +68,43 @@ Each overlay must include versioning, expiration, author, and timestamps, and re
 Examples:
 Covenant packages, detailed debt schedules, internal projections, non-public segment KPIs, and explicit board constraints.
 
+## Stores
+
+RawDocumentStore
+Schema: schemas/inputs_layer/raw_document_store.schema.json
+Use for filings, transcripts, presentations, and raw document metadata.
+
+RawTimeSeriesStore
+Schema: schemas/inputs_layer/raw_timeseries_store.schema.json
+Use for point-in-time time series with as-of correctness.
+
+EventRegistry
+Schema: schemas/inputs_layer/event_registry.schema.json
+Use for normalized corporate actions with typed parameters.
+
+ExtractedFactRegistry
+Schema: schemas/inputs_layer/extracted_fact_registry.schema.json
+Use for extracted facts with citations and confidence.
+
+EntityGraph
+Schema: schemas/inputs_layer/entity_graph.schema.json
+Use for ID mapping and entity relationships.
+
+PrivateOverlayRegistry
+Schema: schemas/inputs_layer/private_overlay_registry.schema.json
+Use for internal overlays and constraints. Overlays must be removable.
+
+DataIntegrityLog
+Schema: schemas/inputs_layer/data_integrity_log.schema.json
+Use for validation output and auditability.
+
+## Invariants
+
+As-of integrity is required for all records.
+published_at and ingested_at must be populated.
+effective_at must be populated when applicable.
+Missing data must be explicit.
+Units and scaling must be recorded for numeric fields.
+No forward-looking leakage is permitted.
+Private overlays must be removable without corrupting the base state.
+
