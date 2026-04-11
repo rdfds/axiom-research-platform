@@ -180,3 +180,29 @@ def test_resolve_locked_inputs_falls_back_from_stale_localized_bundle_paths(tmp_
     assert resolved_paths["facts_path"] == fallback_paths["facts_path"]
 
 
+def test_evaluate_canary_gate_enforces_thresholds():
+    audit = {
+        "runs_analyzed": 5,
+        "status_counts": {"completed": 5, "failed": 0},
+        "causal_summary": {
+            "causal_rate": {"mean": 0.80},
+            "strict_pass_rate_among_all": {"mean": 0.75},
+            "strict_pass_rate_among_causal": {"mean": 0.95},
+        },
+        "precedent_summary": {
+            "precedent_confidence_mean": {"mean": 0.40},
+            "out_of_sample_rate": {"mean": 0.85},
+        },
+    }
+    args = argparse.Namespace(
+        min_causal_rate_mean=0.75,
+        min_strict_all_mean=0.70,
+        min_strict_causal_mean=0.90,
+        min_precedent_conf_mean=0.35,
+        max_precedent_oos_mean=0.90,
+    )
+    result = gate.evaluate_canary_gate(audit, args)
+    assert result["gate_pass"] is True
+    assert all(bool(c["pass"]) for c in result["checks"])
+
+

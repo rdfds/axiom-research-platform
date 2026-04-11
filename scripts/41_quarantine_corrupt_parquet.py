@@ -32,3 +32,14 @@ def iter_files(base: Path, pattern: str) -> List[Path]:
     return sorted(base.rglob(pattern))
 
 
+def is_parquet_ok(path: Path) -> bool:
+    try:
+        if path.stat().st_size == 0:
+            return False
+        pf = pq.ParquetFile(path)
+        _ = pf.metadata
+        return True
+    except Exception:
+        return False
+
+

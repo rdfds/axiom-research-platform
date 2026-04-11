@@ -401,3 +401,74 @@ def _resolve_company_id_aliases_from_entity_identifier(
     return list(dict.fromkeys(out))
 
 
+def _resolve_company_id_aliases_from_cik_gvkey(
+    company_id: str,
+    cik_gvkey_path: Optional[Path] = None,
+) -> List[str]:
+    path = cik_gvkey_path or (DATA_DIR / "wrds" / "compustat" / "cik_gvkey.csv.gz")
+    if not _is_materialized_local(path):
+        return []
+    try:
+        df = pd.read_csv(path, dtype=str)
+    except Exception:
+        return []
+    if df.empty:
+        return []
+    df.columns = [c.lower() for c in df.columns]
+    if "gvkey" not in df.columns or "cik" not in df.columns:
+        return []
+
+    aliases = set(_id_aliases(company_id))
+    numeric_aliases = {a for a in aliases if a.isdigit()}
+    if not numeric_aliases:
+        return []
+
+    matches = df[
+        df["gvkey"].astype(str).str.zfill(6).isin({a.zfill(6) for a in numeric_aliases})
+        | df["gvkey"].astype(str).isin(numeric_aliases)
+        | df["cik"].astype(str).isin(numeric_aliases)
+    ]
+    if matches.empty:
+        return []
+
+    out: List[str] = []
+    for _, row in matches.iterrows():
+        gv = str(row.get("gvkey", "")).strip()
+        cik = str(row['cik']).strip()
+        if gv:
+            out.extend(_id_aliases(gv))
+        if cik:
+            out.extend(_id_aliases(cik))
+    return list(dict.fromkeys(out))
+
+
+def _load_company_state_snapshot_row(
+    snapshot_jsonl_path: Path,
+    company_id: str,
+    as_of: datetime,
+) -> Optional[Dict[str, Any]]:
+    if not snapshot_jsonl_path.exists():
+        return None
+    company_id_str = str(company_id)
+    aliases: set[str] = set(_id_aliases(company_id_str))
+    as_of_date = pd.to_datetime(as_of).date()
+
+    with snapshot_jsonl_path.open("r") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            cid = str(row.get("company_id"))
+            cid_match = cid in aliases
+            if not cid_match and cid.isdigit() and company_id_str.isdigit():
+                cid_match = cid.lstrip("0") == company_id_str.lstrip("0")
+            if not cid_match:
+                continue
+            row_asof_raw = row.get("as_of_time")
+            row_asof = pd.to_datetime(row_asof_raw, errors="coerce")
+            if pd.isna(row_asof) or row_asof.date() != as_of_date:
+                continue
+            return row
+    return None
+
+
