@@ -206,3 +206,66 @@ def test_evaluate_canary_gate_enforces_thresholds():
     assert all(bool(c["pass"]) for c in result["checks"])
 
 
+def test_train_causal_rescue_model_materializes_actions_and_builds_command(tmp_path: Path):
+    audit_path = tmp_path / "audit.json"
+    audit_path.write_text(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "action_id": "capital_return.special_dividend",
+                        "rows": 200,
+                        "causal_rate": 0.0,
+                        "strict_pass_rate": 0.0,
+                    },
+                    {
+                        "action_id": "governance.board_refresh",
+                        "rows": 300,
+                        "causal_rate": 0.0,
+                        "strict_pass_rate": 0.0,
+                    },
+                    {"action_id": "a.healthy", "rows": 500, "causal_rate": 1.0, "strict_pass_rate": 1.0},
+                ]
+            }
+        )
+    )
+    args = argparse.Namespace(
+        audit_json=str(audit_path),
+        rescue_actions_file="",
+        generated_rescue_actions_out=str(tmp_path / "rescue_actions.txt"),
+        strict_pass_threshold=0.5,
+        min_action_rows=100,
+        low_row_blocklist_threshold=50,
+        mapping_path="./config/causal_rescue_action_mapping.json",
+        outcomes_path=str(tmp_path / "outcomes.parquet"),
+        out_path=str(tmp_path / "model.json"),
+        model_card_out=str(tmp_path / "model_card.json"),
+        train_end_date="2023-12-31",
+        validation_start_date="2024-01-01",
+        model_family="hgb",
+        cell_level="action_subtype",
+        crossfit_folds=3,
+        dr_min_treated_rows=1500,
+        dr_min_control_rows=20000,
+        min_validation_rows=300,
+        propensity_clip=0.03,
+        gate_min_oos_r2=0.0,
+        gate_min_train_rows=8000,
+        gate_min_treated_rows=1500,
+        gate_min_control_rows=20000,
+        progress_every_cells=0,
+        quiet=False,
+    )
+
+    train_patterns, action_ids_path, recommendation_action_ids, unresolved, coverage = rescue_train.materialize_rescue_action_ids(args)
+    assert train_patterns == ["dividend_special.*"]
+    assert recommendation_action_ids == ["governance.board_refresh", "capital_return.special_dividend"]
+    assert unresolved == ["governance.board_refresh"]
+    assert coverage["capital_return.special_dividend"]["status"] == "mapped"
+    assert coverage["governance.board_refresh"]["status"] == "unsupported"
+    assert action_ids_path.read_text().strip() == "dividend_special.*"
+
+    cmd = rescue_train.build_rescue_train_command(args, action_ids_path)
+    assert "--action-id-allowlist-file" in cmd
+    assert str(action_ids_path) in cmd
+    assert "--subtype-target-normalize" in cmd

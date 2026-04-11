@@ -133,3 +133,68 @@ def build_prices(path: Path) -> pd.DataFrame:
     ]
 
 
+def build_macro(path: Path) -> pd.DataFrame:
+    cols = [
+        "source_system",
+        "entity_id",
+        "instrument_id",
+        "instrument_type",
+        "tenor",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "value",
+        "units",
+    ]
+    df = load_parquet_cols(path, cols)
+    if df.empty:
+        return df
+
+    df = df.reset_index().rename(columns={"index": "row_id"})
+    for c in ["event_time", "available_time", "ingestion_time"]:
+        if c in df.columns:
+            df[c] = parse_dt(df[c])
+
+    series_id = df["instrument_id"] if "instrument_id" in df.columns else df["entity_id"]
+    df["series_id"] = series_id.astype("string")
+    df["series_type"] = "macro"
+    df["entity_id_type"] = "macro_series"
+    df["date"] = df["event_time"]
+    df["unit"] = df["units"] if "units" in df.columns else pd.NA
+    df["currency"] = pd.NA
+    df["frequency"] = pd.NA
+    df["published_at"] = df["available_time"].combine_first(df["event_time"])
+    df["effective_at"] = df["event_time"]
+    df["ingested_at"] = df["ingestion_time"]
+    df["confidence_score"] = 1.0
+    df["raw_pointer"] = f"{path.as_posix()}#row=" + df["row_id"].astype("string")
+    df["revision_flag"] = pd.NA
+    lag = (df["available_time"] - df["event_time"]).dt.days if "available_time" in df.columns else pd.NA
+    df["release_lag_days"] = lag
+
+    return df[
+        [
+            "series_id",
+            "series_type",
+            "entity_id",
+            "entity_id_type",
+            "date",
+            "value",
+            "unit",
+            "currency",
+            "frequency",
+            "published_at",
+            "effective_at",
+            "ingested_at",
+            "confidence_score",
+            "raw_pointer",
+            "revision_flag",
+            "release_lag_days",
+            "instrument_id",
+            "instrument_type",
+            "tenor",
+            "source_system",
+        ]
+    ]
+
+

@@ -472,3 +472,60 @@ def _load_company_state_snapshot_row(
     return None
 
 
+def _load_company_state_keyed_snapshot_row(
+    snapshot_root: Path,
+    company_id: str,
+    as_of: datetime,
+) -> Optional[Dict[str, Any]]:
+    from ..company_state_store import SnapshotStore
+
+    store = SnapshotStore(root=snapshot_root)
+    as_of_date = pd.to_datetime(as_of).strftime("%Y-%m-%d")
+    aliases = _id_aliases(company_id)
+    for alias in aliases:
+        row = store.load_keyed_snapshot(company_id=str(alias), as_of=as_of_date)
+        if row is not None:
+            return row
+    return None
+
+
+def _outcome_aliases(action: ActionCandidate) -> List[str]:
+    out: List[str] = []
+    if action.action_id:
+        out.append(action.action_id)
+        legacy = {
+            "capital_return.open_market_buyback": "buyback",
+            "capital_return.accelerated_share_repurchase": "buyback",
+            "capital_return.tender_offer_buyback": "buyback",
+            "capital_return.dividend_increase": "dividend",
+            "capital_return.dividend_cut": "dividend",
+            "capital_return.dividend_initiate": "dividend",
+            "capital_return.special_dividend": "dividend",
+            "capital_structure.new_debt_issuance": "debt_issuance",
+            "capital_structure.refinancing": "refinancing",
+            "capital_structure.equity_issuance": "equity_issuance",
+            "mna.tuck_in_acquisition": "acquisition",
+            "mna.platform_acquisition": "acquisition",
+            "mna.go_private_lbo": "acquisition",
+            "mna.transformational_acquisition": "acquisition",
+            "portfolio.divestiture_full": "divestiture",
+            "portfolio.divestiture_partial": "divestiture",
+            "portfolio.spin_off": "spin_off",
+            "portfolio.asset_sale": "asset_sale",
+            "governance.stock_split": "stock_split",
+            "restructuring.cost_program": "cost_program",
+        }.get(action.action_id)
+        if legacy:
+            out.append(legacy)
+    if action.action_subtype:
+        out.append(action.action_subtype)
+    out.append(action.action_type)
+    if action.action_id and "." in action.action_id:
+        family, _, leaf = action.action_id.partition(".")
+        if family:
+            out.append(family)
+        if leaf:
+            out.append(leaf)
+    return list(dict.fromkeys([x for x in out if x]))
+
+
