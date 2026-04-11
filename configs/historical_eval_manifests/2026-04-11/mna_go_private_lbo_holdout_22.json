@@ -1,0 +1,224 @@
+{
+  "cases": [
+    {
+      "company_id": "038160",
+      "source_company_id": "038160",
+      "ticker": "NAPA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-23T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-12-23T00:00:00"
+    },
+    {
+      "company_id": "020228",
+      "source_company_id": "020228",
+      "ticker": "CTLT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-17T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-12-17T00:00:00"
+    },
+    {
+      "company_id": "025529",
+      "source_company_id": "025529",
+      "ticker": "VZIO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-02T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-12-02T00:00:00"
+    },
+    {
+      "company_id": "038284",
+      "source_company_id": "038284",
+      "ticker": "LBPH",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-29T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-11-29T00:00:00"
+    },
+    {
+      "company_id": "022653",
+      "source_company_id": "022653",
+      "ticker": "VSTO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-26T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-11-26T00:00:00"
+    },
+    {
+      "company_id": "023587",
+      "source_company_id": "023587",
+      "ticker": "HAYN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-20T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-11-20T00:00:00"
+    },
+    {
+      "company_id": "034342",
+      "source_company_id": "034342",
+      "ticker": "AXNX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-14T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-11-14T00:00:00"
+    },
+    {
+      "company_id": "008087",
+      "source_company_id": "008087",
+      "ticker": "ITI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-31T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-31T00:00:00"
+    },
+    {
+      "company_id": "038132",
+      "source_company_id": "038132",
+      "ticker": "LLAP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-29T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-29T00:00:00"
+    },
+    {
+      "company_id": "032219",
+      "source_company_id": "032219",
+      "ticker": "PETQ",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-24T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-24T00:00:00"
+    },
+    {
+      "company_id": "187775",
+      "source_company_id": "187775",
+      "ticker": "CHUY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-10T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-10T00:00:00"
+    },
+    {
+      "company_id": "013963",
+      "source_company_id": "013963",
+      "ticker": "VGR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-04T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-04T00:00:00"
+    },
+    {
+      "company_id": "037445",
+      "source_company_id": "037445",
+      "ticker": "AAN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-03T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-03T00:00:00"
+    },
+    {
+      "company_id": "031294",
+      "source_company_id": "031294",
+      "ticker": "GTHX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-09-17T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-09-17T00:00:00"
+    },
+    {
+      "company_id": "034882",
+      "source_company_id": "034882",
+      "ticker": "SILK",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-09-16T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-09-16T00:00:00"
+    },
+    {
+      "company_id": "018666",
+      "source_company_id": "018666",
+      "ticker": "ASXC",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-21T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-21T00:00:00"
+    },
+    {
+      "company_id": "001234",
+      "source_company_id": "001234",
+      "ticker": "ATRI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-20T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-20T00:00:00"
+    },
+    {
+      "company_id": "035280",
+      "source_company_id": "035280",
+      "ticker": "MORF",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-15T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-15T00:00:00"
+    },
+    {
+      "company_id": "035053",
+      "source_company_id": "035053",
+      "ticker": "FREE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-02T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-02T00:00:00"
+    },
+    {
+      "company_id": "037275",
+      "source_company_id": "037275",
+      "ticker": "CERE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-31T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-31T00:00:00"
+    },
+    {
+      "company_id": "164702",
+      "source_company_id": "164702",
+      "ticker": "HOLI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-25T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-25T00:00:00"
+    },
+    {
+      "company_id": "063763",
+      "source_company_id": "063763",
+      "ticker": "HIBB",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-07-24T00:00:00",
+      "anchor_action_id": "mna.go_private_lbo",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-24T00:00:00"
+    }
+  ]
+}

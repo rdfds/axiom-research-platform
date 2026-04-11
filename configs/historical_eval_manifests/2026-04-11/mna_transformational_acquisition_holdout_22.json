@@ -1,0 +1,230 @@
+{
+  "manifest_generated_at": "2026-04-11T13:41:04.800776+00:00",
+  "label": "mna_transformational_acquisition_holdout_22",
+  "source_reports": [
+    "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "cases": [
+    {
+      "company_id": "018036",
+      "source_company_id": "018036",
+      "ticker": "COMM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-17T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-12-17T00:00:00"
+    },
+    {
+      "company_id": "100243",
+      "source_company_id": "100243",
+      "ticker": "AMCR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-30T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-10-30T00:00:00"
+    },
+    {
+      "company_id": "183704",
+      "source_company_id": "183704",
+      "ticker": "VTNR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-09-24T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-09-24T00:00:00"
+    },
+    {
+      "company_id": "033184",
+      "source_company_id": "033184",
+      "ticker": "RFL",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-22T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-22T00:00:00"
+    },
+    {
+      "company_id": "037924",
+      "source_company_id": "037924",
+      "ticker": "LABP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-23T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-05-23T00:00:00"
+    },
+    {
+      "company_id": "003138",
+      "source_company_id": "003138",
+      "ticker": "COKE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-06T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-05-06T00:00:00"
+    },
+    {
+      "company_id": "176022",
+      "source_company_id": "176022",
+      "ticker": "EBS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-30T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-30T00:00:00"
+    },
+    {
+      "company_id": "034053",
+      "source_company_id": "034053",
+      "ticker": "REZI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-15T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-15T00:00:00"
+    },
+    {
+      "company_id": "012252",
+      "source_company_id": "012252",
+      "ticker": "XOMA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-02-16T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-02-16T00:00:00"
+    },
+    {
+      "company_id": "012892",
+      "source_company_id": "012892",
+      "ticker": "SUN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-22T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-22T00:00:00"
+    },
+    {
+      "company_id": "186501",
+      "source_company_id": "186501",
+      "ticker": "NGL",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-18T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-18T00:00:00"
+    },
+    {
+      "company_id": "039472",
+      "source_company_id": "039472",
+      "ticker": "XOS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-11T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-11T00:00:00"
+    },
+    {
+      "company_id": "026156",
+      "source_company_id": "026156",
+      "ticker": "HPE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-09T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-09T00:00:00"
+    },
+    {
+      "company_id": "019581",
+      "source_company_id": "019581",
+      "ticker": "LE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-02T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-02T00:00:00"
+    },
+    {
+      "company_id": "179840",
+      "source_company_id": "179840",
+      "ticker": "LAB",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-10-04T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-10-04T00:00:00"
+    },
+    {
+      "company_id": "106100",
+      "source_company_id": "106100",
+      "ticker": "CYTH",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-09-21T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-09-21T00:00:00"
+    },
+    {
+      "company_id": "009777",
+      "source_company_id": "009777",
+      "ticker": "SJM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-09-11T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-09-11T00:00:00"
+    },
+    {
+      "company_id": "023339",
+      "source_company_id": "023339",
+      "ticker": "ZVRA",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-08-31T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-31T00:00:00"
+    },
+    {
+      "company_id": "037488",
+      "source_company_id": "037488",
+      "ticker": "SGTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-08-10T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-10T00:00:00"
+    },
+    {
+      "company_id": "036083",
+      "source_company_id": "036083",
+      "ticker": "RVMD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-08-01T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-01T00:00:00"
+    },
+    {
+      "company_id": "025424",
+      "source_company_id": "025424",
+      "ticker": "TWNK",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-06-30T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-06-30T00:00:00"
+    },
+    {
+      "company_id": "021841",
+      "source_company_id": "021841",
+      "ticker": "CHRS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-06-16T00:00:00",
+      "anchor_action_id": "mna.transformational_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-06-16T00:00:00"
+    }
+  ]
+}
