@@ -864,3 +864,45 @@ class ActionAnalyzer:
         return "\n".join(report)
 
 
+def demo():
+    """Demonstrate the corporate actions analysis."""
+    print("=" * 70)
+    print("CORPORATE ACTIONS ANALYSIS DEMO")
+    print("=" * 70)
+
+    # Load the actions database
+    db = CorporateActionsDB()
+
+    # Summary
+    print("\n📊 Total Actions by Type:")
+    dist = db.get_action_distribution()
+    total = dist.sum()
+    for action, count in dist.items():
+        pct = count / total * 100
+        print(f"  {action:25} {count:6,}  ({pct:.1f}%)")
+
+    # Test the analyzer with a sample company
+    print("\n" + "=" * 70)
+    print("ANALYZING SIMILAR STATES")
+    print("=" * 70)
+
+    from .signals import SignalEngine
+
+    engine = SignalEngine()
+
+    # Get a sample company profile
+    sample = engine.snapshot.get_universe_snapshot('2023-06-30', min_assets=1000, min_revenue=200)
+    if len(sample) > 0:
+        gvkey = sample.iloc[5]['gvkey']
+        company = sample.iloc[5]['conm']
+
+        print(f"\nQuery: {company} as of 2023-06-30")
+
+        profile = engine.compute_state_profile(gvkey, '2023-06-30')
+
+        if profile:
+            analyzer = ActionAnalyzer(db)
+            report = analyzer.generate_action_report(profile, min_similarity=0.90)
+            print(report)
+
+

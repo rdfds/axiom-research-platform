@@ -367,3 +367,37 @@ def _is_materialized_local(path: Path) -> bool:
     return True
 
 
+def _resolve_company_id_aliases_from_entity_identifier(
+    company_id: str,
+    entity_identifier_path: Optional[Path] = None,
+) -> List[str]:
+    path = entity_identifier_path or (DATA_DIR / "inputs_layer" / "entity_identifier.parquet")
+    if not _is_materialized_local(path):
+        return []
+
+    try:
+        ids = pd.read_parquet(path, columns=["entity_id", "identifier_value"])
+    except Exception:
+        return []
+    if ids.empty:
+        return []
+
+    ids["entity_id"] = ids["entity_id"].astype(str)
+    ids["identifier_value"] = ids["identifier_value"].astype(str)
+    aliases = set(_id_aliases(company_id))
+
+    matched = ids[ids["identifier_value"].isin(aliases) | ids["entity_id"].isin(aliases)]
+    if matched.empty:
+        return []
+
+    entity_ids = set(matched["entity_id"].dropna().astype(str).tolist())
+    expanded = ids[ids["entity_id"].isin(entity_ids)]
+
+    out: List[str] = []
+    for ent in sorted(entity_ids):
+        out.extend(_id_aliases(ent))
+    for ident in expanded["identifier_value"].dropna().astype(str).tolist():
+        out.extend(_id_aliases(ident))
+    return list(dict.fromkeys(out))
+
+

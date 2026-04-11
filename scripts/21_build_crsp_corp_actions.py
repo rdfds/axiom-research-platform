@@ -121,3 +121,22 @@ def map_distcd(row):
     return "distribution_other", f"distcd_{distcd}"
 
 
+def map_dlstcd(code):
+    if pd.isna(code):
+        return "delisting", "unknown"
+    code = int(code)
+    if 200 <= code <= 299:
+        return "delisting", "merger_or_exchange"
+    if 300 <= code <= 399:
+        return "delisting", "liquidation"
+    if 400 <= code <= 499:
+        return "delisting", "dropped"
+    if 500 <= code <= 599:
+        return "delisting", "bankruptcy_or_insufficient"
+    if 600 <= code <= 699:
+        return "delisting", "foreign_listing"
+    if 700 <= code <= 799:
+        return "delisting", "ceased_trading"
+    return "delisting", f"dlstcd_{code}"
+
+

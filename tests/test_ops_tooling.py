@@ -123,3 +123,60 @@ def test_run_production_batch_applies_runtime_env_and_writes_run_ids(tmp_path: P
     assert out["runtime_env"]["RECO_PRECEDENT_WORKERS"] == "2"
 
 
+def test_resolve_locked_inputs_falls_back_from_stale_localized_bundle_paths(tmp_path: Path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({"cases": []}))
+
+    canonical_root = tmp_path / "canonical"
+    canonical_root.mkdir()
+    fallback_paths = {
+        "outcomes_path": canonical_root / "action_outcomes_with_credit_ratings.normalized_full.parquet",
+        "action_support_manifest": canonical_root / "action_data_support_manifest.json",
+        "raw_timeseries_path": canonical_root / "raw_timeseries.parquet",
+        "companyfacts_root": canonical_root / "companyfacts",
+        "facts_path": canonical_root / "facts",
+    }
+    fallback_paths["outcomes_path"].write_text("stub")
+    fallback_paths["action_support_manifest"].write_text("{}")
+    fallback_paths["raw_timeseries_path"].write_text("stub")
+    fallback_paths["companyfacts_root"].mkdir()
+    fallback_paths["facts_path"].mkdir()
+
+    stale_bundle = tmp_path / "out" / "manual_replay_bundle_20260405_localized" / "inputs"
+    config = {
+        "defaults": {},
+        "artifacts": {
+            "outcomes_path": str(tmp_path / "outcomes.parquet"),
+            "action_support_manifest": str(stale_bundle / "action_data_support_manifest.json"),
+            "corporate_actions_master_path": str(tmp_path / "missing_corporate_actions.parquet"),
+            "entity_graph_path": str(tmp_path / "entity_graph.parquet"),
+            "entity_identifier_path": str(tmp_path / "entity_identifier.parquet"),
+            "entity_table_path": str(tmp_path / "entity.parquet"),
+            "raw_timeseries_path": str(stale_bundle / "raw_timeseries.parquet"),
+            "event_store_path": str(tmp_path / "event_store.parquet"),
+            "ownership_summary_path": str(tmp_path / "ownership_13f_summary.parquet"),
+            "issuer_ratings_path": str(tmp_path / "issuer_rating_history.parquet"),
+            "companyfacts_root": str(stale_bundle / "companyfacts_buyback_20260407"),
+            "facts_path_candidates": [
+                str(stale_bundle / "facts_asof_2026"),
+            ],
+        },
+        "benchmarks": {
+            "buyback": {
+                "manifest": str(manifest_path),
+            }
+        },
+    }
+
+    monkeypatch.setattr(replay, "_CANONICAL_LOCK_ARTIFACT_FALLBACKS", fallback_paths)
+
+    locked = replay._resolve_locked_inputs(config, "buyback")
+    resolved_paths = locked["resolved_paths"]
+
+    assert resolved_paths["action_support_manifest"] == fallback_paths["action_support_manifest"]
+    assert resolved_paths["outcomes_path"] == fallback_paths["outcomes_path"]
+    assert resolved_paths["raw_timeseries_path"] == fallback_paths["raw_timeseries_path"]
+    assert resolved_paths["companyfacts_root"] == fallback_paths["companyfacts_root"]
+    assert resolved_paths["facts_path"] == fallback_paths["facts_path"]
+
+
