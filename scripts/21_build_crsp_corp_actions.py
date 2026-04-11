@@ -140,3 +140,39 @@ def map_dlstcd(code):
     return "delisting", f"dlstcd_{code}"
 
 
+def load_msedist():
+    files = sorted(CRSP_DIR.glob("msedist_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+
+    dataset = ds.dataset(files, format="parquet")
+    cols = [
+        "permno",
+        "permco",
+        "distcd",
+        "divamt",
+        "facpr",
+        "facshr",
+        "dclrdt",
+        "exdt",
+        "rcrddt",
+        "paydt",
+        "acperm",
+        "accomp",
+        "hexcd",
+        "hsiccd",
+        "cusip",
+    ]
+    df = dataset.to_table(columns=cols).to_pandas()
+    df["distcd"] = pd.to_numeric(df["distcd"], errors="coerce")
+    mapped = df.apply(map_distcd, axis=1, result_type="expand")
+    df["action_type"] = mapped[0]
+    df["action_subtype"] = mapped[1]
+    df["action_code"] = df["distcd"]
+    df["action_code_type"] = "distcd"
+    df["action_date"] = df["exdt"]
+    df["source"] = "wrds_crsp"
+    df["source_table"] = "msedist"
+    return df
+
+
