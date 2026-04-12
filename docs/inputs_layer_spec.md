@@ -108,3 +108,14 @@ Units and scaling must be recorded for numeric fields.
 No forward-looking leakage is permitted.
 Private overlays must be removable without corrupting the base state.
 
+## Validation
+
+The validator checks:
+Required columns per schema.
+Basic dtype compatibility.
+Timestamp parseability.
+published_at and effective_at vs ingested_at ordering.
+confidence_score bounds.
+
+Example:
+python -u scripts/validate_inputs_layer.py --config configs/inputs_layer.json

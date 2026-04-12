@@ -1840,3 +1840,128 @@ def _build_legacy_provider_metric(
     )
 
 
+def _build_combo_metric(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+    numerator: float | None = None,
+    denominator: float | None = None,
+    extra_components: Dict[str, Any] | None = None,
+    component_supports: Dict[str, str] | None = None,
+    formula: str,
+    allow_numerator_only: bool = False,
+) -> Dict[str, Any]:
+    components = dict(extra_components or {})
+    components["formula"] = formula
+    non_exact_components = sorted(
+        component_name
+        for component_name, support_mode in (component_supports or {}).items()
+        if support_mode != "exact"
+    )
+
+    if numerator is None:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="component_unavailable",
+            component_breakdown=components,
+            quality_flags=["component_unavailable"],
+            provenance_artifact_type="ComputedMetric",
+            primary_source_basis="computed_metric",
+            input_layer_bucket_reason="computed_from_reference_metrics",
+        )
+
+    if denominator is None:
+        if not allow_numerator_only:
+            return _feature_template(
+                metric_name=metric_name,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                support_mode="unsupported",
+                value=None,
+                unit=unit,
+                missing_reason="component_unavailable",
+                component_breakdown=components,
+                quality_flags=["component_unavailable"],
+                provenance_artifact_type="ComputedMetric",
+                primary_source_basis="computed_metric",
+                input_layer_bucket_reason="computed_from_reference_metrics",
+            )
+        support_mode = "exact" if not non_exact_components else "proxy_missing_component"
+        quality_flags = None if not non_exact_components else [f"component_not_exact:{name}" for name in non_exact_components]
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode=support_mode,
+            value=float(numerator),
+            unit=unit,
+            missing_reason=None if support_mode == "exact" else "component_not_exact",
+            component_breakdown=components,
+            quality_flags=quality_flags,
+            provenance_artifact_type="ComputedMetric",
+            primary_source_basis="computed_metric",
+            input_layer_bucket_reason="computed_from_reference_metrics",
+        )
+
+    if denominator <= 0:
+        return _feature_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="non_positive_denominator",
+            component_breakdown=components,
+            quality_flags=["non_positive_denominator"],
+            provenance_artifact_type="ComputedMetric",
+            primary_source_basis="computed_metric",
+            input_layer_bucket_reason="computed_from_reference_metrics",
+        )
+
+    support_mode = "exact" if not non_exact_components else "proxy_missing_component"
+    quality_flags = None if not non_exact_components else [f"component_not_exact:{name}" for name in non_exact_components]
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode=support_mode,
+        value=float(numerator) / float(denominator),
+        unit=unit,
+        missing_reason=None if support_mode == "exact" else "component_not_exact",
+        component_breakdown=components,
+        quality_flags=quality_flags,
+        provenance_artifact_type="ComputedMetric",
+        primary_source_basis="computed_metric",
+        input_layer_bucket_reason="computed_from_reference_metrics",
+    )
+
+
+def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
+def _metric_value(features: Dict[str, Any], metric_name: str) -> float | None:
+    node = features.get(metric_name) or {}
+    value = node.get("value")
+    return None if value is None else float(value)
+
+

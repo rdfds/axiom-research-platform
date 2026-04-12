@@ -1,0 +1,468 @@
+{
+  "cases": [
+    {
+      "company_id": "038444",
+      "source_company_id": "038444",
+      "company_name": "038444",
+      "ticker": "",
+      "as_of_time": "2024-12-27T00:00:00Z",
+      "anchor_action_date": "2024-12-27T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "038160",
+      "source_company_id": "038160",
+      "company_name": "038160",
+      "ticker": "",
+      "as_of_time": "2024-12-24T00:00:00Z",
+      "anchor_action_date": "2024-12-24T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "020228",
+      "source_company_id": "020228",
+      "company_name": "020228",
+      "ticker": "",
+      "as_of_time": "2024-12-18T00:00:00Z",
+      "anchor_action_date": "2024-12-18T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "036333",
+      "source_company_id": "036333",
+      "company_name": "036333",
+      "ticker": "",
+      "as_of_time": "2024-12-12T00:00:00Z",
+      "anchor_action_date": "2024-12-12T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "022632",
+      "source_company_id": "022632",
+      "company_name": "022632",
+      "ticker": "",
+      "as_of_time": "2024-12-06T00:00:00Z",
+      "anchor_action_date": "2024-12-06T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "025529",
+      "source_company_id": "025529",
+      "company_name": "025529",
+      "ticker": "",
+      "as_of_time": "2024-12-03T00:00:00Z",
+      "anchor_action_date": "2024-12-03T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "022653",
+      "source_company_id": "022653",
+      "company_name": "022653",
+      "ticker": "",
+      "as_of_time": "2024-11-27T00:00:00Z",
+      "anchor_action_date": "2024-11-27T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "023587",
+      "source_company_id": "023587",
+      "company_name": "023587",
+      "ticker": "",
+      "as_of_time": "2024-11-21T00:00:00Z",
+      "anchor_action_date": "2024-11-21T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "039636",
+      "source_company_id": "039636",
+      "company_name": "039636",
+      "ticker": "",
+      "as_of_time": "2024-11-20T00:00:00Z",
+      "anchor_action_date": "2024-11-20T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "034342",
+      "source_company_id": "034342",
+      "company_name": "034342",
+      "ticker": "",
+      "as_of_time": "2024-11-15T00:00:00Z",
+      "anchor_action_date": "2024-11-15T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "180483",
+      "source_company_id": "180483",
+      "company_name": "BERY",
+      "ticker": "BERY",
+      "as_of_time": "2024-11-05T00:00:00Z",
+      "anchor_action_date": "2024-11-05T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "038132",
+      "source_company_id": "038132",
+      "company_name": "038132",
+      "ticker": "",
+      "as_of_time": "2024-10-30T00:00:00Z",
+      "anchor_action_date": "2024-10-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "032219",
+      "source_company_id": "032219",
+      "company_name": "032219",
+      "ticker": "",
+      "as_of_time": "2024-10-25T00:00:00Z",
+      "anchor_action_date": "2024-10-25T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "187775",
+      "source_company_id": "187775",
+      "company_name": "187775",
+      "ticker": "",
+      "as_of_time": "2024-10-11T00:00:00Z",
+      "anchor_action_date": "2024-10-11T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "013963",
+      "source_company_id": "013963",
+      "company_name": "013963",
+      "ticker": "",
+      "as_of_time": "2024-10-07T00:00:00Z",
+      "anchor_action_date": "2024-10-07T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "037445",
+      "source_company_id": "037445",
+      "company_name": "037445",
+      "ticker": "",
+      "as_of_time": "2024-10-04T00:00:00Z",
+      "anchor_action_date": "2024-10-04T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "019069",
+      "source_company_id": "019069",
+      "company_name": "019069",
+      "ticker": "",
+      "as_of_time": "2024-09-30T00:00:00Z",
+      "anchor_action_date": "2024-09-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "041220",
+      "source_company_id": "041220",
+      "company_name": "041220",
+      "ticker": "",
+      "as_of_time": "2024-09-30T00:00:00Z",
+      "anchor_action_date": "2024-09-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "327564",
+      "source_company_id": "327564",
+      "company_name": "327564",
+      "ticker": "",
+      "as_of_time": "2024-09-23T00:00:00Z",
+      "anchor_action_date": "2024-09-23T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "031294",
+      "source_company_id": "031294",
+      "company_name": "031294",
+      "ticker": "",
+      "as_of_time": "2024-09-18T00:00:00Z",
+      "anchor_action_date": "2024-09-18T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "034882",
+      "source_company_id": "034882",
+      "company_name": "034882",
+      "ticker": "",
+      "as_of_time": "2024-09-17T00:00:00Z",
+      "anchor_action_date": "2024-09-17T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "180363",
+      "source_company_id": "180363",
+      "company_name": "180363",
+      "ticker": "",
+      "as_of_time": "2024-09-16T00:00:00Z",
+      "anchor_action_date": "2024-09-16T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    }
+  ],
+  "selection_rankings": [
+    {
+      "company_id": "038444",
+      "source_company_id": "038444",
+      "company_name": "038444",
+      "ticker": "",
+      "as_of_time": "2024-12-27T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "038160",
+      "source_company_id": "038160",
+      "company_name": "038160",
+      "ticker": "",
+      "as_of_time": "2024-12-24T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "020228",
+      "source_company_id": "020228",
+      "company_name": "020228",
+      "ticker": "",
+      "as_of_time": "2024-12-18T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "036333",
+      "source_company_id": "036333",
+      "company_name": "036333",
+      "ticker": "",
+      "as_of_time": "2024-12-12T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "022632",
+      "source_company_id": "022632",
+      "company_name": "022632",
+      "ticker": "",
+      "as_of_time": "2024-12-06T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "025529",
+      "source_company_id": "025529",
+      "company_name": "025529",
+      "ticker": "",
+      "as_of_time": "2024-12-03T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "022653",
+      "source_company_id": "022653",
+      "company_name": "022653",
+      "ticker": "",
+      "as_of_time": "2024-11-27T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "023587",
+      "source_company_id": "023587",
+      "company_name": "023587",
+      "ticker": "",
+      "as_of_time": "2024-11-21T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "039636",
+      "source_company_id": "039636",
+      "company_name": "039636",
+      "ticker": "",
+      "as_of_time": "2024-11-20T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "034342",
+      "source_company_id": "034342",
+      "company_name": "034342",
+      "ticker": "",
+      "as_of_time": "2024-11-15T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "180483",
+      "source_company_id": "180483",
+      "company_name": "BERY",
+      "ticker": "BERY",
+      "as_of_time": "2024-11-05T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "038132",
+      "source_company_id": "038132",
+      "company_name": "038132",
+      "ticker": "",
+      "as_of_time": "2024-10-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "032219",
+      "source_company_id": "032219",
+      "company_name": "032219",
+      "ticker": "",
+      "as_of_time": "2024-10-25T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "187775",
+      "source_company_id": "187775",
+      "company_name": "187775",
+      "ticker": "",
+      "as_of_time": "2024-10-11T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "013963",
+      "source_company_id": "013963",
+      "company_name": "013963",
+      "ticker": "",
+      "as_of_time": "2024-10-07T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "037445",
+      "source_company_id": "037445",
+      "company_name": "037445",
+      "ticker": "",
+      "as_of_time": "2024-10-04T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "019069",
+      "source_company_id": "019069",
+      "company_name": "019069",
+      "ticker": "",
+      "as_of_time": "2024-09-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "041220",
+      "source_company_id": "041220",
+      "company_name": "041220",
+      "ticker": "",
+      "as_of_time": "2024-09-30T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "327564",
+      "source_company_id": "327564",
+      "company_name": "327564",
+      "ticker": "",
+      "as_of_time": "2024-09-23T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "031294",
+      "source_company_id": "031294",
+      "company_name": "031294",
+      "ticker": "",
+      "as_of_time": "2024-09-18T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "034882",
+      "source_company_id": "034882",
+      "company_name": "034882",
+      "ticker": "",
+      "as_of_time": "2024-09-17T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    },
+    {
+      "company_id": "180363",
+      "source_company_id": "180363",
+      "company_name": "180363",
+      "ticker": "",
+      "as_of_time": "2024-09-16T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "mapping_method": "outcomes_parquet_exact"
+    }
+  ]
+}
