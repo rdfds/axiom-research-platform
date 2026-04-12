@@ -51,3 +51,6 @@ def main() -> None:
     print(f"[check] loaded actions={len(loaded.get('actions', []))}")
 
 
+if __name__ == "__main__":
+    main()
+
