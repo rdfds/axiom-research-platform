@@ -124,3 +124,30 @@ def _build_keyed_snapshot_loader(snapshot_root: Path):
     return _loader
 
 
+def _mock_precedent_runner(**_: Any) -> Dict[str, Any]:
+    # Minimal precedent pack shape that downstream planning can consume.
+    return {
+        "legacy_distributions": [
+            {
+                "metric": "outcome_pe_12m",
+                "p25": 0.0,
+                "p50": 0.0,
+                "p75": 0.0,
+            }
+        ],
+        "distributions": [],
+        "citations": [],
+        "match_confidence": 0.0,
+        "out_of_sample_rate": 1.0,
+    }
+
+
+def _keyed_snapshot_path(snapshot_root: Path, as_of: str, company_id: str) -> Path:
+    return (
+        snapshot_root
+        / "keyed"
+        / f"as_of_date={as_of}"
+        / f"company_id={company_id}.json"
+    )
+
+
