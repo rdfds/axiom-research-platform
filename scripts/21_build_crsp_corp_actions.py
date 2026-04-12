@@ -176,3 +176,38 @@ def load_msedist():
     return df
 
 
+def load_msedelist():
+    files = sorted(CRSP_DIR.glob("msedelist_*.parquet"))
+    if not files:
+        return pd.DataFrame()
+
+    dataset = ds.dataset(files, format="parquet")
+    cols = [
+        "permno",
+        "permco",
+        "dlstdt",
+        "dlstcd",
+        "dlamt",
+        "dlret",
+        "dlretx",
+        "dlprc",
+        "dlpdt",
+        "acperm",
+        "accomp",
+        "hexcd",
+        "hsiccd",
+        "cusip",
+    ]
+    df = dataset.to_table(columns=cols).to_pandas()
+    df["dlstcd"] = pd.to_numeric(df["dlstcd"], errors="coerce")
+    mapped = df["dlstcd"].apply(map_dlstcd)
+    df["action_type"] = mapped.map(lambda x: x[0])
+    df["action_subtype"] = mapped.map(lambda x: x[1])
+    df["action_code"] = df["dlstcd"]
+    df["action_code_type"] = "dlstcd"
+    df["action_date"] = df["dlstdt"]
+    df["source"] = "wrds_crsp"
+    df["source_table"] = "msedelist"
+    return df
+
+
