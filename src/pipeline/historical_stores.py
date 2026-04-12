@@ -131,3 +131,21 @@ class HistoricalEventStore:
         return out.loc[mask].copy()
 
 
+@dataclass(frozen=True)
+class HistoricalCompanyStateSnapshotStore:
+    snapshots: pd.DataFrame
+    dataset_version: str
+
+
+@dataclass(frozen=True)
+class HistoricalOutcomeStore:
+    outcomes: pd.DataFrame
+    dataset_version: str
+
+
+@dataclass(frozen=True)
+class RegimeHistory:
+    regimes: pd.DataFrame
+    dataset_version: str
+
+
