@@ -59,3 +59,28 @@ def test_registry_schema_and_integrity_validation_pass():
     assert registry.validate_registry_integrity() == []
 
 
+def test_query_methods():
+    registry = build_default_action_schema_registry()
+    action = registry.get_action("capital_return.open_market_buyback")
+    assert action is not None
+    assert action["action_type"] == "capital_return"
+
+    by_type = registry.generate_actions_under_type("capital_structure")
+    assert len(by_type) == 9
+
+    channels = registry.fetch_mechanism_channels("capital_return.open_market_buyback")
+    assert len(channels) >= 1
+
+    edges = registry.fetch_dependency_graph_edges("capital_return.open_market_buyback")
+    assert len(edges) >= 1
+
+    planner_edges = registry.fetch_planner_dependency_edges("capital_return.open_market_buyback")
+    assert len(planner_edges) >= 1
+
+    lead_dist = registry.fetch_planner_lead_time_distribution("capital_return.open_market_buyback")
+    assert lead_dist["median_days"] == 30
+    assert lead_dist["p25_days"] == 16
+    assert lead_dist["p75_days"] == 60
+    assert lead_dist["source"] == "schema_prior_interpolated"
+
+

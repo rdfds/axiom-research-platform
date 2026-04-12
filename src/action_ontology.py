@@ -631,7 +631,7 @@ class ActionSchemaRegistry:
         value: Any,
         pdef: Dict[str, Any],
         known_segments: set[str],
-    ) :
+    ) -> List[str]:
         errors: List[str] = []
         if ptype in {"numeric", "percent"}:
             if not isinstance(value, (int, float)):
