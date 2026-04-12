@@ -142,3 +142,61 @@ def pull_ma_related_facilities(db):
     return df
 
 
+def pull_borrower_link(db):
+    """
+    Pull the linking table between DealScan and Compustat.
+    This allows us to connect loans to our fundamentals data.
+    """
+
+    print("\n" + "="*70)
+    print("PULLING DEALSCAN-COMPUSTAT LINK TABLE")
+    print("="*70)
+
+    # Check if link table exists
+    try:
+        query = """
+        SELECT *
+        FROM dealscan.lpc_loanconnector_company_id_map
+        """
+        df = db.raw_sql(query)
+        print(f"Retrieved {len(df):,} company links")
+        return df
+    except Exception as e:
+        print(f"Link table not available: {e}")
+
+        # Try alternative linking via ticker
+        print("\nWill use ticker matching as fallback...")
+        return None
+
+
+def analyze_data(facilities_df, ma_df):
+    """Basic analysis of the data."""
+
+    print("\n" + "="*70)
+    print("DATA SUMMARY")
+    print("="*70)
+
+    print(f"\nAll facilities: {len(facilities_df):,}")
+    print(f"M&A/LBO facilities: {len(ma_df):,}")
+
+    if len(ma_df) > 0:
+        print(f"\nDate range: {ma_df['facilitystartdate'].min()} to {ma_df['facilitystartdate'].max()}")
+        print(f"Unique borrowers: {ma_df['borrower_name'].nunique():,}")
+
+        # Deal sizes
+        ma_df['facilityamt'] = pd.to_numeric(ma_df['facilityamt'], errors='coerce')
+        print(f"\nFacility amounts ($ millions):")
+        print(f"  Mean: ${ma_df['facilityamt'].mean():,.0f}M")
+        print(f"  Median: ${ma_df['facilityamt'].median():,.0f}M")
+        print(f"  Max: ${ma_df['facilityamt'].max():,.0f}M")
+
+        # By year
+        ma_df['year'] = pd.to_datetime(ma_df['facilitystartdate']).dt.year
+        yearly = ma_df.groupby('year').agg({
+            'facilityid': 'count',
+            'facilityamt': 'sum'
+        }).rename(columns={'facilityid': 'count', 'facilityamt': 'total_amt'})
+        print(f"\nM&A/LBO facilities by year:")
+        print(yearly.tail(10))
+
+

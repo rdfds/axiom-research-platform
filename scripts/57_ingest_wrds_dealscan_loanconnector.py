@@ -40,3 +40,7 @@ def _normalize_id(series: pd.Series) -> pd.Series:
     return raw
 
 
+def _to_datetime(series: pd.Series) -> pd.Series:
+    return pd.to_datetime(series, errors="coerce")
+
+
