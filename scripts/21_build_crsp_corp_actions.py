@@ -211,3 +211,56 @@ def load_msedelist():
     return df
 
 
+def main():
+    print("Building unified CRSP corporate actions...")
+    dist = load_msedist()
+    dlst = load_msedelist()
+
+    if dist.empty and dlst.empty:
+        raise SystemExit("No CRSP msedist/msedelist files found.")
+
+    df = pd.concat([dist, dlst], ignore_index=True, sort=False)
+    df["action_date"] = pd.to_datetime(df["action_date"], errors="coerce")
+
+    out_path = OUT_DIR / "corporate_actions_crsp.parquet"
+    df.to_parquet(out_path, index=False)
+    print(f"Saved {len(df):,} rows -> {out_path}")
+
+    summary = (
+        df.groupby(["action_type", "action_subtype"])
+        .size()
+        .reset_index(name="count")
+        .sort_values("count", ascending=False)
+    )
+    summary_path = OUT_DIR / "corporate_actions_crsp_summary.csv"
+    summary.to_csv(summary_path, index=False)
+    print(f"Saved summary -> {summary_path}")
+
+    # Build a distcd lookup table for observed codes
+    if not dist.empty:
+        distcd_values = (
+            dist[["distcd"]]
+            .dropna()
+            .assign(distcd=lambda d: d["distcd"].astype(int))
+            .drop_duplicates()
+            .sort_values("distcd")
+        )
+        lookup_rows = []
+        for distcd in distcd_values["distcd"].tolist():
+            doc = CRSP_DISTCD_DOCS.get(distcd)
+            row = {
+                "distcd": distcd,
+                "action_type": doc["action_type"] if doc else None,
+                "action_subtype": doc["action_subtype"] if doc else None,
+                "description": doc["description"] if doc else None,
+                "source": doc["source"] if doc else None,
+            }
+            lookup_rows.append(row)
+        lookup = pd.DataFrame(lookup_rows)
+        lookup_path = OUT_DIR / "crsp_distcd_lookup.csv"
+        lookup.to_csv(lookup_path, index=False)
+        print(f"Saved distcd lookup -> {lookup_path}")
+
+
+if __name__ == "__main__":
+    main()
