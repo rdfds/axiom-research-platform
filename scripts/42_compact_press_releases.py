@@ -100,3 +100,82 @@ def read_parts(parts: List[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True, sort=False)
 
 
+def main() -> None:
+    base = WAREHOUSE_DIR / "warehouse_press_releases"
+    if not base.exists():
+        raise FileNotFoundError(f"Missing press releases warehouse: {base}")
+
+    backup_root = None
+    if PR_COMPACT_BACKUP and not PR_COMPACT_DELETE:
+        stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        backup_root = WAREHOUSE_DIR / "_backup" / "warehouse_press_releases" / stamp
+        backup_root.mkdir(parents=True, exist_ok=True)
+
+    for year_dir in iter_year_dirs(base):
+        parts = sorted(year_dir.glob("part_*.parquet"))
+        if not parts:
+            continue
+
+        compact_path = year_dir / "part_compact.parquet"
+        compact_exists = compact_path.exists()
+        compact_mtime = compact_path.stat().st_mtime if compact_exists else None
+        non_compact_all = [p for p in parts if p.name != "part_compact.parquet"]
+
+        # If a compact file exists, only include new parts since it was written.
+        if compact_exists:
+            if compact_mtime is not None:
+                new_parts = [p for p in non_compact_all if p.stat().st_mtime > compact_mtime]
+            else:
+                new_parts = non_compact_all
+
+            if PR_COMPACT_SKIP_EXISTING and not new_parts:
+                log(f"Skipping {year_dir.name}: compact file already exists and no new parts.")
+                continue
+
+            # Rebuild using the existing compact + only new parts (avoids duplication).
+            read_parts_list = [compact_path] + new_parts
+            cleanup_parts = non_compact_all
+        else:
+            read_parts_list = parts
+            cleanup_parts = parts
+
+        log(f"Compacting {year_dir.name}: {len(read_parts_list)} files")
+        t0 = time.perf_counter()
+        df = read_parts(read_parts_list)
+        if df.empty:
+            log(f"  No rows found for {year_dir.name}. Skipping.")
+            continue
+
+        for col in ("quality_flags", "upstream_version_ids"):
+            if col in df.columns:
+                df[col] = df[col].apply(normalize_list)
+
+        if "text" in df.columns:
+            df["text"] = df["text"].where(df["text"].notna(), None)
+
+        temp_path = compact_path.with_suffix(".parquet.tmp")
+        df.to_parquet(temp_path, index=False)
+        temp_path.replace(compact_path)
+        t1 = time.perf_counter()
+        log(f"  Wrote {len(df):,} rows -> {compact_path.name} in {t1 - t0:.1f}s")
+
+        if PR_COMPACT_DELETE:
+            for path in cleanup_parts:
+                try:
+                    path.unlink()
+                except Exception as exc:
+                    log(f"  Failed to delete {path}: {exc}")
+        elif backup_root is not None:
+            year_backup = backup_root / year_dir.name
+            year_backup.mkdir(parents=True, exist_ok=True)
+            for path in cleanup_parts:
+                try:
+                    shutil.move(str(path), str(year_backup / path.name))
+                except Exception as exc:
+                    log(f"  Failed to move {path}: {exc}")
+
+    log("Done.")
+
+
+if __name__ == "__main__":
+    main()
