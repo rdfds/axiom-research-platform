@@ -1995,3 +1995,407 @@ def _company_processing_guard(timeout_seconds: float | None):
         signal.signal(signal.SIGALRM, previous_handler)
 
 
+def _build_fail_open_metric_set(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    error_type: str,
+    error_message: str,
+) -> Dict[str, Dict[str, Any]]:
+    error_text = str(error_message).strip()[:240]
+    missing_reason = "company_processing_timeout" if error_type == "company_processing_timeout" else "company_processing_failed"
+    breakdown = {
+        "error_type": error_type,
+        "error_message": error_text,
+    }
+    quality_flags = ["company_processing_fail_open", error_type]
+    return {
+        metric_name: _build_metric_from_value(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=None,
+            support_mode="unsupported",
+            missing_reason=missing_reason,
+            component_breakdown=breakdown,
+            quality_flags=quality_flags,
+            primary_source_basis="input_layer_fail_open",
+            provenance_artifact_type="DerivedComputation",
+            input_layer_bucket_reason="company_processing_fail_open",
+        )
+        for metric_name, spec in ALL_OUTPUT_METRIC_SPECS.items()
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    taxonomy_reference_path = Path(args.taxonomy_reference_path)
+    entity_identifier_path = Path(args.entity_identifier_path)
+    companyfacts_root = _resolve_local_optional_path(args.companyfacts_root, DEFAULT_LOCAL_COMPANYFACTS_ROOT)
+    raw_timeseries_path = _resolve_local_optional_path(args.raw_timeseries_path, DEFAULT_LOCAL_RAW_TIMESERIES_PATH)
+    crsp_market_cache_path = Path(args.crsp_market_cache_path) if args.crsp_market_cache_path else None
+    crsp_daily_root = Path(args.crsp_daily_root) if args.crsp_daily_root else (
+        DEFAULT_LOCAL_CRSP_DAILY_ROOT if DEFAULT_LOCAL_CRSP_DAILY_ROOT and Path(DEFAULT_LOCAL_CRSP_DAILY_ROOT).exists() else None
+    )
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    snapshot_rows = list(iter_snapshot_rows(snapshot_path))
+    snapshot_company_ids = {str(row.get("company_id")) for row in snapshot_rows if row.get("company_id")}
+
+    provider = _provider_reference_map(taxonomy_reference_path, entity_identifier_path)
+    if snapshot_company_ids:
+        provider = provider[provider["entity_id"].astype(str).isin(snapshot_company_ids)].copy()
+    provider_by_entity = provider.set_index("entity_id").to_dict(orient="index")
+    companyfacts_cache: dict[str, dict | None] = {}
+    permno_by_entity: dict[str, str] = {}
+    price_by_permno: dict[str, pd.DataFrame] = {}
+    if (
+        _market_permno_map is not None
+        and (_build_market_cap_metric_from_companyfacts is not None or _build_market_cap_metric is not None)
+    ):
+        permnos = _market_permno_map(entity_identifier_path)
+        if snapshot_company_ids:
+            permnos = permnos[permnos["entity_id"].astype(str).isin(snapshot_company_ids)].copy()
+        permno_by_entity = permnos.set_index("entity_id")["permno"].to_dict()
+        as_of_times = [
+            pd.Timestamp(row["as_of_time"]).tz_convert("UTC").normalize()
+            for row in snapshot_rows
+            if row.get("as_of_time")
+        ]
+        min_asof_date = min(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
+        max_asof_date = max(as_of_times) if as_of_times else pd.Timestamp("1970-01-01", tz="UTC")
+        market_price_builder = None
+        price_history = pd.DataFrame()
+        exact_market_price_source = crsp_market_cache_path or crsp_daily_root
+        if (
+            crsp_market_cache_path is not None
+            and _load_crsp_market_cache is not None
+            and _build_price_metrics_from_crsp is not None
+            and _build_market_cap_metric is not None
+        ):
+            price_history = _load_crsp_market_cache(crsp_market_cache_path, permnos["permno"].tolist())
+            market_price_builder = _build_price_metrics_from_crsp
+        elif (
+            crsp_daily_root is not None
+            and _load_crsp_daily_from_repo is not None
+            and _build_price_metrics_from_crsp is not None
+            and _build_market_cap_metric is not None
+        ):
+            price_history = _load_crsp_daily_from_repo(
+                crsp_daily_root,
+                permnos["permno"].tolist(),
+                min_asof_date=min_asof_date,
+                max_asof_date=max_asof_date,
+            )
+            market_price_builder = _build_price_metrics_from_crsp
+        elif (
+            args.allow_monthly_market_proxy
+            and raw_timeseries_path is not None
+            and _load_price_history is not None
+            and _build_price_metrics is not None
+        ):
+            price_history = _load_price_history(raw_timeseries_path, permnos["permno"].tolist())
+            market_price_builder = _build_price_metrics
+        else:
+            market_price_builder = _build_price_metrics_from_crsp or _build_price_metrics
+        price_by_permno = {
+            permno: frame.reset_index(drop=True)
+            for permno, frame in price_history.groupby("permno")
+        }
+    else:
+        market_price_builder = None
+    sec_filing_cache_root = Path(args.sec_filing_cache_root)
+    sec_filing_cache_root.mkdir(parents=True, exist_ok=True)
+    sec_session = (
+        _sec_session()
+        if (args.enable_sec_filing_debt_repair and companyfacts_root is not None and _sec_session is not None)
+        else None
+    )
+    computed_at = _now_iso()
+    counters: Counter[str] = Counter()
+
+    with out_path.open("w") as out_handle:
+        for row in snapshot_rows:
+            entity_id = row.get("company_id")
+            provider_row = provider_by_entity.get(entity_id)
+            features = row.setdefault("features", {})
+            as_of_time = row['as_of_time']
+            as_of_date = as_of_time[:10]
+            companyfacts = None
+            companyfacts_path = (companyfacts_root / f"CIK{entity_id}.json") if companyfacts_root is not None else None
+            row_metrics: Dict[str, Dict[str, Any]] = {}
+            sec_filing_repair_applied = False
+
+            try:
+                with _company_processing_guard(args.company_processing_timeout_seconds):
+                    if companyfacts_root is not None:
+                        companyfacts = companyfacts_cache.get(entity_id)
+                        if entity_id not in companyfacts_cache:
+                            companyfacts = _load_companyfacts(companyfacts_path)
+                            companyfacts_cache[entity_id] = companyfacts
+
+                    for metric_name, spec in DIRECT_METRIC_SPECS.items():
+                        provider_node = _build_legacy_provider_metric(
+                            metric_name=metric_name,
+                            provider_row=provider_row,
+                            as_of_time=as_of_time,
+                            computed_at=computed_at,
+                            provenance_source=str(taxonomy_reference_path),
+                            unit=spec["unit"],
+                        )
+                        if metric_name == "market.market_cap_provider_direct":
+                            market_cap_node = None
+                            if (
+                                market_price_builder is not None
+                                and (
+                                    exact_market_price_source is not None
+                                    or companyfacts is not None
+                                )
+                            ):
+                                permno = permno_by_entity.get(entity_id)
+                                price_metrics = market_price_builder(
+                                    permno=permno,
+                                    price_history=price_by_permno.get(permno),
+                                    as_of_time=as_of_time,
+                                    computed_at=computed_at,
+                                    provenance_source=str(
+                                        crsp_market_cache_path
+                                        or crsp_daily_root
+                                        or raw_timeseries_path
+                                        or "market_timeseries_unavailable"
+                                    ),
+                                )
+                                if (
+                                    market_price_builder is _build_price_metrics_from_crsp
+                                    and exact_market_price_source is not None
+                                    and _build_market_cap_metric is not None
+                                ):
+                                    market_cap_node = _build_market_cap_metric(
+                                        price_history=price_by_permno.get(permno),
+                                        price_node=price_metrics["market.price_spot"],
+                                        issuer_shares_outstanding=None,
+                                        issuer_shares_meta=None,
+                                        as_of_time=as_of_time,
+                                        computed_at=computed_at,
+                                        provenance_source=str(exact_market_price_source),
+                                    )
+                                if (
+                                    market_cap_node is None
+                                    and companyfacts is not None
+                                    and _build_market_cap_metric_from_companyfacts is not None
+                                ):
+                                    market_cap_node = _build_market_cap_metric_from_companyfacts(
+                                        companyfacts=companyfacts,
+                                        price_node=price_metrics["market.price_spot"],
+                                        as_of_time=as_of_time,
+                                        computed_at=computed_at,
+                                        companyfacts_path=companyfacts_path,
+                                    )
+                            node = _select_preferred_direct_metric(
+                                metric_name=metric_name,
+                                sec_or_market_node=market_cap_node,
+                                provider_node=provider_node,
+                            )
+                        elif companyfacts is not None:
+                            value, support_mode, missing_reason, component_breakdown, quality_flags = _build_sec_core_metric(
+                                metric_name,
+                                companyfacts,
+                                as_of_date,
+                            )
+                            sec_node = _build_metric_from_value(
+                                metric_name=metric_name,
+                                as_of_time=as_of_time,
+                                computed_at=computed_at,
+                                provenance_source=str(companyfacts_path),
+                                unit=spec["unit"],
+                                value=value,
+                                support_mode=support_mode,
+                                missing_reason=missing_reason,
+                                component_breakdown=component_breakdown,
+                                quality_flags=quality_flags,
+                                primary_source_basis="sec_companyfacts",
+                                provenance_artifact_type="SecCompanyFacts",
+                                input_layer_bucket_reason="sec_companyfacts_asof",
+                            )
+                            node = _select_preferred_direct_metric(
+                                metric_name=metric_name,
+                                sec_or_market_node=sec_node,
+                                provider_node=provider_node,
+                            )
+                        else:
+                            node = provider_node
+                        row_metrics[metric_name] = node
+
+                    if (
+                        companyfacts is not None
+                        and sec_session is not None
+                        and _repair_total_debt_from_sec_filing is not None
+                    ):
+                        temp_row = dict(row)
+                        temp_features = dict(features)
+                        temp_features.update(row_metrics)
+                        temp_row["features"] = temp_features
+                        if _repair_total_debt_from_sec_filing(
+                            row=temp_row,
+                            computed_at=computed_at,
+                            provenance_source=str(companyfacts_path),
+                            session=sec_session,
+                            cache_dir=sec_filing_cache_root,
+                            companyfacts=companyfacts,
+                        ):
+                            row_metrics["capital_structure.total_debt_provider_direct"] = temp_row["features"]["capital_structure.total_debt_provider_direct"]
+                            sec_filing_repair_applied = True
+
+                    revenue = _metric_value(row_metrics, "operating.revenue_ttm_provider_direct")
+                    ebitda = _metric_value(row_metrics, "operating.ebitda_ltm_provider_direct")
+                    net_income = _metric_value(row_metrics, "earnings.net_income_ttm_provider_direct")
+                    cash_sti = _metric_value(row_metrics, "liquidity.cash_and_short_term_investments_provider_direct")
+                    total_debt = _metric_value(row_metrics, "capital_structure.total_debt_provider_direct")
+
+                    revenue_support = _metric_support(row_metrics, "operating.revenue_ttm_provider_direct")
+                    ebitda_support = _metric_support(row_metrics, "operating.ebitda_ltm_provider_direct")
+                    net_income_support = _metric_support(row_metrics, "earnings.net_income_ttm_provider_direct")
+                    cash_sti_support = _metric_support(row_metrics, "liquidity.cash_and_short_term_investments_provider_direct")
+                    total_debt_support = _metric_support(row_metrics, "capital_structure.total_debt_provider_direct")
+
+                    net_debt = None if total_debt is None or cash_sti is None else total_debt - cash_sti
+                    combo_provenance = str(companyfacts_root) if companyfacts_root is not None else str(taxonomy_reference_path)
+
+                    row_metrics["capital_structure.net_debt_standardized"] = _build_combo_metric(
+                        metric_name="capital_structure.net_debt_standardized",
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=combo_provenance,
+                        unit="usd",
+                        numerator=net_debt,
+                        denominator=None,
+                        extra_components={
+                            "total_debt_provider_direct": total_debt,
+                            "cash_and_short_term_investments_provider_direct": cash_sti,
+                        },
+                        component_supports={
+                            "total_debt_provider_direct": total_debt_support,
+                            "cash_and_short_term_investments_provider_direct": cash_sti_support,
+                        },
+                        formula="total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+                        allow_numerator_only=True,
+                    )
+
+                    row_metrics["capital_structure.gross_leverage_standardized"] = _build_combo_metric(
+                        metric_name="capital_structure.gross_leverage_standardized",
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=combo_provenance,
+                        unit="x",
+                        numerator=total_debt,
+                        denominator=ebitda,
+                        extra_components={
+                            "total_debt_provider_direct": total_debt,
+                            "ebitda_ltm_provider_direct": ebitda,
+                        },
+                        component_supports={
+                            "total_debt_provider_direct": total_debt_support,
+                            "ebitda_ltm_provider_direct": ebitda_support,
+                        },
+                        formula="total_debt_provider_direct / ebitda_ltm_provider_direct",
+                    )
+
+                    row_metrics["capital_structure.net_leverage_standardized"] = _build_combo_metric(
+                        metric_name="capital_structure.net_leverage_standardized",
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=combo_provenance,
+                        unit="x",
+                        numerator=net_debt,
+                        denominator=ebitda,
+                        extra_components={
+                            "net_debt_standardized": net_debt,
+                            "ebitda_ltm_provider_direct": ebitda,
+                        },
+                        component_supports={
+                            "net_debt_standardized": row_metrics["capital_structure.net_debt_standardized"]["support_mode"],
+                            "ebitda_ltm_provider_direct": ebitda_support,
+                        },
+                        formula="net_debt_standardized / ebitda_ltm_provider_direct",
+                    )
+
+                    row_metrics["operating.ebitda_margin_standardized"] = _build_combo_metric(
+                        metric_name="operating.ebitda_margin_standardized",
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=combo_provenance,
+                        unit="ratio",
+                        numerator=ebitda,
+                        denominator=revenue,
+                        extra_components={
+                            "ebitda_ltm_provider_direct": ebitda,
+                            "revenue_ttm_provider_direct": revenue,
+                        },
+                        component_supports={
+                            "ebitda_ltm_provider_direct": ebitda_support,
+                            "revenue_ttm_provider_direct": revenue_support,
+                        },
+                        formula="ebitda_ltm_provider_direct / revenue_ttm_provider_direct",
+                    )
+
+                    row_metrics["earnings.net_margin_standardized"] = _build_combo_metric(
+                        metric_name="earnings.net_margin_standardized",
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=combo_provenance,
+                        unit="ratio",
+                        numerator=net_income,
+                        denominator=revenue,
+                        extra_components={
+                            "net_income_ttm_provider_direct": net_income,
+                            "revenue_ttm_provider_direct": revenue,
+                        },
+                        component_supports={
+                            "net_income_ttm_provider_direct": net_income_support,
+                            "revenue_ttm_provider_direct": revenue_support,
+                        },
+                        formula="net_income_ttm_provider_direct / revenue_ttm_provider_direct",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                error_type = "company_processing_timeout" if isinstance(exc, _CompanyProcessingTimeout) else "company_processing_failed"
+                counters[f"row:{error_type}"] += 1
+                row_metrics = _build_fail_open_metric_set(
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                    provenance_source=str(companyfacts_path or taxonomy_reference_path),
+                    error_type=error_type,
+                    error_message=f"{type(exc).__name__}: {exc}",
+                )
+                sec_filing_repair_applied = False
+
+            features.update(row_metrics)
+            if sec_filing_repair_applied:
+                counters["capital_structure.total_debt_provider_direct:sec_filing_table_repair"] += 1
+            for metric_name in ALL_OUTPUT_METRIC_SPECS:
+                node = row_metrics[metric_name]
+                counters[f"{metric_name}:{node['support_mode']}"] += 1
+
+            out_handle.write(json.dumps(row) + "\n")
+
+    print(f"Wrote input-layer v1 snapshots -> {out_path}")
+    print(f"provider_rows={len(provider_by_entity)}")
+    for metric_name in ALL_OUTPUT_METRIC_SPECS:
+        exact = counters[f"{metric_name}:exact"]
+        proxy = counters[f"{metric_name}:proxy_missing_component"]
+        unsupported = counters[f"{metric_name}:unsupported"]
+        print(f"{metric_name}: exact={exact} proxy={proxy} unsupported={unsupported}")
+    if counters["row:company_processing_failed"] or counters["row:company_processing_timeout"]:
+        print(
+            "row_fail_open:"
+            f" failed={counters['row:company_processing_failed']}"
+            f" timeout={counters['row:company_processing_timeout']}"
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -22,3 +22,42 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def main() -> None:
+    args = _parse_args()
+    run_ids = None
+    if args.run_ids_file:
+        run_ids = [line.strip() for line in Path(args.run_ids_file).read_text().splitlines() if line.strip()]
+
+    report = build_parameter_backtest_report(
+        runs_roots=args.runs_roots,
+        snapshot_root=args.snapshot_root,
+        outcomes_path=args.outcomes_path,
+        run_ids=run_ids,
+        review_count=args.review_count,
+        limit=args.limit,
+        min_bucket_samples=args.min_bucket_samples,
+    )
+    out_json = Path(args.out_json)
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_json.write_text(json.dumps(report, indent=2))
+
+    out_md = None
+    if args.out_md:
+        out_md = Path(args.out_md)
+        out_md.parent.mkdir(parents=True, exist_ok=True)
+        out_md.write_text(render_parameter_backtest_markdown(report))
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "out_json": str(out_json),
+                "out_md": str(out_md) if out_md else None,
+                "runs_analyzed": int(report.get("runs_analyzed", 0) or 0),
+                "historical_coverage_rate": float(((report.get("aggregate", {}) or {}).get("historical_coverage_rate", 0.0) or 0.0)),
+                "mean_alignment_score": float(((report.get("aggregate", {}) or {}).get("mean_alignment_score", 0.0) or 0.0)),
+            }
+        )
+    )
+
+
