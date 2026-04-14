@@ -474,7 +474,7 @@ def _repair_row(
         )
 
     repaired_total_debt = statement._repair_total_debt_from_statement_split(
-        current_node=features['capital_structure.total_debt_provider_direct'],
+        current_node=features.get("capital_structure.total_debt_provider_direct"),
         current_debt_statement_node=features.get("capital_structure.current_debt_statement_direct"),
         long_term_debt_statement_node=features.get("capital_structure.long_term_debt_statement_direct"),
         current_debt_statement_candidates=(
