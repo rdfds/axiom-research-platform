@@ -45,3 +45,29 @@ def log(msg: str) -> None:
     print(f"[{now}] {msg}", flush=True)
 
 
+def normalize_list(value: Optional[object]) -> List[str]:
+    if value is None:
+        return []
+    try:
+        import numpy as np
+    except Exception:
+        np = None  # type: ignore
+
+    if np is not None and isinstance(value, np.ndarray):
+        if value.size == 0:
+            return []
+        return [str(v) for v in value.tolist() if v is not None]
+    if isinstance(value, pd.Series):
+        if value.empty:
+            return []
+        return [str(v) for v in value.tolist() if v is not None]
+    if isinstance(value, (list, tuple, set)):
+        return [str(v) for v in value if v is not None and not (isinstance(v, float) and pd.isna(v))]
+    try:
+        if pd.isna(value):
+            return []
+    except Exception:
+        pass
+    return [str(value)]
+
+

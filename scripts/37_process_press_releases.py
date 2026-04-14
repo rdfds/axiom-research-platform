@@ -166,3 +166,22 @@ def load_checkpoint(path: Path) -> set:
     return processed
 
 
+def chunk_text(text: str, target: int, min_tokens: int, max_tokens: int) -> List[str]:
+    tokens = text.split()
+    if not tokens:
+        return []
+    if len(tokens) <= max_tokens:
+        return [" ".join(tokens)]
+    chunks = []
+    idx = 0
+    while idx < len(tokens):
+        end = min(idx + max_tokens, len(tokens))
+        chunk = tokens[idx:end]
+        if len(chunk) < min_tokens and chunks:
+            chunks[-1] = f"{chunks[-1]} {' '.join(chunk)}"
+            break
+        chunks.append(" ".join(chunk))
+        idx = end
+    return chunks
+
+
