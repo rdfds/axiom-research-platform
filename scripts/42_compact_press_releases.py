@@ -71,3 +71,14 @@ def normalize_list(value: Optional[object]) -> List[str]:
     return [str(value)]
 
 
+def iter_year_dirs(base: Path) -> Iterable[Path]:
+    for year_dir in sorted(base.glob("year=*")):
+        try:
+            year = int(year_dir.name.split("=")[1])
+        except Exception:
+            continue
+        if year < PR_COMPACT_START_YEAR or year > PR_COMPACT_END_YEAR:
+            continue
+        yield year_dir
+
+

@@ -185,3 +185,11 @@ def chunk_text(text: str, target: int, min_tokens: int, max_tokens: int) -> List
     return chunks
 
 
+def _count_hits(text: str, patterns: Iterable[str]) -> int:
+    count = 0
+    for pattern in patterns:
+        if pattern in text:
+            count += 1
+    return count
+
+

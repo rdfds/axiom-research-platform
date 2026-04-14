@@ -266,3 +266,5 @@ DealScan M&A data can be used to:
     """)
 
 
+if __name__ == "__main__":
+    main()
