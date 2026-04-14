@@ -50,3 +50,8 @@ def test_named_builder_defaults_follow_axiom_data_root(monkeypatch):
     assert named_builder_companyfacts_root() == Path("/tmp/companyfacts_override")
 
 
+def test_metric_goldens_companyfacts_root_follows_override(monkeypatch):
+    monkeypatch.setenv("AXIOM_COMPANYFACTS_ROOT", "/tmp/companyfacts_override")
+
+    assert resolve_companyfacts_root("data/sec/companyfacts") == Path("/tmp/companyfacts_override")
+    assert metric_goldens_companyfacts_root() == Path("/tmp/companyfacts_override")

@@ -210,3 +210,11 @@ def materialize_historical_frame(
     return base
 
 
+__all__ = [
+    "HistoricalEventStore",
+    "HistoricalCompanyStateSnapshotStore",
+    "HistoricalOutcomeStore",
+    "RegimeHistory",
+    "build_historical_stores_from_outcomes",
+    "materialize_historical_frame",
+]
