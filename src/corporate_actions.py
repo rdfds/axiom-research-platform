@@ -641,7 +641,7 @@ class ActionAnalyzer:
 
                 if similarity >= min_similarity:
                     # Handle different column naming conventions
-                    company_name = row.get('company_name') or row['borrower_name'] or 'Unknown'
+                    company_name = row.get('company_name') or row.get('borrower_name') or 'Unknown'
                     action_date = row.get('action_date') or row.get('deal_date')
                     action_type = row.get('action_type') or row.get('deal_type') or 'acquisition'
                     deal_value = row.get('deal_value') or row.get('facility_amount')
