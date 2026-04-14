@@ -1965,3 +1965,8 @@ def _metric_value(features: Dict[str, Any], metric_name: str) -> float | None:
     return None if value is None else float(value)
 
 
+def _metric_support(features: Dict[str, Any], metric_name: str) -> str:
+    node = features.get(metric_name) or {}
+    return node.get("support_mode") or "missing_metric"
+
+

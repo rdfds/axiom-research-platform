@@ -269,3 +269,36 @@ def build_estimates(path: Path) -> pd.DataFrame:
     ]
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prices-path", default="data/warehouse/warehouse_prices.parquet")
+    parser.add_argument("--macro-path", default="data/warehouse/warehouse_macro.parquet")
+    parser.add_argument("--estimates-path", default="data/warehouse/warehouse_estimates.parquet")
+    parser.add_argument("--out", default="data/inputs_layer/raw_timeseries.parquet")
+    args = parser.parse_args()
+
+    prices_path = ROOT / args.prices_path
+    macro_path = ROOT / args.macro_path
+    estimates_path = ROOT / args.estimates_path
+    out_path = ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    parts = []
+    if prices_path.exists():
+        parts.append(build_prices(prices_path))
+    if macro_path.exists():
+        parts.append(build_macro(macro_path))
+    if estimates_path.exists():
+        parts.append(build_estimates(estimates_path))
+
+    parts = [p for p in parts if p is not None and not p.empty]
+    if not parts:
+        raise RuntimeError("No input datasets found to build RawTimeSeriesStore.")
+
+    df = pd.concat(parts, ignore_index=True)
+    df.to_parquet(out_path, index=False)
+    print(f"Saved RawTimeSeriesStore -> {out_path} ({len(df):,} rows)")
+
+
+if __name__ == "__main__":
+    main()
