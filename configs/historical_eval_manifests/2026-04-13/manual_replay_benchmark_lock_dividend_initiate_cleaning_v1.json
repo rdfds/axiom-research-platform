@@ -1,0 +1,65 @@
+{
+  "suite": "manual_replay_historical_benchmark",
+  "version": "2026-03-26",
+  "defaults": {
+    "lookback_days": 365,
+    "alignment_horizon_days": 120,
+    "precedent_top_k": 0,
+    "top_plans": 3,
+    "historical_backfill_mode": true,
+    "enable_market_relevant_smart_normalized_inputs": true,
+    "min_non_missing_core_features": 3
+  },
+  "artifacts": {
+    "outcomes_path": "data/curated/action_outcomes_with_credit_ratings.normalized_full.parquet",
+    "action_support_manifest": "configs/action_data_support_manifest.json",
+    "corporate_actions_master_path": "/tmp/manual_replay_corporate_actions_master_missing.parquet",
+    "entity_graph_path": "data/inputs_layer/entity_graph.parquet",
+    "entity_identifier_path": "data/inputs_layer/entity_identifier.parquet",
+    "entity_table_path": "data/inputs_layer/entity.parquet",
+    "raw_timeseries_path": "data/inputs_layer/raw_timeseries.parquet",
+    "event_store_path": "data/inputs_layer/event_store.parquet",
+    "ownership_summary_path": "data/inputs_layer/ownership_13f_summary.parquet",
+    "issuer_ratings_path": "data/inputs_layer/issuer_rating_history.parquet",
+    "companyfacts_root": "data/sec/companyfacts",
+    "facts_path_candidates": [
+      "/tmp/extracted_fact_registry_validity_local",
+      "data/inputs_layer/extracted_fact_registry_validity"
+    ]
+  },
+  "env_override_candidates": {
+    "AXIOM_METRIC_POLICY_PATH": [
+      "/tmp/axiom_local_configs/market_metric_policy_v1.json",
+      "configs/metric_policies/market_metric_policy_v1.json"
+    ],
+    "AXIOM_METHODOLOGY_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/consumer_industrials_canonical_registry_v1.json",
+      "configs/metric_methodologies/consumer_industrials_canonical_registry_v1.json"
+    ],
+    "AXIOM_INPUT_SOURCE_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/company_state_input_source_registry_v1.json",
+      "configs/metric_methodologies/company_state_input_source_registry_v1.json"
+    ],
+    "AXIOM_SMART_METRIC_REGISTRY_PATH": [
+      "/tmp/axiom_local_configs/smart_metric_registry_v1.json",
+      "out/smart_metric_registry_v1.json"
+    ],
+    "AXIOM_MARKET_AVAILABILITY_OVERRIDES_PATH": [
+      "/tmp/axiom_local_configs/liquidity_market_availability_overrides.json",
+      "configs/liquidity_market_availability_overrides.json"
+    ]
+  },
+  "generated_at": "2026-04-14T02:26:08.843579+00:00",
+  "benchmarks": {
+    "capital_return_dividend_initiate_holdout_22_preaction_minus1d": {
+      "label": "Capital Return Dividend Initiate Holdout 22 Pre-Action Minus 1D",
+      "manifest": "./configs/historical_eval_manifests/2026-04-13/capital_return_dividend_initiate_holdout_22_preaction_minus1d.json",
+      "reference_metrics": {}
+    },
+    "capital_return_dividend_initiate_holdout_19_preaction_minus1d_clean": {
+      "label": "Capital Return Dividend Initiate Holdout 19 Pre-Action Minus 1D Clean",
+      "manifest": "./configs/historical_eval_manifests/2026-04-13/capital_return_dividend_initiate_holdout_19_preaction_minus1d_clean.json",
+      "reference_metrics": {}
+    }
+  }
+}

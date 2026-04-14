@@ -1,0 +1,390 @@
+{
+  "manifest_generated_at": "2026-04-14T02:25:36.802478+00:00",
+  "label": "capital_return.dividend_initiate_holdout_19_preaction_minus1d_clean",
+  "source_outcomes_path": "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet",
+  "selection_method": "latest_unique_company_case_by_action_date_desc_preaction_minus_1d_cleaned",
+  "selection_rankings": [
+    {
+      "company_id": "042033",
+      "company_name": "",
+      "ticker": "ATMU",
+      "as_of_time": "2024-07-31T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-08-01T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "020960",
+      "company_name": "",
+      "ticker": "CNNE",
+      "as_of_time": "2024-06-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-06-14T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "205876",
+      "company_name": "",
+      "ticker": "EXTO",
+      "as_of_time": "2024-04-10T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-04-11T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "043651",
+      "company_name": "",
+      "ticker": "WS",
+      "as_of_time": "2024-03-12T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-03-13T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "027014",
+      "company_name": "",
+      "ticker": "ATKR",
+      "as_of_time": "2024-02-25T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-02-26T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "317427",
+      "company_name": "",
+      "ticker": "NOMD",
+      "as_of_time": "2024-02-07T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-02-08T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "020530",
+      "company_name": "",
+      "ticker": "BABA",
+      "as_of_time": "2023-12-19T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-12-20T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "037676",
+      "company_name": "",
+      "ticker": "RLX",
+      "as_of_time": "2023-11-29T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-11-30T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "184182",
+      "company_name": "",
+      "ticker": "JKS",
+      "as_of_time": "2023-11-21T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-11-22T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "100718",
+      "company_name": "",
+      "ticker": "TAK",
+      "as_of_time": "2023-09-27T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-09-28T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "041897",
+      "company_name": "",
+      "ticker": "KVUE",
+      "as_of_time": "2023-08-24T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-08-25T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "041818",
+      "company_name": "",
+      "ticker": "GEHC",
+      "as_of_time": "2023-05-21T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-05-22T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "007685",
+      "company_name": "",
+      "ticker": "NSSC",
+      "as_of_time": "2023-05-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-05-19T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "353444",
+      "company_name": "",
+      "ticker": "HLN",
+      "as_of_time": "2023-03-15T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-03-16T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "120444",
+      "company_name": "",
+      "ticker": "WCC",
+      "as_of_time": "2023-03-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-03-14T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "064278",
+      "company_name": "",
+      "ticker": "ELTK",
+      "as_of_time": "2022-12-08T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-12-09T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "035674",
+      "company_name": "",
+      "ticker": "KRT",
+      "as_of_time": "2022-11-17T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-11-18T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "019858",
+      "company_name": "",
+      "ticker": "VRTV",
+      "as_of_time": "2022-11-16T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-11-17T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "025999",
+      "company_name": "",
+      "ticker": "CBIO",
+      "as_of_time": "2022-09-20T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-09-21T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    }
+  ],
+  "cases": [
+    {
+      "company_id": "042033",
+      "company_name": "",
+      "ticker": "ATMU",
+      "as_of_time": "2024-07-31T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-08-01T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "020960",
+      "company_name": "",
+      "ticker": "CNNE",
+      "as_of_time": "2024-06-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-06-14T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "205876",
+      "company_name": "",
+      "ticker": "EXTO",
+      "as_of_time": "2024-04-10T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-04-11T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "043651",
+      "company_name": "",
+      "ticker": "WS",
+      "as_of_time": "2024-03-12T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-03-13T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "027014",
+      "company_name": "",
+      "ticker": "ATKR",
+      "as_of_time": "2024-02-25T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-02-26T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "317427",
+      "company_name": "",
+      "ticker": "NOMD",
+      "as_of_time": "2024-02-07T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2024-02-08T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "020530",
+      "company_name": "",
+      "ticker": "BABA",
+      "as_of_time": "2023-12-19T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-12-20T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "037676",
+      "company_name": "",
+      "ticker": "RLX",
+      "as_of_time": "2023-11-29T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-11-30T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "184182",
+      "company_name": "",
+      "ticker": "JKS",
+      "as_of_time": "2023-11-21T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-11-22T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "100718",
+      "company_name": "",
+      "ticker": "TAK",
+      "as_of_time": "2023-09-27T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-09-28T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "041897",
+      "company_name": "",
+      "ticker": "KVUE",
+      "as_of_time": "2023-08-24T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-08-25T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "041818",
+      "company_name": "",
+      "ticker": "GEHC",
+      "as_of_time": "2023-05-21T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-05-22T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "007685",
+      "company_name": "",
+      "ticker": "NSSC",
+      "as_of_time": "2023-05-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-05-19T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "353444",
+      "company_name": "",
+      "ticker": "HLN",
+      "as_of_time": "2023-03-15T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-03-16T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "120444",
+      "company_name": "",
+      "ticker": "WCC",
+      "as_of_time": "2023-03-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2023-03-14T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "064278",
+      "company_name": "",
+      "ticker": "ELTK",
+      "as_of_time": "2022-12-08T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-12-09T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "035674",
+      "company_name": "",
+      "ticker": "KRT",
+      "as_of_time": "2022-11-17T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-11-18T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "019858",
+      "company_name": "",
+      "ticker": "VRTV",
+      "as_of_time": "2022-11-16T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-11-17T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    },
+    {
+      "company_id": "025999",
+      "company_name": "",
+      "ticker": "CBIO",
+      "as_of_time": "2022-09-20T00:00:00+00:00",
+      "anchor_action_id": "capital_return.dividend_initiate",
+      "selection_note": "latest_unique_company_case_by_action_date; pre_action_minus_1d_for_dividend_initiate_eval",
+      "anchor_action_date": "2022-09-21T00:00:00+00:00",
+      "anchor_action_family": "capital_return"
+    }
+  ]
+}
