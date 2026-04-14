@@ -2124,7 +2124,7 @@ def main() -> None:
             entity_id = row.get("company_id")
             provider_row = provider_by_entity.get(entity_id)
             features = row.setdefault("features", {})
-            as_of_time = row['as_of_time']
+            as_of_time = row.get("as_of_time")
             as_of_date = as_of_time[:10]
             companyfacts = None
             companyfacts_path = (companyfacts_root / f"CIK{entity_id}.json") if companyfacts_root is not None else None
