@@ -200,3 +200,69 @@ def analyze_data(facilities_df, ma_df):
         print(yearly.tail(10))
 
 
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python 06_pull_dealscan.py USERNAME")
+        sys.exit(1)
+
+    WRDS_USERNAME = sys.argv[1]
+
+    print("Connecting to WRDS...")
+    db = wrds.Connection(wrds_username=WRDS_USERNAME)
+    print("Connected!\n")
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    # Pull all facilities
+    facilities_df = pull_dealscan_facilities(db)
+
+    # Pull M&A related
+    ma_df = pull_ma_related_facilities(db)
+
+    # Pull linking table
+    link_df = pull_borrower_link(db)
+
+    # Analyze
+    analyze_data(facilities_df, ma_df)
+
+    # Save
+    print("\n" + "="*70)
+    print("SAVING DATA")
+    print("="*70)
+
+    facilities_df.to_parquet(OUTPUT_DIR / 'dealscan_facilities.parquet', index=False)
+    print(f"Saved all facilities: {len(facilities_df):,} rows")
+
+    ma_df.to_parquet(OUTPUT_DIR / 'dealscan_ma_facilities.parquet', index=False)
+    print(f"Saved M&A facilities: {len(ma_df):,} rows")
+
+    if link_df is not None:
+        link_df.to_parquet(OUTPUT_DIR / 'dealscan_compustat_link.parquet', index=False)
+        print(f"Saved link table: {len(link_df):,} rows")
+
+    # CSV samples
+    ma_df.head(500).to_csv(OUTPUT_DIR / 'dealscan_ma_sample.csv', index=False)
+
+    db.close()
+
+    print("\n" + "="*70)
+    print("NEXT STEPS")
+    print("="*70)
+    print("""
+DealScan M&A data can be used to:
+
+1. Identify acquisition events by company ticker
+   - Link to Compustat via ticker matching
+   - Compute state profiles at loan origination date
+
+2. Analyze financing patterns
+   - Typical leverage for M&A
+   - Loan structures (revolver vs term loan)
+   - Maturity profiles
+
+3. Build acquisition analogs
+   - Similar borrowers doing similar deals
+   - Regime-conditional financing terms
+    """)
+
+

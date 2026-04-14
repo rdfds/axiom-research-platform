@@ -44,3 +44,21 @@ def _to_datetime(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce")
 
 
+def _to_float(series: pd.Series) -> pd.Series:
+    cleaned = (
+        series.astype(str)
+        .str.replace(",", "", regex=False)
+        .str.replace("$", "", regex=False)
+        .replace({"": None, "nan": None, "None": None, "<NA>": None})
+    )
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
+def _is_revolver_like(series: pd.Series) -> pd.Series:
+    pattern = re.compile(
+        r"revolv|line\s*(?:>=|<)?|364-day|credit facility|asset[- ]based|abl|rcf|swingline",
+        re.I,
+    )
+    return series.fillna("").astype(str).str.contains(pattern)
+
+

@@ -158,7 +158,7 @@ def _start_heartbeat(
     if every_seconds <= 0:
         return stop, None
 
-    def _run() :
+    def _run() -> None:
         while not stop.wait(every_seconds):
             print(
                 json.dumps(
