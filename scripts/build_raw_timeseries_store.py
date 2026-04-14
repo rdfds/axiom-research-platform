@@ -198,3 +198,74 @@ def build_macro(path: Path) -> pd.DataFrame:
     ]
 
 
+def build_estimates(path: Path) -> pd.DataFrame:
+    cols = [
+        "source_system",
+        "entity_id",
+        "metric",
+        "period",
+        "period_end",
+        "event_time",
+        "available_time",
+        "ingestion_time",
+        "consensus_value",
+        "num_estimates",
+        "revision_direction",
+        "revision_magnitude",
+    ]
+    df = load_parquet_cols(path, cols)
+    if df.empty:
+        return df
+
+    df = df.reset_index().rename(columns={"index": "row_id"})
+    for c in ["event_time", "available_time", "ingestion_time", "period_end"]:
+        if c in df.columns:
+            df[c] = parse_dt(df[c])
+
+    metric = df["metric"].astype("string").str.replace(" ", "_")
+    period = df["period"].astype("string").str.replace(" ", "_")
+    df["series_id"] = "estimate." + metric + "." + period + ".consensus"
+    df["series_type"] = "estimate"
+    df["entity_id_type"] = "entity_id"
+    df["date"] = df["event_time"]
+    df["value"] = df["consensus_value"]
+    df["unit"] = pd.NA
+    df["currency"] = pd.NA
+    df["frequency"] = pd.NA
+    df["published_at"] = df["available_time"].combine_first(df["event_time"])
+    df["effective_at"] = df["event_time"]
+    df["ingested_at"] = df["ingestion_time"]
+    df["confidence_score"] = 1.0
+    df["raw_pointer"] = f"{path.as_posix()}#row=" + df["row_id"].astype("string")
+    df["revision_flag"] = pd.NA
+    df["release_lag_days"] = pd.NA
+
+    return df[
+        [
+            "series_id",
+            "series_type",
+            "entity_id",
+            "entity_id_type",
+            "date",
+            "value",
+            "unit",
+            "currency",
+            "frequency",
+            "published_at",
+            "effective_at",
+            "ingested_at",
+            "confidence_score",
+            "raw_pointer",
+            "revision_flag",
+            "release_lag_days",
+            "metric",
+            "period",
+            "period_end",
+            "num_estimates",
+            "revision_direction",
+            "revision_magnitude",
+            "source_system",
+        ]
+    ]
+
+
