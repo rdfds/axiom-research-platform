@@ -82,3 +82,21 @@ def iter_year_dirs(base: Path) -> Iterable[Path]:
         yield year_dir
 
 
+def read_parts(parts: List[Path]) -> pd.DataFrame:
+    frames: List[pd.DataFrame] = []
+    for idx, path in enumerate(parts, start=1):
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            log(f"  Skipping unreadable parquet {path}: {exc}")
+            continue
+        if df.empty:
+            continue
+        frames.append(df)
+        if PR_COMPACT_LOG_EVERY and idx % PR_COMPACT_LOG_EVERY == 0:
+            log(f"  Read {idx}/{len(parts)} files")
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
