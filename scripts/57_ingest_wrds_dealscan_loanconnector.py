@@ -174,3 +174,24 @@ def build_normalized_outputs(
     }
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Normalize WRDS DealScan / LoanConnector downloads.")
+    parser.add_argument("--facilities-path", required=True, help="Path to WRDS DealScan main CSV/CSV.GZ export")
+    parser.add_argument("--company-map-path", required=True, help="Path to lpc_loanconnector_company_id_map.csv")
+    parser.add_argument("--id-map-path", required=True, help="Path to wrds_loanconnector_ids.csv")
+    parser.add_argument("--covenants-path", required=True, help="Path to wrds_financial_covenants.csv")
+    parser.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT), help="Output directory for parquet artifacts")
+    args = parser.parse_args()
+
+    outputs = build_normalized_outputs(
+        facilities_path=Path(args.facilities_path),
+        company_map_path=Path(args.company_map_path),
+        id_map_path=Path(args.id_map_path),
+        covenants_path=Path(args.covenants_path),
+        out_root=Path(args.out_root),
+    )
+    print("Saved normalized WRDS DealScan artifacts:")
+    for key, value in outputs.items():
+        print(f"  {key}: {value}")
+
+
