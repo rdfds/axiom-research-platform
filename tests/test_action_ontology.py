@@ -84,3 +84,14 @@ def test_query_methods():
     assert lead_dist["source"] == "schema_prior_interpolated"
 
 
+def test_planner_dependency_edge_mapping_normalizes_rule_types():
+    registry = build_default_action_schema_registry()
+    edges = registry.fetch_planner_dependency_edges("capital_return.open_market_buyback")
+    edge_by_target = {edge["target_action"]: edge for edge in edges}
+
+    assert edge_by_target["mna.transformational_acquisition"]["relationship_type"] == "conflicts"
+    assert edge_by_target["mna.transformational_acquisition"]["original_rule_type"] == "conflicts_with"
+    assert edge_by_target["capital_structure.refinancing"]["relationship_type"] == "recommended_after"
+    assert edge_by_target["capital_structure.refinancing"]["original_rule_type"] == "preferred_after"
+
+
