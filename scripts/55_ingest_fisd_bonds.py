@@ -200,3 +200,79 @@ def build_bond_issuances(con: duckdb.DuckDBPyConnection) -> None:
     log(f"Saved {n:,} bond issuances -> {OUT_ISSUES}")
 
 
+def build_bond_ratings(con: duckdb.DuckDBPyConnection) -> None:
+    if not RATINGS_PATH.exists():
+        log("Ratings file not found; skipping ratings.")
+        return
+
+    log("Building bond ratings (FISD)...")
+
+    query = f"""
+    WITH ratings_raw AS (
+        SELECT * FROM read_csv_auto(
+            '{RATINGS_PATH.as_posix()}',
+            union_by_name=true,
+            all_varchar=true,
+            strict_mode=false,
+            ignore_errors=true,
+            null_padding=true
+        )
+    ),
+    ratings AS (
+        SELECT
+            ISSUE_ID,
+            ISSUER_ID,
+            RATING_TYPE,
+            RATING_DATE,
+            RATING,
+            RATING_STATUS,
+            INVESTMENT_GRADE,
+            ISSUE_CUSIP,
+            COMPLETE_CUSIP,
+            OFFERING_DATE,
+            MATURITY,
+            {_date_expr('RATING_DATE')} AS rating_date,
+            {_date_expr('OFFERING_DATE')} AS offering_date,
+            {_date_expr('MATURITY')} AS maturity_date,
+            substr(coalesce(COMPLETE_CUSIP, ISSUE_CUSIP), 1, 8) AS cusip8
+        FROM ratings_raw
+    ),
+    ciq AS (
+        SELECT gvkey, cusip8 FROM read_parquet('{CIQ_MAP.as_posix()}')
+    ),
+    link AS (
+        SELECT
+            gvkey,
+            lpermno AS permno,
+            coalesce(cast(linkdt as timestamp), timestamp '1900-01-01') AS linkdt,
+            coalesce(cast(linkenddt as timestamp), timestamp '2099-12-31') AS linkenddt
+        FROM read_parquet('{(CRSP_DIR / "ccmxpf_lnkhist.parquet").as_posix()}')
+    )
+    SELECT
+        r.ISSUE_ID,
+        r.ISSUER_ID,
+        r.RATING_TYPE,
+        r.rating_date,
+        r.RATING,
+        r.RATING_STATUS,
+        r.INVESTMENT_GRADE,
+        r.ISSUE_CUSIP,
+        r.COMPLETE_CUSIP,
+        r.offering_date,
+        r.maturity_date,
+        ciq.gvkey,
+        link.permno
+    FROM ratings r
+    LEFT JOIN ciq ON ciq.cusip8 = r.cusip8
+    LEFT JOIN link
+        ON link.gvkey = ciq.gvkey
+       AND cast(r.rating_date as timestamp) BETWEEN link.linkdt AND link.linkenddt
+    WHERE r.rating_date IS NOT NULL
+    """
+
+    OUT_RATINGS.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"COPY ({query}) TO '{OUT_RATINGS.as_posix()}' (FORMAT 'parquet');")
+    n = con.execute(f"SELECT count(*) FROM read_parquet('{OUT_RATINGS.as_posix()}')").fetchone()[0]
+    log(f"Saved {n:,} bond ratings -> {OUT_RATINGS}")
+
+
