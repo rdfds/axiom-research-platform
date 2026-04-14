@@ -151,3 +151,173 @@ def _keyed_snapshot_path(snapshot_root: Path, as_of: str, company_id: str) -> Pa
     )
 
 
+def _start_heartbeat(
+    company_id: str, start_ts: float, every_seconds: float
+) -> tuple[threading.Event, threading.Thread | None]:
+    stop = threading.Event()
+    if every_seconds <= 0:
+        return stop, None
+
+    def _run() :
+        while not stop.wait(every_seconds):
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "event": "company_heartbeat",
+                        "company_id": company_id,
+                        "elapsed_seconds": round(time.time() - start_ts, 3),
+                    }
+                ),
+                flush=True,
+            )
+
+    th = threading.Thread(target=_run, daemon=True)
+    th.start()
+    return stop, th
+
+
+def main() -> None:
+    import_t0 = time.time()
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_orchestrator",
+            }
+        ),
+        flush=True,
+    )
+    from src.recommendation_run_orchestrator import create_and_execute_recommendation_run
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_done",
+                "elapsed_seconds": round(time.time() - import_t0, 3),
+            }
+        ),
+        flush=True,
+    )
+
+    args = _parse_args()
+    runs_root = Path(args.runs_root)
+    snapshot_root = Path(args.snapshot_root)
+    keyed_loader = None if args.disable_keyed_loader else _build_keyed_snapshot_loader(snapshot_root)
+    precedent_runner = _mock_precedent_runner if args.mock_precedent else None
+    runs_root.mkdir(parents=True, exist_ok=True)
+
+    run_pairs: List[str] = []
+    summaries: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+
+    for company_id in args.companies:
+        t0 = time.time()
+        keyed_snapshot = _keyed_snapshot_path(
+            snapshot_root=snapshot_root,
+            as_of=str(args.as_of),
+            company_id=str(company_id),
+        )
+        snapshot_path_arg = str(keyed_snapshot) if keyed_snapshot.exists() else None
+        hb_stop, hb_thread = _start_heartbeat(
+            company_id=str(company_id),
+            start_ts=t0,
+            every_seconds=float(args.heartbeat_seconds),
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "company_started",
+                    "company_id": str(company_id),
+                    "snapshot_mode": "keyed_file" if snapshot_path_arg else "snapshot_root_lookup",
+                }
+            ),
+            flush=True,
+        )
+        try:
+            summary = create_and_execute_recommendation_run(
+                company_id=str(company_id),
+                as_of_time=str(args.as_of),
+                runs_root=str(runs_root),
+                snapshot_root=str(snapshot_root),
+                snapshot_path=snapshot_path_arg,
+                snapshot_loader=keyed_loader,
+                entity_graph_path=str(args.entity_graph_path),
+                entity_identifier_path=str(args.entity_identifier_path),
+                action_ids=[str(x) for x in (args.action_ids or [])] or None,
+                max_candidates=int(args.max_candidates),
+                min_candidates_target=int(args.min_candidates_target),
+                precedent_top_k=int(args.precedent_top_k),
+                outcomes_path=str(args.outcomes_path),
+                config_path=str(args.config_path) if args.config_path else None,
+                top_plans=int(args.top_plans),
+                precedent_runner=precedent_runner,
+            )
+            rid = str(summary.get("run_id", ""))
+            if rid:
+                run_pairs.append(f"{company_id} {rid}")
+            summaries.append(summary)
+            stage_seconds = _run_stage_seconds(runs_root=runs_root, run_id=rid) if rid else {}
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "event": "company_completed",
+                        "company_id": str(company_id),
+                        "run_id": rid,
+                        "status": summary.get("status"),
+                        "counts": summary.get("counts", {}),
+                        "stage_seconds": stage_seconds,
+                        "elapsed_seconds": round(time.time() - t0, 3),
+                    }
+                ),
+                flush=True,
+            )
+        except Exception as exc:  # pragma: no cover - operational guard
+            failure = {
+                "company_id": str(company_id),
+                "error": str(exc),
+                "traceback": traceback.format_exc(limit=3),
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+            failures.append(failure)
+            print(json.dumps({"ok": False, **failure}), flush=True)
+        finally:
+            hb_stop.set()
+            if hb_thread is not None:
+                hb_thread.join(timeout=1.0)
+
+    run_ids_out = Path(args.run_ids_out)
+    _safe_run_ids_write(run_ids_out, run_pairs)
+
+    final = {
+        "ok": len(failures) == 0,
+        "runs_root": str(runs_root),
+        "run_ids_out": str(run_ids_out),
+        "requested_companies": len(args.companies),
+        "completed_runs": len(run_pairs),
+        "failed_runs": len(failures),
+        "failures": failures,
+    }
+    print(json.dumps(final), flush=True)
+
+    if args.summary_out:
+        out_path = Path(args.summary_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(
+                {
+                    "final": final,
+                    "summaries": summaries,
+                },
+                indent=2,
+            )
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -149,3 +149,64 @@ class RegimeHistory:
     dataset_version: str
 
 
+def build_historical_stores_from_outcomes(
+    outcomes_df: pd.DataFrame,
+    *,
+    dataset_version: str = "",
+) -> Dict[str, object]:
+    df = _ensure_source_event_id(outcomes_df)
+
+    event_store = HistoricalEventStore(
+        events=_select_cols(df, _EVENT_COLS),
+        dataset_version=dataset_version,
+    )
+    snapshot_store = HistoricalCompanyStateSnapshotStore(
+        snapshots=_select_cols(df, _STATE_COLS),
+        dataset_version=dataset_version,
+    )
+    outcome_store = HistoricalOutcomeStore(
+        outcomes=_select_cols(df, _OUTCOME_COLS),
+        dataset_version=dataset_version,
+    )
+    regime_history = RegimeHistory(
+        regimes=_select_cols(df, _REGIME_COLS),
+        dataset_version=dataset_version,
+    )
+    return {
+        "historical_event_store": event_store,
+        "historical_state_store": snapshot_store,
+        "historical_outcome_store": outcome_store,
+        "regime_history": regime_history,
+    }
+
+
+def materialize_historical_frame(
+    *,
+    historical_event_store: HistoricalEventStore,
+    historical_state_store: Optional[HistoricalCompanyStateSnapshotStore],
+    historical_outcome_store: Optional[HistoricalOutcomeStore],
+    regime_history: Optional[RegimeHistory],
+) -> pd.DataFrame:
+    base = historical_event_store.events.copy()
+    if base.empty:
+        return base
+    for comp in (historical_state_store, historical_outcome_store, regime_history):
+        if comp is None:
+            continue
+        frame = getattr(comp, "snapshots", None)
+        if frame is None:
+            frame = getattr(comp, "outcomes", None)
+        if frame is None:
+            frame = getattr(comp, "regimes", None)
+        if frame is None or frame.empty:
+            continue
+        right = frame.copy()
+        if "source_event_id" not in right.columns:
+            continue
+        drop_cols = [c for c in right.columns if c in base.columns and c != "source_event_id"]
+        if drop_cols:
+            right = right.drop(columns=drop_cols)
+        base = base.merge(right, on="source_event_id", how="left")
+    return base
+
+

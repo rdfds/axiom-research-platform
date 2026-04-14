@@ -29,3 +29,24 @@ def test_resolve_data_path_rewrites_absolute_repo_data_path(monkeypatch):
     assert resolved == Path("/tmp/axiom_data_root/curated/action_outcomes.parquet")
 
 
+def test_company_state_builder_uses_axiom_data_root(monkeypatch):
+    monkeypatch.setenv("AXIOM_DATA_ROOT", "/tmp/axiom_data_root")
+    monkeypatch.setenv("AXIOM_COMPANYFACTS_ROOT", "/tmp/companyfacts_override")
+
+    builder = CompanyStateBuilder()
+
+    assert builder.raw_timeseries_path == Path("/tmp/axiom_data_root/inputs_layer/raw_timeseries.parquet")
+    assert builder.facts_path == Path("/tmp/axiom_data_root/inputs_layer/extracted_fact_registry_validity")
+    assert builder.taxonomy_reference_path == Path("/tmp/axiom_data_root/refinitiv/fundamentals_all.parquet")
+    assert builder.companyfacts_root == Path("/tmp/companyfacts_override")
+
+
+def test_named_builder_defaults_follow_axiom_data_root(monkeypatch):
+    monkeypatch.setenv("AXIOM_DATA_ROOT", "/tmp/axiom_data_root")
+    monkeypatch.setenv("AXIOM_COMPANYFACTS_ROOT", "/tmp/companyfacts_override")
+
+    assert _default_facts_path() == Path("/tmp/axiom_data_root/inputs_layer/extracted_fact_registry_validity")
+    assert _default_entity_table_path() == Path("/tmp/axiom_data_root/inputs_layer/entity.parquet")
+    assert named_builder_companyfacts_root() == Path("/tmp/companyfacts_override")
+
+
