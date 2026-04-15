@@ -112,3 +112,23 @@ def test_planner_lead_time_distribution_interpolates_schema_prior():
     }
 
 
+def test_candidate_validator_catches_missing_required_params():
+    registry = build_default_action_schema_registry()
+    result = registry.validate_candidate(
+        {
+            "action_id": "capital_return.open_market_buyback",
+            "parameters": {
+                "funding_mix": {"cash": 0.5, "debt": 0.5, "equity": 0.0},
+            },
+            "available_features": [
+                "liquidity.available_for_actions",
+                "capital_structure.net_leverage",
+                "market.market_cap",
+            ],
+            "available_evidence_classes": ["financial_disclosure", "market_signal"],
+        }
+    )
+    assert result.valid is False
+    assert any(e.startswith("missing_required_param:size_pct_market_cap") for e in result.errors)
+
+
