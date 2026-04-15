@@ -397,3 +397,5 @@ def main() -> None:
     log("Done.")
 
 
+if __name__ == "__main__":
+    main()
