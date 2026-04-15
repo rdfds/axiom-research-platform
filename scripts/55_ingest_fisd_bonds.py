@@ -276,3 +276,124 @@ def build_bond_ratings(con: duckdb.DuckDBPyConnection) -> None:
     log(f"Saved {n:,} bond ratings -> {OUT_RATINGS}")
 
 
+def build_bond_redemptions(con: duckdb.DuckDBPyConnection) -> None:
+    if not REDEMPTIONS_PATH.exists():
+        log("Redemptions file not found; skipping redemptions.")
+        return
+
+    log("Building bond redemptions (FISD)...")
+
+    query = f"""
+    WITH red_raw AS (
+        SELECT * FROM read_csv_auto(
+            '{REDEMPTIONS_PATH.as_posix()}',
+            union_by_name=true,
+            all_varchar=true,
+            strict_mode=false,
+            ignore_errors=true,
+            null_padding=true
+        )
+    ),
+    red AS (
+        SELECT
+            ISSUE_ID,
+            ISSUER_ID,
+            PROSPECTUS_ISSUER_NAME,
+            ISSUER_CUSIP,
+            ISSUE_CUSIP,
+            COMPLETE_CUSIP,
+            ISSUE_NAME,
+            ACTION_TYPE,
+            CALL_DATE,
+            CALL_AMOUNT,
+            CALL_PRICE,
+            MR_DATE,
+            MR_PRICE,
+            NEXT_CALL_DATE,
+            NEXT_CALL_PRICE,
+            NEXT_SF_DATE,
+            NEXT_SF_AMOUNT,
+            MATURITY,
+            OFFERING_DATE,
+            substr(coalesce(COMPLETE_CUSIP, ISSUE_CUSIP, ISSUER_CUSIP), 1, 8) AS cusip8
+        FROM red_raw
+    ),
+    red2 AS (
+        SELECT
+            ISSUE_ID,
+            ISSUER_ID,
+            PROSPECTUS_ISSUER_NAME,
+            ISSUER_CUSIP,
+            ISSUE_CUSIP,
+            COMPLETE_CUSIP,
+            ISSUE_NAME,
+            ACTION_TYPE,
+            {_date_expr('CALL_DATE')} AS call_date,
+            try_cast(CALL_AMOUNT as double) AS call_amount,
+            try_cast(CALL_PRICE as double) AS call_price,
+            {_date_expr('MR_DATE')} AS mr_date,
+            try_cast(MR_PRICE as double) AS mr_price,
+            {_date_expr('NEXT_CALL_DATE')} AS next_call_date,
+            try_cast(NEXT_CALL_PRICE as double) AS next_call_price,
+            {_date_expr('NEXT_SF_DATE')} AS next_sf_date,
+            try_cast(NEXT_SF_AMOUNT as double) AS next_sf_amount,
+            {_date_expr('MATURITY')} AS maturity_date,
+            {_date_expr('OFFERING_DATE')} AS offering_date,
+            cusip8
+        FROM red
+    ),
+    ciq AS (
+        SELECT gvkey, cusip8 FROM read_parquet('{CIQ_MAP.as_posix()}')
+    ),
+    link AS (
+        SELECT
+            gvkey,
+            lpermno AS permno,
+            coalesce(cast(linkdt as timestamp), timestamp '1900-01-01') AS linkdt,
+            coalesce(cast(linkenddt as timestamp), timestamp '2099-12-31') AS linkenddt
+        FROM read_parquet('{(CRSP_DIR / "ccmxpf_lnkhist.parquet").as_posix()}')
+    )
+    SELECT
+        r.ISSUE_ID,
+        r.ISSUER_ID,
+        r.PROSPECTUS_ISSUER_NAME,
+        r.ISSUER_CUSIP,
+        r.ISSUE_CUSIP,
+        r.COMPLETE_CUSIP,
+        r.ISSUE_NAME,
+        r.ACTION_TYPE,
+        -- Use realized redemption dates only; next_call/next_sf are scheduled (future) dates
+        coalesce(r.call_date, r.mr_date) AS action_date,
+        r.call_amount,
+        r.call_price,
+        r.mr_price,
+        r.next_call_price,
+        r.next_sf_amount,
+        r.maturity_date,
+        r.offering_date,
+        ciq.gvkey,
+        link.permno,
+        coalesce(r.call_amount, r.next_sf_amount) AS amount
+    FROM red2 r
+    LEFT JOIN ciq ON ciq.cusip8 = r.cusip8
+    LEFT JOIN link
+        ON link.gvkey = ciq.gvkey
+       AND cast(coalesce(r.call_date, r.mr_date, r.next_call_date, r.next_sf_date) as timestamp) BETWEEN link.linkdt AND link.linkenddt
+    WHERE coalesce(r.call_date, r.mr_date, r.next_call_date, r.next_sf_date) IS NOT NULL
+    """
+
+    OUT_REDEMPTIONS.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"COPY ({query}) TO '{OUT_REDEMPTIONS.as_posix()}' (FORMAT 'parquet');")
+    n = con.execute(f"SELECT count(*) FROM read_parquet('{OUT_REDEMPTIONS.as_posix()}')").fetchone()[0]
+    log(f"Saved {n:,} bond redemptions -> {OUT_REDEMPTIONS}")
+
+
+def main() -> None:
+    con = duckdb.connect()
+    build_bond_issuances(con)
+    build_bond_ratings(con)
+    build_bond_redemptions(con)
+    con.close()
+    log("Done.")
+
+
