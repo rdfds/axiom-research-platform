@@ -299,3 +299,12 @@ def _computed_metric_template(
     return node
 
 
+def _load_companyfacts(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+
+
