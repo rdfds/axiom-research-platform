@@ -42,3 +42,14 @@ def test_resolve_action_schema_from_action_id():
     assert schema["action_subtype"] == "refinancing"
 
 
+def test_resolve_action_schema_from_stock_split_alias():
+    registry = build_default_action_schema_registry()
+    schema = _resolve_action_schema(
+        registry=registry,
+        action_type="stock_split",
+        action_subtype=None,
+        action_id=None,
+    )
+    assert schema["action_id"] == "governance.stock_split"
+
+
