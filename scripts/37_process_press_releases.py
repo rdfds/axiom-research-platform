@@ -495,3 +495,237 @@ def write_partitioned(table: str, records: List[Dict[str, object]]) -> int:
     return rows
 
 
+def main() -> None:
+    files = iter_press_release_files()
+    if PR_START_FILE_INDEX:
+        files = files[PR_START_FILE_INDEX:]
+    if not files:
+        log("No press release files found.")
+        return
+
+    checkpoint_path = SEC_DIR / "press_release_chunk_checkpoint.txt"
+    processed = set()
+    if PR_RESUME and checkpoint_path.exists():
+        processed = load_checkpoint(checkpoint_path)
+
+    total_docs = 0
+    total_chunks = 0
+    total_signals = 0
+    start_ts = time.perf_counter()
+
+    doc_buffer: List[Dict[str, object]] = []
+    chunk_buffer: List[Dict[str, object]] = []
+    signal_buffer: List[Dict[str, object]] = []
+
+    ingestion_time = datetime.utcnow()
+
+    for fidx, path in enumerate(files, start=1):
+        log(f"Processing file {fidx}/{len(files)}: {path.name}")
+        try:
+            if path.stat().st_size == 0:
+                log(f"Skipping empty parquet: {path}")
+                continue
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            log(f"Skipping unreadable parquet {path}: {exc}")
+            continue
+        if df.empty:
+            continue
+
+        for _, row in df.iterrows():
+            source_system = row.get("source_system") or "sec_8k_press_release"
+            document_id = row.get("document_id") or row.get("accession")
+            if not document_id or (isinstance(document_id, float) and pd.isna(document_id)):
+                fallback_entity = row.get("cik") or row.get("entity_id")
+                fallback_date = pd.to_datetime(row.get("event_time"), errors="coerce")
+                fallback_date_str = fallback_date.strftime("%Y%m%d") if pd.notna(fallback_date) else "unknown"
+                document_id = f"pr-{source_system}-{fallback_entity}-{fallback_date_str}"
+
+            if PR_RESUME and document_id in processed:
+                continue
+
+            text = row.get("text")
+            if isinstance(text, float) and pd.isna(text):
+                text = None
+            headline = row['headline']
+            event_time = pd.to_datetime(row.get("event_time"), errors="coerce")
+            available_time = pd.to_datetime(row.get("available_time"), errors="coerce")
+            if pd.isna(event_time) or pd.isna(available_time):
+                continue
+
+            base_flags = ensure_list(row.get("quality_flags"))
+            if not text:
+                if "missing_data" not in base_flags:
+                    base_flags.append("missing_data")
+                if "partial_coverage" not in base_flags:
+                    base_flags.append("partial_coverage")
+                if PR_REQUIRE_TEXT:
+                    continue
+
+            doc_payload = {
+                "document_id": document_id,
+                "document_type": "press_release",
+                "title": headline,
+                "release_date": row.get("release_date"),
+                "text": text,
+            }
+            doc_raw_hash = compute_raw_payload_hash(doc_payload)
+            doc_version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=str(row.get("entity_id")),
+                event_time=event_time.to_pydatetime(),
+                available_time=available_time.to_pydatetime(),
+                raw_payload_hash=doc_raw_hash,
+            )
+
+            doc_record = {
+                "source_system": source_system,
+                "entity_id": str(row.get("entity_id")),
+                "company_id": str(row.get("company_id")),
+                "security_id": None,
+                "event_time": event_time,
+                "available_time": available_time,
+                "ingestion_time": ingestion_time,
+                "version_id": doc_version_id,
+                "raw_payload_hash": doc_raw_hash,
+                "upstream_version_ids": ensure_list(row.get("version_id")),
+                "quality_flags": base_flags,
+                "document_id": document_id,
+                "document_type": "press_release",
+                "title": headline,
+                "publisher": None,
+                "analyst": None,
+                "rating": None,
+                "price_target": None,
+                "call_date": None,
+                "publish_date": None,
+                "presentation_date": None,
+                "release_date": row.get("release_date"),
+                "source_url": None,
+            }
+
+            doc_buffer.append(doc_record)
+            total_docs += 1
+
+            chunk_ids: List[Tuple[str, str]] = []
+            chunk_versions: Dict[str, str] = {}
+            if text:
+                chunks = chunk_text(text, PR_CHUNK_TOKENS, PR_CHUNK_MIN, PR_CHUNK_MAX)
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = f"{document_id}::chunk{idx:04d}"
+                    token_count = len(chunk.split())
+                    chunk_payload = {
+                        "chunk_id": chunk_id,
+                        "document_id": document_id,
+                        "chunk_index": idx,
+                        "text": chunk,
+                    }
+                    chunk_raw_hash = compute_raw_payload_hash(chunk_payload)
+                    chunk_version_id = compute_version_id(
+                        source_system=source_system,
+                        entity_id=str(row.get("entity_id")),
+                        event_time=event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=chunk_raw_hash,
+                    )
+                    chunk_versions[chunk_id] = chunk_version_id
+                    chunk_ids.append((chunk_id, chunk))
+                    chunk_buffer.append(
+                        {
+                            "source_system": source_system,
+                            "entity_id": str(row.get("entity_id")),
+                            "company_id": str(row.get("company_id")),
+                            "security_id": None,
+                            "event_time": event_time,
+                            "available_time": available_time,
+                            "ingestion_time": ingestion_time,
+                            "version_id": chunk_version_id,
+                            "raw_payload_hash": chunk_raw_hash,
+                            "upstream_version_ids": [doc_version_id],
+                            "quality_flags": base_flags,
+                            "chunk_id": chunk_id,
+                            "document_id": document_id,
+                            "chunk_index": idx,
+                            "slide_number": None,
+                            "text": chunk,
+                            "speaker": None,
+                            "speaker_role": None,
+                            "section_type": "press_release",
+                            "token_count": token_count,
+                        }
+                    )
+                total_chunks += len(chunks)
+
+            if chunk_ids:
+                signal_defs = extract_signals(chunk_ids)
+                for sig in signal_defs:
+                    supporting = sig.get("supporting_chunk_ids", [])
+                    supporting_versions = [chunk_versions[cid] for cid in supporting if cid in chunk_versions]
+                    signal_payload = {
+                        "signal_name": sig["signal_name"],
+                        "value": sig["value"],
+                        "confidence": sig["confidence"],
+                        "supporting_chunk_ids": supporting,
+                    }
+                    sig_raw_hash = compute_raw_payload_hash(signal_payload)
+                    sig_version_id = compute_version_id(
+                        source_system=source_system,
+                        entity_id=str(row.get("entity_id")),
+                        event_time=event_time.to_pydatetime(),
+                        available_time=available_time.to_pydatetime(),
+                        raw_payload_hash=sig_raw_hash,
+                    )
+                    signal_buffer.append(
+                        {
+                            "source_system": source_system,
+                            "entity_id": str(row.get("entity_id")),
+                            "company_id": str(row.get("company_id")),
+                            "security_id": None,
+                            "event_time": event_time,
+                            "available_time": available_time,
+                            "ingestion_time": ingestion_time,
+                            "version_id": sig_version_id,
+                            "raw_payload_hash": sig_raw_hash,
+                            "upstream_version_ids": [doc_version_id] + supporting_versions,
+                            "quality_flags": base_flags + ensure_list(sig.get("quality_flags")),
+                            "signal_name": sig["signal_name"],
+                            "value": sig["value"],
+                            "confidence": sig["confidence"],
+                            "supporting_chunk_ids": supporting,
+                        }
+                    )
+                total_signals += len(signal_defs)
+
+            if PR_RESUME:
+                with checkpoint_path.open("a") as f:
+                    f.write(f"{document_id}\n")
+
+            if PR_LIMIT_DOCS and total_docs >= PR_LIMIT_DOCS:
+                break
+
+            if PR_FLUSH_EVERY and (total_docs % PR_FLUSH_EVERY == 0):
+                write_partitioned("warehouse_documents", doc_buffer)
+                write_partitioned("warehouse_doc_chunks", chunk_buffer)
+                write_partitioned("warehouse_text_signals", signal_buffer)
+                doc_buffer.clear()
+                chunk_buffer.clear()
+                signal_buffer.clear()
+                elapsed = time.perf_counter() - start_ts
+                log(
+                    f"Progress: {total_docs:,} docs | {total_chunks:,} chunks | {total_signals:,} signals | elapsed {elapsed/60:.1f}m"
+                )
+
+        if PR_LIMIT_DOCS and total_docs >= PR_LIMIT_DOCS:
+            break
+
+    # Flush remaining
+    write_partitioned("warehouse_documents", doc_buffer)
+    write_partitioned("warehouse_doc_chunks", chunk_buffer)
+    write_partitioned("warehouse_text_signals", signal_buffer)
+
+    elapsed = time.perf_counter() - start_ts
+    log(
+        f"Done. {total_docs:,} docs | {total_chunks:,} chunks | {total_signals:,} signals | elapsed {elapsed/60:.1f}m"
+    )
+
+
