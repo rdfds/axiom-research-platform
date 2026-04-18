@@ -53,3 +53,32 @@ def test_resolve_action_schema_from_stock_split_alias():
     assert schema["action_id"] == "governance.stock_split"
 
 
+def test_build_change_vector_uses_stock_split_alias():
+    action = ActionCandidate(
+        action_type="governance",
+        action_subtype="stock_split",
+        action_id="governance.stock_split",
+        params={},
+    )
+
+    change = build_change_vector(
+        action,
+        {"action_effects": {"stock_split": {"trading_liquidity": 0.08}}},
+    )
+
+    assert change == {"trading_liquidity": 0.08}
+
+
+def test_materialize_action_params_sets_required_defaults():
+    registry = build_default_action_schema_registry()
+    schema = registry.get_action("capital_return.open_market_buyback")
+    assert schema is not None
+
+    params, assumptions = _materialize_action_params(schema, action_params={})
+    assert "size_pct_market_cap" in params
+    assert "funding_mix" in params
+    assert "default_param:size_pct_market_cap" in assumptions
+    assert "default_param:funding_mix" in assumptions
+    assert params["funding_mix"]["cash"] == 1.0
+
+
