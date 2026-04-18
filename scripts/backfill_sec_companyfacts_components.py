@@ -308,3 +308,154 @@ def _load_companyfacts(path: Path) -> dict | None:
         return None
 
 
+def _candidate_units_map(companyfacts: dict, concept_name: str) -> dict | None:
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        facts = (companyfacts.get("facts") or {}).get(taxonomy) or {}
+        if concept_name in facts:
+            return facts[concept_name].get("units") or {}
+    return None
+
+
+def _latest_fact_value(companyfacts: dict, concept_name: str, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    units_map = _candidate_units_map(companyfacts, concept_name)
+    if not units_map:
+        return None, None
+    as_of_dt = datetime.fromisoformat(as_of_date).date()
+    candidates = []
+    for unit, entries in units_map.items():
+        if unit.upper() != "USD":
+            continue
+        for entry in entries:
+            end = entry.get("end")
+            filed = entry.get("filed")
+            value = entry.get("val")
+            if end is None or value is None:
+                continue
+            if end > as_of_date:
+                continue
+            if filed is not None and filed > as_of_date:
+                continue
+            try:
+                end_dt = datetime.fromisoformat(end).date()
+            except ValueError:
+                continue
+            if (as_of_dt - end_dt).days > MAX_FACT_AGE_DAYS:
+                continue
+            candidates.append((end, filed or "", entry, unit))
+    if not candidates:
+        return None, None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    _, _, chosen, unit = candidates[-1]
+    meta = {
+        "concept": concept_name,
+        "end": chosen.get("end"),
+        "filed": chosen.get("filed"),
+        "fy": chosen.get("fy"),
+        "fp": chosen.get("fp"),
+        "frame": chosen.get("frame"),
+        "form": chosen.get("form"),
+        "unit": unit,
+    }
+    return float(chosen["val"]), meta
+
+
+def _parse_iso_date(text: str | None) -> date | None:
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(str(text)[:10])
+    except ValueError:
+        return None
+
+
+def _statement_fact_node_is_fresh_enough(
+    node: dict[str, Any] | None,
+    as_of_date: str,
+    *,
+    max_age_days: int = 450,
+) -> bool:
+    if not node or node.get("support_mode") != "exact":
+        return False
+    component_breakdown = node['component_breakdown'] or {}
+    end_dt = _parse_iso_date(component_breakdown.get("end")) or _parse_iso_date(component_breakdown.get("effective_at"))
+    as_of_dt = _parse_iso_date(as_of_date)
+    if end_dt is None or as_of_dt is None:
+        return False
+    return (as_of_dt - end_dt).days <= max_age_days
+
+
+def _repair_cash_sti_from_statement_cash(
+    *,
+    cash_sti_node: dict[str, Any],
+    cash_eq_node: dict[str, Any],
+    marketable_node: dict[str, Any],
+    companyfacts_path: Path,
+    as_of_date: str,
+    as_of_time: str,
+    computed_at: str,
+) -> dict[str, Any] | None:
+    cash_eq_value = cash_eq_node.get("value")
+    marketable_value = marketable_node.get("value")
+    marketable_absent = marketable_node.get("missing_reason") == "sec_concept_absent"
+    if cash_sti_node.get("support_mode") == "exact":
+        return None
+    if not _statement_fact_node_is_fresh_enough(cash_eq_node, as_of_date):
+        return None
+    if cash_eq_value is None:
+        return None
+    if not (
+        (marketable_node.get("support_mode") == "exact" and marketable_value is not None)
+        or marketable_absent
+    ):
+        return None
+    repaired_value = float(cash_eq_value + (marketable_value or 0.0))
+    repaired_node = dict(cash_sti_node)
+    repaired_node["value"] = repaired_value
+    repaired_node["unit"] = "usd"
+    repaired_node["computed_at"] = computed_at
+    repaired_node["confidence"] = 1.0
+    repaired_node["missing_reason"] = None
+    repaired_node["support_mode"] = "exact"
+    repaired_node["primary_source_basis"] = (
+        "statement_direct_plus_sec_companyfacts"
+        if marketable_node.get("support_mode") == "exact"
+        else "statement_direct_plus_zero_short_term_investments_inference"
+    )
+    repaired_node["input_source_classification"] = repaired_node["primary_source_basis"]
+    repaired_node["input_layer_bucket_reason"] = "statement_cash_plus_sec_marketable"
+    repaired_node["quality_flags"] = (
+        None
+        if marketable_node.get("support_mode") == "exact"
+        else ["short_term_investments_absent_in_companyfacts"]
+    )
+    repaired_node["component_breakdown"] = {
+        "mode": (
+            "cash_and_equivalents_plus_marketable_securities"
+            if marketable_node.get("support_mode") == "exact"
+            else "cash_and_equivalents_plus_inferred_zero_short_term_investments"
+        ),
+        "cash_and_equivalents_statement_direct": cash_eq_node.get("component_breakdown"),
+        "marketable_securities_sec_exact": marketable_node.get("component_breakdown"),
+        "formula": (
+            "cash_and_equivalents_statement_direct + marketable_securities_sec_exact"
+            if marketable_node.get("support_mode") == "exact"
+            else "cash_and_equivalents_statement_direct + 0_inferred_short_term_investments"
+        ),
+    }
+    repaired_node["provenance"] = list(cash_eq_node.get("provenance") or [])
+    if marketable_node.get("support_mode") == "exact":
+        repaired_node["provenance"] += list(marketable_node.get("provenance") or [])
+    else:
+        repaired_node["provenance"].append(
+            {
+                "artifact_type": "SecCompanyFacts",
+                "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+                "source": str(companyfacts_path),
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        )
+    return repaired_node
+
+
