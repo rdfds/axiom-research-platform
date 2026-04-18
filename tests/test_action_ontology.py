@@ -153,3 +153,18 @@ def test_candidate_validator_funding_mix_rule():
     assert "funding_mix_sum_not_one:funding_mix" in result.errors
 
 
+def test_candidate_validator_segment_reference():
+    registry = build_default_action_schema_registry()
+    result = registry.validate_candidate(
+        {
+            "action_id": "portfolio.spin_off",
+            "parameters": {
+                "segment_reference": "SEG_UNKNOWN",
+            },
+            "known_segments": ["SEG_A", "SEG_B"],
+            "available_features": ["strategic.constraint_set", "market.equity_window_proxy"],
+            "available_evidence_classes": ["segment_disclosure", "management_statement", "financial_disclosure"],
+        }
+    )
+    assert result.valid is False
+    assert any("segment_reference_not_found:segment_reference:SEG_UNKNOWN" == e for e in result.errors)
