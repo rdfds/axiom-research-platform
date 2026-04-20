@@ -97,3 +97,22 @@ def test_baseline_mapping_from_world_model_features():
     assert baseline["fcf_margin"] == 0.3
 
 
+def test_baseline_mapping_uses_runtime_aliases(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "normalized_net_leverage,pe_ratio_compatibility_alias",
+    )
+    baseline = _baseline_from_world_model_features(
+        {
+            "market.market_cap": {"value": 100.0},
+            "capital_structure.net_leverage_normalized": {"value": 2.1, "support_mode": "exact"},
+            "market.pe_ratio": {"value": 17.0, "support_mode": "exact"},
+        }
+    )
+
+    assert baseline["market_cap"] == 100.0
+    assert baseline["leverage_net_debt_ebitda"] == 2.1
+    assert baseline["pe"] == 17.0
+
+
