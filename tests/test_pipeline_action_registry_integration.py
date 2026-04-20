@@ -82,3 +82,18 @@ def test_materialize_action_params_sets_required_defaults():
     assert params["funding_mix"]["cash"] == 1.0
 
 
+def test_baseline_mapping_from_world_model_features():
+    baseline = _baseline_from_world_model_features(
+        {
+            "market.market_cap": {"value": 100.0},
+            "operating.ebitda_margin_ttm": {"value": 0.2},
+            "capital_structure.net_leverage": {"value": 2.5},
+            "operating.fcf_conversion": {"value": 0.3},
+        }
+    )
+    assert baseline["market_cap"] == 100.0
+    assert baseline["ebitda_margin"] == 0.2
+    assert baseline["leverage_net_debt_ebitda"] == 2.5
+    assert baseline["fcf_margin"] == 0.3
+
+
