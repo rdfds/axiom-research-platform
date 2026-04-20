@@ -14,3 +14,15 @@ def _norm_text(value: Any) -> str:
     return str(value).strip().lower()
 
 
+def _to_float(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if pd.isna(out):
+        return None
+    return out
+
+
