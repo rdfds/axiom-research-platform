@@ -459,3 +459,89 @@ def _repair_cash_sti_from_statement_cash(
     return repaired_node
 
 
+def _extract_exact_candidates(
+    companyfacts: dict,
+    as_of_date: str,
+    concept_names: set[str],
+) -> list[dict[str, Any]]:
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    candidates: list[dict[str, Any]] = []
+    for concept in sorted(concept_names):
+        if concept not in facts:
+            continue
+        value, meta = _latest_fact_value(companyfacts, concept, as_of_date)
+        if value is None or meta is None:
+            continue
+        end_dt = _parse_iso_date(meta.get("end"))
+        filed_dt = _parse_iso_date(meta.get("filed")) or end_dt
+        if end_dt is None:
+            continue
+        candidates.append(
+            {
+                "value": float(value),
+                "meta": meta,
+                "end_dt": end_dt,
+                "filed_dt": filed_dt or end_dt,
+            }
+        )
+    candidates.sort(key=lambda item: (item["end_dt"], item["filed_dt"]), reverse=True)
+    return candidates
+
+
+def _select_best_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    return candidates[0] if candidates else None
+
+
+def _extract_candidate_for_end(
+    companyfacts: dict,
+    concept_names: set[str],
+    target_end_dt: date | None,
+    *,
+    as_of_date: str,
+) -> dict[str, Any] | None:
+    if target_end_dt is None:
+        return None
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    matches: list[dict[str, Any]] = []
+    target_end = target_end_dt.isoformat()
+    for concept in sorted(concept_names):
+        concept_facts = facts.get(concept) or {}
+        units_map = concept_facts.get("units") or {}
+        for unit, entries in units_map.items():
+            if unit.upper() != "USD":
+                continue
+            for entry in entries:
+                end = entry.get("end")
+                filed = entry.get("filed")
+                value = entry.get("val")
+                if end != target_end or value is None:
+                    continue
+                if filed is not None and filed > as_of_date:
+                    continue
+                end_dt = _parse_iso_date(end)
+                filed_dt = _parse_iso_date(filed) or end_dt
+                if end_dt is None or filed_dt is None:
+                    continue
+                matches.append(
+                    {
+                        "value": float(value),
+                        "meta": {
+                            "concept": concept,
+                            "end": end,
+                            "filed": filed,
+                            "fy": entry.get("fy"),
+                            "fp": entry.get("fp"),
+                            "frame": entry.get("frame"),
+                            "form": entry.get("form"),
+                            "unit": unit,
+                        },
+                        "end_dt": end_dt,
+                        "filed_dt": filed_dt,
+                    }
+                )
+    if not matches:
+        return None
+    matches.sort(key=lambda item: (item["end_dt"], item["filed_dt"]), reverse=True)
+    return matches[0]
+
+
