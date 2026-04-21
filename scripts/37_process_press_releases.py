@@ -547,7 +547,7 @@ def main() -> None:
             text = row.get("text")
             if isinstance(text, float) and pd.isna(text):
                 text = None
-            headline = row['headline']
+            headline = row.get("headline")
             event_time = pd.to_datetime(row.get("event_time"), errors="coerce")
             available_time = pd.to_datetime(row.get("available_time"), errors="coerce")
             if pd.isna(event_time) or pd.isna(available_time):

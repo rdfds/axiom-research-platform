@@ -376,7 +376,7 @@ def _statement_fact_node_is_fresh_enough(
 ) -> bool:
     if not node or node.get("support_mode") != "exact":
         return False
-    component_breakdown = node['component_breakdown'] or {}
+    component_breakdown = node.get("component_breakdown") or {}
     end_dt = _parse_iso_date(component_breakdown.get("end")) or _parse_iso_date(component_breakdown.get("effective_at"))
     as_of_dt = _parse_iso_date(as_of_date)
     if end_dt is None or as_of_dt is None:

@@ -36,3 +36,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
