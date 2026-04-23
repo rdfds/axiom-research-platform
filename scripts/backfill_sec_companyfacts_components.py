@@ -545,3 +545,42 @@ def _extract_candidate_for_end(
     return matches[0]
 
 
+def _select_candidate_for_end_date(
+    candidates: list[dict[str, Any]],
+    end_dt: date | None,
+) -> dict[str, Any] | None:
+    if end_dt is None:
+        return None
+    same_period = [candidate for candidate in candidates if candidate.get("end_dt") == end_dt]
+    if not same_period:
+        return None
+    same_period.sort(key=lambda item: (item["filed_dt"], item["end_dt"]), reverse=True)
+    return same_period[0]
+
+
+def _select_aligned_candidate_pair(
+    left_candidates: list[dict[str, Any]],
+    right_candidates: list[dict[str, Any]],
+    *,
+    max_gap_days: int = LEASE_COMPONENT_ALIGNMENT_MAX_GAP_DAYS,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    best_pair: tuple[dict[str, Any], dict[str, Any]] | None = None
+    best_key = None
+    for left in left_candidates:
+        for right in right_candidates:
+            gap_days = abs((left["end_dt"] - right["end_dt"]).days)
+            if gap_days > max_gap_days:
+                continue
+            pair_key = (
+                max(left["end_dt"], right["end_dt"]),
+                max(left["filed_dt"], right["filed_dt"]),
+                -gap_days,
+            )
+            if best_key is None or pair_key > best_key:
+                best_key = pair_key
+                best_pair = (left, right)
+    if best_pair is None:
+        return None, None
+    return best_pair
+
+
