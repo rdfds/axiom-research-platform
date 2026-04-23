@@ -51,3 +51,32 @@ def _size_ratio(row: Dict[str, Any]) -> Optional[float]:
     return None
 
 
+def _scale_bucket(row: Dict[str, Any]) -> Optional[str]:
+    ratio = _size_ratio(row)
+    if ratio is None:
+        return None
+    if ratio < 0.05:
+        return "small"
+    if ratio < 0.25:
+        return "medium"
+    return "large"
+
+
+def _exact_result(
+    *,
+    family: str,
+    subfamily: str,
+    action_id: str,
+    family_scale_bucket: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "normalized_action_family": family,
+        "normalized_action_subfamily": subfamily,
+        "normalized_action_id": action_id,
+        "normalization_level": "exact",
+        "normalization_confidence": 0.98,
+        "family_scale_bucket": family_scale_bucket,
+        "normalization_rules_version": NORMALIZATION_RULES_VERSION,
+    }
+
+
