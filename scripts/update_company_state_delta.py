@@ -38,3 +38,5 @@ def main() -> None:
     print(f"Wrote updated snapshots -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
