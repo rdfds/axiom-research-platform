@@ -690,3 +690,16 @@ def _find_first_matching_concept(companyfacts: dict, matcher) -> str | None:
     return None
 
 
+def _extract_exact_concepts(
+    companyfacts: dict,
+    as_of_date: str,
+    concept_names: set[str],
+) -> list[tuple[float, dict[str, Any]]]:
+    return [(candidate["value"], candidate["meta"]) for candidate in _extract_exact_candidates(companyfacts, as_of_date, concept_names)]
+
+
+def _has_any_us_gaap_concepts(companyfacts: dict, concept_names: set[str] | list[str]) -> bool:
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    return any(concept in facts for concept in concept_names)
+
+

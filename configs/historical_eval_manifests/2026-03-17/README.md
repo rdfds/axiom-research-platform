@@ -41,3 +41,31 @@ Notes:
 - The remaining capital-structure family leak is still `0000023197`, which
   appears to be a contradictory snapshot rather than a clean policy miss.
 
+## Manual Replay Checkpoint
+
+As of March 25, 2026, the best manual-replay checkpoint for the historical
+replay hardening path is:
+
+- capital return manual replay report: `/tmp/fixed_manifest_capreturn_holdout_manual_v42_noplanfix.json`
+- capital structure manual replay report: `/tmp/fixed_manifest_capstructure_holdout_manual_v43_recaprank.json`
+
+Topline manual-replay metrics:
+
+- capital return `mean_alignment_score = 0.82963`
+- capital return `anchor_primary_exact_rate = 0.259259`
+- capital return `anchor_primary_family_rate = 0.814815`
+- capital return `unsupported_case_count = 0`
+- capital structure `mean_alignment_score = 0.764`
+- capital structure `anchor_primary_exact_rate = 0.44`
+- capital structure `anchor_primary_family_rate = 0.56`
+- capital structure `unsupported_case_count = 4`
+
+Notes:
+
+- These runs use the manual replay harness with the local facts cache, not the
+  standard frozen-holdout runner above.
+- `v42` remains the capital-return replay checkpoint; `v43` is the improved
+  capital-structure replay checkpoint after recap-ranking cleanup.
+- The standard frozen-holdout benchmark checkpoint remains the `v36` pair listed
+  above.
+
