@@ -116,3 +116,6 @@ def main() -> None:
     print(f"[delta] asof_date={asof_date} updated={updated} missing={missing} mode={args.mode}")
 
 
+if __name__ == "__main__":
+    main()
+
