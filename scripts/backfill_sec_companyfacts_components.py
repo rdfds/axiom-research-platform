@@ -703,3 +703,18 @@ def _has_any_us_gaap_concepts(companyfacts: dict, concept_names: set[str] | list
     return any(concept in facts for concept in concept_names)
 
 
+def _metric_value(node: dict[str, Any] | None) -> float | None:
+    if not node:
+        return None
+    value = node.get("value")
+    if value is None:
+        return None
+    return float(value)
+
+
+def _metric_support(node: dict[str, Any] | None) -> str:
+    if not node:
+        return "unsupported"
+    return str(node.get("support_mode") or "unsupported")
+
+
