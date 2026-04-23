@@ -584,3 +584,109 @@ def _select_aligned_candidate_pair(
     return best_pair
 
 
+def _candidate_is_fresh(candidate: dict[str, Any] | None, as_of_date: str, *, max_age_days: int = LEASE_EXACT_MAX_AGE_DAYS) -> bool:
+    if candidate is None:
+        return False
+    end_dt = candidate.get("end_dt")
+    as_of_dt = _parse_iso_date(as_of_date)
+    if end_dt is None or as_of_dt is None:
+        return False
+    return (as_of_dt - end_dt).days <= max_age_days
+
+
+def _candidate_is_stale_corroborated_by_fresh_rou(
+    candidate: dict[str, Any] | None,
+    rou_asset: dict[str, Any] | None,
+    as_of_date: str,
+) -> bool:
+    if candidate is None or rou_asset is None:
+        return False
+    candidate_end_dt = candidate.get("end_dt")
+    rou_end_dt = rou_asset.get("end_dt")
+    as_of_dt = _parse_iso_date(as_of_date)
+    if candidate_end_dt is None or rou_end_dt is None or as_of_dt is None:
+        return False
+    candidate_age_days = (as_of_dt - candidate_end_dt).days
+    rou_age_days = (as_of_dt - rou_end_dt).days
+    if candidate_age_days <= LEASE_EXACT_MAX_AGE_DAYS:
+        return False
+    if candidate_age_days > LEASE_STALE_CARRY_FORWARD_MAX_AGE_DAYS:
+        return False
+    if rou_age_days < 0 or rou_age_days > LEASE_ROU_FRESH_MAX_AGE_DAYS:
+        return False
+    return True
+
+
+def _candidate_is_stale_within_carry_forward_window(
+    candidate: dict[str, Any] | None,
+    as_of_date: str,
+) -> bool:
+    if candidate is None:
+        return False
+    candidate_end_dt = candidate.get("end_dt")
+    as_of_dt = _parse_iso_date(as_of_date)
+    if candidate_end_dt is None or as_of_dt is None:
+        return False
+    candidate_age_days = (as_of_dt - candidate_end_dt).days
+    return LEASE_EXACT_MAX_AGE_DAYS < candidate_age_days <= LEASE_STALE_CARRY_FORWARD_MAX_AGE_DAYS
+
+
+def _reference_contains_fresh_lease_fact(reference: Any, as_of_date: str) -> bool:
+    as_of_dt = _parse_iso_date(as_of_date)
+    if as_of_dt is None:
+        return False
+
+    if isinstance(reference, dict):
+        end_value = reference.get("end")
+        if isinstance(end_value, str):
+            end_dt = _parse_iso_date(end_value)
+            if end_dt is not None:
+                age_days = (as_of_dt - end_dt).days
+                if 0 <= age_days <= LEASE_EXACT_MAX_AGE_DAYS:
+                    return True
+        for nested in reference.values():
+            if _reference_contains_fresh_lease_fact(nested, as_of_date):
+                return True
+        return False
+
+    if isinstance(reference, list):
+        return any(_reference_contains_fresh_lease_fact(item, as_of_date) for item in reference)
+
+    return False
+
+
+def _passes_lease_plausibility(
+    value: float,
+    *,
+    rou_value: float | None,
+    reference_value: float | None,
+) -> bool:
+    if value < 0:
+        return False
+    if reference_value is not None and reference_value > 0:
+        if value < reference_value * 0.5 or value > reference_value * 2.0:
+            return False
+    if rou_value is not None and rou_value > 0:
+        if value < rou_value * 0.1 or value > rou_value * 10.0:
+            return False
+    return True
+
+
+def _values_are_lease_corroborative(left: float | None, right: float | None, *, tolerance: float = 0.10) -> bool:
+    if left is None or right is None:
+        return False
+    left = float(left)
+    right = float(right)
+    if left <= 0 or right <= 0:
+        return False
+    return abs(left - right) / max(abs(left), abs(right)) <= tolerance
+
+
+def _find_first_matching_concept(companyfacts: dict, matcher) -> str | None:
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    for concept_name in facts:
+        if matcher(concept_name):
+            return concept_name
+    return None
+
+

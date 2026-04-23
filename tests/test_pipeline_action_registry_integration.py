@@ -116,3 +116,36 @@ def test_baseline_mapping_uses_runtime_aliases(monkeypatch):
     assert baseline["pe"] == 17.0
 
 
+def test_load_company_state_snapshot_row(tmp_path):
+    p = tmp_path / "snapshots.jsonl"
+    row = {
+        "company_id": "001690",
+        "as_of_time": "2026-02-28T00:00:00+00:00",
+        "features": {"market.market_cap": {"value": 1.0}},
+    }
+    p.write_text(json.dumps(row) + "\n")
+    out = _load_company_state_snapshot_row(p, company_id="001690", as_of="2026-02-28")
+    assert out is not None
+    assert out["company_id"] == "001690"
+
+
+def test_load_company_state_snapshot_row_matches_zero_padded_id(tmp_path):
+    p = tmp_path / "snapshots.jsonl"
+    row = {
+        "company_id": "000001690",
+        "as_of_time": "2026-02-28T00:00:00+00:00",
+        "features": {"market.market_cap": {"value": 1.0}},
+    }
+    p.write_text(json.dumps(row) + "\n")
+    out = _load_company_state_snapshot_row(p, company_id="001690", as_of="2026-02-28")
+    assert out is not None
+    assert out["company_id"] == "000001690"
+
+
+def test_id_aliases_contains_common_forms():
+    aliases = _id_aliases("001690")
+    assert "001690" in aliases
+    assert "1690" in aliases
+    assert "000001690" in aliases
+
+
