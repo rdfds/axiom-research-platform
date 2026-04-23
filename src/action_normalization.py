@@ -80,3 +80,23 @@ def _exact_result(
     }
 
 
+def _family_result(
+    *,
+    family: str,
+    subfamily: str,
+    family_scale_bucket: Optional[str] = None,
+    action_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    level = "family_scale" if family_scale_bucket else "family"
+    confidence = 0.85 if family_scale_bucket else 0.65
+    return {
+        "normalized_action_family": family,
+        "normalized_action_subfamily": subfamily,
+        "normalized_action_id": action_id,
+        "normalization_level": level,
+        "normalization_confidence": confidence,
+        "family_scale_bucket": family_scale_bucket,
+        "normalization_rules_version": NORMALIZATION_RULES_VERSION,
+    }
+
+

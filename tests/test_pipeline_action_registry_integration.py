@@ -149,3 +149,38 @@ def test_id_aliases_contains_common_forms():
     assert "000001690" in aliases
 
 
+def test_resolve_company_id_aliases_from_entity_identifier(tmp_path):
+    entity_identifier = tmp_path / "entity_identifier.parquet"
+    import pandas as pd
+
+    pd.DataFrame(
+        [
+            {"entity_id": "0000320193", "identifier_value": "001690"},
+            {"entity_id": "0000320193", "identifier_value": "AAPL"},
+        ]
+    ).to_parquet(entity_identifier, index=False)
+    assert _is_materialized_local(entity_identifier)
+
+    aliases = _resolve_company_id_aliases_from_entity_identifier(
+        "001690",
+        entity_identifier_path=entity_identifier,
+    )
+    assert "0000320193" in aliases
+    assert "AAPL" in aliases
+
+
+def test_resolve_company_id_aliases_from_cik_gvkey(tmp_path):
+    p = tmp_path / "cik_gvkey.csv.gz"
+    import pandas as pd
+
+    pd.DataFrame(
+        [
+            {"gvkey": "001690", "cik": "320193"},
+            {"gvkey": "001690", "cik": "0000320193"},
+        ]
+    ).to_csv(p, index=False, compression="gzip")
+    aliases = _resolve_company_id_aliases_from_cik_gvkey("001690", cik_gvkey_path=p)
+    assert "320193" in aliases
+    assert "0000320193" in aliases
+
+
