@@ -504,3 +504,5 @@ def main() -> None:
     print(f"Saved financial facts into {out_root}")
 
 
+if __name__ == "__main__":
+    main()
