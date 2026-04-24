@@ -112,3 +112,82 @@ def _infer_market_cache_path(artifact_path: Path) -> Path | None:
     return None
 
 
+def _load_market_cache(path: Path) -> Dict[str, pd.DataFrame]:
+    table = pq.read_table(path, columns=["permno", "trade_date", "price_proxy", "close_price"])
+    df = table.to_pandas()
+    df["trade_date"] = pd.to_datetime(df["trade_date"], utc=True, errors="coerce")
+    df["price"] = pd.to_numeric(df["price_proxy"], errors="coerce")
+    missing_proxy = df["price"].isna()
+    if missing_proxy.any():
+        df.loc[missing_proxy, "price"] = pd.to_numeric(df.loc[missing_proxy, "close_price"], errors="coerce")
+    df = df.dropna(subset=["permno", "trade_date", "price"]).copy()
+    df = df[df["price"] > 0].copy()
+    df["permno"] = df["permno"].astype(int).astype(str)
+    df = df.sort_values(["permno", "trade_date"]).drop_duplicates(subset=["permno", "trade_date"], keep="last")
+    out: Dict[str, pd.DataFrame] = {}
+    for permno, group in df.groupby("permno", sort=False):
+        out[str(permno)] = group[["trade_date", "price"]].reset_index(drop=True)
+    return out
+
+
+def _price_metrics(frame: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    if frame is None or frame.empty:
+        return {}
+    frame = frame.sort_values("trade_date").drop_duplicates(subset=["trade_date"], keep="last").copy()
+    frame["ret"] = frame["price"].pct_change()
+    window_end = frame["trade_date"].iloc[-1]
+
+    results: Dict[str, Dict[str, Any]] = {}
+
+    returns_30 = frame.loc[frame["trade_date"] > (window_end - pd.Timedelta(days=30)), ["trade_date", "ret"]].dropna()
+    if len(returns_30) >= 10:
+        results["market.volatility_30d"] = {
+            "value": float(returns_30["ret"].std(ddof=0) * math.sqrt(252)),
+            "component_breakdown": {
+                "formula": "stddev(daily_returns_30d) * sqrt(252)",
+                "return_observations": int(len(returns_30)),
+                "annualization_factor": 252,
+                "price_field": "price_proxy",
+                "window_start": str(returns_30["trade_date"].iloc[0]),
+                "window_end": str(returns_30["trade_date"].iloc[-1]),
+                "source_kind": "crsp_market_cache",
+            },
+        }
+
+    returns_90 = frame.loc[frame["trade_date"] > (window_end - pd.Timedelta(days=90)), ["trade_date", "ret"]].dropna()
+    if len(returns_90) >= 20:
+        results["market.volatility_90d"] = {
+            "value": float(returns_90["ret"].std(ddof=0) * math.sqrt(252)),
+            "component_breakdown": {
+                "formula": "stddev(daily_returns_90d) * sqrt(252)",
+                "return_observations": int(len(returns_90)),
+                "annualization_factor": 252,
+                "price_field": "price_proxy",
+                "window_start": str(returns_90["trade_date"].iloc[0]),
+                "window_end": str(returns_90["trade_date"].iloc[-1]),
+                "source_kind": "crsp_market_cache",
+            },
+        }
+
+    price_window_90 = frame.loc[frame["trade_date"] > (window_end - pd.Timedelta(days=90)), ["trade_date", "price"]].copy()
+    if len(price_window_90) >= 20:
+        peak_price = float(price_window_90["price"].max())
+        trough_price = float(price_window_90["price"].min())
+        if peak_price != 0:
+            results["market.drawdown_90d"] = {
+                "value": (trough_price / peak_price) - 1.0,
+                "component_breakdown": {
+                    "formula": "min(price_window_90d) / max(price_window_90d) - 1",
+                    "price_observations": int(len(price_window_90)),
+                    "price_field": "price_proxy",
+                    "peak_price": peak_price,
+                    "trough_price": trough_price,
+                    "window_start": str(price_window_90["trade_date"].iloc[0]),
+                    "window_end": str(price_window_90["trade_date"].iloc[-1]),
+                    "source_kind": "crsp_market_cache",
+                },
+            }
+
+    return results
+
+

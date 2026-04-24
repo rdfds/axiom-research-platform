@@ -110,3 +110,63 @@ def _mna_acquisition_action_id(action_subtype: str, scale_bucket: Optional[str])
     return "mna.platform_acquisition"
 
 
+def _portfolio_divestiture_action_id(row: Dict[str, Any]) -> str:
+    percent_divested = _to_float(row.get("percent_divested"))
+    if percent_divested is None:
+        percent_divested = _to_float(row.get("percent_sold"))
+    action_subtype = _norm_text(row['action_subtype'])
+    if percent_divested is not None:
+        if percent_divested >= 0.95:
+            return "portfolio.divestiture_full"
+        if percent_divested > 0:
+            return "portfolio.divestiture_partial"
+    if action_subtype == "stake purchases deal":
+        return "portfolio.divestiture_partial"
+    if action_subtype in {
+        "acquisition_lbo",
+        "acquisition_tender",
+        "acquisition_merger",
+        "acquisition_exchange",
+        "acquisition_reverse",
+    }:
+        return "portfolio.divestiture_full"
+    return "portfolio.asset_sale"
+
+
+def _refinancing_subfamily(action_subtype: Any) -> str:
+    subtype = _norm_text(action_subtype)
+    if not subtype:
+        return "refinancing"
+    if any(
+        token in subtype
+        for token in (
+            "revolver",
+            "line",
+            "facility",
+            "letter of credit",
+            "364-day",
+        )
+    ):
+        return "refinancing_revolver_family"
+    if any(
+        token in subtype
+        for token in (
+            "term loan",
+            "delay draw",
+            "bridge loan",
+        )
+    ):
+        return "refinancing_term_loan_family"
+    if any(
+        token in subtype
+        for token in (
+            "bond",
+            "note",
+            "debenture",
+            "fixed-rate",
+        )
+    ):
+        return "refinancing_bond_family"
+    return "refinancing"
+
+

@@ -843,3 +843,141 @@ def _repair_restricted_cash_from_total_cash_reconciliation(
     return node
 
 
+def _build_combo_metric(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+    numerator: float | None = None,
+    denominator: float | None = None,
+    extra_components: Dict[str, Any] | None = None,
+    component_supports: Dict[str, str] | None = None,
+    formula: str,
+    allow_numerator_only: bool = False,
+) -> Dict[str, Any]:
+    components = dict(extra_components or {})
+    components["formula"] = formula
+    non_exact_components = sorted(
+        component_name
+        for component_name, support_mode in (component_supports or {}).items()
+        if support_mode != "exact"
+    )
+    if numerator is None:
+        return _computed_metric_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="component_unavailable",
+            component_breakdown=components,
+            quality_flags=["component_unavailable"],
+        )
+    if denominator is None:
+        if not allow_numerator_only:
+            return _computed_metric_template(
+                metric_name=metric_name,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                support_mode="unsupported",
+                value=None,
+                unit=unit,
+                missing_reason="component_unavailable",
+                component_breakdown=components,
+                quality_flags=["component_unavailable"],
+            )
+        support_mode = "exact" if not non_exact_components else "proxy_missing_component"
+        quality_flags = None if not non_exact_components else [f"component_not_exact:{name}" for name in non_exact_components]
+        return _computed_metric_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode=support_mode,
+            value=float(numerator),
+            unit=unit,
+            missing_reason=None if support_mode == "exact" else "component_not_exact",
+            component_breakdown=components,
+            quality_flags=quality_flags,
+        )
+    if denominator <= 0:
+        return _computed_metric_template(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            support_mode="unsupported",
+            value=None,
+            unit=unit,
+            missing_reason="non_positive_denominator",
+            component_breakdown=components,
+            quality_flags=["non_positive_denominator"],
+        )
+    support_mode = "exact" if not non_exact_components else "proxy_missing_component"
+    quality_flags = None if not non_exact_components else [f"component_not_exact:{name}" for name in non_exact_components]
+    return _computed_metric_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        support_mode=support_mode,
+        value=float(numerator) / float(denominator),
+        unit=unit,
+        missing_reason=None if support_mode == "exact" else "component_not_exact",
+        component_breakdown=components,
+        quality_flags=quality_flags,
+    )
+
+
+def _extract_restricted_cash(companyfacts: dict, as_of_date: str) :
+    current_candidates = _extract_exact_candidates(companyfacts, as_of_date, RESTRICTED_CASH_EXACT_CONCEPTS)
+    noncurrent_candidates = _extract_exact_candidates(companyfacts, as_of_date, RESTRICTED_CASH_NONCURRENT_EXACT_CONCEPTS)
+    current_match = _select_best_candidate(current_candidates)
+    noncurrent_match = _select_best_candidate(noncurrent_candidates)
+
+    if current_match is not None and noncurrent_match is not None:
+        return (
+            float(current_match["value"] + noncurrent_match["value"]),
+            {
+                "mode": "sum_current_noncurrent",
+                "current_components": [current_match["meta"]],
+                "noncurrent_components": [noncurrent_match["meta"]],
+            },
+        )
+
+    if current_match is not None:
+        return float(current_match["value"]), current_match["meta"]
+
+    if noncurrent_match is not None:
+        return float(noncurrent_match["value"]), noncurrent_match["meta"]
+
+    fallback_candidates = _extract_exact_candidates(companyfacts, as_of_date, RESTRICTED_CASH_MIXED_FALLBACK_CONCEPTS)
+    fallback = _select_best_candidate(fallback_candidates)
+    if fallback is not None:
+        return (
+            float(fallback["value"]),
+            {
+                "mode": "mixed_total_restricted_cash_fallback",
+                "chosen": fallback["meta"],
+                "alternatives": [candidate["meta"] for candidate in fallback_candidates[1:]],
+            },
+        )
+
+    return None, None
+
+
+def _extract_marketable_securities(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    for concept in MARKETABLE_SECURITY_EXACT_CONCEPTS:
+        if concept in facts:
+            value, meta = _latest_fact_value(companyfacts, concept, as_of_date)
+            if value is not None:
+                return value, meta
+    return None, None
+
+
