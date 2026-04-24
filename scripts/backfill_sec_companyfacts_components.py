@@ -718,3 +718,21 @@ def _metric_support(node: dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _cash_sti_proxy_represents_cash_only(
+    *,
+    cash_sti_node: dict[str, Any],
+    marketable_node: dict[str, Any],
+) -> bool:
+    component_breakdown = cash_sti_node.get("component_breakdown") or {}
+    return (
+        _metric_support(cash_sti_node) == "proxy_missing_component"
+        and cash_sti_node.get("missing_reason") == "cash_or_sti_component_missing"
+        and _metric_value(cash_sti_node) is not None
+        and component_breakdown.get("mode") == "partial_cash_stack"
+        and component_breakdown.get("cash") is not None
+        and component_breakdown.get("short_term_investments") is None
+        and _metric_support(marketable_node) == "unsupported"
+        and marketable_node.get("missing_reason") == "sec_concept_absent"
+    )
+
+
