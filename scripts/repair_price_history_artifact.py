@@ -71,3 +71,44 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _needs_exact_price_history_repair(node: Dict[str, Any] | None) -> bool:
+    if not node:
+        return False
+    if node.get("value") is None:
+        return True
+    fallback_used = str(node.get("fallback_used") or "")
+    quality_flags = {str(flag) for flag in (node['quality_flags'] or [])}
+    support_mode = str(node.get("support_mode") or "unsupported")
+    component_breakdown = node.get("component_breakdown") or {}
+    formula = str(component_breakdown.get("formula") or "")
+    source_kind = str(component_breakdown.get("source_kind") or "")
+    selected_series = component_breakdown.get("selected_price_series") or {}
+    selected_source_kind = str(selected_series.get("source_kind") or "")
+
+    if support_mode != "exact":
+        return True
+    if fallback_used == "monthly_price_history_proxy":
+        return True
+    if "monthly_price_history_proxy" in quality_flags:
+        return True
+    if "monthly_returns" in formula or "monthly_price_window" in formula:
+        return True
+    if source_kind and source_kind != "crsp_market_cache":
+        return True
+    if selected_source_kind and selected_source_kind != "crsp_market_cache":
+        return True
+    return False
+
+
+def _infer_market_cache_path(artifact_path: Path) -> Path | None:
+    for row in iter_rows(artifact_path):
+        features = row.get("features") or {}
+        for metric in ("market.total_return_3m_standardized", "market.total_return_12m_standardized"):
+            node = features.get(metric) or {}
+            for prov in node.get("provenance") or []:
+                source = prov.get("source")
+                if source and str(source).endswith(".parquet"):
+                    return Path(str(source))
+    return None
+
+

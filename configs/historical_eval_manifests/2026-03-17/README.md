@@ -69,3 +69,33 @@ Notes:
 - The standard frozen-holdout benchmark checkpoint remains the `v36` pair listed
   above.
 
+## Frozen Manual Replay Stack
+
+The manual replay benchmark is now frozen in-repo instead of relying on a
+`/tmp` script:
+
+- runner: `./scripts/run_manual_replay_benchmark.py`
+- lock config: `./configs/historical_eval_manifests/2026-03-17/manual_replay_benchmark_lock.json`
+
+Example:
+
+```bash
+PYTHONPATH=. \
+python \
+  ./scripts/run_manual_replay_benchmark.py \
+  --benchmark capital_return_holdout \
+  --runs-root /tmp/manual_replay_capreturn_runs \
+  --snapshot-cache-dir /tmp/manual_replay_capreturn_cache \
+  --out-json /tmp/manual_replay_capreturn_report.json
+```
+
+The lock config pins:
+
+- the outcomes artifact
+- the action-support manifest
+- the manual replay manifests
+- the canonical methodology/config inputs
+- the preferred facts-path resolution order
+
+Each output report now records the resolved artifact paths and env overrides so
+manual replay comparisons stop drifting silently.

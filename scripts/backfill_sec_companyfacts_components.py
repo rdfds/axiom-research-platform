@@ -736,3 +736,110 @@ def _cash_sti_proxy_represents_cash_only(
     )
 
 
+def _repair_restricted_cash_from_total_cash_reconciliation(
+    *,
+    restricted_node: dict[str, Any],
+    cash_eq_node: dict[str, Any],
+    cash_sti_node: dict[str, Any] | None,
+    marketable_node: dict[str, Any] | None,
+    companyfacts: dict | None,
+    companyfacts_path: Path,
+    as_of_date: str,
+    as_of_time: str,
+    computed_at: str,
+) -> dict[str, Any] | None:
+    if _metric_support(restricted_node) == "exact":
+        return None
+    if companyfacts is None:
+        return None
+    cash_basis_value = None
+    cash_basis_breakdown = None
+    formula_suffix = None
+    primary_source_basis = None
+    provenance = None
+    input_layer_bucket_reason = None
+
+    if _metric_support(cash_eq_node) == "exact":
+        cash_eq_value = _metric_value(cash_eq_node)
+        if cash_eq_value is None:
+            return None
+        cash_basis_value = float(cash_eq_value)
+        cash_basis_breakdown = cash_eq_node.get("component_breakdown")
+        formula_suffix = "cash_and_equivalents_statement_direct"
+        primary_source_basis = "statement_direct_plus_sec_companyfacts"
+        provenance = list(cash_eq_node.get("provenance") or [])
+        input_layer_bucket_reason = "restricted_cash_from_total_cash_reconciliation"
+    elif (
+        cash_sti_node is not None
+        and marketable_node is not None
+        and _cash_sti_proxy_represents_cash_only(
+            cash_sti_node=cash_sti_node,
+            marketable_node=marketable_node,
+        )
+    ):
+        cash_sti_value = _metric_value(cash_sti_node)
+        if cash_sti_value is None:
+            return None
+        cash_basis_value = float(cash_sti_value)
+        cash_basis_breakdown = cash_sti_node.get("component_breakdown")
+        formula_suffix = "cash_and_short_term_investments_provider_direct_cash_only_proxy"
+        primary_source_basis = "provider_direct_plus_sec_companyfacts"
+        provenance = list(cash_sti_node.get("provenance") or [])
+        input_layer_bucket_reason = "restricted_cash_from_grouped_cash_total_reconciliation"
+    else:
+        return None
+    total_cash_restricted, total_meta = _latest_fact_value(
+        companyfacts,
+        RESTRICTED_CASH_TOTAL_RECONCILIATION_CONCEPT,
+        as_of_date,
+    )
+    if total_cash_restricted is None or total_meta is None:
+        return None
+    derived_value = float(total_cash_restricted) - cash_basis_value
+    if derived_value < -1.0:
+        return None
+    floored_small_negative = derived_value < 0.0
+    if floored_small_negative:
+        derived_value = 0.0
+    node = dict(restricted_node)
+    node["value"] = float(derived_value)
+    node["unit"] = "usd"
+    node["computed_at"] = computed_at
+    node["confidence"] = 1.0
+    node["missing_reason"] = None
+    node["support_mode"] = "exact"
+    node["primary_source_basis"] = primary_source_basis
+    node["input_source_classification"] = node["primary_source_basis"]
+    node["input_layer_bucket_reason"] = input_layer_bucket_reason
+    node["quality_flags"] = (
+        ["rounded_small_negative_reconciliation_gap"]
+        if floored_small_negative
+        else None
+    )
+    node["component_breakdown"] = {
+        "mode": (
+            "cash_plus_restricted_total_minus_cash_equivalents"
+            if formula_suffix == "cash_and_equivalents_statement_direct"
+            else "cash_plus_restricted_total_minus_grouped_cash_cash_only_proxy"
+        ),
+        "cash_cash_equivalents_restricted_cash_total": total_meta,
+        formula_suffix: cash_basis_breakdown,
+        "formula": (
+            f"{RESTRICTED_CASH_TOTAL_RECONCILIATION_CONCEPT} - "
+            f"{formula_suffix}"
+        ),
+    }
+    node["provenance"] = provenance
+    node["provenance"].append(
+        {
+            "artifact_type": "SecCompanyFacts",
+            "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+            "source": str(companyfacts_path),
+            "published_at": as_of_time,
+            "ingested_at": computed_at,
+            "hash": None,
+        }
+    )
+    return node
+
+
