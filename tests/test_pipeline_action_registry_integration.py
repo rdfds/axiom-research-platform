@@ -184,3 +184,21 @@ def test_resolve_company_id_aliases_from_cik_gvkey(tmp_path):
     assert "0000320193" in aliases
 
 
+def test_load_company_state_keyed_snapshot_row(tmp_path):
+    root = tmp_path / "snapshots"
+    store = SnapshotStore(root=root, temp_dir=tmp_path / "tmp")
+    as_of = "2026-02-28"
+    store.write_keyed_json(
+        [
+            {
+                "company_id": "0000320193",
+                "as_of_time": "2026-02-28T00:00:00+00:00",
+                "features": {"market.market_cap": {"value": 1.0}},
+            }
+        ],
+        as_of=as_of,
+        expected_count=1,
+    )
+    row = _load_company_state_keyed_snapshot_row(root, company_id="0000320193", as_of=as_of)
+    assert row is not None
+    assert row["company_id"] == "0000320193"
