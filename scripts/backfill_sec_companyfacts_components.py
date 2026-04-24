@@ -981,3 +981,584 @@ def _extract_marketable_securities(companyfacts: dict, as_of_date: str) -> tuple
     return None, None
 
 
+def _extract_revolver_undrawn(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    facts = ((companyfacts.get("facts") or {}).get("us-gaap") or {})
+    references: list[dict[str, Any]] = []
+    for concept in REVOLVER_UNDRAWN_EXACT_CONCEPTS:
+        if concept not in facts:
+            continue
+        value, meta = _latest_fact_value(companyfacts, concept, as_of_date)
+        if value is None or meta is None:
+            continue
+        if concept == "LineOfCreditFacilityRemainingBorrowingCapacity":
+            if references:
+                return value, {
+                    "mode": "preferred_remaining_borrowing_capacity",
+                    "chosen": meta,
+                    "alternatives": references,
+                }
+            return value, meta
+        references.append(meta | {"value": float(value)})
+    if references:
+        chosen = references[0].copy()
+        value = float(chosen.pop("value"))
+        if len(references) > 1:
+            return value, {
+                "mode": "preferred_unused_borrowing_capacity",
+                "chosen": chosen,
+                "alternatives": references[1:],
+            }
+        return value, chosen
+    return None, None
+
+
+def _build_lease_class_candidate(
+    *,
+    companyfacts: dict,
+    as_of_date: str,
+    label: str,
+    total_concepts: set[str],
+    current_concepts: set[str],
+    noncurrent_concepts: set[str],
+    payments_due_concepts: set[str],
+    current_due_concepts: set[str],
+    undiscounted_excess_concepts: set[str],
+    rou_asset_concepts: set[str],
+) -> dict[str, Any]:
+    total_candidates = _extract_exact_candidates(companyfacts, as_of_date, total_concepts)
+    current_candidates = _extract_exact_candidates(companyfacts, as_of_date, current_concepts)
+    noncurrent_candidates = _extract_exact_candidates(companyfacts, as_of_date, noncurrent_concepts)
+    payments_due_candidates = _extract_exact_candidates(companyfacts, as_of_date, payments_due_concepts)
+    current_due_candidates = _extract_exact_candidates(companyfacts, as_of_date, current_due_concepts)
+    undiscounted_excess_candidates = _extract_exact_candidates(companyfacts, as_of_date, undiscounted_excess_concepts)
+    rou_asset_candidates = _extract_exact_candidates(companyfacts, as_of_date, rou_asset_concepts)
+
+    direct_total = _select_best_candidate(total_candidates)
+    freshest_current_component = _select_best_candidate(current_candidates)
+    freshest_noncurrent_component = _select_best_candidate(noncurrent_candidates)
+    current_component, noncurrent_component = _select_aligned_candidate_pair(current_candidates, noncurrent_candidates)
+    payments_due_component, undiscounted_excess_component = _select_aligned_candidate_pair(
+        payments_due_candidates,
+        undiscounted_excess_candidates,
+    )
+    rou_asset = _select_best_candidate(rou_asset_candidates)
+    rou_value = None if rou_asset is None else float(rou_asset["value"])
+
+    direct_total_value = None if direct_total is None else float(direct_total["value"])
+    pair_total_value = (
+        None
+        if current_component is None or noncurrent_component is None
+        else float(current_component["value"]) + float(noncurrent_component["value"])
+    )
+    derived_total_value = (
+        None
+        if payments_due_component is None or undiscounted_excess_component is None
+        else float(payments_due_component["value"]) - float(undiscounted_excess_component["value"])
+    )
+    mixed_pair_total_value = (
+        None
+        if freshest_current_component is None or freshest_noncurrent_component is None
+        else float(freshest_current_component["value"]) + float(freshest_noncurrent_component["value"])
+    )
+    fresh_direct_total_value = (
+        direct_total_value
+        if direct_total is not None and _candidate_is_fresh(direct_total, as_of_date)
+        else None
+    )
+    fresh_pair_total_value = (
+        pair_total_value
+        if current_component is not None
+        and noncurrent_component is not None
+        and _candidate_is_fresh(current_component, as_of_date)
+        and _candidate_is_fresh(noncurrent_component, as_of_date)
+        else None
+    )
+    fresh_derived_total_value = (
+        derived_total_value
+        if payments_due_component is not None
+        and undiscounted_excess_component is not None
+        and _candidate_is_fresh(payments_due_component, as_of_date)
+        and _candidate_is_fresh(undiscounted_excess_component, as_of_date)
+        else None
+    )
+    pair_reference_value = (
+        fresh_direct_total_value
+        if fresh_direct_total_value is not None
+        else fresh_derived_total_value
+    )
+    direct_reference_value = (
+        fresh_pair_total_value
+        if fresh_pair_total_value is not None
+        else fresh_derived_total_value
+    )
+    derived_reference_value = (
+        fresh_pair_total_value
+        if fresh_pair_total_value is not None
+        else fresh_direct_total_value
+    )
+
+    candidates: list[dict[str, Any]] = []
+
+    def _candidate_meta_with_stale_support(meta: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **meta,
+            "support_override": "stale_liability_total_corroborated_by_fresh_rou_asset",
+        }
+
+    def _candidate_meta_with_mixed_support(meta: dict[str, Any], *, stale_component: str) -> dict[str, Any]:
+        return {
+            **meta,
+            "support_override": "mixed_fresh_and_stale_components_corroborated_by_fresh_rou_asset",
+            "stale_component": stale_component,
+        }
+
+    freshest_current_end_dt = None if freshest_current_component is None else freshest_current_component["end_dt"]
+    stale_period_direct_total = _extract_candidate_for_end(
+        companyfacts,
+        total_concepts,
+        freshest_current_end_dt,
+        as_of_date=as_of_date,
+    )
+    stale_period_rou_asset = _extract_candidate_for_end(
+        companyfacts,
+        rou_asset_concepts,
+        freshest_current_end_dt,
+        as_of_date=as_of_date,
+    )
+    stale_period_current_due = _extract_candidate_for_end(
+        companyfacts,
+        current_due_concepts,
+        freshest_current_end_dt,
+        as_of_date=as_of_date,
+    )
+
+    if (
+        current_component is not None
+        and noncurrent_component is not None
+        and _candidate_is_fresh(current_component, as_of_date)
+        and _candidate_is_fresh(noncurrent_component, as_of_date)
+        and _passes_lease_plausibility(
+            float(pair_total_value),
+            rou_value=rou_value,
+            reference_value=pair_reference_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(pair_total_value),
+                "meta": {
+                    "mode": f"{label}_sum_current_noncurrent",
+                    "current_components": [current_component["meta"]],
+                    "noncurrent_components": [noncurrent_component["meta"]],
+                    "class": label,
+                },
+                "end_dt": max(current_component["end_dt"], noncurrent_component["end_dt"]),
+                "filed_dt": max(current_component["filed_dt"], noncurrent_component["filed_dt"]),
+                "priority": 3,
+            }
+        )
+    elif (
+        current_component is not None
+        and noncurrent_component is not None
+        and _candidate_is_stale_corroborated_by_fresh_rou(current_component, rou_asset, as_of_date)
+        and _candidate_is_stale_corroborated_by_fresh_rou(noncurrent_component, rou_asset, as_of_date)
+        and _passes_lease_plausibility(
+            float(pair_total_value),
+            rou_value=rou_value,
+            reference_value=direct_total_value if direct_total_value is not None else derived_total_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(pair_total_value),
+                "meta": _candidate_meta_with_stale_support(
+                    {
+                        "mode": f"{label}_sum_current_noncurrent",
+                        "current_components": [current_component["meta"]],
+                        "noncurrent_components": [noncurrent_component["meta"]],
+                        "class": label,
+                    }
+                ),
+                "end_dt": max(current_component["end_dt"], noncurrent_component["end_dt"]),
+                "filed_dt": max(current_component["filed_dt"], noncurrent_component["filed_dt"]),
+                "priority": 0,
+            }
+        )
+    elif (
+        freshest_current_component is not None
+        and freshest_noncurrent_component is not None
+        and mixed_pair_total_value is not None
+        and _candidate_is_stale_corroborated_by_fresh_rou(freshest_current_component, rou_asset, as_of_date)
+        and _candidate_is_fresh(freshest_noncurrent_component, as_of_date)
+        and _passes_lease_plausibility(
+            float(mixed_pair_total_value),
+            rou_value=rou_value,
+            reference_value=pair_reference_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(mixed_pair_total_value),
+                "meta": _candidate_meta_with_mixed_support(
+                    {
+                        "mode": f"{label}_sum_current_noncurrent",
+                        "current_components": [freshest_current_component["meta"]],
+                        "noncurrent_components": [freshest_noncurrent_component["meta"]],
+                        "class": label,
+                    },
+                    stale_component="current",
+                ),
+                "end_dt": max(freshest_current_component["end_dt"], freshest_noncurrent_component["end_dt"]),
+                "filed_dt": max(freshest_current_component["filed_dt"], freshest_noncurrent_component["filed_dt"]),
+                "priority": 1,
+            }
+        )
+
+        if (
+            stale_period_direct_total is not None
+            and stale_period_rou_asset is not None
+            and rou_value is not None
+        ):
+            stale_basis_delta = float(stale_period_direct_total["value"]) - float(stale_period_rou_asset["value"])
+            rebased_current_value = rou_value + stale_basis_delta - float(freshest_noncurrent_component["value"])
+            if stale_period_current_due is not None:
+                rebased_current_value = min(rebased_current_value, float(stale_period_current_due["value"]))
+            stale_current_value = float(freshest_current_component["value"])
+            if (
+                stale_current_value > 0
+                and rebased_current_value > 0
+                and abs(rebased_current_value - stale_current_value) / stale_current_value <= 0.10
+            ):
+                rebased_total_value = rebased_current_value + float(freshest_noncurrent_component["value"])
+                if _passes_lease_plausibility(
+                    float(rebased_total_value),
+                    rou_value=rou_value,
+                    reference_value=pair_reference_value,
+                ):
+                    rebased_meta = {
+                        "mode": f"{label}_sum_current_noncurrent",
+                        "current_components": [freshest_current_component["meta"]],
+                        "noncurrent_components": [freshest_noncurrent_component["meta"]],
+                        "class": label,
+                        "support_override": "mixed_fresh_and_stale_components_rebased_by_rou_basis_delta",
+                        "stale_component": "current",
+                        "stale_basis_delta": stale_basis_delta,
+                        "stale_basis_total_component": stale_period_direct_total["meta"],
+                        "stale_basis_rou_component": stale_period_rou_asset["meta"],
+                    }
+                    if stale_period_current_due is not None:
+                        rebased_meta["stale_current_due_cap_component"] = stale_period_current_due["meta"]
+                    candidates.append(
+                        {
+                            "value": float(rebased_total_value),
+                            "meta": rebased_meta,
+                            "end_dt": max(
+                                freshest_current_component["end_dt"],
+                                freshest_noncurrent_component["end_dt"],
+                                rou_asset["end_dt"],
+                            ),
+                            "filed_dt": max(
+                                freshest_current_component["filed_dt"],
+                                freshest_noncurrent_component["filed_dt"],
+                                rou_asset["filed_dt"],
+                            ),
+                            "priority": 2,
+                        }
+                    )
+
+    if (
+        direct_total is not None
+        and _candidate_is_fresh(direct_total, as_of_date)
+        and _passes_lease_plausibility(
+            float(direct_total_value),
+            rou_value=rou_value,
+            reference_value=direct_reference_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(direct_total_value),
+                "meta": {
+                    "mode": f"{label}_direct_total",
+                    "components": [direct_total["meta"]],
+                    "class": label,
+                },
+                "end_dt": direct_total["end_dt"],
+                "filed_dt": direct_total["filed_dt"],
+                "priority": 2,
+            }
+        )
+    elif (
+        direct_total is not None
+        and _candidate_is_stale_corroborated_by_fresh_rou(direct_total, rou_asset, as_of_date)
+        and _passes_lease_plausibility(
+            float(direct_total_value),
+            rou_value=rou_value,
+            reference_value=pair_total_value if pair_total_value is not None else derived_total_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(direct_total_value),
+                "meta": _candidate_meta_with_stale_support(
+                    {
+                        "mode": f"{label}_direct_total",
+                        "components": [direct_total["meta"]],
+                        "class": label,
+                    }
+                ),
+                "end_dt": direct_total["end_dt"],
+                "filed_dt": direct_total["filed_dt"],
+                "priority": 0,
+            }
+        )
+
+    if (
+        payments_due_component is not None
+        and undiscounted_excess_component is not None
+        and derived_total_value is not None
+        and _candidate_is_fresh(payments_due_component, as_of_date)
+        and _candidate_is_fresh(undiscounted_excess_component, as_of_date)
+        and _passes_lease_plausibility(
+            float(derived_total_value),
+            rou_value=rou_value,
+            reference_value=derived_reference_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(derived_total_value),
+                "meta": {
+                    "mode": f"{label}_payments_due_minus_undiscounted_excess",
+                    "payments_due_component": payments_due_component["meta"],
+                    "undiscounted_excess_component": undiscounted_excess_component["meta"],
+                    "class": label,
+                    "formula": "payments_due - undiscounted_excess_amount",
+                },
+                "end_dt": max(payments_due_component["end_dt"], undiscounted_excess_component["end_dt"]),
+                "filed_dt": max(payments_due_component["filed_dt"], undiscounted_excess_component["filed_dt"]),
+                "priority": 1,
+            }
+        )
+    elif (
+        payments_due_component is not None
+        and undiscounted_excess_component is not None
+        and derived_total_value is not None
+        and _candidate_is_stale_corroborated_by_fresh_rou(payments_due_component, rou_asset, as_of_date)
+        and _candidate_is_stale_corroborated_by_fresh_rou(undiscounted_excess_component, rou_asset, as_of_date)
+        and _passes_lease_plausibility(
+            float(derived_total_value),
+            rou_value=rou_value,
+            reference_value=pair_total_value if pair_total_value is not None else direct_total_value,
+        )
+    ):
+        candidates.append(
+            {
+                "value": float(derived_total_value),
+                "meta": _candidate_meta_with_stale_support(
+                    {
+                        "mode": f"{label}_payments_due_minus_undiscounted_excess",
+                        "payments_due_component": payments_due_component["meta"],
+                        "undiscounted_excess_component": undiscounted_excess_component["meta"],
+                        "class": label,
+                        "formula": "payments_due - undiscounted_excess_amount",
+                    }
+                ),
+                "end_dt": max(payments_due_component["end_dt"], undiscounted_excess_component["end_dt"]),
+                "filed_dt": max(payments_due_component["filed_dt"], undiscounted_excess_component["filed_dt"]),
+                "priority": 0,
+            }
+        )
+
+    has_any_fresh_class_support = any(
+        _candidate_is_fresh(candidate, as_of_date)
+        for candidate in (
+            direct_total,
+            current_component,
+            noncurrent_component,
+            payments_due_component,
+            undiscounted_excess_component,
+            rou_asset,
+        )
+    )
+    stale_direct_is_eligible = _candidate_is_stale_within_carry_forward_window(direct_total, as_of_date)
+    stale_pair_is_eligible = (
+        current_component is not None
+        and noncurrent_component is not None
+        and _candidate_is_stale_within_carry_forward_window(current_component, as_of_date)
+        and _candidate_is_stale_within_carry_forward_window(noncurrent_component, as_of_date)
+    )
+    stale_derived_is_eligible = (
+        payments_due_component is not None
+        and undiscounted_excess_component is not None
+        and _candidate_is_stale_within_carry_forward_window(payments_due_component, as_of_date)
+        and _candidate_is_stale_within_carry_forward_window(undiscounted_excess_component, as_of_date)
+    )
+    stale_direct_corroborated = stale_direct_is_eligible and (
+        _values_are_lease_corroborative(direct_total_value, pair_total_value)
+        or _values_are_lease_corroborative(direct_total_value, derived_total_value)
+    )
+    stale_pair_corroborated = stale_pair_is_eligible and (
+        _values_are_lease_corroborative(pair_total_value, direct_total_value)
+        or _values_are_lease_corroborative(pair_total_value, derived_total_value)
+    )
+    stale_derived_corroborated = stale_derived_is_eligible and (
+        _values_are_lease_corroborative(derived_total_value, direct_total_value)
+        or _values_are_lease_corroborative(derived_total_value, pair_total_value)
+    )
+
+    def _candidate_meta_with_stale_carry_forward(meta: dict[str, Any], *, corroborated_by: list[str]) -> dict[str, Any]:
+        return {
+            **meta,
+            "support_override": "stale_internally_consistent_lease_carry_forward",
+            "corroborated_by": corroborated_by,
+        }
+
+    if not has_any_fresh_class_support:
+        if (
+            stale_pair_is_eligible
+            and stale_pair_corroborated
+            and pair_total_value is not None
+            and _passes_lease_plausibility(
+                float(pair_total_value),
+                rou_value=rou_value,
+                reference_value=direct_total_value if stale_direct_is_eligible else derived_total_value,
+            )
+        ):
+            corroborated_by = []
+            if _values_are_lease_corroborative(pair_total_value, direct_total_value):
+                corroborated_by.append("direct_total")
+            if _values_are_lease_corroborative(pair_total_value, derived_total_value):
+                corroborated_by.append("payments_due_minus_undiscounted_excess")
+            candidates.append(
+                {
+                    "value": float(pair_total_value),
+                    "meta": _candidate_meta_with_stale_carry_forward(
+                        {
+                            "mode": f"{label}_sum_current_noncurrent",
+                            "current_components": [current_component["meta"]],
+                            "noncurrent_components": [noncurrent_component["meta"]],
+                            "class": label,
+                        },
+                        corroborated_by=corroborated_by,
+                    ),
+                    "end_dt": max(current_component["end_dt"], noncurrent_component["end_dt"]),
+                    "filed_dt": max(current_component["filed_dt"], noncurrent_component["filed_dt"]),
+                    "priority": -1,
+                }
+            )
+        elif (
+            stale_direct_is_eligible
+            and stale_direct_corroborated
+            and direct_total_value is not None
+            and _passes_lease_plausibility(
+                float(direct_total_value),
+                rou_value=rou_value,
+                reference_value=pair_total_value if stale_pair_is_eligible else derived_total_value,
+            )
+        ):
+            corroborated_by = []
+            if _values_are_lease_corroborative(direct_total_value, pair_total_value):
+                corroborated_by.append("sum_current_noncurrent")
+            if _values_are_lease_corroborative(direct_total_value, derived_total_value):
+                corroborated_by.append("payments_due_minus_undiscounted_excess")
+            candidates.append(
+                {
+                    "value": float(direct_total_value),
+                    "meta": _candidate_meta_with_stale_carry_forward(
+                        {
+                            "mode": f"{label}_direct_total",
+                            "components": [direct_total["meta"]],
+                            "class": label,
+                        },
+                        corroborated_by=corroborated_by,
+                    ),
+                    "end_dt": direct_total["end_dt"],
+                    "filed_dt": direct_total["filed_dt"],
+                    "priority": -2,
+                }
+            )
+        elif (
+            stale_derived_is_eligible
+            and stale_derived_corroborated
+            and derived_total_value is not None
+            and _passes_lease_plausibility(
+                float(derived_total_value),
+                rou_value=rou_value,
+                reference_value=pair_total_value if stale_pair_is_eligible else direct_total_value,
+            )
+        ):
+            corroborated_by = []
+            if _values_are_lease_corroborative(derived_total_value, pair_total_value):
+                corroborated_by.append("sum_current_noncurrent")
+            if _values_are_lease_corroborative(derived_total_value, direct_total_value):
+                corroborated_by.append("direct_total")
+            candidates.append(
+                {
+                    "value": float(derived_total_value),
+                    "meta": _candidate_meta_with_stale_carry_forward(
+                        {
+                            "mode": f"{label}_payments_due_minus_undiscounted_excess",
+                            "payments_due_component": payments_due_component["meta"],
+                            "undiscounted_excess_component": undiscounted_excess_component["meta"],
+                            "class": label,
+                            "formula": "payments_due - undiscounted_excess_amount",
+                        },
+                        corroborated_by=corroborated_by,
+                    ),
+                    "end_dt": max(payments_due_component["end_dt"], undiscounted_excess_component["end_dt"]),
+                    "filed_dt": max(payments_due_component["filed_dt"], undiscounted_excess_component["filed_dt"]),
+                    "priority": -3,
+                }
+            )
+
+    candidates.sort(key=lambda item: (item["end_dt"], item["filed_dt"], item["priority"]), reverse=True)
+    chosen = candidates[0] if candidates else None
+
+    references: dict[str, Any] = {
+        "class": label,
+        "present": bool(
+            total_candidates
+            or current_candidates
+            or noncurrent_candidates
+            or payments_due_candidates
+            or current_due_candidates
+            or undiscounted_excess_candidates
+            or rou_asset_candidates
+        ),
+    }
+    if direct_total is not None:
+        references["direct_total_reference"] = {
+            "value": float(direct_total["value"]),
+            "components": [direct_total["meta"]],
+        }
+    if freshest_current_component is not None or freshest_noncurrent_component is not None:
+        references["partial_component_reference"] = {
+            "value": mixed_pair_total_value,
+            "current_components": [] if freshest_current_component is None else [freshest_current_component["meta"]],
+            "noncurrent_components": [] if freshest_noncurrent_component is None else [freshest_noncurrent_component["meta"]],
+        }
+    if payments_due_component is not None and undiscounted_excess_component is not None:
+        references["payments_due_reference"] = {
+            "payments_due": payments_due_component["meta"],
+            "undiscounted_excess": undiscounted_excess_component["meta"],
+            "derived_total_value": derived_total_value,
+        }
+    if stale_period_current_due is not None:
+        references["current_due_reference"] = {
+            "value": float(stale_period_current_due["value"]),
+            "components": [stale_period_current_due["meta"]],
+        }
+    if rou_asset is not None:
+        references["right_of_use_asset_reference"] = {
+            "value": rou_value,
+            "components": [rou_asset["meta"]],
+        }
+
+    return {
+        "candidate": chosen,
+        "present": references["present"],
+        "references": references,
+    }
+
+

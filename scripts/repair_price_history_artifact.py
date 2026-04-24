@@ -191,3 +191,42 @@ def _price_metrics(frame: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     return results
 
 
+def repair_price_history_metrics(
+    *,
+    features: Dict[str, Any],
+    price_metrics: Dict[str, Dict[str, Any]],
+    permno: str | None,
+    computed_at: str,
+) -> bool:
+    changed = False
+    ret3_node = features.get("market.total_return_3m_standardized")
+    ret12_node = features.get("market.total_return_12m_standardized")
+    provenance = _union_provenance(ret3_node, ret12_node)
+
+    for metric_name in REPAIR_METRICS:
+        target = features.get(metric_name)
+        if not target or not _needs_exact_price_history_repair(target):
+            continue
+        repaired_payload = price_metrics.get(metric_name)
+        if not repaired_payload:
+            continue
+        repaired = _base_repaired_node(target, computed_at=computed_at)
+        repaired["value"] = repaired_payload["value"]
+        repaired["fallback_used"] = "crsp_market_cache_price_history"
+        repaired["support_mode"] = "exact"
+        repaired["provenance"] = provenance
+        component_breakdown = copy.deepcopy(repaired_payload["component_breakdown"])
+        component_breakdown["selected_price_series"] = {
+            "source_kind": "crsp_market_cache",
+            "price_field": "price_proxy",
+            "time_field": "trade_date",
+            "group_field": "permno",
+            "group_value": permno,
+        }
+        repaired["component_breakdown"] = component_breakdown
+        repaired["quality_flags"] = None
+        features[metric_name] = repaired
+        changed = True
+    return changed
+
+
