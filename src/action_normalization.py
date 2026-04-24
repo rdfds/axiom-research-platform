@@ -100,3 +100,13 @@ def _family_result(
     }
 
 
+def _mna_acquisition_action_id(action_subtype: str, scale_bucket: Optional[str]) -> str:
+    if any(token in action_subtype for token in ("stake", "repurchase", "minority")):
+        return "mna.tuck_in_acquisition"
+    if scale_bucket == "small":
+        return "mna.tuck_in_acquisition"
+    if scale_bucket == "large":
+        return "mna.transformational_acquisition"
+    return "mna.platform_acquisition"
+
+
