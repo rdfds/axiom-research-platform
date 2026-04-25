@@ -170,7 +170,7 @@ def _refinancing_subfamily(action_subtype: Any) -> str:
     return "refinancing"
 
 
-def normalize_action_record(row: Dict[str, Any]) :
+def normalize_action_record(row: Dict[str, Any]) -> Dict[str, Any]:
     raw_action_type = row.get("action_type")
     raw_action_subtype = row.get("action_subtype")
     action_type = _norm_text(raw_action_type)

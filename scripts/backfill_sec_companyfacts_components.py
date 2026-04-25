@@ -934,7 +934,7 @@ def _build_combo_metric(
     )
 
 
-def _extract_restricted_cash(companyfacts: dict, as_of_date: str) :
+def _extract_restricted_cash(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
     current_candidates = _extract_exact_candidates(companyfacts, as_of_date, RESTRICTED_CASH_EXACT_CONCEPTS)
     noncurrent_candidates = _extract_exact_candidates(companyfacts, as_of_date, RESTRICTED_CASH_NONCURRENT_EXACT_CONCEPTS)
     current_match = _select_best_candidate(current_candidates)
