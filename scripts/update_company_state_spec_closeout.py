@@ -41,3 +41,7 @@ def _safe_float(v: Any) -> Optional[float]:
         return None
 
 
+def _feature_value(snapshot: dict, name: str) -> Any:
+    return snapshot.get("features", {}).get(name, {}).get("value")
+
+
