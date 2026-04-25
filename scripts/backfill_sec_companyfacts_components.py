@@ -1562,3 +1562,162 @@ def _build_lease_class_candidate(
     }
 
 
+def _extract_lease_liabilities(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    operating = _build_lease_class_candidate(
+        companyfacts=companyfacts,
+        as_of_date=as_of_date,
+        label="operating",
+        total_concepts=OPERATING_LEASE_TOTAL_EXACT_CONCEPTS,
+        current_concepts=OPERATING_LEASE_CURRENT_EXACT_CONCEPTS,
+        noncurrent_concepts=OPERATING_LEASE_NONCURRENT_EXACT_CONCEPTS,
+        payments_due_concepts=OPERATING_LEASE_PAYMENTS_DUE_CONCEPTS,
+        current_due_concepts=OPERATING_LEASE_CURRENT_DUE_CONCEPTS,
+        undiscounted_excess_concepts=OPERATING_LEASE_UNDISCOUNTED_EXCESS_CONCEPTS,
+        rou_asset_concepts=OPERATING_LEASE_RIGHT_OF_USE_ASSET_CONCEPTS,
+    )
+    finance = _build_lease_class_candidate(
+        companyfacts=companyfacts,
+        as_of_date=as_of_date,
+        label="finance",
+        total_concepts=FINANCE_LEASE_TOTAL_EXACT_CONCEPTS,
+        current_concepts=FINANCE_LEASE_CURRENT_EXACT_CONCEPTS,
+        noncurrent_concepts=FINANCE_LEASE_NONCURRENT_EXACT_CONCEPTS,
+        payments_due_concepts=FINANCE_LEASE_PAYMENTS_DUE_CONCEPTS,
+        current_due_concepts=FINANCE_LEASE_CURRENT_DUE_CONCEPTS,
+        undiscounted_excess_concepts=FINANCE_LEASE_UNDISCOUNTED_EXCESS_CONCEPTS,
+        rou_asset_concepts=FINANCE_LEASE_RIGHT_OF_USE_ASSET_CONCEPTS,
+    )
+
+    aggregate_total = _select_best_candidate(_extract_exact_candidates(companyfacts, as_of_date, LEASE_AGGREGATE_TOTAL_EXACT_CONCEPTS))
+    aggregate_candidate = None
+    if aggregate_total is not None and _candidate_is_fresh(aggregate_total, as_of_date):
+        operating_reference = operating["candidate"]["value"] if operating["candidate"] is not None else None
+        finance_reference = finance["candidate"]["value"] if finance["candidate"] is not None else None
+        combined_reference = None
+        if operating_reference is not None or finance_reference is not None:
+            combined_reference = float(operating_reference or 0.0) + float(finance_reference or 0.0)
+        if _passes_lease_plausibility(
+            float(aggregate_total["value"]),
+            rou_value=None,
+            reference_value=combined_reference,
+        ):
+            aggregate_candidate = {
+                "value": float(aggregate_total["value"]),
+                "meta": {
+                    "mode": "aggregate_total",
+                    "components": [aggregate_total["meta"]],
+                },
+                "end_dt": aggregate_total["end_dt"],
+                "filed_dt": aggregate_total["filed_dt"],
+                "priority": 2,
+            }
+
+    candidates: list[dict[str, Any]] = []
+    operating_candidate = operating["candidate"]
+    finance_candidate = finance["candidate"]
+    finance_has_fresh_support = _reference_contains_fresh_lease_fact(finance["references"], as_of_date)
+    operating_has_fresh_support = _reference_contains_fresh_lease_fact(operating["references"], as_of_date)
+
+    if operating_candidate is not None and finance_candidate is not None:
+        gap_days = abs((operating_candidate["end_dt"] - finance_candidate["end_dt"]).days)
+        if gap_days <= LEASE_COMPONENT_ALIGNMENT_MAX_GAP_DAYS:
+            candidates.append(
+                {
+                    "value": float(operating_candidate["value"]) + float(finance_candidate["value"]),
+                    "meta": {
+                        "mode": "sum_operating_finance",
+                        "operating_component": operating_candidate["meta"],
+                        "finance_component": finance_candidate["meta"],
+                        "operating_reference": operating["references"],
+                        "finance_reference": finance["references"],
+                        "alignment_gap_days": gap_days,
+                    },
+                    "end_dt": max(operating_candidate["end_dt"], finance_candidate["end_dt"]),
+                    "filed_dt": max(operating_candidate["filed_dt"], finance_candidate["filed_dt"]),
+                    "priority": 3,
+                }
+            )
+
+    if operating_candidate is not None and not finance["present"]:
+        candidates.append(
+            {
+                "value": float(operating_candidate["value"]),
+                "meta": {
+                    "mode": "operating_only_no_finance_concepts",
+                    "operating_component": operating_candidate["meta"],
+                    "operating_reference": operating["references"],
+                },
+                "end_dt": operating_candidate["end_dt"],
+                "filed_dt": operating_candidate["filed_dt"],
+                "priority": 1,
+            }
+        )
+    elif operating_candidate is not None and finance_candidate is None and not finance_has_fresh_support:
+        candidates.append(
+            {
+                "value": float(operating_candidate["value"]),
+                "meta": {
+                    "mode": "operating_only_no_fresh_finance_support",
+                    "operating_component": operating_candidate["meta"],
+                    "operating_reference": operating["references"],
+                    "finance_reference": finance["references"],
+                },
+                "end_dt": operating_candidate["end_dt"],
+                "filed_dt": operating_candidate["filed_dt"],
+                "priority": 1,
+            }
+        )
+
+    if finance_candidate is not None and not operating["present"]:
+        candidates.append(
+            {
+                "value": float(finance_candidate["value"]),
+                "meta": {
+                    "mode": "finance_only_no_operating_concepts",
+                    "finance_component": finance_candidate["meta"],
+                    "finance_reference": finance["references"],
+                },
+                "end_dt": finance_candidate["end_dt"],
+                "filed_dt": finance_candidate["filed_dt"],
+                "priority": 1,
+            }
+        )
+    elif finance_candidate is not None and operating_candidate is None and not operating_has_fresh_support:
+        candidates.append(
+            {
+                "value": float(finance_candidate["value"]),
+                "meta": {
+                    "mode": "finance_only_no_fresh_operating_support",
+                    "finance_component": finance_candidate["meta"],
+                    "finance_reference": finance["references"],
+                    "operating_reference": operating["references"],
+                },
+                "end_dt": finance_candidate["end_dt"],
+                "filed_dt": finance_candidate["filed_dt"],
+                "priority": 1,
+            }
+        )
+
+    if aggregate_candidate is not None:
+        aggregate_candidate["meta"]["operating_reference"] = operating["references"]
+        aggregate_candidate["meta"]["finance_reference"] = finance["references"]
+        candidates.append(aggregate_candidate)
+
+    candidates.sort(key=lambda item: (item["end_dt"], item["filed_dt"], item["priority"]), reverse=True)
+    if candidates:
+        chosen = candidates[0]
+        return float(chosen["value"]), chosen["meta"]
+
+    return None, {
+        "mode": "lease_total_unavailable",
+        "operating_reference": operating["references"],
+        "finance_reference": finance["references"],
+        "aggregate_total_reference": None
+        if aggregate_total is None
+        else {
+            "value": float(aggregate_total["value"]),
+            "components": [aggregate_total["meta"]],
+        },
+    }
+
+

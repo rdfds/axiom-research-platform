@@ -77,7 +77,7 @@ def _needs_exact_price_history_repair(node: Dict[str, Any] | None) -> bool:
     if node.get("value") is None:
         return True
     fallback_used = str(node.get("fallback_used") or "")
-    quality_flags = {str(flag) for flag in (node['quality_flags'] or [])}
+    quality_flags = {str(flag) for flag in (node.get("quality_flags") or [])}
     support_mode = str(node.get("support_mode") or "unsupported")
     component_breakdown = node.get("component_breakdown") or {}
     formula = str(component_breakdown.get("formula") or "")
