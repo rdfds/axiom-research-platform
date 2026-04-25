@@ -43,3 +43,7 @@ def _clean_case_ids(case_ids: Optional[Iterable[str]]) -> Optional[set[str]]:
     return values or None
 
 
+def _as_of_year(as_of_date: str) -> int:
+    return int(str(as_of_date).split("-", 1)[0])
+
+
