@@ -1721,3 +1721,209 @@ def _extract_lease_liabilities(companyfacts: dict, as_of_date: str) -> tuple[flo
     }
 
 
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    companyfacts_root = Path(args.companyfacts_root) if args.companyfacts_root else (
+        DEFAULT_LOCAL_COMPANYFACTS_ROOT if DEFAULT_LOCAL_COMPANYFACTS_ROOT.exists() else None
+    )
+    if companyfacts_root is None:
+        raise SystemExit("companyfacts root is required")
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+    counters: Counter[str] = Counter()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_snapshot_rows(snapshot_path):
+            entity_id = row["company_id"]
+            as_of_time = row["as_of_time"]
+            as_of_date = as_of_time[:10]
+            companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+            companyfacts = _load_companyfacts(companyfacts_path)
+            features = row.setdefault("features", {})
+
+            metric_builds = []
+            if companyfacts is None:
+                metric_builds = [
+                    ("liquidity.restricted_cash_sec_exact", None, None, "companyfacts_unavailable", "usd"),
+                    ("liquidity.marketable_securities_sec_exact", None, None, "companyfacts_unavailable", "usd"),
+                    ("liquidity.revolver_undrawn_sec_exact", None, None, "companyfacts_unavailable", "usd"),
+                    ("capital_structure.lease_liabilities_sec_exact", None, None, "companyfacts_unavailable", "usd"),
+                ]
+            else:
+                restricted_value, restricted_meta = _extract_restricted_cash(companyfacts, as_of_date)
+                marketable_value, marketable_meta = _extract_marketable_securities(companyfacts, as_of_date)
+                revolver_value, revolver_meta = _extract_revolver_undrawn(companyfacts, as_of_date)
+                lease_value, lease_meta = _extract_lease_liabilities(companyfacts, as_of_date)
+                restricted_missing_reason = (
+                    "sec_concept_unavailable"
+                    if _has_any_us_gaap_concepts(companyfacts, RESTRICTED_CASH_ANY_CONCEPTS)
+                    else "sec_concept_absent"
+                )
+                marketable_missing_reason = (
+                    "sec_concept_unavailable"
+                    if _has_any_us_gaap_concepts(companyfacts, MARKETABLE_SECURITY_ANY_CONCEPTS)
+                    else "sec_concept_absent"
+                )
+                revolver_missing_reason = (
+                    "sec_concept_unavailable"
+                    if _has_any_us_gaap_concepts(companyfacts, REVOLVER_UNDRAWN_EXACT_CONCEPTS)
+                    else "sec_concept_absent"
+                )
+                lease_missing_reason = (
+                    "sec_concept_unavailable"
+                    if _has_any_us_gaap_concepts(
+                        companyfacts,
+                        OPERATING_LEASE_ANY_CONCEPTS
+                        | FINANCE_LEASE_ANY_CONCEPTS
+                        | LEASE_AGGREGATE_TOTAL_EXACT_CONCEPTS,
+                    )
+                    else "sec_concept_absent"
+                )
+                metric_builds = [
+                    ("liquidity.restricted_cash_sec_exact", restricted_value, restricted_meta, restricted_missing_reason, "usd"),
+                    ("liquidity.marketable_securities_sec_exact", marketable_value, marketable_meta, marketable_missing_reason, "usd"),
+                    ("liquidity.revolver_undrawn_sec_exact", revolver_value, revolver_meta, revolver_missing_reason, "usd"),
+                    ("capital_structure.lease_liabilities_sec_exact", lease_value, lease_meta, lease_missing_reason, "usd"),
+                ]
+
+            for metric_name, value, meta, missing_reason, unit in metric_builds:
+                if value is None:
+                    node = _feature_template(
+                        metric_name=metric_name,
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=str(companyfacts_path),
+                        support_mode="unsupported",
+                        value=None,
+                        unit=unit,
+                        missing_reason=missing_reason,
+                        component_breakdown=(
+                            {"companyfacts_path": str(companyfacts_path)}
+                            if meta is None
+                            else {**meta, "companyfacts_path": str(companyfacts_path)}
+                        ),
+                        quality_flags=[missing_reason],
+                    )
+                else:
+                    node = _feature_template(
+                        metric_name=metric_name,
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=str(companyfacts_path),
+                        support_mode="exact",
+                        value=float(value),
+                        unit=unit,
+                        missing_reason=None,
+                        component_breakdown=meta,
+                        quality_flags=None,
+                    )
+                features[metric_name] = node
+                counters[f"{metric_name}:{node['support_mode']}"] += 1
+
+            restricted_node = features.get("liquidity.restricted_cash_sec_exact") or {}
+            cash_eq_node = features.get("liquidity.cash_and_equivalents_statement_direct") or {}
+            cash_sti_node = features.get("liquidity.cash_and_short_term_investments_provider_direct") or {}
+            marketable_node = features.get("liquidity.marketable_securities_sec_exact") or {}
+            repaired_restricted_node = _repair_restricted_cash_from_total_cash_reconciliation(
+                restricted_node=restricted_node,
+                cash_eq_node=cash_eq_node,
+                cash_sti_node=cash_sti_node,
+                marketable_node=marketable_node,
+                companyfacts=companyfacts,
+                companyfacts_path=companyfacts_path,
+                as_of_date=as_of_date,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+            )
+            if repaired_restricted_node is not None:
+                prior_mode = _metric_support(restricted_node)
+                counters[f"liquidity.restricted_cash_sec_exact:{prior_mode}"] -= 1
+                features["liquidity.restricted_cash_sec_exact"] = repaired_restricted_node
+                counters[
+                    f"liquidity.restricted_cash_sec_exact:{repaired_restricted_node['support_mode']}"
+                ] += 1
+
+            cash_sti_node = features.get("liquidity.cash_and_short_term_investments_provider_direct") or {}
+            cash_eq_node = features.get("liquidity.cash_and_equivalents_statement_direct") or {}
+            marketable_node = features.get("liquidity.marketable_securities_sec_exact") or {}
+            repaired_node = _repair_cash_sti_from_statement_cash(
+                cash_sti_node=cash_sti_node,
+                cash_eq_node=cash_eq_node,
+                marketable_node=marketable_node,
+                companyfacts_path=companyfacts_path,
+                as_of_date=as_of_date,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+            )
+            if repaired_node is not None:
+                features["liquidity.cash_and_short_term_investments_provider_direct"] = repaired_node
+
+            total_debt_value = _metric_value(features.get("capital_structure.total_debt_provider_direct"))
+            total_debt_support = _metric_support(features.get("capital_structure.total_debt_provider_direct"))
+            cash_sti_value = _metric_value(features.get("liquidity.cash_and_short_term_investments_provider_direct"))
+            cash_sti_support = _metric_support(features.get("liquidity.cash_and_short_term_investments_provider_direct"))
+            ebitda_value = _metric_value(features['operating.ebitda_ltm_provider_direct'])
+            ebitda_support = _metric_support(features.get("operating.ebitda_ltm_provider_direct"))
+            net_debt_value = None if total_debt_value is None or cash_sti_value is None else total_debt_value - cash_sti_value
+
+            features["capital_structure.net_debt_standardized"] = _build_combo_metric(
+                metric_name="capital_structure.net_debt_standardized",
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=str(companyfacts_path),
+                unit="usd",
+                numerator=net_debt_value,
+                denominator=None,
+                extra_components={
+                    "total_debt_provider_direct": total_debt_value,
+                    "cash_and_short_term_investments_provider_direct": cash_sti_value,
+                },
+                component_supports={
+                    "total_debt_provider_direct": total_debt_support,
+                    "cash_and_short_term_investments_provider_direct": cash_sti_support,
+                },
+                formula="total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+                allow_numerator_only=True,
+            )
+            features["capital_structure.net_leverage_standardized"] = _build_combo_metric(
+                metric_name="capital_structure.net_leverage_standardized",
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=str(companyfacts_path),
+                unit="x",
+                numerator=net_debt_value,
+                denominator=ebitda_value,
+                extra_components={
+                    "net_debt_standardized": net_debt_value,
+                    "ebitda_ltm_provider_direct": ebitda_value,
+                },
+                component_supports={
+                    "net_debt_standardized": _metric_support(features.get("capital_structure.net_debt_standardized")),
+                    "ebitda_ltm_provider_direct": ebitda_support,
+                },
+                formula="net_debt_standardized / ebitda_ltm_provider_direct",
+            )
+
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        summary = {}
+        for metric_name in [
+            "liquidity.restricted_cash_sec_exact",
+            "liquidity.marketable_securities_sec_exact",
+            "liquidity.revolver_undrawn_sec_exact",
+            "capital_structure.lease_liabilities_sec_exact",
+        ]:
+            summary[metric_name] = {
+                "exact": counters[f"{metric_name}:exact"],
+                "unsupported": counters[f"{metric_name}:unsupported"],
+            }
+        Path(args.summary_out).write_text(json.dumps(summary, indent=2))
+
+    print(f"Wrote SEC companyfacts components -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()
