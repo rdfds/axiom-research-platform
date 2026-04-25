@@ -20,7 +20,7 @@ from .company_state_builder import CompanyStateSnapshot
 
 
 class SnapshotStore:
-    def __init__(self, root: str | Path = "data/company_state_snapshots", temp_dir: str | Path | None = None) :
+    def __init__(self, root: str | Path = "data/company_state_snapshots", temp_dir: str | Path | None = None) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         if temp_dir is None:
