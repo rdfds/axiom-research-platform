@@ -309,3 +309,31 @@ def normalize_action_record(row: Dict[str, Any]) :
     }
 
 
+def augment_action_outcomes_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        out = df.copy()
+        for col in (
+            "raw_action_type",
+            "raw_action_subtype",
+            "normalized_action_family",
+            "normalized_action_subfamily",
+            "normalized_action_id",
+            "normalization_level",
+            "normalization_confidence",
+            "family_scale_bucket",
+            "normalization_rules_version",
+        ):
+            if col not in out.columns:
+                out[col] = pd.Series(dtype="object")
+        return out
+
+    out = df.copy()
+    out["raw_action_type"] = out.get("action_type")
+    out["raw_action_subtype"] = out.get("action_subtype")
+    normalized = pd.DataFrame(
+        [normalize_action_record(record) for record in out.to_dict(orient="records")],
+        index=out.index,
+    )
+    for col in normalized.columns:
+        out[col] = normalized[col]
+    return out
