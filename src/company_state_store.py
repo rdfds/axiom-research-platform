@@ -120,7 +120,7 @@ class SnapshotStore:
         last_snapshot_time: Optional[str] = None
         for snap in snapshots:
             row = self._to_snapshot_dict(snap)
-            cid = row['company_id']
+            cid = row.get("company_id")
             if cid is None:
                 raise RuntimeError("snapshot missing company_id for keyed write")
             cid = str(cid)
