@@ -114,7 +114,7 @@ def _portfolio_divestiture_action_id(row: Dict[str, Any]) -> str:
     percent_divested = _to_float(row.get("percent_divested"))
     if percent_divested is None:
         percent_divested = _to_float(row.get("percent_sold"))
-    action_subtype = _norm_text(row['action_subtype'])
+    action_subtype = _norm_text(row.get("action_subtype"))
     if percent_divested is not None:
         if percent_divested >= 0.95:
             return "portfolio.divestiture_full"
