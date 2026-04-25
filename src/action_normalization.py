@@ -170,3 +170,142 @@ def _refinancing_subfamily(action_subtype: Any) -> str:
     return "refinancing"
 
 
+def normalize_action_record(row: Dict[str, Any]) :
+    raw_action_type = row.get("action_type")
+    raw_action_subtype = row.get("action_subtype")
+    action_type = _norm_text(raw_action_type)
+    action_subtype = _norm_text(raw_action_subtype)
+    scale_bucket = _scale_bucket(row)
+
+    if action_type == "dividend_increase" and action_subtype == "dividend_increase":
+        return _exact_result(
+            family="capital_return",
+            subfamily="dividend_increase",
+            action_id="capital_return.dividend_increase",
+        )
+    if action_type == "dividend_cut" and action_subtype == "dividend_cut":
+        return _exact_result(
+            family="capital_return",
+            subfamily="dividend_cut",
+            action_id="capital_return.dividend_cut",
+        )
+    if action_type == "dividend_initiate" and action_subtype == "dividend_initiate":
+        return _exact_result(
+            family="capital_return",
+            subfamily="dividend_initiate",
+            action_id="capital_return.dividend_initiate",
+        )
+    if action_type == "dividend_special" and action_subtype in {"special", "liquidating", "irregular"}:
+        return _exact_result(
+            family="capital_return",
+            subfamily="special_dividend",
+            action_id="capital_return.special_dividend",
+        )
+    if action_type == "stock_split":
+        return _exact_result(
+            family="governance",
+            subfamily="stock_split",
+            action_id="governance.stock_split",
+        )
+    if action_type == "reverse_split":
+        return _exact_result(
+            family="governance",
+            subfamily="reverse_split",
+            action_id="governance.reverse_split",
+        )
+    if action_type == "acquisition" and action_subtype == "acquisition_lbo":
+        return _exact_result(
+            family="mna",
+            subfamily="platform_lbo",
+            action_id="mna.go_private_lbo",
+            family_scale_bucket=scale_bucket,
+        )
+    if action_type == "equity_offering_public_proxy" and action_subtype == "share_issuance_proxy":
+        return _exact_result(
+            family="capital_structure",
+            subfamily="equity_issuance",
+            action_id="capital_structure.equity_issuance",
+            family_scale_bucket=scale_bucket,
+        )
+
+    if action_type == "buyback":
+        return _family_result(
+            family="capital_return",
+            subfamily="buyback",
+            family_scale_bucket=scale_bucket,
+            action_id="capital_return.open_market_buyback",
+        )
+
+    if action_type == "bond_issuance":
+        return _family_result(
+            family="capital_structure",
+            subfamily="debt_bond",
+            family_scale_bucket=scale_bucket,
+            action_id="capital_structure.new_debt_issuance",
+        )
+
+    if action_type == "loan_issuance":
+        if any(token in action_subtype for token in ("revolver", "line", "facility", "letter of credit")):
+            subfamily = "revolver"
+            action_id = "capital_structure.revolver_draw_or_resize"
+        else:
+            subfamily = "debt_loan"
+            action_id = "capital_structure.new_debt_issuance"
+        return _family_result(
+            family="capital_structure",
+            subfamily=subfamily,
+            family_scale_bucket=scale_bucket,
+            action_id=action_id,
+        )
+
+    if action_type == "loan_refinancing":
+        return _family_result(
+            family="capital_structure",
+            subfamily=_refinancing_subfamily(raw_action_subtype),
+            family_scale_bucket=scale_bucket,
+            action_id="capital_structure.refinancing",
+        )
+
+    if action_type == "acquisition":
+        if action_subtype == "disclosed dollar value deal":
+            subfamily = "platform_disclosed"
+        elif action_subtype == "undisclosed dollar value deal":
+            subfamily = "platform_undisclosed"
+        elif action_subtype == "acquisition_merger":
+            subfamily = "platform_merger"
+        elif action_subtype in {"stake purchases deal", "repurchases deal"}:
+            subfamily = "tuck_in_incremental"
+        else:
+            subfamily = "acquisition_structured"
+        return _family_result(
+            family="mna",
+            subfamily=subfamily,
+            family_scale_bucket=scale_bucket,
+            action_id=_mna_acquisition_action_id(action_subtype, scale_bucket),
+        )
+
+    if action_type == "divestiture":
+        return _family_result(
+            family="portfolio",
+            subfamily="divestiture",
+            family_scale_bucket=scale_bucket,
+            action_id=_portfolio_divestiture_action_id(row),
+        )
+
+    if action_type == "dividend_regular":
+        return _family_result(
+            family="capital_return",
+            subfamily="dividend_regular",
+        )
+
+    return {
+        "normalized_action_family": None,
+        "normalized_action_subfamily": None,
+        "normalized_action_id": None,
+        "normalization_level": "unknown",
+        "normalization_confidence": 0.0,
+        "family_scale_bucket": scale_bucket,
+        "normalization_rules_version": NORMALIZATION_RULES_VERSION,
+    }
+
+

@@ -250,3 +250,37 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    market_cache_path = Path(args.market_cache_path) if args.market_cache_path else _infer_market_cache_path(artifact_path)
+    if market_cache_path is None:
+        raise SystemExit("Could not infer market cache parquet path from artifact provenance.")
+
+    price_cache = _load_market_cache(market_cache_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            features = row.get("features") or {}
+            ret_node = features.get("market.total_return_3m_standardized") or features.get("market.total_return_12m_standardized") or {}
+            permno = str(((ret_node.get("component_breakdown") or {}).get("permno") or "")).strip() or None
+            frame = price_cache.get(permno) if permno is not None else None
+            metrics = _price_metrics(frame) if frame is not None else {}
+            repair_price_history_metrics(
+                features=features,
+                price_metrics=metrics,
+                permno=permno,
+                computed_at=computed_at,
+            )
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        summary_path = Path(args.summary_out)
+        summary_path.write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired price-history metrics -> {out_path}")
+
+
