@@ -20,3 +20,12 @@ def test_metric_methodology_registry_is_well_formed():
     assert errors == []
 
 
+def test_metric_methodology_registry_uses_fitch_for_core_credit_metrics():
+    registry = MetricMethodologyRegistry()
+    for metric_id in CORE_FITCH_METRICS:
+        entry = registry.metric(metric_id)
+        assert entry["canonical_owner_id"] == "fitch_ratings"
+        assert entry["market_layer_status"] == "keep"
+        assert entry["canonical_classification"] == "canonical_external"
+
+
