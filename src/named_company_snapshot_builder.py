@@ -25,3 +25,14 @@ def _default_entity_table_path() -> Path:
     return resolve_data_path(ROOT / "data" / "inputs_layer" / "entity.parquet")
 
 
+def _default_taxonomy_reference_path() -> Path:
+    return resolve_data_path(ROOT / "data" / "refinitiv" / "fundamentals_all.parquet")
+
+
+def _default_issuer_ratings_path() -> Path:
+    return resolve_data_path(ROOT / "data" / "inputs_layer" / "issuer_rating_history.parquet")
+
+
+def _default_companyfacts_root() -> Optional[Path]:
+    return resolve_companyfacts_root(ROOT / "data" / "sec" / "companyfacts")
+

@@ -18,7 +18,7 @@ from src.named_company_metric_benchmarks import (
 )
 
 
-def main() :
+def main() -> int:
     parser = argparse.ArgumentParser(description='Generate named-company metric benchmark packets.')
     parser.add_argument('--targets-path', default=str(DEFAULT_TARGETS_PATH), help='Path to named company target config.')
     parser.add_argument('--snapshot-root', default=str(DEFAULT_SNAPSHOT_ROOT), help='Snapshot root to read benchmark packets from.')
