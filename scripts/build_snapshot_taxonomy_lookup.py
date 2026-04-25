@@ -47,3 +47,25 @@ def _parse_snapshot_taxonomy(path: Path) -> Dict[str, str] | None:
     }
 
 
+def _taxonomy_record_value(record: Any) -> str:
+    value = _extract_metric_value(record)
+    return str(value or "").strip()
+
+
+def _catalog_row_sort_key(
+    sector_name: str,
+    subsector_name: str,
+    *,
+    support_mode: str,
+    confidence: float,
+    as_of_time: str,
+) -> Tuple[int, int, float, str]:
+    support_rank = 1 if str(support_mode or "").strip().lower() == "exact" else 0
+    return (
+        int(bool(sector_name) and bool(subsector_name)),
+        support_rank,
+        float(confidence),
+        str(as_of_time or ""),
+    )
+
+
