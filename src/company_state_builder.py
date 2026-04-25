@@ -60,3 +60,55 @@ def _smart_metric_registry_path() -> Path:
     return ROOT / "out" / "smart_metric_registry_v1.json"
 
 
+def _market_availability_overrides_path() -> Path:
+    env = str(os.environ.get("AXIOM_MARKET_AVAILABILITY_OVERRIDES_PATH", "") or "").strip()
+    if env:
+        return Path(env)
+    return ROOT / "configs" / "liquidity_market_availability_overrides.json"
+
+EXACT_SUPPORT_MODES = {"exact", "exact_not_applicable", "exact_structural_zero"}
+PROXY_COMPONENT_SUPPORT_FLAGS = {
+    "decision_uses_reported_view",
+    "lease_adjustment_missing_assumed_zero",
+    "lease_adjusted_denominator_fallback_to_ebitda",
+    "lease_adjusted_denominator_missing_lease_expense",
+    "lease_expense_estimated_from_liabilities",
+    "lease_fixed_charge_proxy_from_liability",
+    "marketable_securities_included_at_par_proxy",
+    "minimum_cash_policy_proxy_not_applied_to_market_view",
+    "mixed_quarter_value_basis",
+    "pension_excluded_from_debt",
+    "preferred_equity_excluded_pending_hybrid_review",
+    "provider_fcf_fallback",
+    "quarter_value_derived_from_ytd_delta",
+    "reference_ebitda_fallback",
+    "reference_total_debt_fallback",
+    "reference_total_debt_used_for_completeness",
+    "recent_total_debt_peak_used_for_completeness",
+    "restricted_cash_missing_assumed_zero",
+    "supplier_finance_included_without_payables_extension_test",
+    "convertibles_excluded_pending_hybrid_review",
+}
+NON_PROXY_DIAGNOSTIC_FLAGS = {
+    "companyfacts_cash_fresher",
+    "companyfacts_total_debt_fresher",
+    "fixed_charge_coverage_preferred",
+    "latest_recurring_dividend_outside_active_window",
+    "multiple_price_series_candidates",
+    "no_recurring_dividend_events_in_history",
+    "no_strategic_actions_in_window",
+    "non_price_series_filtered",
+    "pe_history_unavailable",
+    "price_shares_fallback",
+    "provider_market_cap_missing",
+    "reference_market_cap_fallback",
+    "reference_market_cap_preferred_over_stale_price_shares",
+    "shares_basic_fallback",
+}
+
+
+# -------------------------------
+# Data classes / schemas
+# -------------------------------
+
+

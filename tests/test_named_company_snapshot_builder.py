@@ -14,3 +14,8 @@ def _write_json(path: Path, payload) -> None:
     path.write_text(json.dumps(payload, indent=2))
 
 
+def _write_bytes(path: Path, payload: bytes = b"par1") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+
+

@@ -36,3 +36,10 @@ def _default_issuer_ratings_path() -> Path:
 def _default_companyfacts_root() -> Optional[Path]:
     return resolve_companyfacts_root(ROOT / "data" / "sec" / "companyfacts")
 
+def _clean_case_ids(case_ids: Optional[Iterable[str]]) -> Optional[set[str]]:
+    if case_ids is None:
+        return None
+    values = {str(case_id).strip() for case_id in case_ids if str(case_id).strip()}
+    return values or None
+
+
