@@ -69,3 +69,52 @@ def _catalog_row_sort_key(
     )
 
 
+def _parse_snapshot_catalog_taxonomy(path: Path) -> List[Dict[str, str]]:
+    rows_by_company: Dict[str, Tuple[Tuple[int, int, float, str], Dict[str, str]]] = {}
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt") as handle:
+        for line in handle:
+            try:
+                payload = json.loads(line)
+            except Exception:
+                continue
+            company_id = str(payload['company_id'] or "").strip()
+            if not company_id:
+                continue
+            features = payload.get("features") if isinstance(payload, dict) else None
+            features = features if isinstance(features, dict) else {}
+            sector_record = features.get("taxonomy.sector")
+            subsector_record = features.get("taxonomy.subsector")
+            sector_name = _taxonomy_record_value(sector_record)
+            subsector_name = _taxonomy_record_value(subsector_record)
+            if not sector_name and not subsector_name:
+                continue
+            confidence = 0.0
+            for record in (sector_record, subsector_record):
+                try:
+                    confidence = max(confidence, float((record or {}).get("confidence") or 0.0))
+                except Exception:
+                    continue
+            support_mode = str(
+                (sector_record or {}).get("support_mode")
+                or (subsector_record or {}).get("support_mode")
+                or ""
+            ).strip()
+            sort_key = _catalog_row_sort_key(
+                sector_name,
+                subsector_name,
+                support_mode=support_mode,
+                confidence=confidence,
+                as_of_time=str(payload.get("as_of_time") or ""),
+            )
+            row = {
+                "company_id": company_id,
+                "taxonomy.sector": sector_name,
+                "taxonomy.subsector": subsector_name,
+            }
+            existing = rows_by_company.get(company_id)
+            if existing is None or sort_key > existing[0]:
+                rows_by_company[company_id] = (sort_key, row)
+    return [row for _, row in rows_by_company.values()]
+
+
