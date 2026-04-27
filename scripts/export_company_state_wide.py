@@ -35,3 +35,5 @@ def main() -> None:
     print(f"Saved wide CompanyState -> {out} ({len(wide):,} entities)")
 
 
+if __name__ == "__main__":
+    main()

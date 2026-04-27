@@ -1864,7 +1864,7 @@ def main() -> None:
             total_debt_support = _metric_support(features.get("capital_structure.total_debt_provider_direct"))
             cash_sti_value = _metric_value(features.get("liquidity.cash_and_short_term_investments_provider_direct"))
             cash_sti_support = _metric_support(features.get("liquidity.cash_and_short_term_investments_provider_direct"))
-            ebitda_value = _metric_value(features['operating.ebitda_ltm_provider_direct'])
+            ebitda_value = _metric_value(features.get("operating.ebitda_ltm_provider_direct"))
             ebitda_support = _metric_support(features.get("operating.ebitda_ltm_provider_direct"))
             net_debt_value = None if total_debt_value is None or cash_sti_value is None else total_debt_value - cash_sti_value
 
