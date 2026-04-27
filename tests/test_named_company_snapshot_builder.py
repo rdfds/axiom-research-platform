@@ -19,3 +19,7 @@ def _write_bytes(path: Path, payload: bytes = b"par1") -> None:
     path.write_bytes(payload)
 
 
+def test_required_fact_years_uses_inclusive_lookback():
+    assert required_fact_years("2026-02-28", 5) == [2022, 2023, 2024, 2025, 2026]
+
+

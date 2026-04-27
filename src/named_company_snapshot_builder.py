@@ -47,3 +47,9 @@ def _as_of_year(as_of_date: str) -> int:
     return int(str(as_of_date).split("-", 1)[0])
 
 
+def required_fact_years(as_of_date: str, lookback_years: int = 5) -> List[int]:
+    year = _as_of_year(as_of_date)
+    start_year = max(2000, year - max(1, lookback_years) + 1)
+    return list(range(start_year, year + 1))
+
+
