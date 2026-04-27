@@ -70,3 +70,20 @@ def _feature_record(
     }
 
 
+def _reference(
+    artifact_type: str,
+    artifact_id: str,
+    source: Optional[str],
+    published_at: Optional[str] = None,
+    ingested_at: Optional[str] = None,
+) -> dict:
+    return {
+        "artifact_type": artifact_type,
+        "artifact_id": artifact_id,
+        "source": source,
+        "published_at": published_at,
+        "ingested_at": ingested_at,
+        "hash": None,
+    }
+
+

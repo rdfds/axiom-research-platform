@@ -15,3 +15,9 @@ def _default_company_state_input_source_registry_path() -> Path:
         return Path(env)
     return ROOT / "configs" / "metric_methodologies" / "company_state_input_source_registry_v1.json"
 
+_INPUT_LAYER_BUCKET_BY_DECISION = {
+    "adopt_exact_external_methodology": "strict_market_defined",
+    "keep_externally_anchored_house_formula": "secondary_externally_anchored",
+    "retain_internal_inference": "internal_inference",
+}
+

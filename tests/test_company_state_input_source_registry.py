@@ -33,3 +33,23 @@ def _static_feature_names() -> set[str]:
     return names
 
 
+def _dynamic_feature_names() -> set[str]:
+    return {
+        "macro.sp500_pe_ttm",
+        "macro.sp500_pe_ttm_percentile_history",
+        "macro.us10y_treasury_yield",
+        "macro.us10y_treasury_yield_percentile_history",
+        "macro.us_ig_oas",
+        "macro.us_ig_oas_percentile_history",
+        "macro.us_hy_all_in_yield",
+        "macro.us_hy_all_in_yield_percentile_history",
+        "macro.real_gdp_growth_yoy",
+        "macro.real_gdp_growth_yoy_percentile_history",
+        "strategic.intent.return_capital_priority",
+        "strategic.intent.deleveraging_priority",
+        "strategic.intent.pursue_mna_priority",
+        "strategic.intent.focus_on_core",
+        "strategic.intent.restructure",
+    }
+
+
