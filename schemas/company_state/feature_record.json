@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FeatureRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string"},
+    "value": {"type": ["number", "null"]},
+    "unit": {"type": ["string", "null"]},
+    "computed_at": {"type": "string", "format": "date-time"},
+    "as_of_time": {"type": "string", "format": "date-time"},
+    "window": {"type": ["object", "null"]},
+    "confidence": {"type": ["number", "null"]},
+    "provenance": {
+      "type": "array",
+      "items": {"$ref": "input_reference.json"}
+    },
+    "missing_reason": {"type": ["string", "null"]},
+    "fallback_used": {"type": ["string", "null"]}
+  },
+  "required": ["name", "computed_at", "as_of_time", "provenance"]
+}

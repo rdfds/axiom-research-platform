@@ -87,3 +87,12 @@ def _reference(
     }
 
 
+def _load_snapshots(path: Path) -> List[dict]:
+    out: List[dict] = []
+    with path.open("r") as f:
+        for line in f:
+            if line.strip():
+                out.append(json.loads(line))
+    return out
+
+

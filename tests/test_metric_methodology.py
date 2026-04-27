@@ -29,3 +29,20 @@ def test_metric_methodology_registry_uses_fitch_for_core_credit_metrics():
         assert entry["canonical_classification"] == "canonical_external"
 
 
+def test_metric_methodology_registry_demotes_internal_only_metrics():
+    registry = MetricMethodologyRegistry()
+
+    available = registry.metric("liquidity.available_for_actions")
+    assert available["canonical_owner_id"] == "axiom_internal"
+    assert available["market_layer_status"] == "rename"
+    assert available["recommended_metric_name"] == "liquidity.readily_available_liquidity"
+
+    runway = registry.metric("liquidity.runway_months")
+    assert runway["canonical_classification"] == "internal_only"
+    assert runway["market_layer_status"] == "retire"
+
+    refi = registry.metric("capital_structure.refi_pressure_flag")
+    assert refi["canonical_classification"] == "internal_only"
+    assert refi["market_layer_status"] == "retire"
+
+
