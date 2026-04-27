@@ -96,3 +96,11 @@ def _load_snapshots(path: Path) -> List[dict]:
     return out
 
 
+def _write_snapshots(path: Path, snapshots: List[dict]) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w") as f:
+        for s in snapshots:
+            f.write(json.dumps(s) + "\n")
+    tmp.replace(path)
+
+

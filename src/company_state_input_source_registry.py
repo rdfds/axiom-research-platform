@@ -21,3 +21,19 @@ _INPUT_LAYER_BUCKET_BY_DECISION = {
     "retain_internal_inference": "internal_inference",
 }
 
+_INPUT_LAYER_BUCKET_REASON = {
+    "strict_market_defined": (
+        "This metric belongs to the strict market-defined input layer because it follows a named trusted "
+        "external methodology, filing-native definition, or standardized public-market definition."
+    ),
+    "secondary_externally_anchored": (
+        "This metric remains in the secondary externally anchored layer because it uses trusted external raw "
+        "data but still requires a documented deterministic Axiom normalization step."
+    ),
+    "internal_inference": (
+        "This metric remains in the internal inference layer because no single trusted external definition "
+        "exists for the final metric."
+    ),
+}
+
+
