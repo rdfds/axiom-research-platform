@@ -45,3 +45,28 @@ def _feature_value(snapshot: dict, name: str) -> Any:
     return snapshot.get("features", {}).get(name, {}).get("value")
 
 
+def _feature_record(
+    name: str,
+    value: Any,
+    unit: str,
+    as_of_time: str,
+    confidence: Optional[float],
+    provenance: List[dict],
+    missing_reason: Optional[str],
+    window: Optional[Dict[str, Any]] = None,
+    fallback_used: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "value": value,
+        "unit": unit,
+        "computed_at": _now_iso(),
+        "as_of_time": as_of_time,
+        "window": window,
+        "confidence": confidence,
+        "provenance": provenance,
+        "missing_reason": missing_reason,
+        "fallback_used": fallback_used,
+    }
+
+
