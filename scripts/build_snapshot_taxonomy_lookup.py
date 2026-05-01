@@ -118,3 +118,34 @@ def _parse_snapshot_catalog_taxonomy(path: Path) -> List[Dict[str, str]]:
     return [row for _, row in rows_by_company.values()]
 
 
+def main() -> None:
+    args = _parse_args()
+    snapshot_root = Path(args.snapshot_root) if args.snapshot_root else None
+    snapshot_catalog_path = Path(args.snapshot_catalog_path) if args.snapshot_catalog_path else None
+    if snapshot_root is None and snapshot_catalog_path is None:
+        raise SystemExit("Provide --snapshot-root and/or --snapshot-catalog-path")
+    out_path = Path(args.out_path)
+    rows: List[Dict[str, str]] = []
+    if snapshot_root is not None and snapshot_root.exists():
+        snapshot_paths = sorted(snapshot_root.glob("company_id=*.json"))
+        with ThreadPoolExecutor(max_workers=max(1, int(args.workers))) as executor:
+            for row in executor.map(_parse_snapshot_taxonomy, snapshot_paths):
+                if row:
+                    rows.append(row)
+    if snapshot_catalog_path is not None and snapshot_catalog_path.exists():
+        rows.extend(_parse_snapshot_catalog_taxonomy(snapshot_catalog_path))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).drop_duplicates(subset=["company_id"]).to_parquet(out_path, index=False)
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "snapshot_root": str(snapshot_root) if snapshot_root is not None else "",
+                "snapshot_catalog_path": str(snapshot_catalog_path) if snapshot_catalog_path is not None else "",
+                "out_path": str(out_path),
+                "row_count": len(rows),
+            }
+        )
+    )
+
+
