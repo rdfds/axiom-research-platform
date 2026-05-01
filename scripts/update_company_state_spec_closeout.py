@@ -104,3 +104,18 @@ def _write_snapshots(path: Path, snapshots: List[dict]) -> None:
     tmp.replace(path)
 
 
+def _choose_sector_col(df: pd.DataFrame) -> Optional[str]:
+    for c in [
+        "gics_sector",
+        "sector",
+        "industry",
+        "gics_industry",
+        "industry_group",
+        "sic",
+        "naics",
+    ]:
+        if c in df.columns:
+            return c
+    return None
+
+

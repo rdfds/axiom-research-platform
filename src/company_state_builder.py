@@ -112,3 +112,125 @@ NON_PROXY_DIAGNOSTIC_FLAGS = {
 # -------------------------------
 
 
+@dataclass
+class InputReference:
+    artifact_type: str
+    artifact_id: str
+    source: Optional[str]
+    published_at: Optional[str]
+    ingested_at: Optional[str]
+    hash: Optional[str]
+
+
+@dataclass
+class FeatureRecord:
+    name: str
+    value: Any
+    unit: Optional[str]
+    computed_at: str
+    as_of_time: str
+    window: Optional[Dict[str, Any]]
+    confidence: Optional[float]
+    provenance: List[InputReference]
+    missing_reason: Optional[str]
+    fallback_used: Optional[str]
+    metric_policy_id: Optional[str] = None
+    market_owner: Optional[str] = None
+    primary_source_basis: Optional[str] = None
+    methodology_registry_id: Optional[str] = None
+    methodology_metric_id: Optional[str] = None
+    canonical_owner_id: Optional[str] = None
+    canonical_owner_name: Optional[str] = None
+    canonical_classification: Optional[str] = None
+    market_layer_status: Optional[str] = None
+    current_alignment_status: Optional[str] = None
+    primary_source_document_id: Optional[str] = None
+    recommended_metric_name: Optional[str] = None
+    input_source_registry_id: Optional[str] = None
+    input_source_owner_id: Optional[str] = None
+    input_source_owner_name: Optional[str] = None
+    input_source_classification: Optional[str] = None
+    input_source_formula_basis: Optional[str] = None
+    input_source_alignment_status: Optional[str] = None
+    input_source_document_ids: Optional[List[str]] = None
+    definition_requirement: Optional[str] = None
+    definition_requirement_reason: Optional[str] = None
+    methodology_execution_decision: Optional[str] = None
+    methodology_execution_reason: Optional[str] = None
+    input_layer_bucket: Optional[str] = None
+    input_layer_bucket_reason: Optional[str] = None
+    strict_market_defined: Optional[bool] = None
+    archetype: Optional[str] = None
+    sector: Optional[str] = None
+    subsector: Optional[str] = None
+    override_level_applied: Optional[str] = None
+    support_mode: Optional[str] = None
+    applicability_status: Optional[str] = None
+    component_breakdown: Optional[Dict[str, Any]] = None
+    quality_flags: Optional[List[str]] = None
+    view_type: Optional[str] = None
+
+
+def _alias_feature_record(
+    source: FeatureRecord,
+    *,
+    name: str,
+    value: Any,
+    unit: Optional[str] = None,
+    primary_source_basis: Optional[str] = None,
+    component_breakdown: Optional[Dict[str, Any]] = None,
+    extra_quality_flags: Optional[List[str]] = None,
+    missing_reason: Optional[str] = None,
+) -> FeatureRecord:
+    quality_flags = list(source.quality_flags or [])
+    for flag in extra_quality_flags or []:
+        if flag not in quality_flags:
+            quality_flags.append(flag)
+    return replace(
+        source,
+        name=name,
+        value=value,
+        unit=unit if unit is not None else source.unit,
+        primary_source_basis=primary_source_basis if primary_source_basis is not None else source.primary_source_basis,
+        component_breakdown=component_breakdown if component_breakdown is not None else source.component_breakdown,
+        quality_flags=quality_flags or None,
+        missing_reason=missing_reason,
+    )
+
+
+@dataclass
+class ConstraintObject:
+    name: str
+    value: Any
+    hardness: str  # "hard" or "soft"
+    confidence: Optional[float]
+    valid_from: Optional[str]
+    valid_to: Optional[str]
+    evidence: List[InputReference]
+
+
+@dataclass
+class PeerSet:
+    peer_set_id: str
+    members: List[str]
+    method: str
+    version: int
+
+
+@dataclass
+class CompanyStateSnapshot:
+    snapshot_id: str
+    company_id: str
+    as_of_time: str
+    features: Dict[str, Dict[str, Any]]
+    regime: Dict[str, Any]
+    constraint_set: Dict[str, List[Dict[str, Any]]]
+    peer_set: Dict[str, Any]
+    provenance: Dict[str, Any]
+
+
+# -------------------------------
+# Utilities
+# -------------------------------
+
+
