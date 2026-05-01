@@ -89,7 +89,7 @@ class MetricMethodologyRegistry:
                 errors.append(f"{metric_id}: invalid current_alignment_status {entry.get('current_alignment_status')}")
             if not isinstance(entry.get("code_anchors"), list) or not entry.get("code_anchors"):
                 errors.append(f"{metric_id}: code_anchors must be a non-empty list")
-            if entry['canonical_owner_id'] == "fitch_ratings" and not entry.get("primary_source_document_id"):
+            if entry.get("canonical_owner_id") == "fitch_ratings" and not entry.get("primary_source_document_id"):
                 errors.append(f"{metric_id}: Fitch-owned metric missing primary_source_document_id")
             if entry.get("canonical_classification") == "internal_only" and entry.get("market_layer_status") == "keep":
                 errors.append(f"{metric_id}: internal_only metric cannot be marked keep")
