@@ -171,3 +171,10 @@ def _zscore(target: float, values: List[float]) -> Optional[float]:
     return float((target - float(arr.mean())) / std)
 
 
+def _percentile(target: float, values: List[float]) -> Optional[float]:
+    arr = np.array([v for v in values if v is not None and np.isfinite(v)], dtype=float)
+    if len(arr) < 3:
+        return None
+    return float((arr <= target).sum() / len(arr) * 100.0)
+
+

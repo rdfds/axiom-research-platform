@@ -23,3 +23,16 @@ class InputReference:
     hash: Optional[str] = None
 
 
+def _zscore(series: pd.Series) -> Optional[float]:
+    if series is None or series.empty:
+        return None
+    s = series.dropna().astype(float)
+    if len(s) < 10:
+        return None
+    mu = s.mean()
+    sd = s.std(ddof=0)
+    if sd == 0:
+        return None
+    return float((s.iloc[-1] - mu) / sd)
+
+
