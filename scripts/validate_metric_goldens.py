@@ -30,3 +30,5 @@ def main() -> int:
     return 0 if report["summary"]["failed_cases"] == 0 else 1
 
 
+if __name__ == "__main__":
+    raise SystemExit(main())
