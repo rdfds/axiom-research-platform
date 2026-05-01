@@ -53,3 +53,56 @@ def _dynamic_feature_names() -> set[str]:
     }
 
 
+def test_company_state_input_source_registry_covers_every_metric():
+    payload = json.loads(REGISTRY_PATH.read_text())
+    registry_metrics = set(payload["metrics"])
+    expected_metrics = _static_feature_names() | _dynamic_feature_names()
+
+    missing = sorted(expected_metrics - registry_metrics)
+    extra = sorted(registry_metrics - expected_metrics)
+
+    assert missing == []
+    assert extra == []
+
+
+def test_company_state_input_source_registry_has_trusted_or_explicit_internal_classification():
+    payload = json.loads(REGISTRY_PATH.read_text())
+    valid_classifications = {
+        "canonical_external",
+        "filing_native_external",
+        "external_filing_normalized",
+        "external_provider_standardized",
+        "external_raw_plus_deterministic_formula",
+        "external_methodology",
+        "external_market_benchmark",
+        "internal_derived",
+        "internal_heuristic",
+        "unsupported_placeholder",
+    }
+    for metric_id, rec in payload["metrics"].items():
+        assert rec["classification"] in valid_classifications, metric_id
+        assert rec["canonical_owner_id"] in payload["owners"], metric_id
+        assert isinstance(rec["formula_basis"], str) and rec["formula_basis"], metric_id
+        assert isinstance(rec["company_tailoring"], str) and rec["company_tailoring"], metric_id
+
+
+def test_company_state_input_source_registry_has_definition_requirement_split():
+    payload = json.loads(REGISTRY_PATH.read_text())
+    valid_requirements = {
+        "must_have_external_definition",
+        "can_be_externally_anchored",
+        "must_remain_internal_inference",
+    }
+    for metric_id, rec in payload["metrics"].items():
+        assert rec["definition_requirement"] in valid_requirements, metric_id
+        assert isinstance(rec["definition_requirement_reason"], str) and rec["definition_requirement_reason"], metric_id
+
+    metrics = payload["metrics"]
+    assert metrics["capital_structure.net_debt"]["definition_requirement"] == "must_have_external_definition"
+    assert metrics["operating.fcf_conversion"]["classification"] == "external_raw_plus_deterministic_formula"
+    assert metrics["operating.fcf_conversion"]["canonical_owner_id"] == "issuer_filing_lseg_fundamentals"
+    assert metrics["peer_context.leverage_percentile"]["definition_requirement"] == "can_be_externally_anchored"
+    assert metrics["market.credit_window_proxy"]["definition_requirement"] == "must_remain_internal_inference"
+    assert metrics["liquidity.available_for_actions"]["definition_requirement"] == "must_remain_internal_inference"
+
+
