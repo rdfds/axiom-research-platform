@@ -36,7 +36,7 @@ def _parse_snapshot_taxonomy(path: Path) -> Dict[str, str] | None:
         return None
     features = payload.get("features") if isinstance(payload, dict) else None
     features = features if isinstance(features, dict) else {}
-    sector_name = str(_extract_metric_value(features['taxonomy.sector']) or "").strip()
+    sector_name = str(_extract_metric_value(features.get("taxonomy.sector")) or "").strip()
     subsector_name = str(_extract_metric_value(features.get("taxonomy.subsector")) or "").strip()
     if not sector_name and not subsector_name:
         return None
