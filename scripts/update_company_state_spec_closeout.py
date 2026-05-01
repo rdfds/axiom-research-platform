@@ -119,3 +119,55 @@ def _choose_sector_col(df: pd.DataFrame) -> Optional[str]:
     return None
 
 
+def _build_sector_peers(entity_table_path: Optional[Path]) -> Tuple[Dict[str, str], Dict[str, List[str]]]:
+    if entity_table_path is None or not entity_table_path.exists():
+        return {}, {}
+    try:
+        ent = pd.read_parquet(entity_table_path)
+    except Exception:
+        return {}, {}
+    if "entity_id" not in ent.columns:
+        return {}, {}
+    col = _choose_sector_col(ent)
+    if col is None:
+        return {}, {}
+    ent = ent[["entity_id", col]].copy()
+    ent["entity_id"] = ent["entity_id"].astype(str)
+    ent[col] = ent[col].astype(str)
+    ent = ent.dropna(subset=[col])
+    entity_to_sector: Dict[str, str] = {}
+    sector_to_entities: Dict[str, List[str]] = {}
+    for _, row in ent.iterrows():
+        cid = str(row["entity_id"])
+        sec = str(row[col])
+        entity_to_sector[cid] = sec
+        sector_to_entities.setdefault(sec, []).append(cid)
+    return entity_to_sector, sector_to_entities
+
+
+def _peer_ids_for_snapshot(
+    snapshot: dict,
+    entity_to_sector: Dict[str, str],
+    sector_to_entities: Dict[str, List[str]],
+) -> List[str]:
+    cid = str(snapshot.get("company_id"))
+    members = snapshot.get("peer_set", {}).get("members", []) or []
+    members = [str(x) for x in members if x is not None]
+    if members:
+        return list(dict.fromkeys(members))
+    sec = entity_to_sector.get(cid)
+    if sec is None:
+        return []
+    return [x for x in sector_to_entities.get(sec, []) if x != cid]
+
+
+def _zscore(target: float, values: List[float]) -> Optional[float]:
+    arr = np.array([v for v in values if v is not None and np.isfinite(v)], dtype=float)
+    if len(arr) < 3:
+        return None
+    std = float(arr.std(ddof=0))
+    if std == 0 or not np.isfinite(std):
+        return None
+    return float((target - float(arr.mean())) / std)
+
+
