@@ -46,3 +46,9 @@ def test_metric_methodology_registry_demotes_internal_only_metrics():
     assert refi["market_layer_status"] == "retire"
 
 
+def test_metric_methodology_registry_uses_filing_native_for_maturity_wall():
+    registry = MetricMethodologyRegistry()
+    entry = registry.metric("capital_structure.maturity_wall_ratio_24m")
+    assert entry["canonical_owner_id"] == "issuer_filing_native"
+    assert entry["canonical_classification"] == "filing_native_external"
+    assert entry["market_layer_status"] == "keep"

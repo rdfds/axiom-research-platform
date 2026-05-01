@@ -1,0 +1,41 @@
+from src.metric_policy import MetricPolicyEngine
+
+
+def test_metric_policy_resolves_subsector_taxonomy():
+    engine = MetricPolicyEngine()
+    taxonomy = engine.resolve_taxonomy(
+        "ABC",
+        entity_row={
+            "sector": "Consumer Discretionary",
+            "subsector": "Specialty Retail",
+            "sic": "5331",
+        },
+        fingerprints={},
+    )
+    assert taxonomy.archetype == "lease_heavy"
+    assert taxonomy.override_level_applied == "subsector"
+    assert taxonomy.support_mode == "exact"
+
+
+def test_metric_policy_marks_financial_leverage_unsupported():
+    engine = MetricPolicyEngine()
+    taxonomy = engine.resolve_taxonomy(
+        "BANK",
+        entity_row={
+            "sector": "Financials",
+            "subsector": "Regional Banks",
+            "sic": "6021",
+        },
+        fingerprints={},
+    )
+    assert taxonomy.archetype == "financial_institution"
+    assert engine.resolve_applicability("capital_structure.net_leverage", taxonomy) == "unsupported"
+    meta = engine.metric_metadata(
+        "capital_structure.net_leverage",
+        taxonomy,
+        view_type="decision",
+    )
+    assert meta["support_mode"] == "unsupported"
+    assert meta["applicability_status"] == "unsupported"
+
+
