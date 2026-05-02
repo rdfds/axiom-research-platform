@@ -112,3 +112,20 @@ def _build_with_timeout(builder: CompanyStateBuilder, company_id: str, as_of_tim
         signal.signal(signal.SIGALRM, previous)
 
 
+def _metric_status(feature: dict[str, Any] | None) -> str:
+    if not feature:
+        return "missing_feature"
+    support_mode = feature.get("support_mode")
+    value = feature.get("value")
+    missing_reason = feature.get("missing_reason")
+    quality_flags = feature.get("quality_flags") or []
+    fallback_used = feature.get("fallback_used")
+    if support_mode:
+        return str(support_mode)
+    if value is None:
+        return str(missing_reason or "missing_value")
+    if quality_flags or fallback_used:
+        return "present_proxy"
+    return "present"
+
+
