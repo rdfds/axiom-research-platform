@@ -38,3 +38,15 @@ def _iter_full_rows(snapshot_path: Path) -> Iterable[Dict[str, Any]]:
             yield row
 
 
+def _iter_replay_rows(snapshot_root: Path) -> Iterable[Dict[str, Any]]:
+    for path in sorted(snapshot_root.rglob("*.json")):
+        row = json.loads(path.read_text())
+        row["snapshot_catalog_source"] = "replay_snapshot_cache"
+        row["snapshot_catalog_path"] = str(path)
+        yield row
+
+
+def _dedupe_key(row: Dict[str, Any]) -> Tuple[str, str]:
+    return str(row.get("company_id") or ""), str(row.get("as_of_time") or "")
+
+
