@@ -296,3 +296,68 @@ def _pick_time_col(df: pd.DataFrame) -> Optional[str]:
     )
 
 
+def _parse_companyfacts_date(value: Any) -> Optional[pd.Timestamp]:
+    if value is None:
+        return None
+    try:
+        parsed = pd.to_datetime(value, utc=True, errors="coerce")
+    except Exception:
+        return None
+    if parsed is None or pd.isna(parsed):
+        return None
+    return pd.Timestamp(parsed)
+
+
+def _companyfacts_units_map(companyfacts: Dict[str, Any], concept_name: str) -> Optional[Dict[str, Any]]:
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        facts = (companyfacts.get("facts") or {}).get(taxonomy) or {}
+        if concept_name in facts:
+            return facts[concept_name].get("units") or {}
+    return None
+
+
+def _collect_companyfacts_duration_entries(
+    companyfacts: Dict[str, Any],
+    concept_name: str,
+    as_of: pd.Timestamp,
+) -> List[Dict[str, Any]]:
+    units_map = _companyfacts_units_map(companyfacts, concept_name)
+    if not units_map:
+        return []
+    as_of_date = as_of.date()
+    rows: List[Dict[str, Any]] = []
+    for unit, entries in units_map.items():
+        if str(unit or "").upper() != "USD":
+            continue
+        for entry in entries:
+            start_ts = _parse_companyfacts_date(entry.get("start"))
+            end_ts = _parse_companyfacts_date(entry.get("end"))
+            filed_ts = _parse_companyfacts_date(entry.get("filed"))
+            value = entry.get("val")
+            if start_ts is None or end_ts is None or value is None:
+                continue
+            if end_ts.date() > as_of_date:
+                continue
+            if filed_ts is not None and filed_ts.date() > as_of_date:
+                continue
+            if (as_of_date - end_ts.date()).days > MAX_SEC_FACT_AGE_DAYS:
+                continue
+            duration_days = max(1, (end_ts.date() - start_ts.date()).days + 1)
+            rows.append(
+                {
+                    "concept": concept_name,
+                    "start": start_ts,
+                    "end": end_ts,
+                    "filed": filed_ts or end_ts,
+                    "value": float(value),
+                    "fy": entry.get("fy"),
+                    "fp": entry.get("fp"),
+                    "frame": entry.get("frame"),
+                    "form": entry.get("form"),
+                    "duration_days": duration_days,
+                }
+            )
+    rows.sort(key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    return rows
+
+
