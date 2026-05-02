@@ -52,3 +52,21 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_ciks(args: argparse.Namespace) -> list[str]:
+    raw: list[str] = []
+    if args.ciks:
+        raw.extend([c.strip() for c in str(args.ciks).split(",") if c.strip()])
+    if args.ciks_file:
+        path = Path(args.ciks_file)
+        if not path.exists():
+            raise FileNotFoundError(f"--ciks-file not found: {path}")
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                raw.extend([c.strip() for c in line.replace(",", " ").split() if c.strip()])
+    ciks = [c.zfill(10) for c in raw if c]
+    return list(dict.fromkeys(ciks))
+
+
