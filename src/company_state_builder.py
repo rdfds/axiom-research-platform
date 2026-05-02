@@ -261,3 +261,10 @@ def _null_if_na(val: Any) -> Any:
     return val
 
 
+def _pick_first_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+
