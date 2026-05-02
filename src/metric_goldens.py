@@ -46,3 +46,45 @@ def _write_parquet_if_rows(path: Path, rows: List[Dict[str, Any]]) -> None:
     pd.DataFrame(rows).to_parquet(path, index=False)
 
 
+def _synthetic_builder_for_case(case: Dict[str, Any], workdir: Path) -> CompanyStateBuilder:
+    inputs = dict(case.get("inputs") or {})
+    facts_rows = list(inputs.get("facts") or [])
+    if not facts_rows:
+        raise ValueError(f"golden_case_missing_facts:{case.get('case_id')}")
+
+    facts_path = workdir / "facts.parquet"
+    entity_path = workdir / "entity.parquet"
+    entity_identifier_path = workdir / "entity_identifier.parquet"
+    taxonomy_reference_path = workdir / "taxonomy_reference.parquet"
+    events_path = workdir / "events.parquet"
+    ownership_path = workdir / "ownership.parquet"
+    issuer_ratings_path = workdir / "issuer_ratings.parquet"
+    timeseries_path = workdir / "timeseries.parquet"
+
+    _write_parquet_if_rows(facts_path, facts_rows)
+    _write_parquet_if_rows(entity_path, list(inputs.get("entity") or []))
+    _write_parquet_if_rows(entity_identifier_path, list(inputs.get("entity_identifiers") or []))
+    _write_parquet_if_rows(taxonomy_reference_path, list(inputs.get("taxonomy_reference") or []))
+    _write_parquet_if_rows(events_path, list(inputs.get("events") or []))
+    _write_parquet_if_rows(ownership_path, list(inputs.get("ownership") or []))
+    _write_parquet_if_rows(issuer_ratings_path, list(inputs.get("issuer_ratings") or []))
+    _write_parquet_if_rows(timeseries_path, list(inputs.get("timeseries") or []))
+
+    return CompanyStateBuilder(
+        raw_timeseries_path=timeseries_path,
+        macro_timeseries_path=timeseries_path,
+        event_store_path=events_path,
+        facts_path=facts_path,
+        ownership_summary_path=ownership_path,
+        issuer_ratings_path=issuer_ratings_path,
+        entity_table_path=entity_path,
+        entity_identifier_path=entity_identifier_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+        skip_timeseries=not bool(inputs.get("timeseries")),
+        skip_macro=True,
+        skip_events=not bool(inputs.get("events")),
+        skip_peer_context=True,
+        historical_backfill_mode=bool(case.get("historical_backfill_mode", False)),
+    )
+
+
