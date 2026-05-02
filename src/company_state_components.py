@@ -36,3 +36,12 @@ def _zscore(series: pd.Series) -> Optional[float]:
     return float((s.iloc[-1] - mu) / sd)
 
 
+def _percentile(series: pd.Series) -> Optional[float]:
+    if series is None or series.empty:
+        return None
+    s = series.dropna().astype(float)
+    if len(s) < 10:
+        return None
+    return float((s.rank(pct=True).iloc[-1]) * 100.0)
+
+

@@ -178,3 +178,81 @@ def _percentile(target: float, values: List[float]) -> Optional[float]:
     return float((arr <= target).sum() / len(arr) * 100.0)
 
 
+def _load_guidance_scores(facts_path: Optional[Path], asof: str) -> Tuple[Dict[str, float], Dict[str, dict]]:
+    if facts_path is None or not facts_path.exists():
+        return {}, {}
+    con = duckdb.connect()
+    if facts_path.is_dir():
+        source = f"read_parquet('{facts_path.as_posix()}/year=*/part.parquet', union_by_name=True)"
+    else:
+        source = f"read_parquet('{facts_path.as_posix()}', union_by_name=True)"
+
+    cutoff = pd.to_datetime(asof).strftime("%Y-%m-%d %H:%M:%S")
+    query = f"""
+    SELECT
+      CAST(entity_id AS VARCHAR) AS entity_id,
+      CAST(fact_id AS VARCHAR) AS fact_id,
+      CAST(source_type AS VARCHAR) AS source_type,
+      CAST(fact_type AS VARCHAR) AS fact_type,
+      CAST(context_norm AS VARCHAR) AS context_norm,
+      try_cast(published_at AS TIMESTAMP) AS published_at,
+      try_cast(ingested_at AS TIMESTAMP) AS ingested_at
+    FROM {source}
+    WHERE (published_at IS NULL OR try_cast(published_at AS TIMESTAMP) <= TIMESTAMP '{cutoff}')
+      AND (ingested_at IS NULL OR try_cast(ingested_at AS TIMESTAMP) <= TIMESTAMP '{cutoff}')
+      AND (
+        lower(coalesce(fact_type, '')) LIKE '%guidance%'
+        OR lower(coalesce(fact_type, '')) LIKE '%revision%'
+        OR lower(coalesce(context_norm, '')) LIKE '%guidance%'
+      )
+    """
+    try:
+        df = con.execute(query).df()
+    except Exception:
+        return {}, {}
+    if df.empty:
+        return {}, {}
+
+    asof_ts = pd.to_datetime(asof, utc=True)
+    pos = ["raise", "raised", "increase", "upward", "beat", "above", "improv", "stronger", "reaffirm"]
+    neg = ["lower", "lowered", "decrease", "downward", "below", "miss", "cut", "weaker", "reduce"]
+
+    scores: Dict[str, float] = {}
+    provenance: Dict[str, dict] = {}
+    for entity_id, g in df.groupby("entity_id"):
+        num = 0.0
+        den = 0.0
+        g = g.sort_values("published_at", ascending=False)
+        for _, row in g.iterrows():
+            txt = f"{row.get('fact_type') or ''} {row.get('context_norm') or ''}".lower()
+            s = 0.0
+            for k in pos:
+                if k in txt:
+                    s += 1.0
+            for k in neg:
+                if k in txt:
+                    s -= 1.0
+            if s == 0:
+                continue
+            pub = pd.to_datetime(row['published_at'], utc=True, errors="coerce")
+            if pd.isna(pub):
+                w = 0.75
+            else:
+                days = max(0.0, float((asof_ts - pub).days))
+                w = float(np.exp(-days / 365.0))
+            num += s * w
+            den += w
+        if den > 0:
+            val = float(np.clip(num / den, -1.0, 1.0))
+            scores[str(entity_id)] = val
+            r = g.iloc[0]
+            provenance[str(entity_id)] = _reference(
+                artifact_type="ExtractedFact",
+                artifact_id=str(r.get("fact_id") or f"guidance:{entity_id}"),
+                source=str(r.get("source_type") or "facts"),
+                published_at=str(r.get("published_at")) if r.get("published_at") is not None else None,
+                ingested_at=str(r.get("ingested_at")) if r.get("ingested_at") is not None else None,
+            )
+    return scores, provenance
+
+
