@@ -26,3 +26,25 @@ def _write_price_history_parquet(path: Path, *, company_id: str) -> None:
     frame.to_parquet(path, index=False)
 
 
+def _write_sparse_monthly_price_history_parquet(path: Path, *, company_id: str) -> None:
+    dates = pd.to_datetime(
+        [
+            "2020-01-31",
+            "2020-02-29",
+            "2020-03-31",
+            "2020-04-30",
+        ]
+    )
+    prices = [100.0, 92.0, 80.0, 88.0]
+    frame = pd.DataFrame(
+        {
+            "company_id": [company_id] * len(dates),
+            "series_type": ["price"] * len(dates),
+            "trade_date": dates,
+            "adjusted_close": prices,
+            "close": prices,
+        }
+    )
+    frame.to_parquet(path, index=False)
+
+

@@ -85,7 +85,7 @@ def _load_company_ids(ids_file: Path | None, artifact: Path | None) -> list[str]
             if not line:
                 continue
             row = json.loads(line)
-            company_id = str(row['company_id'] or "").strip()
+            company_id = str(row.get("company_id") or "").strip()
             if company_id:
                 ids.append(company_id)
     return sorted(set(ids))
