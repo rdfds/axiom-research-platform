@@ -78,7 +78,7 @@ def _parse_snapshot_catalog_taxonomy(path: Path) -> List[Dict[str, str]]:
                 payload = json.loads(line)
             except Exception:
                 continue
-            company_id = str(payload['company_id'] or "").strip()
+            company_id = str(payload.get("company_id") or "").strip()
             if not company_id:
                 continue
             features = payload.get("features") if isinstance(payload, dict) else None

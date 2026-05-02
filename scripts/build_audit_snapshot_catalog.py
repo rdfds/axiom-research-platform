@@ -50,3 +50,10 @@ def _dedupe_key(row: Dict[str, Any]) -> Tuple[str, str]:
     return str(row.get("company_id") or ""), str(row.get("as_of_time") or "")
 
 
+def _feature_count(row: Dict[str, Any]) -> int:
+    features = row.get("features") or {}
+    if not isinstance(features, dict):
+        return 0
+    return sum(1 for value in features.values() if isinstance(value, dict) and value.get("value") is not None)
+
+
