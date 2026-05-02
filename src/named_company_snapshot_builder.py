@@ -130,3 +130,140 @@ def _builder_for_target(
     )
 
 
+def build_named_company_snapshots(
+    targets_path: Path | str | None = None,
+    *,
+    snapshot_root: Path | str = DEFAULT_FRESH_SNAPSHOT_ROOT,
+    facts_path: Path | str | None = None,
+    entity_table_path: Path | str | None = None,
+    taxonomy_reference_path: Path | str | None = None,
+    issuer_ratings_path: Path | str | None = None,
+    facts_lookback_years: int = 5,
+    case_ids: Optional[Iterable[str]] = None,
+    force: bool = False,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    payload = load_named_company_targets(targets_path or DEFAULT_TARGETS_PATH)
+    selected_case_ids = _clean_case_ids(case_ids)
+    targets = [
+        target for target in payload["targets"]
+        if selected_case_ids is None or str(target.get("case_id")) in selected_case_ids
+    ]
+
+    snapshot_root_path = Path(snapshot_root)
+    facts_path = Path(facts_path) if facts_path is not None else _default_facts_path()
+    entity_table_path = Path(entity_table_path) if entity_table_path is not None else _default_entity_table_path()
+    taxonomy_reference_path = (
+        Path(taxonomy_reference_path)
+        if taxonomy_reference_path is not None
+        else _default_taxonomy_reference_path()
+    )
+    issuer_ratings_path = (
+        Path(issuer_ratings_path)
+        if issuer_ratings_path is not None
+        else _default_issuer_ratings_path()
+    )
+    snapshot_root_path.mkdir(parents=True, exist_ok=True)
+
+    results: List[Dict[str, Any]] = []
+    summary = {
+        "total_targets": len(targets),
+        "built": 0,
+        "skipped_existing": 0,
+        "blocked_unmaterialized_inputs": 0,
+        "build_failed": 0,
+    }
+
+    builders: Dict[tuple[str, tuple[int, ...]], CompanyStateBuilder] = {}
+
+    for target in targets:
+        case_id = str(target.get("case_id") or "")
+        company_id = str(target.get("company_id") or "")
+        ticker = str(target.get("ticker") or "").strip()
+        as_of_date = str(target.get("as_of_date") or "").strip()
+        fact_years = required_fact_years(as_of_date, facts_lookback_years)
+        required_paths = _required_input_paths(
+            as_of_date=as_of_date,
+            facts_path=facts_path,
+            facts_lookback_years=facts_lookback_years,
+            entity_table_path=entity_table_path,
+            taxonomy_reference_path=taxonomy_reference_path,
+            issuer_ratings_path=issuer_ratings_path,
+        )
+        blocked_input_paths = [str(path) for path in required_paths if not _is_readable_file(path)]
+        output_path = _snapshot_path(snapshot_root_path, company_id, as_of_date)
+        result: Dict[str, Any] = {
+            "case_id": case_id,
+            "company_id": company_id,
+            "ticker": ticker,
+            "display_name": target.get("display_name"),
+            "as_of_date": as_of_date,
+            "expected_archetype": target.get("expected_archetype"),
+            "required_fact_years": fact_years,
+            "snapshot_path": str(output_path),
+            "blocked_input_paths": blocked_input_paths,
+        }
+        if blocked_input_paths:
+            result["build_status"] = "blocked_unmaterialized_inputs"
+            summary["blocked_unmaterialized_inputs"] += 1
+            results.append(result)
+            continue
+
+        if output_path.exists() and _is_readable_file(output_path) and not force:
+            snapshot = json.loads(output_path.read_text())
+            packet = _snapshot_metric_packet(snapshot)
+            result.update(packet)
+            result["build_status"] = "skipped_existing"
+            result["actual_archetype"] = packet.get("market_metric_context", {}).get("archetype")
+            result["archetype_match"] = (
+                None
+                if result['expected_archetype'] is None
+                else result["actual_archetype"] == result.get("expected_archetype")
+            )
+            summary["skipped_existing"] += 1
+            results.append(result)
+            continue
+
+        builder_key = (as_of_date, tuple(fact_years))
+        builder = builders.get(builder_key)
+        if builder is None:
+            builder = _builder_for_target(
+                facts_path=facts_path,
+                facts_years=fact_years,
+                entity_table_path=entity_table_path,
+                taxonomy_reference_path=taxonomy_reference_path,
+                issuer_ratings_path=issuer_ratings_path,
+                debug=debug,
+            )
+            builders[builder_key] = builder
+
+        try:
+            snapshot_obj = builder.build(company_id, as_of_date, extra_aliases=[ticker] if ticker else None)
+            snapshot = snapshot_to_json(snapshot_obj)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(snapshot, indent=2))
+            packet = _snapshot_metric_packet(snapshot)
+            result.update(packet)
+            result["build_status"] = "built"
+            result["actual_archetype"] = packet.get("market_metric_context", {}).get("archetype")
+            result["archetype_match"] = (
+                None
+                if result.get("expected_archetype") is None
+                else result["actual_archetype"] == result.get("expected_archetype")
+            )
+            summary["built"] += 1
+        except Exception as exc:
+            result["build_status"] = "build_failed"
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            summary["build_failed"] += 1
+        results.append(result)
+
+    return {
+        "targets_path": payload["path"],
+        "metadata": payload["metadata"],
+        "snapshot_root": str(snapshot_root_path),
+        "facts_path": str(facts_path),
+        "facts_lookback_years": facts_lookback_years,
+        "summary": summary,
+        "results": results,
+    }
