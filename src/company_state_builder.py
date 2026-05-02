@@ -268,3 +268,31 @@ def _pick_first_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
     return None
 
 
+def _pick_first_populated_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    for c in candidates:
+        if c not in df.columns:
+            continue
+        series = df[c]
+        if not series.isna().all():
+            return c
+    return _pick_first_col(df, candidates)
+
+
+def _pick_time_col(df: pd.DataFrame) -> Optional[str]:
+    return _pick_first_col(
+        df,
+        [
+            "observation_time",
+            "event_time",
+            "trade_date",
+            "effective_at",
+            "published_at",
+            "available_time",
+            "ingestion_time",
+            "date",
+            "as_of_date",
+            "timestamp",
+        ],
+    )
+
+
