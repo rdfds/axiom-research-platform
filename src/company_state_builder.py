@@ -361,3 +361,67 @@ def _collect_companyfacts_duration_entries(
     return rows
 
 
+def _collect_companyfacts_instant_entries(
+    companyfacts: Dict[str, Any],
+    concept_names: List[str],
+    as_of: pd.Timestamp,
+) -> List[Dict[str, Any]]:
+    as_of_date = as_of.date()
+    rows: List[Dict[str, Any]] = []
+    for concept_name in concept_names:
+        units_map = _companyfacts_units_map(companyfacts, concept_name)
+        if not units_map:
+            continue
+        for unit, entries in units_map.items():
+            if str(unit or "").upper() != "USD":
+                continue
+            for entry in entries:
+                end_ts = _parse_companyfacts_date(entry.get("end"))
+                filed_ts = _parse_companyfacts_date(entry.get("filed"))
+                value = entry.get("val")
+                if end_ts is None or value is None:
+                    continue
+                if end_ts.date() > as_of_date:
+                    continue
+                if filed_ts is not None and filed_ts.date() > as_of_date:
+                    continue
+                if (as_of_date - end_ts.date()).days > MAX_SEC_FACT_AGE_DAYS:
+                    continue
+                rows.append(
+                    {
+                        "concept": concept_name,
+                        "end": end_ts,
+                        "filed": filed_ts or end_ts,
+                        "value": float(value),
+                        "fy": entry.get("fy"),
+                        "fp": entry.get("fp"),
+                        "frame": entry.get("frame"),
+                        "form": entry.get("form"),
+                    }
+                )
+    rows.sort(key=lambda item: (item["end"], item["filed"]))
+    return rows
+
+
+def _latest_companyfacts_point_value(
+    companyfacts: Dict[str, Any],
+    concept_names: List[str],
+    as_of: pd.Timestamp,
+) -> tuple[Optional[float], Optional[Dict[str, Any]]]:
+    entries = _collect_companyfacts_instant_entries(companyfacts, concept_names, as_of)
+    if not entries:
+        return None, None
+    latest = max(entries, key=lambda item: (item["end"], item["filed"]))
+    return float(latest["value"]), {
+        "concept": latest.get("concept"),
+        "mode": "latest_balance_sheet_point",
+        "end": latest["end"].date().isoformat(),
+        "filed": latest["filed"].date().isoformat(),
+        "fy": latest.get("fy"),
+        "fp": latest.get("fp"),
+        "frame": latest.get("frame"),
+        "form": latest.get("form"),
+        "formula": "latest_companyfacts_point_value",
+    }
+
+
