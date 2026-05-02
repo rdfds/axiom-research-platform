@@ -129,3 +129,52 @@ def _metric_status(feature: dict[str, Any] | None) -> str:
     return "present"
 
 
+def _is_available_status(status: str) -> bool:
+    return status not in {
+        "build_failed",
+        "unsupported",
+        "component_unavailable",
+        "not_disclosed",
+        "missing_feature",
+        "missing_value",
+        "unavailable",
+        "unsupported_for_archetype",
+    }
+
+
+def _build_builder(repo_root: Path, inputs_root: Path, facts_years: list[int]) -> CompanyStateBuilder:
+    policy_path, methodology_registry_path, input_source_registry_path = _ensure_local_registry_files()
+    facts_path = repo_root / "data" / "inputs_layer" / "facts_asof_2026"
+    raw_ts_path = inputs_root / "raw_timeseries.parquet"
+    taxonomy_path = inputs_root / "fundamentals_all.parquet"
+    if not facts_path.exists():
+        facts_path = repo_root / "data" / "inputs_layer" / "facts_asof_2026.parquet"
+    if not raw_ts_path.exists():
+        raw_ts_path = repo_root / "data" / "inputs_layer" / "raw_timeseries.parquet"
+    if not taxonomy_path.exists():
+        taxonomy_path = repo_root / "data" / "refinitiv" / "fundamentals_all.parquet"
+    return CompanyStateBuilder(
+        raw_timeseries_path=raw_ts_path,
+        macro_timeseries_path=repo_root / "data" / "inputs_layer" / "raw_timeseries.parquet",
+        facts_path=facts_path,
+        taxonomy_reference_path=taxonomy_path,
+        entity_graph_path=repo_root / "data" / "inputs_layer" / "entity_graph.parquet",
+        entity_identifier_path=repo_root / "data" / "inputs_layer" / "entity_identifier.parquet",
+        entity_table_path=repo_root / "data" / "inputs_layer" / "entity.parquet",
+        historical_backfill_mode=True,
+        companyfacts_root=repo_root / "data" / "sec" / "companyfacts",
+        enable_market_relevant_smart_normalized_inputs=True,
+        metric_policy_path=policy_path,
+        methodology_registry_path=methodology_registry_path,
+        input_source_registry_path=input_source_registry_path,
+        skip_timeseries=True,
+        skip_macro=True,
+        skip_events=True,
+        skip_peer_context=True,
+        cache_facts=True,
+        cache_ownership=True,
+        cache_ratings=True,
+        facts_years=facts_years,
+    )
+
+
