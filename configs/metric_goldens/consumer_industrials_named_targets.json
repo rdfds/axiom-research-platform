@@ -1,0 +1,209 @@
+{
+  "metadata": {
+    "scope": "named_consumer_industrials_benchmark_targets",
+    "description": "Representative real-company consumer and industrial names for issuer-level metric benchmark review.",
+    "as_of_date": "2026-02-28"
+  },
+  "targets": [
+    {
+      "case_id": "walmart",
+      "company_id": "0000104169",
+      "ticker": "WMT",
+      "display_name": "Walmart Inc",
+      "as_of_date": "2026-02-28",
+      "sector": "Consumer Staples",
+      "subsector": "Consumer Staples Distribution & Retail",
+      "expected_archetype": "consumer_grocery_retail",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.75,
+        "pension_weight": 0.15,
+        "min_cash_revenue_ratio": 0.03,
+        "fixed_charge_lease_weight": 0.75,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "costco",
+      "company_id": "0000909832",
+      "ticker": "COST",
+      "display_name": "Costco Wholesale Corp",
+      "as_of_date": "2026-02-28",
+      "sector": "Consumer Staples",
+      "subsector": "Consumer Staples Distribution & Retail",
+      "expected_archetype": "consumer_grocery_retail",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.75,
+        "pension_weight": 0.15,
+        "min_cash_revenue_ratio": 0.03,
+        "fixed_charge_lease_weight": 0.75,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "procter_gamble",
+      "company_id": "0000080424",
+      "ticker": "PG",
+      "display_name": "Procter & Gamble Co",
+      "as_of_date": "2026-02-28",
+      "sector": "Consumer Staples",
+      "subsector": "Household Products",
+      "expected_archetype": "consumer_branded_staples",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.0,
+        "pension_weight": 0.2,
+        "min_cash_revenue_ratio": 0.02,
+        "fixed_charge_lease_weight": 0.2,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "nike",
+      "company_id": "0000320187",
+      "ticker": "NKE",
+      "display_name": "Nike Inc",
+      "as_of_date": "2026-02-28",
+      "sector": "Consumer Discretionary",
+      "subsector": "Textiles, Apparel & Luxury Goods",
+      "expected_archetype": "consumer_apparel_luxury",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.5,
+        "pension_weight": 0.1,
+        "min_cash_revenue_ratio": 0.03,
+        "fixed_charge_lease_weight": 0.5,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "home_depot",
+      "company_id": "0000354950",
+      "ticker": "HD",
+      "display_name": "Home Depot Inc",
+      "as_of_date": "2026-02-28",
+      "sector": "Consumer Discretionary",
+      "subsector": "Specialty Retail",
+      "expected_archetype": "lease_heavy",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 1.0,
+        "pension_weight": 0.25,
+        "min_cash_revenue_ratio": 0.04,
+        "fixed_charge_lease_weight": 1.0,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "caterpillar",
+      "company_id": "0000018230",
+      "ticker": "CAT",
+      "display_name": "Caterpillar Inc",
+      "as_of_date": "2026-02-28",
+      "sector": "Industrials",
+      "subsector": "Machinery",
+      "expected_archetype": "machinery_capital_goods",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.0,
+        "pension_weight": 0.35,
+        "min_cash_revenue_ratio": 0.025,
+        "fixed_charge_lease_weight": 0.2,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "deere",
+      "company_id": "0000315189",
+      "ticker": "DE",
+      "display_name": "Deere & Co",
+      "as_of_date": "2026-02-28",
+      "sector": "Industrials",
+      "subsector": "Machinery",
+      "expected_archetype": "machinery_capital_goods",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.0,
+        "pension_weight": 0.35,
+        "min_cash_revenue_ratio": 0.025,
+        "fixed_charge_lease_weight": 0.2,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "ups",
+      "company_id": "0001090727",
+      "ticker": "UPS",
+      "display_name": "United Parcel Service Inc",
+      "as_of_date": "2026-02-28",
+      "sector": "Industrials",
+      "subsector": "Air Freight & Logistics",
+      "expected_archetype": "transport_logistics",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.5,
+        "pension_weight": 0.2,
+        "min_cash_revenue_ratio": 0.03,
+        "fixed_charge_lease_weight": 0.6,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "fedex",
+      "company_id": "0001048911",
+      "ticker": "FDX",
+      "display_name": "FedEx Corp",
+      "as_of_date": "2026-02-28",
+      "sector": "Industrials",
+      "subsector": "Air Freight & Logistics",
+      "expected_archetype": "transport_logistics",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.5,
+        "pension_weight": 0.2,
+        "min_cash_revenue_ratio": 0.03,
+        "fixed_charge_lease_weight": 0.6,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    },
+    {
+      "case_id": "ge",
+      "company_id": "0000040545",
+      "ticker": "GE",
+      "display_name": "General Electric Co",
+      "as_of_date": "2026-02-28",
+      "sector": "Industrials",
+      "subsector": "Aerospace & Defense",
+      "expected_archetype": "aerospace_defense",
+      "taxonomy_support_mode": "exact",
+      "taxonomy_override_level": "subsector",
+      "policy_rules": {
+        "lease_weight": 0.0,
+        "pension_weight": 0.5,
+        "min_cash_revenue_ratio": 0.025,
+        "fixed_charge_lease_weight": 0.2,
+        "denominator_policy": "ebitda",
+        "coverage_basis": "ebit"
+      }
+    }
+  ]
+}
