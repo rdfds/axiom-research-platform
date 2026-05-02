@@ -67,3 +67,12 @@ def _iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
+def _support_mode(row: Dict[str, Any], metric_name: str) -> str:
+    feature = (row.get("features") or {}).get(metric_name) or {}
+    value = feature.get("value")
+    mode = str(feature.get("support_mode") or "unsupported")
+    if value is None:
+        return "unsupported"
+    return mode
+
+
