@@ -52,3 +52,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _rebuild_core_metric(
+    *,
+    features: dict,
+    metric_name: str,
+    companyfacts: dict,
+    companyfacts_path: Path,
+    as_of_time: str,
+    computed_at: str,
+) -> None:
+    value, support_mode, missing_reason, component_breakdown, quality_flags = core._build_sec_core_metric(
+        metric_name,
+        companyfacts,
+        as_of_time[:10],
+    )
+    unit = core.DIRECT_METRIC_SPECS[metric_name]["unit"]
+    features[metric_name] = core._build_metric_from_value(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=str(companyfacts_path),
+        unit=unit,
+        value=value,
+        support_mode=support_mode,
+        missing_reason=missing_reason,
+        component_breakdown=component_breakdown,
+        quality_flags=quality_flags,
+        primary_source_basis="sec_companyfacts",
+        provenance_artifact_type="SecCompanyFacts",
+        input_layer_bucket_reason="sec_companyfacts_asof",
+    )
+
+
