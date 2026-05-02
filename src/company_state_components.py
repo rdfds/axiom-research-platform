@@ -70,3 +70,18 @@ def _pick_time_col(df: pd.DataFrame) -> Optional[str]:
     )
 
 
+def _pick_value_col(df: pd.DataFrame) -> Optional[str]:
+    return _pick_first_col(
+        df,
+        [
+            "value",
+            "close",
+            "adjusted_close",
+            "consensus_value",
+            "fact_value",
+            "numeric_value",
+            "amount",
+        ],
+    )
+
+
