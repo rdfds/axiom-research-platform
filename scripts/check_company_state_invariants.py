@@ -55,3 +55,5 @@ def main() -> None:
     print(f"Checked {total} snapshots. Violations: {bad}")
 
 
+if __name__ == "__main__":
+    main()

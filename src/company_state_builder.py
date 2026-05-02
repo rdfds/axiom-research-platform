@@ -425,3 +425,270 @@ def _latest_companyfacts_point_value(
     }
 
 
+def _latest_companyfacts_meta_timestamp(meta: Any) -> Optional[pd.Timestamp]:
+    latest: Optional[pd.Timestamp] = None
+
+    def _visit(node: Any) -> None:
+        nonlocal latest
+        if isinstance(node, dict):
+            for key in ("filed", "published_at", "end"):
+                ts = _parse_companyfacts_date(node.get(key))
+                if ts is not None and (latest is None or ts > latest):
+                    latest = ts
+            for value in node.values():
+                _visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                _visit(item)
+
+    _visit(meta)
+    return latest
+
+
+def _should_use_fresher_companyfacts_value(
+    current_value: Optional[float],
+    current_published_at: Optional[str],
+    companyfacts_value: Optional[float],
+    companyfacts_meta: Any,
+) -> bool:
+    if companyfacts_value is None:
+        return False
+    if current_value is None:
+        return True
+    companyfacts_ts = _latest_companyfacts_meta_timestamp(companyfacts_meta)
+    if companyfacts_ts is None:
+        return False
+    current_ts = _parse_companyfacts_date(current_published_at)
+    if current_ts is None:
+        return True
+    return companyfacts_ts >= current_ts + pd.Timedelta(days=COMPANYFACTS_FRESHER_OVERRIDE_MIN_DAYS)
+
+
+def _companyfacts_input_reference(
+    companyfacts_path: Optional[Path],
+    meta: Any,
+) -> Optional[Dict[str, Any]]:
+    if companyfacts_path is None:
+        return None
+    published_ts = _latest_companyfacts_meta_timestamp(meta)
+    published_at = published_ts.isoformat() if published_ts is not None else None
+    return {
+        "artifact_type": "SecCompanyFacts",
+        "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+        "source": str(companyfacts_path),
+        "published_at": published_at,
+        "ingested_at": published_at,
+        "hash": None,
+    }
+
+
+def _compute_companyfacts_ttm_from_concept(
+    companyfacts: Dict[str, Any],
+    concept_name: str,
+    as_of: pd.Timestamp,
+) -> tuple[Optional[float], Optional[Dict[str, Any]]]:
+    entries = _collect_companyfacts_duration_entries(companyfacts, concept_name, as_of)
+    if not entries:
+        return None, None
+
+    latest = max(entries, key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    latest_fp = str(latest.get("fp") or "").upper()
+    if latest_fp == "FY" or latest["duration_days"] >= 300:
+        return float(latest["value"]), {
+            "concept": concept_name,
+            "mode": "latest_fy",
+            "end": latest["end"].date().isoformat(),
+            "filed": latest["filed"].date().isoformat(),
+            "fy": latest.get("fy"),
+            "fp": latest.get("fp"),
+            "frame": latest.get("frame"),
+            "form": latest.get("form"),
+            "formula": "latest_fiscal_year_value",
+        }
+
+    if latest_fp not in {"Q1", "Q2", "Q3"}:
+        return None, None
+
+    current_fy = latest.get("fy")
+    if current_fy is None:
+        return None, None
+    try:
+        prior_fy = int(current_fy) - 1
+    except Exception:
+        return None, None
+
+    annual = None
+    prior_same = None
+    for entry in entries:
+        entry_fp = str(entry.get("fp") or "").upper()
+        if entry.get("fy") == prior_fy and entry_fp == "FY":
+            if annual is None or (entry["end"], entry["filed"], entry["duration_days"]) > (
+                annual["end"],
+                annual["filed"],
+                annual["duration_days"],
+            ):
+                annual = entry
+        if entry.get("fy") == prior_fy and entry_fp == latest_fp:
+            if prior_same is None or (entry["end"], entry["filed"], entry["duration_days"]) > (
+                prior_same["end"],
+                prior_same["filed"],
+                prior_same["duration_days"],
+            ):
+                prior_same = entry
+
+    if annual is None or prior_same is None:
+        return None, None
+
+    return float(latest["value"] + annual["value"] - prior_same["value"]), {
+        "concept": concept_name,
+        "mode": "ytd_plus_prior_fy_minus_prior_ytd",
+        "latest": {
+            "end": latest["end"].date().isoformat(),
+            "filed": latest["filed"].date().isoformat(),
+            "fy": latest.get("fy"),
+            "fp": latest.get("fp"),
+            "frame": latest.get("frame"),
+            "form": latest.get("form"),
+            "value": latest["value"],
+        },
+        "prior_fy": {
+            "end": annual["end"].date().isoformat(),
+            "filed": annual["filed"].date().isoformat(),
+            "fy": annual.get("fy"),
+            "fp": annual.get("fp"),
+            "frame": annual.get("frame"),
+            "form": annual.get("form"),
+            "value": annual["value"],
+        },
+        "prior_same_period": {
+            "end": prior_same["end"].date().isoformat(),
+            "filed": prior_same["filed"].date().isoformat(),
+            "fy": prior_same.get("fy"),
+            "fp": prior_same.get("fp"),
+            "frame": prior_same.get("frame"),
+            "form": prior_same.get("form"),
+            "value": prior_same["value"],
+        },
+        "formula": "latest_ytd + prior_fy - prior_same_period_ytd",
+    }
+
+
+def _support_mode_is_exact_like(mode: Optional[str]) -> bool:
+    return str(mode or "").strip().lower() in EXACT_SUPPORT_MODES
+
+
+def _is_exact_structural_zero_metric(
+    metric_id: Optional[str],
+    value: Any,
+    component_breakdown: Optional[Dict[str, Any]],
+) -> bool:
+    if metric_id != "capital_structure.total_debt":
+        return False
+    value_f = _safe_float(value)
+    if value_f is None or abs(value_f) > 1e-9:
+        return False
+    breakdown = component_breakdown or {}
+    for key in (
+        "local_reported_debt",
+        "lease_liabilities",
+        "included_lease_liabilities",
+        "supplier_finance",
+        "included_supplier_finance",
+        "preferred_equity",
+        "convertibles",
+        "unfunded_pension",
+    ):
+        component_val = _safe_float(breakdown.get(key))
+        if component_val not in (None, 0.0):
+            return False
+    return True
+
+
+def _classify_metric_support_mode(
+    *,
+    base_mode: Optional[str],
+    metric_id: Optional[str],
+    value: Any,
+    quality_flags: Optional[List[str]],
+    component_breakdown: Optional[Dict[str, Any]],
+) -> str:
+    mode = str(base_mode or "exact").strip().lower() or "exact"
+    if mode in {"unsupported", "inferred", "proxy", "proxy_missing_component"}:
+        return mode
+    if not _support_mode_is_exact_like(mode):
+        return mode
+
+    flags = [str(flag).strip().lower() for flag in (quality_flags or []) if flag is not None]
+    effective_flags = [flag for flag in flags if flag not in NON_PROXY_DIAGNOSTIC_FLAGS]
+    if effective_flags:
+        if any(
+            flag in PROXY_COMPONENT_SUPPORT_FLAGS
+            or any(token in flag for token in ("missing", "fallback", "proxy", "estimated", "assumed_zero"))
+            for flag in effective_flags
+        ):
+            return "proxy_missing_component"
+        return "proxy"
+
+    if _is_exact_structural_zero_metric(metric_id, value, component_breakdown):
+        return "exact_structural_zero"
+    return mode
+
+
+def _pick_value_col(df: pd.DataFrame) -> Optional[str]:
+    return _pick_first_col(
+        df,
+        [
+            "value",
+            "close",
+            "adjusted_close",
+            "consensus_value",
+            "fact_value",
+            "numeric_value",
+            "amount",
+        ],
+    )
+
+
+def _pick_price_col(df: pd.DataFrame) -> Optional[str]:
+    return _pick_first_col(df, ["adjusted_close", "close", "value"])
+
+
+def _pick_price_time_col(df: pd.DataFrame) -> Optional[str]:
+    # Price history should prefer the actual trading date over generic event /
+    # availability timestamps so rolling windows are aligned to market sessions.
+    return _pick_first_col(
+        df,
+        [
+            "trade_date",
+            "observation_time",
+            "event_time",
+            "effective_at",
+            "published_at",
+            "available_time",
+            "ingestion_time",
+            "date",
+            "as_of_date",
+            "timestamp",
+        ],
+    )
+
+
+def _parse_dealscan_ratio_value(val: Any) -> Optional[float]:
+    raw = _null_if_na(val)
+    if raw in (None, ""):
+        return None
+    parsed = _safe_float(raw)
+    if parsed is not None:
+        return float(parsed)
+    text = str(raw).strip().replace(",", "")
+    if not text:
+        return None
+    match = re.search(r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except Exception:
+        return None
+
+
