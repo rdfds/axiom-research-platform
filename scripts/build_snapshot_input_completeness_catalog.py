@@ -59,3 +59,11 @@ def _parse_args() :
     return parser.parse_args()
 
 
+def _iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with gzip.open(path, "rt") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+

@@ -108,3 +108,5 @@ def main() -> None:
     print(json.dumps(summary, sort_keys=True))
 
 
+if __name__ == "__main__":
+    main()
