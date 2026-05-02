@@ -96,3 +96,19 @@ def _feature_dict(snapshot: Any) :
     return features
 
 
+def _build_with_timeout(builder: CompanyStateBuilder, company_id: str, as_of_time: str, timeout_seconds: int) -> Any:
+    if timeout_seconds <= 0:
+        return builder.build(company_id, as_of_time)
+
+    def _handler(signum: int, frame: Any) -> None:
+        raise TimeoutError(f"builder timed out after {timeout_seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(timeout_seconds)
+    try:
+        return builder.build(company_id, as_of_time)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
