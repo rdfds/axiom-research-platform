@@ -53,3 +53,48 @@ def required_fact_years(as_of_date: str, lookback_years: int = 5) -> List[int]:
     return list(range(start_year, year + 1))
 
 
+def _is_readable_file(path: Path) -> bool:
+    try:
+        if not path.exists():
+            return False
+        stat_result = os.stat(path)
+        if stat_result.st_size < 4:
+            return False
+        with path.open("rb") as handle:
+            handle.read(4)
+        return True
+    except Exception:
+        return False
+
+
+def _snapshot_path(snapshot_root: Path, company_id: str, as_of_date: str) -> Path:
+    return snapshot_root / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
+
+
+def _default_null_path(name: str) -> Path:
+    return Path("/tmp") / f"named_company_snapshot_builder_null_{name}"
+
+
+def _required_input_paths(
+    *,
+    as_of_date: str,
+    facts_path: Path,
+    facts_lookback_years: int,
+    entity_table_path: Path,
+    taxonomy_reference_path: Path,
+    issuer_ratings_path: Path,
+) -> List[Path]:
+    paths = [
+        facts_path / f"year={year}" / "part.parquet"
+        for year in required_fact_years(as_of_date, facts_lookback_years)
+    ]
+    paths.extend(
+        [
+            entity_table_path,
+            taxonomy_reference_path,
+            issuer_ratings_path,
+        ]
+    )
+    return paths
+
+
