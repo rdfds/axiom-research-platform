@@ -91,3 +91,8 @@ def _load_company_ids(ids_file: Path | None, artifact: Path | None) -> list[str]
     return sorted(set(ids))
 
 
+def _feature_dict(snapshot: Any) :
+    features = getattr(snapshot, "features", {}) or {}
+    return features
+
+
