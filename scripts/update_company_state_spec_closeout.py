@@ -234,7 +234,7 @@ def _load_guidance_scores(facts_path: Optional[Path], asof: str) -> Tuple[Dict[s
                     s -= 1.0
             if s == 0:
                 continue
-            pub = pd.to_datetime(row['published_at'], utc=True, errors="coerce")
+            pub = pd.to_datetime(row.get("published_at"), utc=True, errors="coerce")
             if pd.isna(pub):
                 w = 0.75
             else:
