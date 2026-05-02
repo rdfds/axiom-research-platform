@@ -98,7 +98,7 @@ class CompanyStateInputSourceRegistry:
 
     def input_layer_bucket(self, metric_id: str) -> str | None:
         record = self.metric(metric_id)
-        decision = record['methodology_execution_decision']
+        decision = record.get("methodology_execution_decision")
         return _INPUT_LAYER_BUCKET_BY_DECISION.get(str(decision)) if decision is not None else None
 
     def input_layer_bucket_reason(self, metric_id: str) -> str | None:
