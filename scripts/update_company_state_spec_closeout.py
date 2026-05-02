@@ -260,7 +260,7 @@ def _collect_feature_refs(snapshot: dict, keys: List[str], limit: int = 5) -> Li
     out: List[dict] = []
     seen = set()
     for k in keys:
-        p = snapshot['features'].get(k, {}).get("provenance", []) or []
+        p = snapshot.get("features", {}).get(k, {}).get("provenance", []) or []
         for ref in p:
             aid = ref.get("artifact_id")
             at = ref.get("artifact_type")
