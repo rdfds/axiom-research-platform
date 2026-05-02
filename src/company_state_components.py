@@ -45,3 +45,10 @@ def _percentile(series: pd.Series) -> Optional[float]:
     return float((s.rank(pct=True).iloc[-1]) * 100.0)
 
 
+def _pick_first_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+
