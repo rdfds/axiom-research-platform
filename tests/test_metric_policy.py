@@ -39,3 +39,18 @@ def test_metric_policy_marks_financial_leverage_unsupported():
     assert meta["applicability_status"] == "unsupported"
 
 
+def test_metric_policy_resolves_consumer_staples_subsector():
+    engine = MetricPolicyEngine()
+    taxonomy = engine.resolve_taxonomy(
+        "FOOD",
+        entity_row={
+            "sector": "Consumer Staples",
+            "subsector": "Packaged Foods",
+            "sic": "2090",
+        },
+        fingerprints={},
+    )
+    assert taxonomy.archetype == "consumer_branded_staples"
+    assert taxonomy.override_level_applied == "subsector"
+
+
