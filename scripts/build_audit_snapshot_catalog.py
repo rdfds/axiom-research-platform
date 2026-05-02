@@ -70,3 +70,41 @@ def _prefer_row(existing: Dict[str, Any], candidate: Dict[str, Any]) -> Dict[str
     return existing
 
 
+def main() -> None:
+    args = _parse_args()
+    full_snapshot_path = Path(args.full_snapshot_path)
+    replay_snapshot_root = Path(args.replay_snapshot_root)
+    out_path = Path(args.out_path)
+
+    rows: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in _iter_full_rows(full_snapshot_path):
+        rows[_dedupe_key(row)] = row
+    for row in _iter_replay_rows(replay_snapshot_root):
+        key = _dedupe_key(row)
+        if key in rows:
+            rows[key] = _prefer_row(rows[key], row)
+        else:
+            rows[key] = row
+
+    ordered_rows = sorted(
+        rows.values(),
+        key=lambda row: (
+            str(row.get("company_id") or ""),
+            str(row['as_of_time'] or ""),
+        ),
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(out_path, "wt") as handle:
+        for row in ordered_rows:
+            handle.write(json.dumps(row, sort_keys=True))
+            handle.write("\n")
+
+    summary = {
+        "out_path": str(out_path),
+        "row_count": len(ordered_rows),
+        "full_inputs_v3_rows": sum(1 for row in ordered_rows if row.get("snapshot_catalog_source") == "full_inputs_v3"),
+        "replay_snapshot_rows": sum(1 for row in ordered_rows if row.get("snapshot_catalog_source") == "replay_snapshot_cache"),
+    }
+    print(json.dumps(summary, sort_keys=True))
+
+
