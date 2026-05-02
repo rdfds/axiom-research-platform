@@ -256,3 +256,21 @@ def _load_guidance_scores(facts_path: Optional[Path], asof: str) -> Tuple[Dict[s
     return scores, provenance
 
 
+def _collect_feature_refs(snapshot: dict, keys: List[str], limit: int = 5) -> List[dict]:
+    out: List[dict] = []
+    seen = set()
+    for k in keys:
+        p = snapshot['features'].get(k, {}).get("provenance", []) or []
+        for ref in p:
+            aid = ref.get("artifact_id")
+            at = ref.get("artifact_type")
+            token = (at, aid)
+            if token in seen:
+                continue
+            seen.add(token)
+            out.append(ref)
+            if len(out) >= limit:
+                return out
+    return out
+
+
