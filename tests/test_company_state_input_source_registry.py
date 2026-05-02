@@ -106,3 +106,46 @@ def test_company_state_input_source_registry_has_definition_requirement_split():
     assert metrics["liquidity.available_for_actions"]["definition_requirement"] == "must_remain_internal_inference"
 
 
+def test_company_state_input_source_registry_has_methodology_execution_decision():
+    payload = json.loads(REGISTRY_PATH.read_text())
+    valid_decisions = {
+        "adopt_exact_external_methodology",
+        "keep_externally_anchored_house_formula",
+        "retain_internal_inference",
+    }
+    for metric_id, rec in payload["metrics"].items():
+        assert rec["methodology_execution_decision"] in valid_decisions, metric_id
+        assert isinstance(rec["methodology_execution_reason"], str) and rec["methodology_execution_reason"], metric_id
+
+    metrics = payload["metrics"]
+    assert metrics["capital_return.dividend_payer_flag"]["classification"] == "external_raw_plus_deterministic_formula"
+    assert metrics["capital_structure.net_debt"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["capital_return.dividend_payer_flag"]["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert metrics["capital_return.last_dividend_event_type"]["current_alignment_status"] == "aligned_with_documented_logic"
+    assert metrics["strategic.action_frequency_24m"]["current_alignment_status"] == "aligned_with_documented_logic"
+    assert metrics["strategic.last_action_type"]["current_alignment_status"] == "aligned_with_documented_logic"
+    assert metrics["strategic.recent_actions_count_24m"]["current_alignment_status"] == "aligned_with_documented_logic"
+    assert metrics["market.market_cap"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.pe_ratio"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.pe_percentile_peers"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.pe_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.sp500_pe_ttm"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.sp500_pe_ttm_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us10y_treasury_yield"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us10y_treasury_yield_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us_ig_oas"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us_ig_oas_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us_hy_all_in_yield"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.us_hy_all_in_yield_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.real_gdp_growth_yoy"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["macro.real_gdp_growth_yoy_percentile_history"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.volatility_30d"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.volatility_90d"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["market.drawdown_90d"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["operating.ebitda_margin_ttm"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["operating.revenue_yoy_last_q"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["operating.revenue_cagr_3y"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert metrics["operating.fcf_conversion"]["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert metrics["market.credit_window_proxy"]["methodology_execution_decision"] == "retain_internal_inference"
+
+

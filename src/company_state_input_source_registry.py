@@ -87,7 +87,7 @@ class CompanyStateInputSourceRegistry:
             if record.get("methodology_execution_decision") == decision
         )
 
-    def strict_market_defined_metric_ids(self) :
+    def strict_market_defined_metric_ids(self) -> List[str]:
         return self.metric_ids_by_execution_decision("adopt_exact_external_methodology")
 
     def secondary_externally_anchored_metric_ids(self) -> List[str]:
