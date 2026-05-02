@@ -57,3 +57,16 @@ def _feature_count(row: Dict[str, Any]) -> int:
     return sum(1 for value in features.values() if isinstance(value, dict) and value.get("value") is not None)
 
 
+def _prefer_row(existing: Dict[str, Any], candidate: Dict[str, Any]) -> Dict[str, Any]:
+    existing_source = str(existing.get("snapshot_catalog_source") or "")
+    candidate_source = str(candidate.get("snapshot_catalog_source") or "")
+    if existing_source != candidate_source:
+        if existing_source == "full_inputs_v3":
+            return existing
+        if candidate_source == "full_inputs_v3":
+            return candidate
+    if _feature_count(candidate) > _feature_count(existing):
+        return candidate
+    return existing
+
+
