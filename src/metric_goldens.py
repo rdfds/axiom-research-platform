@@ -27,3 +27,22 @@ def _clean_case_ids(case_ids: Optional[Iterable[str]]) -> Optional[set[str]]:
     return values or None
 
 
+def load_metric_goldens(path: Path | str | None = None) -> Dict[str, Any]:
+    goldens_path = Path(path) if path is not None else DEFAULT_GOLDENS_PATH
+    payload = json.loads(goldens_path.read_text())
+    if isinstance(payload, list):
+        return {"metadata": {}, "cases": payload, "path": str(goldens_path)}
+    return {
+        "metadata": dict(payload.get("metadata") or {}),
+        "cases": list(payload.get("cases") or []),
+        "path": str(goldens_path),
+    }
+
+
+def _write_parquet_if_rows(path: Path, rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(path, index=False)
+
+
