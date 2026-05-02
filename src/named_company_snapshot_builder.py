@@ -98,3 +98,35 @@ def _required_input_paths(
     return paths
 
 
+def _builder_for_target(
+    *,
+    facts_path: Path,
+    facts_years: List[int],
+    entity_table_path: Path,
+    taxonomy_reference_path: Path,
+    issuer_ratings_path: Path,
+    debug: bool,
+) -> CompanyStateBuilder:
+    companyfacts_root = _default_companyfacts_root()
+    return CompanyStateBuilder(
+        raw_timeseries_path=_default_null_path("raw_timeseries.parquet"),
+        macro_timeseries_path=_default_null_path("macro_timeseries.parquet"),
+        event_store_path=_default_null_path("event_store.parquet"),
+        facts_path=facts_path,
+        ownership_summary_path=_default_null_path("ownership_13f_summary.parquet"),
+        issuer_ratings_path=issuer_ratings_path,
+        entity_graph_path=_default_null_path("entity_graph.parquet"),
+        entity_identifier_path=_default_null_path("entity_identifier.parquet"),
+        entity_table_path=entity_table_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+        companyfacts_root=companyfacts_root if companyfacts_root and companyfacts_root.exists() else None,
+        enable_market_relevant_smart_normalized_inputs=True,
+        skip_timeseries=True,
+        skip_macro=True,
+        skip_events=True,
+        skip_peer_context=True,
+        facts_years=facts_years,
+        debug=debug,
+    )
+
+

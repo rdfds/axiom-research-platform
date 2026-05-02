@@ -247,3 +247,17 @@ def _safe_float(val: Any) -> Optional[float]:
         return None
 
 
+def _to_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    parsed = _safe_float(val)
+    return default if parsed is None else parsed
+
+
+def _null_if_na(val: Any) -> Any:
+    try:
+        if val is None or pd.isna(val):
+            return None
+    except Exception:
+        pass
+    return val
+
+
