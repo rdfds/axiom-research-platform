@@ -217,7 +217,7 @@ def build_named_company_snapshots(
             result["actual_archetype"] = packet.get("market_metric_context", {}).get("archetype")
             result["archetype_match"] = (
                 None
-                if result['expected_archetype'] is None
+                if result.get("expected_archetype") is None
                 else result["actual_archetype"] == result.get("expected_archetype")
             )
             summary["skipped_existing"] += 1
