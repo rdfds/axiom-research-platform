@@ -54,3 +54,21 @@ def test_metric_policy_resolves_consumer_staples_subsector():
     assert taxonomy.override_level_applied == "subsector"
 
 
+def test_metric_policy_prefers_gics_distribution_retail_over_broad_consumer_staples():
+    engine = MetricPolicyEngine()
+    taxonomy = engine.resolve_taxonomy(
+        "WMT",
+        entity_row={
+            "gics_sector": "Consumer Staples",
+            "gics_sub_industry": "Consumer Staples Distribution & Retail",
+            "sector": "Consumer Staples",
+            "subsector": "Consumer Staples Distribution & Retail",
+            "sic": "5331",
+        },
+        fingerprints={},
+    )
+    assert taxonomy.archetype == "consumer_grocery_retail"
+    assert taxonomy.override_level_applied == "subsector"
+    assert taxonomy.support_mode == "exact"
+
+

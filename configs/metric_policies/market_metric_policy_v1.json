@@ -1,0 +1,1047 @@
+{
+  "policy_id": "market_metric_policy_v1",
+  "version": 1,
+  "primary_credit_anchor": "fitch_corporate_rating_criteria_2024",
+  "cross_checks": [
+    "moodys_corporate_methodology",
+    "sp_corporate_methodology"
+  ],
+  "taxonomy": {
+    "sector_field_candidates": [
+      "gics_sector",
+      "sector",
+      "industry_group",
+      "industry",
+      "sic",
+      "naics"
+    ],
+    "subsector_field_candidates": [
+      "gics_sub_industry",
+      "gics_industry",
+      "subsector",
+      "sub_industry",
+      "industry",
+      "naics"
+    ],
+    "issuer_overrides": {},
+    "archetypes": {
+      "generic_corporate": {
+        "sector_patterns": [],
+        "subsector_patterns": [],
+        "sic_prefixes": [],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.25,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.33,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "consumer_grocery_retail": {
+        "sector_patterns": [
+          "grocery",
+          "food retail",
+          "discount retail",
+          "mass merchant"
+        ],
+        "subsector_patterns": [
+          "consumer staples distribution & retail",
+          "consumer staples distribution and retail",
+          "food retail",
+          "grocery",
+          "grocery stores",
+          "food retailing",
+          "discount stores",
+          "hypermarkets",
+          "mass merchants"
+        ],
+        "sic_prefixes": [
+          "54"
+        ],
+        "rules": {
+          "lease_weight": 0.75,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.15,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.75,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": true
+        }
+      },
+      "consumer_internet_retail": {
+        "sector_patterns": [
+          "internet retail",
+          "e-commerce",
+          "ecommerce",
+          "online retail",
+          "marketplace"
+        ],
+        "subsector_patterns": [
+          "internet retail",
+          "internet & direct marketing retail",
+          "e-commerce",
+          "ecommerce",
+          "online marketplace",
+          "direct marketing retail"
+        ],
+        "sic_prefixes": [],
+        "rules": {
+          "lease_weight": 0.15,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.04,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "consumer_branded_staples": {
+        "sector_patterns": [
+          "consumer staples",
+          "beverages",
+          "packaged foods",
+          "household products",
+          "personal products",
+          "tobacco"
+        ],
+        "subsector_patterns": [
+          "packaged foods",
+          "soft drinks",
+          "brewers",
+          "distillers",
+          "household products",
+          "personal products",
+          "tobacco",
+          "food products"
+        ],
+        "sic_prefixes": [
+          "20",
+          "21"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.2,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "consumer_apparel_luxury": {
+        "sector_patterns": [
+          "apparel",
+          "footwear",
+          "luxury",
+          "textiles"
+        ],
+        "subsector_patterns": [
+          "apparel",
+          "footwear",
+          "luxury",
+          "textiles",
+          "accessories"
+        ],
+        "sic_prefixes": [
+          "23",
+          "31"
+        ],
+        "rules": {
+          "lease_weight": 0.5,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.1,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.5,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "consumer_durables": {
+        "sector_patterns": [
+          "consumer durables",
+          "leisure products",
+          "furnishings",
+          "home appliances",
+          "consumer electronics"
+        ],
+        "subsector_patterns": [
+          "leisure products",
+          "household durables",
+          "furnishings",
+          "appliances",
+          "consumer electronics"
+        ],
+        "sic_prefixes": [
+          "25",
+          "36",
+          "39"
+        ],
+        "rules": {
+          "lease_weight": 0.1,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.15,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "diversified_consumer_services": {
+        "sector_patterns": [
+          "consumer services",
+          "personal services",
+          "education services",
+          "travel services"
+        ],
+        "subsector_patterns": [
+          "diversified consumer services",
+          "consumer services",
+          "education services",
+          "travel services"
+        ],
+        "sic_prefixes": [
+          "72",
+          "79",
+          "82"
+        ],
+        "rules": {
+          "lease_weight": 0.1,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.1,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit"
+        }
+      },
+      "automotive_oem": {
+        "sector_patterns": [
+          "automobile"
+        ],
+        "subsector_patterns": [
+          "automobiles"
+        ],
+        "sic_prefixes": [
+          "3711"
+        ],
+        "rules": {
+          "lease_weight": 0.1,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.4,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "auto_components": {
+        "sector_patterns": [
+          "auto components",
+          "automobile components"
+        ],
+        "subsector_patterns": [
+          "automobile components",
+          "auto components"
+        ],
+        "sic_prefixes": [
+          "3714"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.25,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "aerospace_defense": {
+        "sector_patterns": [
+          "aerospace",
+          "defense"
+        ],
+        "subsector_patterns": [
+          "aerospace & defense",
+          "defense",
+          "aircraft",
+          "space"
+        ],
+        "sic_prefixes": [
+          "372",
+          "376",
+          "381"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.5,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "machinery_capital_goods": {
+        "sector_patterns": [
+          "machinery",
+          "capital goods",
+          "electrical equipment",
+          "industrial machinery"
+        ],
+        "subsector_patterns": [
+          "construction machinery",
+          "industrial machinery",
+          "farm machinery",
+          "electrical equipment",
+          "capital goods",
+          "tools"
+        ],
+        "sic_prefixes": [
+          "35",
+          "36"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.35,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "industrial_distributors": {
+        "sector_patterns": [
+          "industrial distribution",
+          "distributor",
+          "distribution",
+          "trading companies"
+        ],
+        "subsector_patterns": [
+          "industrial distribution",
+          "trading companies",
+          "distributors",
+          "industrial distributors"
+        ],
+        "sic_prefixes": [
+          "50",
+          "51"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.15,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.25,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "packaging_containers": {
+        "sector_patterns": [
+          "packaging",
+          "containers"
+        ],
+        "subsector_patterns": [
+          "packaging",
+          "containers",
+          "metal, glass & plastic containers",
+          "paper packaging"
+        ],
+        "sic_prefixes": [
+          "26",
+          "267",
+          "308",
+          "341"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.3,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "building_products": {
+        "sector_patterns": [
+          "building products",
+          "building materials",
+          "construction materials"
+        ],
+        "subsector_patterns": [
+          "building products",
+          "building materials",
+          "construction materials"
+        ],
+        "sic_prefixes": [
+          "24",
+          "32",
+          "34"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.2,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.25,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "transport_logistics": {
+        "sector_patterns": [
+          "logistics",
+          "freight",
+          "rail",
+          "trucking",
+          "shipping",
+          "parcel",
+          "marine transportation"
+        ],
+        "subsector_patterns": [
+          "air freight & logistics",
+          "railroads",
+          "trucking",
+          "marine transportation",
+          "integrated freight",
+          "parcel"
+        ],
+        "sic_prefixes": [
+          "40",
+          "41",
+          "42",
+          "44",
+          "47"
+        ],
+        "rules": {
+          "lease_weight": 0.5,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.2,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.6,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": true
+        }
+      },
+      "professional_services": {
+        "sector_patterns": [
+          "professional services",
+          "business services",
+          "human resource",
+          "information services"
+        ],
+        "subsector_patterns": [
+          "professional services"
+        ],
+        "sic_prefixes": [
+          "73",
+          "87"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.05,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.04,
+          "fixed_charge_lease_weight": 0.15,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "commercial_services": {
+        "sector_patterns": [
+          "commercial services",
+          "waste",
+          "uniform",
+          "facility services"
+        ],
+        "subsector_patterns": [
+          "commercial services & supplies",
+          "environmental services",
+          "facilities services"
+        ],
+        "sic_prefixes": [
+          "49",
+          "73",
+          "87"
+        ],
+        "rules": {
+          "lease_weight": 0.15,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.1,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.25,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "construction_engineering": {
+        "sector_patterns": [
+          "construction",
+          "engineering"
+        ],
+        "subsector_patterns": [
+          "construction & engineering"
+        ],
+        "sic_prefixes": [
+          "15",
+          "16",
+          "17"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.1,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "industrial_conglomerates": {
+        "sector_patterns": [
+          "conglomerate"
+        ],
+        "subsector_patterns": [
+          "industrial conglomerates"
+        ],
+        "sic_prefixes": [
+          "38"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.35,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.025,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": false
+        }
+      },
+      "lease_heavy": {
+        "sector_patterns": [
+          "retail",
+          "restaurant",
+          "hospitality",
+          "lodging",
+          "airline",
+          "transport"
+        ],
+        "subsector_patterns": [
+          "specialty retail",
+          "department stores",
+          "restaurants",
+          "hotels",
+          "airlines",
+          "gaming"
+        ],
+        "sic_prefixes": [
+          "45",
+          "53",
+          "54",
+          "58",
+          "70"
+        ],
+        "fingerprints": {
+          "lease_liability_to_reported_debt_min": 0.35
+        },
+        "rules": {
+          "lease_weight": 1.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.25,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.04,
+          "fixed_charge_lease_weight": 1.0,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit",
+          "lease_adjusted_metrics": true
+        }
+      },
+      "real_estate": {
+        "sector_patterns": [
+          "real estate",
+          "reit",
+          "property"
+        ],
+        "subsector_patterns": [
+          "office reit",
+          "retail reit",
+          "industrial reit",
+          "lodging reit",
+          "multifamily",
+          "self-storage"
+        ],
+        "sic_prefixes": [
+          "65",
+          "67"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.33,
+          "denominator_policy": "ebitda_proxy",
+          "coverage_basis": "ebit"
+        }
+      },
+      "financial_institution": {
+        "sector_patterns": [
+          "financial",
+          "bank",
+          "insurance",
+          "capital markets"
+        ],
+        "subsector_patterns": [
+          "bank",
+          "banks",
+          "insurance",
+          "specialty finance",
+          "brokerage",
+          "asset manager"
+        ],
+        "sic_prefixes": [
+          "60",
+          "61",
+          "62",
+          "63",
+          "64",
+          "67"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 0.0,
+          "preferred_weight": 0.0,
+          "convertible_weight": 0.0,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.01,
+          "fixed_charge_lease_weight": 0.0,
+          "denominator_policy": "unsupported",
+          "coverage_basis": "unsupported"
+        }
+      },
+      "regulated_utility": {
+        "sector_patterns": [
+          "utilities",
+          "electric",
+          "gas",
+          "water"
+        ],
+        "subsector_patterns": [
+          "electric utilities",
+          "gas utilities",
+          "water utilities"
+        ],
+        "sic_prefixes": [
+          "49"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.25,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.33,
+          "denominator_policy": "ebitda_proxy",
+          "coverage_basis": "ebit"
+        }
+      },
+      "merchant_power": {
+        "sector_patterns": [
+          "power",
+          "independent power"
+        ],
+        "subsector_patterns": [
+          "independent power",
+          "merchant power"
+        ],
+        "sic_prefixes": [],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.25,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.33,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit"
+        }
+      },
+      "software": {
+        "sector_patterns": [
+          "technology",
+          "software",
+          "internet"
+        ],
+        "subsector_patterns": [
+          "application software",
+          "systems software",
+          "saas",
+          "internet services"
+        ],
+        "sic_prefixes": [
+          "73"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.05,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit"
+        }
+      },
+      "e_and_p": {
+        "sector_patterns": [
+          "energy"
+        ],
+        "subsector_patterns": [
+          "exploration",
+          "production",
+          "upstream"
+        ],
+        "sic_prefixes": [
+          "13"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.02,
+          "fixed_charge_lease_weight": 0.2,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit"
+        }
+      },
+      "energy_services": {
+        "sector_patterns": [
+          "energy"
+        ],
+        "subsector_patterns": [
+          "oilfield services",
+          "energy services"
+        ],
+        "sic_prefixes": [
+          "13",
+          "35"
+        ],
+        "rules": {
+          "lease_weight": 0.0,
+          "supplier_finance_weight": 1.0,
+          "preferred_weight": 0.5,
+          "convertible_weight": 0.5,
+          "pension_weight": 0.0,
+          "restricted_cash_weight": 1.0,
+          "min_cash_revenue_ratio": 0.03,
+          "fixed_charge_lease_weight": 0.25,
+          "denominator_policy": "ebitda",
+          "coverage_basis": "ebit"
+        }
+      }
+    }
+  },
+  "metrics": {
+    "capital_structure.total_debt": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "reported_debt",
+        "lease_liabilities",
+        "supplier_finance",
+        "preferred_equity",
+        "convertibles",
+        "unfunded_pension"
+      ],
+      "allowed_adjustments": [
+        "lease_adjusted_metrics",
+        "supplier_finance_extension_review",
+        "hybrid_equity_credit_review"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "diagnostic"
+      }
+    },
+    "capital_structure.net_debt": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "economic_debt",
+        "readily_available_cash_and_equivalents"
+      ],
+      "allowed_adjustments": [
+        "cash_availability_review",
+        "marketable_securities_haircut_review"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "diagnostic"
+      }
+    },
+    "capital_structure.gross_leverage": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "economic_debt",
+        "ebitda",
+        "lease_expense"
+      ],
+      "allowed_adjustments": [
+        "fitch_sector_primary_denominator"
+      ],
+      "denominator_policy": "fitch_sector_primary",
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "real_estate": "secondary",
+        "regulated_utility": "secondary",
+        "financial_institution": "unsupported"
+      }
+    },
+    "capital_structure.net_leverage": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "net_debt",
+        "ebitda",
+        "lease_expense"
+      ],
+      "allowed_adjustments": [
+        "fitch_sector_primary_denominator"
+      ],
+      "denominator_policy": "fitch_sector_primary",
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "real_estate": "secondary",
+        "regulated_utility": "secondary",
+        "financial_institution": "unsupported"
+      }
+    },
+    "capital_structure.interest_coverage": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "ebitda",
+        "interest_expense",
+        "associate_dividends",
+        "minority_dividends"
+      ],
+      "allowed_adjustments": [
+        "fitch_coverage_adjustments"
+      ],
+      "denominator_policy": "fitch_sector_primary",
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "lease_heavy": "secondary",
+        "real_estate": "secondary",
+        "regulated_utility": "secondary",
+        "financial_institution": "unsupported",
+        "consumer_grocery_retail": "secondary",
+        "consumer_apparel_luxury": "secondary",
+        "transport_logistics": "secondary"
+      }
+    },
+    "capital_structure.fixed_charge_coverage": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "ebitda",
+        "interest_expense",
+        "lease_expense",
+        "associate_dividends",
+        "minority_dividends",
+        "preferred_dividends"
+      ],
+      "allowed_adjustments": [
+        "fitch_fixed_charge_adjustments"
+      ],
+      "denominator_policy": "fitch_sector_primary",
+      "default_applicability": "secondary",
+      "archetype_applicability": {
+        "lease_heavy": "primary",
+        "financial_institution": "unsupported",
+        "consumer_grocery_retail": "primary",
+        "transport_logistics": "primary",
+        "consumer_apparel_luxury": "secondary"
+      }
+    },
+    "liquidity.usable_cash": {
+      "market_owner": "credit_market",
+      "primary_source_basis": "fitch_corporate_rating_criteria_2024",
+      "required_raw_components": [
+        "cash",
+        "marketable_securities",
+        "restricted_cash",
+        "unavailable_cash"
+      ],
+      "allowed_adjustments": [
+        "cash_availability_review",
+        "marketable_securities_haircut_review"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {}
+    },
+    "liquidity.available_for_actions": {
+      "market_owner": "treasury_market_view",
+      "primary_source_basis": "axiom_internal_planning_metric",
+      "required_raw_components": [
+        "usable_cash",
+        "minimum_cash_policy_proxy",
+        "revolver_undrawn"
+      ],
+      "allowed_adjustments": [
+        "min_cash_revenue_ratio"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "secondary"
+      }
+    },
+    "liquidity.runway_months": {
+      "market_owner": "treasury_market_view",
+      "primary_source_basis": "axiom_internal_planning_metric",
+      "required_raw_components": [
+        "deployable_liquidity",
+        "free_cash_flow"
+      ],
+      "allowed_adjustments": [
+        "min_cash_revenue_ratio"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "unsupported"
+      }
+    },
+    "capital_structure.maturity_wall_ratio_24m": {
+      "market_owner": "debt_market",
+      "primary_source_basis": "issuer_filing_native_maturity_schedule",
+      "required_raw_components": [
+        "debt_due_24m",
+        "economic_debt"
+      ],
+      "allowed_adjustments": [
+        "schedule_sanitization"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "secondary"
+      }
+    },
+    "capital_structure.refi_pressure_flag": {
+      "market_owner": "debt_market",
+      "primary_source_basis": "axiom_internal_planning_metric",
+      "required_raw_components": [
+        "maturity_wall_ratio_24m"
+      ],
+      "allowed_adjustments": [
+        "schedule_sanitization"
+      ],
+      "denominator_policy": null,
+      "default_applicability": "primary",
+      "archetype_applicability": {
+        "financial_institution": "secondary"
+      }
+    }
+  }
+}
