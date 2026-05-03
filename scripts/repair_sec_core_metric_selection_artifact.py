@@ -84,3 +84,121 @@ def _rebuild_core_metric(
     )
 
 
+def _recompute_standardized_metrics(
+    *,
+    features: dict,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> None:
+    revenue = core._metric_value(features, "operating.revenue_ttm_provider_direct")
+    ebitda = core._metric_value(features, "operating.ebitda_ltm_provider_direct")
+    net_income = core._metric_value(features, "earnings.net_income_ttm_provider_direct")
+    cash_sti = core._metric_value(features, "liquidity.cash_and_short_term_investments_provider_direct")
+    total_debt = core._metric_value(features, "capital_structure.total_debt_provider_direct")
+
+    revenue_support = core._metric_support(features, "operating.revenue_ttm_provider_direct")
+    ebitda_support = core._metric_support(features, "operating.ebitda_ltm_provider_direct")
+    net_income_support = core._metric_support(features, "earnings.net_income_ttm_provider_direct")
+    cash_sti_support = core._metric_support(features, "liquidity.cash_and_short_term_investments_provider_direct")
+    total_debt_support = core._metric_support(features, "capital_structure.total_debt_provider_direct")
+
+    net_debt = None if total_debt is None or cash_sti is None else total_debt - cash_sti
+
+    features["capital_structure.net_debt_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.net_debt_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd",
+        numerator=net_debt,
+        denominator=None,
+        extra_components={
+            "total_debt_provider_direct": total_debt,
+            "cash_and_short_term_investments_provider_direct": cash_sti,
+        },
+        component_supports={
+            "total_debt_provider_direct": total_debt_support,
+            "cash_and_short_term_investments_provider_direct": cash_sti_support,
+        },
+        formula="total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+        allow_numerator_only=True,
+    )
+
+    features["capital_structure.gross_leverage_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.gross_leverage_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+        numerator=total_debt,
+        denominator=ebitda,
+        extra_components={
+            "total_debt_provider_direct": total_debt,
+            "ebitda_ltm_provider_direct": ebitda,
+        },
+        component_supports={
+            "total_debt_provider_direct": total_debt_support,
+            "ebitda_ltm_provider_direct": ebitda_support,
+        },
+        formula="total_debt_provider_direct / ebitda_ltm_provider_direct",
+    )
+
+    features["capital_structure.net_leverage_standardized"] = core._build_combo_metric(
+        metric_name="capital_structure.net_leverage_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="x",
+        numerator=net_debt,
+        denominator=ebitda,
+        extra_components={
+            "net_debt_standardized": net_debt,
+            "ebitda_ltm_provider_direct": ebitda,
+        },
+        component_supports={
+            "net_debt_standardized": features["capital_structure.net_debt_standardized"]["support_mode"],
+            "ebitda_ltm_provider_direct": ebitda_support,
+        },
+        formula="net_debt_standardized / ebitda_ltm_provider_direct",
+    )
+
+    features["operating.ebitda_margin_standardized"] = core._build_combo_metric(
+        metric_name="operating.ebitda_margin_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="ratio",
+        numerator=ebitda,
+        denominator=revenue,
+        extra_components={
+            "ebitda_ltm_provider_direct": ebitda,
+            "revenue_ttm_provider_direct": revenue,
+        },
+        component_supports={
+            "ebitda_ltm_provider_direct": ebitda_support,
+            "revenue_ttm_provider_direct": revenue_support,
+        },
+        formula="ebitda_ltm_provider_direct / revenue_ttm_provider_direct",
+    )
+
+    features["earnings.net_margin_standardized"] = core._build_combo_metric(
+        metric_name="earnings.net_margin_standardized",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="ratio",
+        numerator=net_income,
+        denominator=revenue,
+        extra_components={
+            "net_income_ttm_provider_direct": net_income,
+            "revenue_ttm_provider_direct": revenue,
+        },
+        component_supports={
+            "net_income_ttm_provider_direct": net_income_support,
+            "revenue_ttm_provider_direct": revenue_support,
+        },
+        formula="net_income_ttm_provider_direct / revenue_ttm_provider_direct",
+    )
+
+
