@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PeerSet",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "peer_set_id": {"type": "string"},
+    "members": {"type": "array", "items": {"type": "string"}},
+    "method": {"type": "string"},
+    "version": {"type": "integer"}
+  },
+  "required": ["peer_set_id", "members", "method", "version"]
+}
