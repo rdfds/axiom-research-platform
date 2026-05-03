@@ -837,3 +837,13 @@ def _sql_quote(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
+def _is_readable_file(path: Path) -> bool:
+    try:
+        st = path.stat()
+        if st.st_size <= 0:
+            return False
+        return True
+    except Exception:
+        return False
+
+

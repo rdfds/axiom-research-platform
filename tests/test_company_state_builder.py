@@ -113,3 +113,107 @@ def _note_fact_row(
     }
 
 
+def _entity_row(entity_id: str, *, sector: str | None = None, subsector: str | None = None, sic: str | None = None):
+    return {
+        "entity_id": entity_id,
+        "sector": sector,
+        "subsector": subsector,
+        "gics_sector": sector,
+        "gics_sub_industry": subsector,
+        "sic": sic,
+    }
+
+
+def test_asof_filters_future_facts(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    rows = [
+        _facts_row(
+            fact_id="cash_old",
+            entity_id="ABC",
+            fact_type="financial.cash",
+            fact_value=100.0,
+            published_at="2026-02-01T00:00:00Z",
+            ingested_at="2026-02-01T00:00:00Z",
+            valid_from="2026-02-01T00:00:00Z",
+        ),
+        _facts_row(
+            fact_id="cash_future",
+            entity_id="ABC",
+            fact_type="financial.cash",
+            fact_value=999.0,
+            published_at="2026-03-01T00:00:00Z",
+            ingested_at="2026-03-01T00:00:00Z",
+            valid_from="2026-03-01T00:00:00Z",
+        ),
+    ]
+    _write_parquet(facts_path, rows)
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+    cash = snap.features["liquidity.cash"]["value"]
+    assert cash == 100.0
+
+
+def test_load_facts_falls_back_to_pandas_when_duckdb_scan_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    facts_dir = tmp_path / "facts"
+    _write_parquet(
+        facts_dir / "year=2024" / "part.parquet",
+        [
+            _facts_row(
+                fact_id="cash_current",
+                entity_id="ABC",
+                fact_type="financial.cash",
+                fact_value=125.0,
+                published_at="2024-05-01T00:00:00Z",
+                ingested_at="2024-05-01T00:00:00Z",
+                valid_from="2024-05-01T00:00:00Z",
+            ),
+            _facts_row(
+                fact_id="cash_other",
+                entity_id="XYZ",
+                fact_type="financial.cash",
+                fact_value=999.0,
+                published_at="2024-05-01T00:00:00Z",
+                ingested_at="2024-05-01T00:00:00Z",
+                valid_from="2024-05-01T00:00:00Z",
+            ),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_dir, skip_timeseries=True)
+
+    class _BrokenConnection:
+        def execute(self, _query: str):
+            raise RuntimeError("duckdb parquet scan failed")
+
+    monkeypatch.setattr(company_state_builder.duckdb, "connect", lambda: _BrokenConnection())
+
+    df = builder._load_facts("ABC", pd.Timestamp("2024-06-01T00:00:00Z"))
+    assert len(df) == 1
+    assert df.iloc[0]["entity_id"] == "ABC"
+    assert df.iloc[0]["fact_id"] == "cash_current"
+
+
+def test_is_readable_file_allows_large_zero_block_files_without_probative_reads(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    candidate = tmp_path / "placeholder.parquet"
+    candidate.write_text("placeholder")
+
+    real_stat = candidate.stat()
+    original_stat = Path.stat
+
+    class _FakeStat:
+        st_size = real_stat.st_size
+        st_blocks = 0
+
+    monkeypatch.setattr(Path, "stat", lambda self: _FakeStat() if self == candidate else original_stat(self))
+
+    def _unexpected_open(*_args, **_kwargs):
+        raise AssertionError("placeholder probe should not open the file")
+
+    monkeypatch.setattr(company_state_builder, "open", _unexpected_open, raising=False)
+
+    assert company_state_builder._is_readable_file(candidate) is True
+
+
