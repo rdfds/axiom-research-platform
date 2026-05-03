@@ -105,3 +105,5 @@ def main() -> None:
     _emit({"event": "complete", "case_count": len(cases), "cache_dir": str(cache_dir)})
 
 
+if __name__ == "__main__":
+    main()
