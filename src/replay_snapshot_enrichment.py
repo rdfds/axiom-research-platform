@@ -82,3 +82,13 @@ def _support_mode(raw: Any) -> str | None:
     return str(value).strip().lower() if value is not None else None
 
 
+def _is_exactish_support_mode(mode: str | None) -> bool:
+    return str(mode or "").strip().lower() in _EXACTISH_SUPPORT_MODES
+
+
+def _quality_flags(raw: Any) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+    return [str(flag) for flag in (raw.get("quality_flags") or []) if flag is not None]
+
+
