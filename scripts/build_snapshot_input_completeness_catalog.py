@@ -76,3 +76,91 @@ def _support_mode(row: Dict[str, Any], metric_name: str) -> str:
     return mode
 
 
+def main() -> None:
+    args = _parse_args()
+    snapshot_catalog_path = Path(args.snapshot_catalog_path)
+    companyfacts_root = Path(args.companyfacts_root)
+    entity_identifier_path = Path(args.entity_identifier_path)
+    crsp_daily_root = Path(args.crsp_daily_root)
+    crsp_market_cache_path = Path(args.crsp_market_cache_path) if args.crsp_market_cache_path else None
+    out_path = Path(args.out_path)
+    summary_path = Path(args.summary_path) if args.summary_path else None
+
+    from src.replay_snapshot_enrichment import enrich_snapshot_with_revenue_growth_inputs
+
+    rows = list(_iter_rows(snapshot_catalog_path))
+    total_rows = len(rows)
+    pre_counts: dict[str, Counter[str]] = {metric: Counter() for metric in TARGET_METRICS}
+    post_counts: dict[str, Counter[str]] = {metric: Counter() for metric in TARGET_METRICS}
+    changed_rows = 0
+    source_changed_counts: Counter[str] = Counter()
+    metric_change_counts: Counter[str] = Counter()
+    temp_out_path = out_path.with_suffix(out_path.suffix + ".tmp")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if temp_out_path.exists():
+        temp_out_path.unlink()
+
+    with gzip.open(temp_out_path, "wt") as handle:
+        for index, row in enumerate(rows, start=1):
+            for metric in TARGET_METRICS:
+                pre_counts[metric][_support_mode(row, metric)] += 1
+            enriched, changed, summary = enrich_snapshot_with_revenue_growth_inputs(
+                row,
+                companyfacts_root=companyfacts_root,
+                entity_identifier_path=entity_identifier_path,
+                crsp_market_cache_path=crsp_market_cache_path,
+                crsp_daily_root=crsp_daily_root,
+                company_id=str(row.get("company_id") or ""),
+                as_of_time=str(row['as_of_time'] or ""),
+            )
+            if changed:
+                changed_rows += 1
+                source_changed_counts[str(row.get("snapshot_catalog_source") or "unknown")] += 1
+            for metric in (summary.get("metrics") or {}).keys():
+                metric_change_counts[str(metric)] += 1
+            for metric in TARGET_METRICS:
+                post_counts[metric][_support_mode(enriched, metric)] += 1
+            handle.write(json.dumps(enriched, sort_keys=True, default=str))
+            handle.write("\n")
+            if index % 50 == 0 or index == total_rows:
+                print(
+                    json.dumps(
+                        {
+                            "progress": index,
+                            "total_rows": total_rows,
+                            "changed_rows": changed_rows,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+
+    temp_out_path.replace(out_path)
+
+    metric_support_summary = {}
+    for metric in TARGET_METRICS:
+        metric_support_summary[metric] = {
+            "before": dict(pre_counts[metric]),
+            "after": dict(post_counts[metric]),
+            "changed_rows": int(metric_change_counts[metric]),
+        }
+
+    summary_payload = {
+        "snapshot_catalog_path": str(snapshot_catalog_path),
+        "out_path": str(out_path),
+        "row_count": total_rows,
+        "changed_rows": changed_rows,
+        "companyfacts_root": str(companyfacts_root),
+        "entity_identifier_path": str(entity_identifier_path),
+        "crsp_daily_root": str(crsp_daily_root),
+        "crsp_market_cache_path": str(crsp_market_cache_path) if crsp_market_cache_path else None,
+        "changed_rows_by_source": dict(source_changed_counts),
+        "metric_support_summary": metric_support_summary,
+    }
+    if summary_path is not None:
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary_payload, indent=2, sort_keys=True))
+    print(json.dumps(summary_payload, sort_keys=True))
+
+
