@@ -45,7 +45,7 @@ TARGET_METRICS = [
 ]
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build an as-of-safe snapshot catalog with completeness enrichment applied universe-wide."
     )

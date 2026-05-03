@@ -90,7 +90,7 @@ def main() -> None:
         rows.values(),
         key=lambda row: (
             str(row.get("company_id") or ""),
-            str(row['as_of_time'] or ""),
+            str(row.get("as_of_time") or ""),
         ),
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
