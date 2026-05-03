@@ -26,3 +26,38 @@ def _node(name, value, *, support_mode="unsupported", unit="ratio"):
     }
 
 
+def _companyfacts_with_revenue_quarters():
+    return {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2023-07-01",
+                                "end": "2023-09-30",
+                                "val": 90.0,
+                                "fy": 2023,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2023-10-30",
+                                "frame": "CY2023Q3",
+                            },
+                            {
+                                "start": "2024-07-01",
+                                "end": "2024-09-30",
+                                "val": 110.0,
+                                "fy": 2024,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2024-10-30",
+                                "frame": "CY2024Q3",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+

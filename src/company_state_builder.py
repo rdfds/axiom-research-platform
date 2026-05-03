@@ -692,3 +692,135 @@ def _parse_dealscan_ratio_value(val: Any) -> Optional[float]:
         return None
 
 
+def _looks_like_equity_instrument(text: Any) -> bool:
+    lowered = str(text or "").strip().lower()
+    if not lowered:
+        return False
+    return any(token in lowered for token in ["equity", "stock", "common", "ordinary", "share"])
+
+
+def _looks_like_debt_instrument(text: Any) -> bool:
+    lowered = str(text or "").strip().lower()
+    if not lowered:
+        return False
+    return any(token in lowered for token in ["bond", "note", "debt", "loan", "credit"])
+
+
+def _price_group_col(df: pd.DataFrame) -> Optional[str]:
+    for candidate in ["security_id", "instrument_id", "series_id", "field_name", "metric"]:
+        if candidate in df.columns and df[candidate].notna().any():
+            return candidate
+    return None
+
+
+def _prepare_price_series(
+    ts: pd.DataFrame,
+) -> Tuple[Optional[pd.DataFrame], Optional[float], Optional[str], Optional[str], Dict[str, Any], List[str]]:
+    if ts is None or ts.empty:
+        return None, None, None, None, {}, ["price_history_unavailable"]
+
+    time_col = _pick_price_time_col(ts)
+    if time_col is None:
+        return None, None, None, None, {}, ["price_history_unavailable"]
+
+    candidate_specs: List[Tuple[str, str, pd.DataFrame]] = []
+    for price_col in ("adjusted_close", "close"):
+        if price_col in ts.columns:
+            candidate_specs.append(("wide", price_col, ts))
+
+    if "value" in ts.columns:
+        long_df = ts.copy()
+        selector = pd.Series(False, index=long_df.index)
+        if "series_type" in long_df.columns:
+            selector |= long_df["series_type"].astype(str).str.lower().eq("price")
+        for candidate_col in ("series_id", "field_name", "metric"):
+            if candidate_col in long_df.columns:
+                selector |= long_df[candidate_col].astype(str).str.contains(
+                    "adjusted[_ ]?close|close|price",
+                    case=False,
+                    na=False,
+                )
+        if selector.any():
+            candidate_specs.append(("long", "value", long_df[selector].copy()))
+
+    candidates: List[Dict[str, Any]] = []
+    series_type_filtered = False
+    for source_kind, price_col, raw_df in candidate_specs:
+        if raw_df.empty:
+            continue
+        df = raw_df.copy()
+        if "series_type" in df.columns:
+            price_mask = df["series_type"].astype(str).str.lower().eq("price")
+            if price_mask.any():
+                if (~price_mask).any():
+                    series_type_filtered = True
+                df = df[price_mask].copy()
+        df["obs_time"] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
+        df["price"] = pd.to_numeric(df[price_col], errors="coerce")
+        df = df.dropna(subset=["obs_time", "price"])
+        df = df[df["price"] > 0].copy()
+        if df.empty:
+            continue
+
+        group_col = _price_group_col(df)
+        grouped = [("__all__", df)] if group_col is None else list(df.groupby(group_col, dropna=False, sort=False))
+        for group_value, group_df in grouped:
+            group_df = group_df.sort_values("obs_time").drop_duplicates(subset=["obs_time"], keep="last")
+            if group_df.empty:
+                continue
+            instrument_type = None
+            if "instrument_type" in group_df.columns:
+                instrument_type = _null_if_na(group_df["instrument_type"].dropna().astype(str).iloc[0]) if not group_df["instrument_type"].dropna().empty else None
+            series_type = None
+            if "series_type" in group_df.columns:
+                series_type = _null_if_na(group_df["series_type"].dropna().astype(str).iloc[0]) if not group_df["series_type"].dropna().empty else None
+            latest_obs = group_df["obs_time"].max()
+            score = (
+                1 if price_col == "adjusted_close" else 0,
+                1 if str(series_type or "").lower() == "price" else 0,
+                1 if _looks_like_equity_instrument(instrument_type) else 0,
+                1 if not _looks_like_debt_instrument(instrument_type) else 0,
+                int(len(group_df)),
+                int(latest_obs.value) if pd.notna(latest_obs) else -1,
+            )
+            candidates.append(
+                {
+                    "df": group_df[["obs_time", "price"]].copy(),
+                    "price_col": price_col,
+                    "source_kind": source_kind,
+                    "time_col": time_col,
+                    "group_col": group_col,
+                    "group_value": _null_if_na(group_value),
+                    "instrument_type": instrument_type,
+                    "series_type": series_type,
+                    "score": score,
+                }
+            )
+
+    if not candidates:
+        return None, None, None, None, {}, ["price_history_unavailable"]
+
+    best = max(candidates, key=lambda item: item["score"])
+    price_df = best["df"].sort_values("obs_time").reset_index(drop=True)
+    latest_row = price_df.iloc[-1]
+    breakdown: Dict[str, Any] = {
+        "source_kind": best["source_kind"],
+        "price_field": best["price_col"],
+        "time_field": best["time_col"],
+        "group_field": best["group_col"],
+        "group_value": best["group_value"],
+        "series_type": best["series_type"],
+        "instrument_type": best["instrument_type"],
+        "candidate_series_evaluated": int(len(candidates)),
+        "price_observations": int(len(price_df)),
+        "latest_price": _safe_float(latest_row.get("price")),
+        "latest_observation_time": str(latest_row.get("obs_time")) if latest_row.get("obs_time") is not None else None,
+    }
+    flags: List[str] = []
+    if series_type_filtered:
+        flags.append("non_price_series_filtered")
+    if len(candidates) > 1:
+        flags.append("multiple_price_series_candidates")
+    return price_df, _safe_float(latest_row.get("price")), best["price_col"], "obs_time", breakdown, flags
+
+
