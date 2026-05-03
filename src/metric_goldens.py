@@ -88,3 +88,24 @@ def _synthetic_builder_for_case(case: Dict[str, Any], workdir: Path) -> CompanyS
     )
 
 
+def _live_builder() :
+    companyfacts_root = _default_companyfacts_root()
+    return CompanyStateBuilder(
+        skip_peer_context=True,
+        companyfacts_root=companyfacts_root if companyfacts_root and companyfacts_root.exists() else None,
+        enable_market_relevant_smart_normalized_inputs=True,
+    )
+
+
+def _build_snapshot(case: Dict[str, Any], workdir: Path):
+    if case.get("inputs"):
+        builder = _synthetic_builder_for_case(case, workdir)
+    else:
+        builder = _live_builder()
+    company_id = str(case.get("company_id") or "").strip()
+    as_of_date = str(case.get("as_of_date") or "").strip()
+    if not company_id or not as_of_date:
+        raise ValueError(f"golden_case_missing_identity:{case.get('case_id')}")
+    return builder.build(company_id, as_of_date)
+
+
