@@ -219,3 +219,5 @@ def main() -> None:
     print(f"[done] validity_root={validity_root}")
 
 
+if __name__ == "__main__":
+    main()
