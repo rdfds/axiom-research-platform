@@ -202,3 +202,18 @@ def _recompute_standardized_metrics(
     )
 
 
+def _iter_component_ends(component_breakdown: object) -> list[date]:
+    ends: list[date] = []
+    if isinstance(component_breakdown, dict):
+        end_text = component_breakdown.get("end")
+        end_dt = core._parse_iso_date(end_text)
+        if end_dt is not None:
+            ends.append(end_dt)
+        for value in component_breakdown.values():
+            ends.extend(_iter_component_ends(value))
+    elif isinstance(component_breakdown, list):
+        for value in component_breakdown:
+            ends.extend(_iter_component_ends(value))
+    return ends
+
+
