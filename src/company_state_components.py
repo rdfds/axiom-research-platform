@@ -85,3 +85,7 @@ def _pick_value_col(df: pd.DataFrame) -> Optional[str]:
     )
 
 
+def _pick_series_col(df: pd.DataFrame) -> Optional[str]:
+    return _pick_first_col(df, ["series_id", "instrument_id", "metric", "field_name"])
+
+
