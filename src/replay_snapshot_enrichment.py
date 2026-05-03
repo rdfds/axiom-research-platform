@@ -92,3 +92,30 @@ def _quality_flags(raw: Any) -> list[str]:
     return [str(flag) for flag in (raw.get("quality_flags") or []) if flag is not None]
 
 
+@lru_cache(maxsize=8)
+def _permno_lookup(entity_identifier_path: str) -> Dict[str, str]:
+    ids = pd.read_parquet(entity_identifier_path, columns=["entity_id", "identifier_type", "identifier_value"])
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
+    ids["entity_id"] = ids["entity_id"].astype(str)
+    ids["permno"] = ids["identifier_value"].astype(str).str.strip()
+    ids = ids.drop_duplicates(subset=["entity_id"], keep="last")
+    return dict(zip(ids["entity_id"], ids["permno"]))
+
+
+def _dedupe_provenance(*records: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        for item in list(record['provenance'] or []):
+            if not isinstance(item, dict):
+                continue
+            key = json.dumps(item, sort_keys=True, default=str)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(deepcopy(item))
+    return out
+
+
