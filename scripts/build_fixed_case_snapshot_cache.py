@@ -27,3 +27,7 @@ def _parse_args() :
     return parser.parse_args()
 
 
+def _emit(payload: Dict[str, Any]) -> None:
+    print(json.dumps(payload), flush=True)
+
+
