@@ -109,3 +109,23 @@ def _build_snapshot(case: Dict[str, Any], workdir: Path):
     return builder.build(company_id, as_of_date)
 
 
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _values_match(left: Any, right: Any, *, rel_tol: float = 0.01, abs_tol: float = 1.0) -> bool:
+    if left is None or right is None:
+        return left is right
+    left_float = _to_float(left)
+    right_float = _to_float(right)
+    if left_float is None or right_float is None:
+        return left == right
+    tolerance = max(abs_tol, abs(right_float) * rel_tol)
+    return abs(left_float - right_float) <= tolerance
+
+
