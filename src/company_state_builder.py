@@ -824,3 +824,16 @@ def _prepare_price_series(
     return price_df, _safe_float(latest_row.get("price")), best["price_col"], "obs_time", breakdown, flags
 
 
+def _as_of_ts_literal(as_of_dt: pd.Timestamp) -> str:
+    # DuckDB TIMESTAMP literal (naive). Avoid TIMESTAMPTZ comparisons against timestamp_ns.
+    try:
+        naive = as_of_dt.tz_convert(None)
+    except Exception:
+        naive = as_of_dt
+    return naive.isoformat()
+
+
+def _sql_quote(s: str) -> str:
+    return "'" + str(s).replace("'", "''") + "'"
+
+

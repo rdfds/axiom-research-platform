@@ -29,3 +29,13 @@ def test_write_and_load_keyed_snapshot(tmp_path: Path):
     assert xyz is not None and xyz["company_id"] == "XYZ"
 
 
+def test_write_jsonl_row_count_guard(tmp_path: Path):
+    store = SnapshotStore(tmp_path / "snapshots", temp_dir=tmp_path / "tmp")
+    as_of = "2026-02-28"
+    try:
+        store.write_jsonl([_snap("ABC", as_of)], as_of, expected_count=2)
+    except RuntimeError as e:
+        assert "row-count mismatch" in str(e)
+        return
+    raise AssertionError("Expected RuntimeError for row-count mismatch")
+

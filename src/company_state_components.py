@@ -89,3 +89,105 @@ def _pick_series_col(df: pd.DataFrame) -> Optional[str]:
     return _pick_first_col(df, ["series_id", "instrument_id", "metric", "field_name"])
 
 
+class RegimeClassifier:
+    def __init__(self, series_map: Optional[Dict[str, str]] = None) -> None:
+        self.series_map = series_map or {
+            "hy_oas": "BAMLH0A0HYM2",
+            "ig_oas": "BAMLC0A0CM",
+            "vix": "VIXCLS",
+            "sp500": "SP500",
+            "rate_2y": "DGS2",
+            "rate_10y": "DGS10",
+        }
+
+    def classify(self, macro: pd.DataFrame, as_of: pd.Timestamp) :
+        if macro is None or macro.empty:
+            return {
+                "credit_regime": "neutral",
+                "risk_regime": "neutral",
+                "vol_regime": "normal",
+                "sector_cycle": "neutral",
+                "signals": {},
+                "confidence": 0.3,
+            }
+
+        time_col = _pick_time_col(macro)
+        value_col = _pick_value_col(macro)
+        series_col = _pick_series_col(macro)
+        if time_col is None or value_col is None or series_col is None:
+            return {
+                "credit_regime": "neutral",
+                "risk_regime": "neutral",
+                "vol_regime": "normal",
+                "sector_cycle": "neutral",
+                "signals": {},
+                "confidence": 0.3,
+            }
+
+        def series_window(series_id: str) -> pd.Series:
+            df = macro[macro[series_col].astype(str) == series_id].copy()
+            if df.empty:
+                return pd.Series(dtype=float)
+            df[time_col] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
+            df = df[df[time_col] <= as_of]
+            df = df.sort_values(time_col)
+            if df.empty:
+                return pd.Series(dtype=float)
+            lookback_start = as_of - timedelta(days=365 * 5)
+            df = df[df[time_col] >= lookback_start]
+            return df[value_col].astype(float)
+
+        hy = series_window(self.series_map["hy_oas"])
+        vix = series_window(self.series_map["vix"])
+        spx = series_window(self.series_map["sp500"])
+
+        hy_z = _zscore(hy)
+        vix_pct = _percentile(vix)
+        spx_ret_6m = None
+        if not spx.empty and len(spx) > 2:
+            idx = max(0, len(spx) - 126)
+            if spx.iloc[idx] != 0:
+                spx_ret_6m = (spx.iloc[-1] / spx.iloc[idx]) - 1.0
+
+        credit_regime = "neutral"
+        if hy_z is not None:
+            if hy_z > 1.0:
+                credit_regime = "tight"
+            elif hy_z < -1.0:
+                credit_regime = "loose"
+
+        risk_regime = "neutral"
+        if vix_pct is not None:
+            if vix_pct > 75:
+                risk_regime = "risk_off"
+            elif vix_pct < 25:
+                risk_regime = "risk_on"
+
+        vol_regime = "normal"
+        if vix_pct is not None:
+            if vix_pct > 75:
+                vol_regime = "high"
+            elif vix_pct < 25:
+                vol_regime = "low"
+
+        sector_cycle = "neutral"
+        if spx_ret_6m is not None:
+            if spx_ret_6m > 0.1:
+                sector_cycle = "upcycle"
+            elif spx_ret_6m < -0.1:
+                sector_cycle = "downcycle"
+
+        return {
+            "credit_regime": credit_regime,
+            "risk_regime": risk_regime,
+            "vol_regime": vol_regime,
+            "sector_cycle": sector_cycle,
+            "signals": {
+                "hy_oas_z": hy_z,
+                "vix_pctile": vix_pct,
+                "spx_6m_ret": spx_ret_6m,
+            },
+            "confidence": 0.7 if hy_z is not None and vix_pct is not None else 0.4,
+        }
+
+
