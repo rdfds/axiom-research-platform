@@ -112,7 +112,7 @@ def main() -> None:
                 crsp_market_cache_path=crsp_market_cache_path,
                 crsp_daily_root=crsp_daily_root,
                 company_id=str(row.get("company_id") or ""),
-                as_of_time=str(row['as_of_time'] or ""),
+                as_of_time=str(row.get("as_of_time") or ""),
             )
             if changed:
                 changed_rows += 1
