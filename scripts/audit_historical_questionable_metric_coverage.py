@@ -178,3 +178,189 @@ def _build_builder(repo_root: Path, inputs_root: Path, facts_years: list[int]) -
     )
 
 
+def _ensure_local_registry_files() -> tuple[Path, Path, Path]:
+    policy_path = Path("/tmp/historical_metric_policy_minimal.json")
+    methodology_registry_path = Path("/tmp/historical_metric_methodology_registry_minimal.json")
+    input_source_registry_path = Path("/tmp/historical_company_state_input_source_registry_minimal.json")
+
+    if not policy_path.exists():
+        metrics = {
+            metric_id: {
+                "label": metric_id,
+                "market_owner": "axiom",
+                "primary_source_basis": "public_filing_or_market_data",
+                "default_applicability": "primary",
+                "archetype_applicability": {},
+            }
+            for metric_id in [
+                "liquidity.usable_cash",
+                "liquidity.available_for_actions",
+                "capital_structure.total_debt",
+                "capital_structure.net_debt",
+                "capital_structure.gross_leverage",
+                "capital_structure.net_leverage",
+                "capital_structure.interest_coverage",
+                "capital_structure.fixed_charge_coverage",
+                "capital_structure.current_debt_statement_direct",
+                "capital_structure.long_term_debt_statement_direct",
+                "capital_structure.interest_expense_statement_direct",
+                "capital_structure.net_pension_liability",
+                "capital_structure.other_postretirement_benefit_liability",
+                "capital_structure.combined_retirement_liability",
+                "capital_structure.debt_like_obligations_normalized",
+                "capital_structure.net_debt_including_retirement",
+                "capital_structure.gross_leverage_including_retirement",
+                "capital_structure.net_leverage_including_retirement",
+            ]
+        }
+        policy = {
+            "policy_id": "historical_metric_policy_minimal_v1",
+            "version": 1,
+            "primary_credit_anchor": "moodys_primary_v1",
+            "taxonomy": {
+                "sector_field_candidates": [],
+                "subsector_field_candidates": [],
+                "archetypes": {
+                    "generic_corporate": {"rules": {}},
+                    "lease_heavy": {
+                        "fingerprints": {"lease_liability_to_reported_debt_min": 0.5},
+                        "rules": {"lease_adjusted_metrics": True},
+                    },
+                    "financial_institution": {"rules": {}},
+                },
+                "issuer_overrides": {},
+            },
+            "metrics": metrics,
+        }
+        policy_path.write_text(json.dumps(policy, indent=2))
+
+    if not methodology_registry_path.exists():
+        methodology_registry = {
+            "registry_id": "historical_metric_methodology_registry_minimal_v1",
+            "version": 1,
+            "canonical_owners": {"axiom": {"name": "Axiom"}},
+            "metrics": {},
+        }
+        methodology_registry_path.write_text(json.dumps(methodology_registry, indent=2))
+
+    if not input_source_registry_path.exists():
+        input_source_registry = {
+            "registry_id": "historical_company_state_input_source_registry_minimal_v1",
+            "version": "1.0.0",
+            "owners": {},
+            "metrics": {},
+        }
+        input_source_registry_path.write_text(json.dumps(input_source_registry, indent=2))
+
+    return policy_path, methodology_registry_path, input_source_registry_path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--company-ids-file", type=Path, default=Path("/tmp/historical_metric_audit_company_ids.txt"))
+    parser.add_argument(
+        "--artifact",
+        type=Path,
+        default=_default_artifact_path(),
+    )
+    parser.add_argument("--dates", default=",".join(DEFAULT_DATES))
+    parser.add_argument("--out-json", type=Path, required=True)
+    parser.add_argument("--out-md", type=Path, required=True)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--timeout-seconds", type=int, default=12)
+    args = parser.parse_args()
+
+    repo_root = REPO_ROOT
+    inputs_root = _default_inputs_root()
+    dates = [part.strip() for part in args.dates.split(",") if part.strip()]
+    company_ids = _load_company_ids(args.company_ids_file, args.artifact)
+    if args.limit is not None:
+        company_ids = company_ids[: args.limit]
+
+    summary: dict[str, Any] = {
+        "dates": dates,
+        "company_count": len(company_ids),
+        "metrics": QUESTIONABLE_METRICS,
+        "by_date": {},
+    }
+
+    for as_of_date in dates:
+        year = int(as_of_date[:4])
+        facts_years = [y for y in range(max(2005, year - 2), year + 1)]
+        builder = _build_builder(repo_root, inputs_root, facts_years)
+        metric_counters: dict[str, Counter[str]] = {metric: Counter() for metric in QUESTIONABLE_METRICS}
+        regime_examples: dict[str, list[str]] = defaultdict(list)
+        failures: list[dict[str, str]] = []
+
+        for index, company_id in enumerate(company_ids, start=1):
+            try:
+                snapshot = _build_with_timeout(
+                    builder,
+                    company_id,
+                    f"{as_of_date}T00:00:00Z",
+                    args.timeout_seconds,
+                )
+                features = _feature_dict(snapshot)
+                for metric in QUESTIONABLE_METRICS:
+                    feature = features.get(metric)
+                    status = _metric_status(feature)
+                    metric_counters[metric][status] += 1
+                    if metric == "capital_structure.retirement_obligation_regime" and feature and feature.get("value") is not None:
+                        regime = str(feature["value"])
+                        if len(regime_examples[regime]) < 5:
+                            regime_examples[regime].append(company_id)
+            except Exception as exc:
+                failures.append({"company_id": company_id, "error": type(exc).__name__})
+                for metric in QUESTIONABLE_METRICS:
+                    metric_counters[metric]["build_failed"] += 1
+            if index % 20 == 0:
+                print(f"[{as_of_date}] processed {index}/{len(company_ids)}")
+
+        by_metric: dict[str, Any] = {}
+        for metric, counter in metric_counters.items():
+            available = sum(count for status, count in counter.items() if _is_available_status(status))
+            exactish = sum(count for status, count in counter.items() if status in EXACTISH)
+            by_metric[metric] = {
+                "status_counts": dict(counter),
+                "available_count": available,
+                "available_pct": round(100.0 * available / len(company_ids), 2) if company_ids else 0.0,
+                "exactish_count": exactish,
+                "exactish_pct": round(100.0 * exactish / len(company_ids), 2) if company_ids else 0.0,
+            }
+
+        summary["by_date"][as_of_date] = {
+            "facts_years": facts_years,
+            "metrics": by_metric,
+            "retirement_regime_examples": dict(regime_examples),
+            "failure_count": len(failures),
+            "failure_examples": failures[:20],
+        }
+
+    args.out_json.write_text(json.dumps(summary, indent=2))
+
+    lines = [
+        "# Historical Questionable Metric Coverage Audit",
+        "",
+        f"- Company count: `{len(company_ids)}`",
+        f"- Dates: `{', '.join(dates)}`",
+        "",
+    ]
+    for as_of_date in dates:
+        lines.append(f"## {as_of_date}")
+        date_summary = summary["by_date"][as_of_date]
+        lines.append(f"- Build failures: `{date_summary['failure_count']}`")
+        for metric in QUESTIONABLE_METRICS:
+            metric_summary = date_summary["metrics"][metric]
+            lines.append(
+                f"- `{metric}`: available `{metric_summary['available_count']}/{len(company_ids)}` "
+                f"({metric_summary['available_pct']}%), exactish `{metric_summary['exactish_count']}/{len(company_ids)}` "
+                f"({metric_summary['exactish_pct']}%), statuses `{metric_summary['status_counts']}`"
+            )
+        lines.append("")
+    args.out_md.write_text("\n".join(lines))
+    print(f"Wrote {args.out_json}")
+    print(f"Wrote {args.out_md}")
+
+
+if __name__ == "__main__":
+    main()
