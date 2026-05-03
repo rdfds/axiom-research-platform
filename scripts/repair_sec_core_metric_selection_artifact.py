@@ -217,3 +217,143 @@ def _iter_component_ends(component_breakdown: object) -> list[date]:
     return ends
 
 
+def _selected_component_gap_days(component_breakdown: object, keys: tuple[str, ...]) :
+    if not isinstance(component_breakdown, dict):
+        return None
+    ends: list[date] = []
+    for key in keys:
+        value = component_breakdown.get(key)
+        if value is not None:
+            ends.extend(_iter_component_ends(value))
+    if len(ends) < 2:
+        return 0 if ends else None
+    return (max(ends) - min(ends)).days
+
+
+def _needs_repair(features: dict, as_of_time: str) -> bool:
+    revenue = features['operating.revenue_ttm_provider_direct'] or {}
+    revenue_breakdown = revenue.get("component_breakdown") or {}
+    if (
+        revenue.get("support_mode") == "exact"
+        and revenue_breakdown.get("mode") == "latest_fy"
+        and revenue_breakdown.get("frame")
+    ):
+        return True
+
+    cash = features.get("liquidity.cash_and_short_term_investments_provider_direct") or {}
+    if cash.get("support_mode") == "exact":
+        cash_breakdown = cash.get("component_breakdown") or {}
+        ends = _iter_component_ends(cash_breakdown)
+        if ends:
+            as_of_date = core._parse_iso_date(as_of_time)
+            if as_of_date is not None and (as_of_date - max(ends)).days > core.EXACT_BALANCE_SHEET_MAX_AGE_DAYS:
+                return True
+        cash_gap_days = _selected_component_gap_days(
+            cash_breakdown,
+            (
+                "cash",
+                "short_term_investments",
+                "cash_and_equivalents_statement_direct",
+                "marketable_securities_sec_exact",
+            ),
+        )
+        if cash_gap_days is not None and cash_gap_days > core.CASH_COMPONENT_ALIGNMENT_MAX_GAP_DAYS:
+            return True
+
+    total_debt = features.get("capital_structure.total_debt_provider_direct") or {}
+    if total_debt.get("support_mode") == "exact":
+        total_debt_gap_days = _selected_component_gap_days(
+            total_debt.get("component_breakdown") or {},
+            (
+                "combined_debt",
+                "current",
+                "noncurrent",
+                "short_term_borrowings",
+                "current_statement_debt",
+                "long_term_statement_debt",
+            ),
+        )
+        if total_debt_gap_days is not None and total_debt_gap_days > core.DEBT_COMPONENT_ALIGNMENT_MAX_GAP_DAYS:
+            return True
+
+    return False
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    companyfacts_root = Path(args.companyfacts_root)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    registry = None
+    if args.metric_registry_path and args.component_policy_path and args.source_precedence_path:
+        registry = smart.load_policy_registry(
+            Path(args.metric_registry_path),
+            Path(args.component_policy_path),
+            Path(args.source_precedence_path),
+        )
+
+    computed_at = core._now_iso()
+    companyfacts_cache: dict[str, dict | None] = {}
+
+    with artifact_path.open() as src, out_path.open("w") as dst:
+        for line in src:
+            row = json.loads(line)
+            entity_id = str(row['company_id'])
+            as_of_time = row.get("as_of_time")
+            features = row.setdefault("features", {})
+
+            if not _needs_repair(features, as_of_time):
+                dst.write(json.dumps(row) + "\n")
+                continue
+
+            companyfacts = companyfacts_cache.get(entity_id)
+            if entity_id not in companyfacts_cache:
+                companyfacts = core._load_companyfacts(companyfacts_root / f"CIK{entity_id}.json")
+                companyfacts_cache[entity_id] = companyfacts
+            if companyfacts is None:
+                dst.write(json.dumps(row) + "\n")
+                continue
+
+            companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+            for metric_name in CORE_METRICS_TO_REPAIR:
+                _rebuild_core_metric(
+                    features=features,
+                    metric_name=metric_name,
+                    companyfacts=companyfacts,
+                    companyfacts_path=companyfacts_path,
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                )
+
+            _recompute_standardized_metrics(
+                features=features,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=str(companyfacts_root),
+            )
+
+            if registry is not None:
+                provenance_sources = sorted(
+                    {
+                        source
+                        for metric_name in CORE_METRICS_TO_REPAIR
+                        for source in smart._provenance_sources(features.get(metric_name))
+                    }
+                )
+                downstream._recompute_smart_metrics(
+                    features=features,
+                    as_of_time=as_of_time,
+                    computed_at=computed_at,
+                    registry=registry,
+                    provenance_sources=provenance_sources,
+                )
+
+            dst.write(json.dumps(row) + "\n")
+
+    print(f"Repaired {artifact_path} -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()
