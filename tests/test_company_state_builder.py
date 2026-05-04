@@ -217,3 +217,56 @@ def test_is_readable_file_allows_large_zero_block_files_without_probative_reads(
     assert company_state_builder._is_readable_file(candidate) is True
 
 
+def test_historical_backfill_mode_ignores_ingested_cutoff_for_facts(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                fact_id="cash_backfilled",
+                entity_id="ABC",
+                fact_type="financial.cash",
+                fact_value=123.0,
+                published_at="2024-08-01T00:00:00Z",
+                ingested_at="2026-02-01T00:00:00Z",
+                valid_from="2024-08-01T00:00:00Z",
+            ),
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        historical_backfill_mode=True,
+    )
+    snap = builder.build("ABC", "2024-09-01")
+    assert snap.features["liquidity.cash"]["value"] == 123.0
+
+
+def test_null_contradiction_group_does_not_collapse_fact_history(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("rev_q1", "ABC", "financial.revenue", 90.0, "2025-01-20T00:00:00Z", "2025-01-21T00:00:00Z", "2025-01-20T00:00:00Z"),
+                "effective_at": "2024-12-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-12-31 00:00:00; fiscal_year=2025; fiscal_quarter=1",
+                "contradiction_group_id": None,
+            },
+            {
+                **_facts_row("rev_q2", "ABC", "financial.revenue", 120.0, "2025-04-20T00:00:00Z", "2025-04-21T00:00:00Z", "2025-04-20T00:00:00Z"),
+                "effective_at": "2025-03-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-03-31 00:00:00; fiscal_year=2025; fiscal_quarter=2",
+                "contradiction_group_id": None,
+            },
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    facts = builder._load_facts("ABC", pd.Timestamp("2026-02-28", tz="UTC"))
+    revenue_series, _ = builder._dated_fact_series(facts, builder.fact_map["revenue"])
+    assert len(revenue_series) == 2
+
+
