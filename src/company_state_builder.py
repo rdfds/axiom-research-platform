@@ -8088,7 +8088,7 @@ class CompanyStateBuilder:
                     inst_pct = float(np.clip(inst_pct, 0.0, 2.0))
                     inst_prov = {
                         "artifact_type": "RawDocument",
-                        "artifact_id": str(_null_if_na(row['artifact_id']) or f"wrds_13f:{_null_if_na(row.get('company_id'))}:{_null_if_na(row.get('report_date'))}"),
+                        "artifact_id": str(_null_if_na(row.get("artifact_id")) or f"wrds_13f:{_null_if_na(row.get('company_id'))}:{_null_if_na(row.get('report_date'))}"),
                         "source": str(_null_if_na(row.get("source_type")) or "wrds_13f"),
                         "published_at": str(_null_if_na(row.get("published_at"))) if _null_if_na(row.get("published_at")) is not None else None,
                         "ingested_at": str(_null_if_na(row.get("ingested_at"))) if _null_if_na(row.get("ingested_at")) is not None else None,

@@ -191,3 +191,106 @@ class RegimeClassifier:
         }
 
 
+class PeerSetResolver:
+    def resolve(self, company_id: str, entity_table: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+        if entity_table is None or entity_table.empty:
+            return {
+                "peer_set_id": str(company_id),
+                "members": [],
+                "method": "unresolved",
+                "version": 1,
+            }
+
+        # Try to find sector/industry columns
+        sector_col = None
+        for c in [
+            "gics_sector",
+            "sector",
+            "industry",
+            "gics_industry",
+            "industry_group",
+            "sic",
+            "naics",
+        ]:
+            if c in entity_table.columns:
+                sector_col = c
+                break
+
+        if sector_col is None or "entity_id" not in entity_table.columns:
+            return {
+                "peer_set_id": str(company_id),
+                "members": [],
+                "method": "unresolved",
+                "version": 1,
+            }
+
+        df = entity_table.copy()
+        df["entity_id"] = df["entity_id"].astype(str)
+        row = df[df["entity_id"] == str(company_id)]
+        if row.empty:
+            return {
+                "peer_set_id": str(company_id),
+                "members": [],
+                "method": "unresolved",
+                "version": 1,
+            }
+
+        sector_val = row.iloc[0].get(sector_col)
+        if pd.isna(sector_val):
+            return {
+                "peer_set_id": str(company_id),
+                "members": [],
+                "method": "sector_unknown",
+                "version": 1,
+            }
+
+        peers = df[df[sector_col] == sector_val].copy()
+
+        # Optional size banding if market cap exists
+        size_col = None
+        for c in ["market_cap", "mkt_cap", "marketcap", "mktcap", "market_capitalization"]:
+            if c in peers.columns:
+                size_col = c
+                break
+
+        method = f"{sector_col}"
+        if size_col is not None and not peers[size_col].isna().all():
+            peers[size_col] = pd.to_numeric(peers[size_col], errors="coerce")
+            # Compute quartile bands within the sector
+            qs = peers[size_col].quantile([0.25, 0.5, 0.75]).to_dict()
+            target_size = pd.to_numeric(row.iloc[0].get(size_col), errors="coerce")
+            if pd.notna(target_size):
+                if target_size <= qs.get(0.25, target_size):
+                    band = "q1"
+                elif target_size <= qs.get(0.5, target_size):
+                    band = "q2"
+                elif target_size <= qs.get(0.75, target_size):
+                    band = "q3"
+                else:
+                    band = "q4"
+                # Filter peers to same size band
+                if band == "q1":
+                    peers = peers[peers[size_col] <= qs.get(0.25, target_size)]
+                elif band == "q2":
+                    peers = peers[(peers[size_col] > qs.get(0.25, target_size)) & (peers[size_col] <= qs.get(0.5, target_size))]
+                elif band == "q3":
+                    peers = peers[(peers[size_col] > qs.get(0.5, target_size)) & (peers[size_col] <= qs.get(0.75, target_size))]
+                else:
+                    peers = peers[peers[size_col] > qs.get(0.75, target_size)]
+                method = f"{sector_col}+size_band_{band}"
+
+        members = peers["entity_id"].astype(str).tolist()
+        members = [m for m in members if m != str(company_id)]
+
+        # Cap peers to a reasonable number for stability
+        if len(members) > 50:
+            members = members[:50]
+
+        return {
+            "peer_set_id": f"{sector_col}:{sector_val}",
+            "members": members,
+            "method": method,
+            "version": 1,
+        }
+
+
