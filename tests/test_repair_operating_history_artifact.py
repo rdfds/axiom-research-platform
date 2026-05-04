@@ -61,3 +61,58 @@ def _companyfacts_with_revenue_quarters():
     }
 
 
+def _companyfacts_with_revenue_fy_series():
+    return {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2021-01-01",
+                                "end": "2021-12-31",
+                                "val": 100.0,
+                                "fy": 2021,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2022-02-20",
+                                "frame": "CY2021",
+                            },
+                            {
+                                "start": "2022-01-01",
+                                "end": "2022-12-31",
+                                "val": 110.0,
+                                "fy": 2022,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-02-20",
+                                "frame": "CY2022",
+                            },
+                            {
+                                "start": "2023-01-01",
+                                "end": "2023-12-31",
+                                "val": 121.0,
+                                "fy": 2023,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2024-02-20",
+                                "frame": "CY2023",
+                            },
+                            {
+                                "start": "2024-01-01",
+                                "end": "2024-12-31",
+                                "val": 133.1,
+                                "fy": 2024,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2025-02-20",
+                                "frame": "CY2024",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+

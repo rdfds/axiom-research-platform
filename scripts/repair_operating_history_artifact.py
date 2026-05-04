@@ -59,3 +59,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def _parse_iso_date(value: Any) -> Optional[date]:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _node_support(node: Dict[str, Any] | None) -> str:
+    if not node:
+        return "unsupported"
+    return str(node.get("support_mode") or "unsupported")
+
+
