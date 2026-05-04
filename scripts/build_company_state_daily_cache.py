@@ -45,3 +45,5 @@ def main() -> None:
         print(f"[cache] wrote {len(snapshots)} snapshots for {d} format={args.out_format}")
 
 
+if __name__ == "__main__":
+    main()
