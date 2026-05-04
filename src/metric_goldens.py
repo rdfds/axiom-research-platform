@@ -88,7 +88,7 @@ def _synthetic_builder_for_case(case: Dict[str, Any], workdir: Path) -> CompanyS
     )
 
 
-def _live_builder() :
+def _live_builder() -> CompanyStateBuilder:
     companyfacts_root = _default_companyfacts_root()
     return CompanyStateBuilder(
         skip_peer_context=True,
