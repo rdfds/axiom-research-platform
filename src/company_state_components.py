@@ -294,3 +294,21 @@ class PeerSetResolver:
         }
 
 
+class ProvenanceTracker:
+    def build_reference(
+        self,
+        artifact_type: str,
+        artifact_id: str,
+        source: Optional[str] = None,
+        published_at: Optional[str] = None,
+        ingested_at: Optional[str] = None,
+        hash_value: Optional[str] = None,
+    ) -> InputReference:
+        return InputReference(
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            source=source,
+            published_at=published_at,
+            ingested_at=ingested_at,
+            hash=hash_value,
+        )
