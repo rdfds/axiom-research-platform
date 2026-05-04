@@ -15,7 +15,7 @@ from src.company_state_builder import CompanyStateBuilder
 from src.historical_recommendation_eval import _build_historical_alias_overrides, _cached_snapshot_loader
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build a keyed snapshot cache for the fixed historical cases in a manifest."
     )
