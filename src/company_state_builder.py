@@ -5161,7 +5161,7 @@ class CompanyStateBuilder:
         facts: pd.DataFrame,
         as_of: pd.Timestamp,
         taxonomy: TaxonomyContext,
-    ) :
+    ) -> Dict[str, FeatureRecord]:
         features: Dict[str, FeatureRecord] = {}
         archetype_rules = self.metric_policy.archetype_rules(taxonomy.archetype)
         _, market_aliases = self._resolve_entity_aliases(str(company_id))
