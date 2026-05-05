@@ -12,7 +12,7 @@ from .company_state_builder import CompanyStateBuilder
 
 def update_snapshot(snapshot: Dict, builder: CompanyStateBuilder, as_of: str, mode: str = "both") -> Dict:
     asof_dt = pd.to_datetime(as_of, utc=True)
-    cid = snapshot['company_id']
+    cid = snapshot.get("company_id")
     if mode in ("market", "both"):
         facts = builder._load_facts(cid, asof_dt)
         ts = builder._load_timeseries(cid, asof_dt)
