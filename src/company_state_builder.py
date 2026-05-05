@@ -9622,7 +9622,7 @@ class CompanyStateBuilder:
                     value=row.get("fact_value"),
                     hardness="soft",
                     confidence=_safe_float(row.get("confidence_score")),
-                    valid_from=str(row['valid_from']) if row.get("valid_from") is not None else None,
+                    valid_from=str(row.get("valid_from")) if row.get("valid_from") is not None else None,
                     valid_to=str(row.get("valid_to")) if row.get("valid_to") is not None else None,
                     evidence=[
                         InputReference(
