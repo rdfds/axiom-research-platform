@@ -100,7 +100,7 @@ class RegimeClassifier:
             "rate_10y": "DGS10",
         }
 
-    def classify(self, macro: pd.DataFrame, as_of: pd.Timestamp) :
+    def classify(self, macro: pd.DataFrame, as_of: pd.Timestamp) -> Dict[str, Any]:
         if macro is None or macro.empty:
             return {
                 "credit_regime": "neutral",

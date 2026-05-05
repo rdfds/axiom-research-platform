@@ -270,3 +270,407 @@ def test_null_contradiction_group_does_not_collapse_fact_history(tmp_path: Path)
     assert len(revenue_series) == 2
 
 
+def test_negative_ebitda_sets_leverage_null(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    rows = [
+        _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("debt", "ABC", "financial.total_debt", 1000.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("ebitda", "ABC", "financial.ebitda", -25.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+    ]
+    _write_parquet(facts_path, rows)
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+    feat = snap.features["capital_structure.net_leverage"]
+    assert feat["value"] is None
+    assert feat["missing_reason"] == "negative_ebitda"
+
+
+def test_dealscan_revolver_fallback_populates_proxy_value(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    dealscan_path = tmp_path / "dealscan_revolver.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                "cash",
+                "ABC",
+                "financial.cash",
+                100.0,
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+            ),
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC", "identifier_value": "ABC", "identifier_type": "ticker"},
+        ],
+    )
+    _write_parquet(
+        dealscan_path,
+        [
+            {
+                "ticker": "ABC",
+                "borrower_name_norm": "EXAMPLE CORP",
+                "parent_norm": "EXAMPLE CORP",
+                "loanconnector_company_id": "101",
+                "loanconnector_tranche_id": "7001",
+                "wrds_facility_id": "222",
+                "tranche_type": "Revolver/Line >= 1 Yr.",
+                "tranche_active_date": "2024-01-15",
+                "tranche_maturity_date": "2029-01-15",
+                "tranche_amount_converted_usd": 2_500_000_000.0,
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        dealscan_revolver_path=dealscan_path,
+        entity_identifier_path=ident_path,
+        skip_timeseries=True,
+    )
+    snap = builder.build("ABC", "2024-12-31")
+    revolver = snap.features["liquidity.revolver_undrawn"]
+    assert revolver["value"] == 2_500_000_000.0
+    assert revolver["fallback_used"] == "dealscan_revolver_capacity"
+    assert "dealscan_revolver_capacity_proxy" in (revolver.get("quality_flags") or [])
+    assert revolver["support_mode"] == "proxy_missing_component"
+
+
+def test_dealscan_revolver_fallback_rejects_ambiguous_ticker_only_match(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    dealscan_path = tmp_path / "dealscan_revolver.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+
+    _write_parquet(facts_path, [])
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "COST", "identifier_value": "COST", "identifier_type": "ticker"},
+        ],
+    )
+    _write_parquet(
+        dealscan_path,
+        [
+            {
+                "ticker": "COST",
+                "borrower_name_norm": "COSTCO WHOLESALE CORP",
+                "parent_norm": "COSTCO WHOLESALE CORP",
+                "company_name_norm": "COSTCO WHOLESALE CORP",
+                "loanconnector_company_id": "1",
+                "loanconnector_tranche_id": "10",
+                "tranche_active_date": "2024-01-01",
+                "tranche_maturity_date": "2029-01-01",
+                "tranche_amount_converted_usd": 1_000_000_000.0,
+            },
+            {
+                "ticker": "COST",
+                "borrower_name_norm": "COSTAIN GROUP PLC",
+                "parent_norm": "COSTAIN GROUP PLC",
+                "company_name_norm": "COSTAIN GROUP PLC",
+                "loanconnector_company_id": "2",
+                "loanconnector_tranche_id": "20",
+                "tranche_active_date": "2024-01-01",
+                "tranche_maturity_date": "2029-01-01",
+                "tranche_amount_converted_usd": 2_000_000_000.0,
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        dealscan_revolver_path=dealscan_path,
+        entity_identifier_path=ident_path,
+        skip_timeseries=True,
+    )
+    snap = builder.build("COST", "2024-12-31")
+    revolver = snap.features["liquidity.revolver_undrawn"]
+    assert revolver["value"] is None
+    assert revolver["support_mode"] == "unsupported"
+    covenant = snap.features["capital_structure.max_leverage_ratio_covenant_proxy"]
+    assert covenant["value"] is None
+    assert covenant["support_mode"] == "unsupported"
+
+
+def test_dealscan_covenant_proxy_emits_restrictive_thresholds(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    dealscan_path = tmp_path / "dealscan_revolver.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                "cash",
+                "ABC",
+                "financial.cash",
+                100.0,
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+            ),
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC", "identifier_value": "ABC", "identifier_type": "ticker"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_path,
+        [
+            {
+                "Instrument": "ABC",
+                "Company Common Name": "Example Corp",
+            }
+        ],
+    )
+    _write_parquet(
+        dealscan_path,
+        [
+            {
+                "ticker": "ABC",
+                "borrower_name_norm": "EXAMPLE CORP",
+                "parent_norm": "EXAMPLE CORP",
+                "company_name_norm": "EXAMPLE CORP",
+                "loanconnector_company_id": "101",
+                "loanconnector_tranche_id": "7001",
+                "wrds_facility_id": "222",
+                "tranche_type": "Revolver/Line >= 1 Yr.",
+                "tranche_active_date": "2024-01-15",
+                "tranche_maturity_date": "2029-01-15",
+                "tranche_amount_converted_usd": 2_500_000_000.0,
+                "max_leverage_ratio": "3.50:1",
+                "min_interest_coverage_ratio": "2.00:1",
+                "min_fixed_charge_coverage_ratio": "1.25:1",
+                "min_current_ratio": "1.10:1",
+                "all_covenants_financial": "Max Leverage Ratio: Value is 3.50; Min. Interest Coverage Ratio: Value is 2.00",
+            },
+            {
+                "ticker": "ABC",
+                "borrower_name_norm": "EXAMPLE CORP",
+                "parent_norm": "EXAMPLE CORP",
+                "company_name_norm": "EXAMPLE CORP",
+                "loanconnector_company_id": "101",
+                "loanconnector_tranche_id": "7002",
+                "wrds_facility_id": "223",
+                "tranche_type": "Revolver/Line >= 1 Yr.",
+                "tranche_active_date": "2024-06-01",
+                "tranche_maturity_date": "2030-06-01",
+                "tranche_amount_converted_usd": 1_000_000_000.0,
+                "max_leverage_ratio": "4.25:1",
+                "min_interest_coverage_ratio": "2.50:1",
+                "min_fixed_charge_coverage_ratio": "1.40:1",
+                "min_current_ratio": "1.00:1",
+                "all_covenants_financial": "Max Leverage Ratio: Value is 4.25; Min. Interest Coverage Ratio: Value is 2.50",
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        dealscan_revolver_path=dealscan_path,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_path,
+        skip_timeseries=True,
+    )
+    snap = builder.build("ABC", "2024-12-31")
+
+    max_lev = snap.features["capital_structure.max_leverage_ratio_covenant_proxy"]
+    min_int = snap.features["capital_structure.min_interest_coverage_ratio_covenant_proxy"]
+    min_fcc = snap.features["capital_structure.min_fixed_charge_coverage_ratio_covenant_proxy"]
+    min_curr = snap.features["capital_structure.min_current_ratio_covenant_proxy"]
+
+    assert max_lev["value"] == 3.5
+    assert min_int["value"] == 2.5
+    assert min_fcc["value"] == 1.4
+    assert min_curr["value"] == 1.1
+    assert max_lev["support_mode"] == "proxy_missing_component"
+    assert max_lev["fallback_used"] == "dealscan_active_revolver_covenants"
+    assert "dealscan_covenant_proxy" in (max_lev.get("quality_flags") or [])
+    assert "dealscan_multiple_facilities_aggregated" in (max_lev.get("quality_flags") or [])
+    assert max_lev["component_breakdown"]["active_revolver_facility_count"] == 2
+    assert max_lev["component_breakdown"]["selection_rule"] == "minimum_observed_threshold_across_active_revolver_facilities"
+    assert min_int["component_breakdown"]["selection_rule"] == "maximum_observed_threshold_across_active_revolver_facilities"
+    hard_constraints = {item["name"]: item for item in snap.constraint_set["hard"]}
+    assert hard_constraints["capital_structure.max_leverage_ratio_covenant_proxy"]["value"] == 3.5
+    assert hard_constraints["capital_structure.min_interest_coverage_ratio_covenant_proxy"]["value"] == 2.5
+
+
+def test_market_metric_engine_emits_market_views_and_lineage(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 25.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("restricted", "ABC", "financial.restricted_cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_current", "ABC", "financial.lease_liability_current", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_long", "ABC", "financial.lease_liability_noncurrent", 80.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "ABC", "financial.ebit", 40.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("interest", "ABC", "financial.interest_expense", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("revenue", "ABC", "financial.revenue", 1_000.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("fcf", "ABC", "financial.free_cash_flow", -60.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("ABC", sector="Consumer Discretionary", subsector="Specialty Retail", sic="5331")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "lease_heavy"
+    assert snap.features["capital_structure.total_debt_reported"]["value"] == 100.0
+    assert snap.features["capital_structure.total_debt_market"]["value"] == 200.0
+    assert snap.features["capital_structure.total_debt"]["value"] == 200.0
+    assert snap.features["capital_structure.net_debt_market"]["value"] == 185.0
+    assert snap.features["capital_structure.interest_coverage"]["applicability_status"] == "secondary"
+    assert snap.features["capital_structure.fixed_charge_coverage"]["applicability_status"] == "primary"
+    assert snap.features["capital_structure.total_debt_market"]["component_breakdown"]["included_lease_liabilities"] == 100.0
+    assert snap.provenance["market_metric_context"]["subsector"] == "Specialty Retail"
+    assert snap.provenance["market_metric_context"]["methodology_registry_id"] == "consumer_industrials_metric_methodology_registry_v1"
+    assert snap.provenance["market_metric_context"]["input_source_registry_id"] == "company_state_input_source_registry_v1"
+    assert snap.features["capital_structure.total_debt_market"]["canonical_owner_id"] == "fitch_ratings"
+    assert snap.features["capital_structure.total_debt_market"]["canonical_classification"] == "canonical_external"
+    assert snap.features["capital_structure.total_debt_market"]["input_source_owner_name"] == "Fitch credit methodology"
+    assert snap.features["capital_structure.total_debt_market"]["input_source_classification"] == "canonical_external"
+    assert snap.features["capital_structure.total_debt_market"]["definition_requirement"] == "must_have_external_definition"
+    assert snap.features["capital_structure.total_debt_market"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert snap.features["liquidity.available_for_actions_market"]["canonical_classification"] == "internal_only"
+    assert snap.features["liquidity.available_for_actions_market"]["market_layer_status"] == "rename"
+    lineage = snap.provenance["feature_lineage"]["capital_structure.total_debt_market"]["metric_context"]
+    assert lineage["metric_policy_id"] == "market_metric_policy_v1"
+    assert lineage["methodology_registry_id"] == "consumer_industrials_metric_methodology_registry_v1"
+    assert lineage["canonical_owner_id"] == "fitch_ratings"
+    assert lineage["canonical_classification"] == "canonical_external"
+    assert lineage["input_source_registry_id"] == "company_state_input_source_registry_v1"
+    assert lineage["input_source_owner_name"] == "Fitch credit methodology"
+    assert lineage["definition_requirement"] == "must_have_external_definition"
+    assert lineage["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert lineage["view_type"] == "market"
+    assert lineage["archetype"] == "lease_heavy"
+
+
+def test_market_metric_engine_suppresses_unsupported_financial_leverage(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "BANK", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "BANK", "financial.total_debt", 500.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "BANK", "financial.ebitda", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("BANK", sector="Financials", subsector="Regional Banks", sic="6021")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("BANK", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "financial_institution"
+    assert snap.features["capital_structure.net_leverage"]["value"] is None
+    assert snap.features["capital_structure.net_leverage"]["missing_reason"] == "unsupported_for_archetype"
+    assert snap.features["capital_structure.net_leverage"]["support_mode"] == "unsupported"
+    assert snap.features["capital_structure.net_leverage"]["applicability_status"] == "unsupported"
+
+
+def test_market_metric_engine_resolves_consumer_staples_policy(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "FOOD", "financial.cash", 40.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("restricted", "FOOD", "financial.restricted_cash", 5.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "FOOD", "financial.total_debt", 300.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("pension", "FOOD", "financial.unfunded_pension", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "FOOD", "financial.ebitda", 60.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("revenue", "FOOD", "financial.revenue", 2_000.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("fcf", "FOOD", "financial.free_cash_flow", -24.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("FOOD", sector="Consumer Staples", subsector="Packaged Foods", sic="2090")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("FOOD", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "consumer_branded_staples"
+    assert snap.features["capital_structure.total_debt_market"]["value"] == 300.0
+    assert "pension_excluded_from_debt" in snap.features["capital_structure.total_debt_market"]["quality_flags"]
+    assert snap.features["liquidity.available_for_actions_market"]["value"] == 35.0
+    assert snap.features["liquidity.available_for_actions_market"]["component_breakdown"]["minimum_cash_policy_proxy"] == 40.0
+
+
+def test_liquidity_structured_support_sums_restricted_cash_components(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("restricted_current", "ABC", "financial.restricted_cash_current", 6.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("restricted_noncurrent", "ABC", "financial.cash_restricted_noncurrent", 4.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.restricted_cash"]["value"] == 10.0
+    assert snap.features["liquidity.usable_cash_market"]["value"] == 90.0
+    assert snap.features["liquidity.usable_cash_market"]["component_breakdown"]["restricted_cash"] == 10.0
+
+
+def test_liquidity_structured_support_derives_marketable_securities_from_combined_balance(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("cash_and_investments", "ABC", "financial.cash_and_short_term_investments", 140.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.marketable_securities"]["value"] == 40.0
+    assert snap.features["liquidity.liquidity_total"]["value"] == 140.0
+    assert snap.features["liquidity.usable_cash_market"]["component_breakdown"]["marketable_securities"] == 40.0
+
+
