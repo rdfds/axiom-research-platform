@@ -129,3 +129,24 @@ def _values_match(left: Any, right: Any, *, rel_tol: float = 0.01, abs_tol: floa
     return abs(left_float - right_float) <= tolerance
 
 
+def _feature(snapshot: Dict[str, Any], name: str) -> Dict[str, Any]:
+    return dict((snapshot.get("features") or {}).get(name) or {})
+
+
+def _validate_taxonomy(snapshot: Dict[str, Any], expected: Dict[str, Any], errors: List[str]) -> Dict[str, Any]:
+    provenance = dict((snapshot.get("provenance") or {}).get("market_metric_context") or {})
+    actual = {
+        "archetype": _feature(snapshot, "taxonomy.archetype").get("value") or provenance.get("archetype"),
+        "sector": _feature(snapshot, "taxonomy.sector").get("value") or provenance.get("sector"),
+        "subsector": _feature(snapshot, "taxonomy.subsector").get("value") or provenance.get("subsector"),
+        "override_level_applied": _feature(snapshot, "taxonomy.override_level_applied").get("value") or provenance.get("override_level_applied"),
+        "support_mode": provenance.get("support_mode"),
+    }
+    for key, expected_value in (expected or {}).items():
+        if expected_value is None:
+            continue
+        if actual.get(key) != expected_value:
+            errors.append(f"taxonomy_mismatch:{key}:expected={expected_value}:actual={actual.get(key)}")
+    return actual
+
+

@@ -43,3 +43,10 @@ def test_consumer_industrial_metric_goldens_pass_end_to_end():
     assert report["summary"]["passed_cases"] == len(report["results"])
 
 
+def test_metric_goldens_flag_incorrect_expected_values():
+    payload = load_metric_goldens(DEFAULT_GOLDENS_PATH)
+    case = deepcopy(payload["cases"][0])
+    case["metrics"]["capital_structure.total_debt_market"]["expected_value"] = 999.0
+    result = validate_golden_case(case)
+    assert not result["passed"]
+    assert any(error.startswith("value_mismatch:capital_structure.total_debt_market") for error in result["errors"])
