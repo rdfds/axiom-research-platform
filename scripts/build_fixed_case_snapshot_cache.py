@@ -79,7 +79,7 @@ def main() -> None:
     for idx, case in enumerate(cases, start=1):
         company_id = str(case.get("company_id") or "")
         as_of_time = str(case.get("as_of_time") or "")
-        anchor_action_id = str(case['anchor_action_id'] or "")
+        anchor_action_id = str(case.get("anchor_action_id") or "")
         _emit(
             {
                 "event": "case_start",
