@@ -231,7 +231,7 @@ def _selected_component_gap_days(component_breakdown: object, keys: tuple[str, .
 
 
 def _needs_repair(features: dict, as_of_time: str) -> bool:
-    revenue = features['operating.revenue_ttm_provider_direct'] or {}
+    revenue = features.get("operating.revenue_ttm_provider_direct") or {}
     revenue_breakdown = revenue.get("component_breakdown") or {}
     if (
         revenue.get("support_mode") == "exact"
