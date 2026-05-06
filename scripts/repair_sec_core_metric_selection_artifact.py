@@ -300,7 +300,7 @@ def main() -> None:
     with artifact_path.open() as src, out_path.open("w") as dst:
         for line in src:
             row = json.loads(line)
-            entity_id = str(row['company_id'])
+            entity_id = str(row.get("company_id"))
             as_of_time = row.get("as_of_time")
             features = row.setdefault("features", {})
 

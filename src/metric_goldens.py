@@ -150,3 +150,70 @@ def _validate_taxonomy(snapshot: Dict[str, Any], expected: Dict[str, Any], error
     return actual
 
 
+def _validate_metric(snapshot: Dict[str, Any], metric_name: str, expectation: Dict[str, Any], errors: List[str]) -> Dict[str, Any]:
+    feat = _feature(snapshot, metric_name)
+    actual = {
+        "exists": bool(feat),
+        "value": feat.get("value"),
+        "support_mode": feat.get("support_mode"),
+        "applicability_status": feat.get("applicability_status"),
+        "view_type": feat.get("view_type"),
+        "missing_reason": feat.get("missing_reason"),
+        "fallback_used": feat.get("fallback_used"),
+        "component_breakdown": dict(feat.get("component_breakdown") or {}),
+        "quality_flags": list(feat.get("quality_flags") or []),
+    }
+    if expectation.get("exists", True) and not feat:
+        errors.append(f"missing_metric:{metric_name}")
+        return actual
+    if not expectation.get("exists", True):
+        if feat:
+            errors.append(f"unexpected_metric_present:{metric_name}")
+        return actual
+
+    if "expected_value" in expectation:
+        rel_tol = float(expectation.get("rel_tol", 0.01))
+        abs_tol = float(expectation.get("abs_tol", 1.0))
+        if not _values_match(feat.get("value"), expectation.get("expected_value"), rel_tol=rel_tol, abs_tol=abs_tol):
+            errors.append(
+                f"value_mismatch:{metric_name}:expected={expectation.get('expected_value')}:actual={feat.get('value')}"
+            )
+    if "min_value" in expectation and _to_float(feat.get("value")) is not None:
+        if float(feat.get("value")) < float(expectation["min_value"]):
+            errors.append(f"value_below_min:{metric_name}:min={expectation['min_value']}:actual={feat.get('value')}")
+    if "max_value" in expectation and _to_float(feat.get("value")) is not None:
+        if float(feat.get("value")) > float(expectation["max_value"]):
+            errors.append(f"value_above_max:{metric_name}:max={expectation['max_value']}:actual={feat.get('value')}")
+
+    field_map = {
+        "expected_support_mode": "support_mode",
+        "expected_applicability_status": "applicability_status",
+        "expected_view_type": "view_type",
+        "expected_missing_reason": "missing_reason",
+        "expected_fallback_used": "fallback_used",
+    }
+    for expected_field, actual_field in field_map.items():
+        if expected_field in expectation and feat.get(actual_field) != expectation.get(expected_field):
+            errors.append(
+                f"field_mismatch:{metric_name}:{actual_field}:expected={expectation.get(expected_field)}:actual={feat.get(actual_field)}"
+            )
+
+    for key, expected_value in dict(expectation.get("component_breakdown_contains") or {}).items():
+        actual_value = (feat.get("component_breakdown") or {}).get(key)
+        rel_tol = float(expectation.get("component_rel_tol", expectation.get("rel_tol", 0.01)))
+        abs_tol = float(expectation.get("component_abs_tol", expectation.get("abs_tol", 1.0)))
+        if not _values_match(actual_value, expected_value, rel_tol=rel_tol, abs_tol=abs_tol):
+            errors.append(
+                f"component_mismatch:{metric_name}:{key}:expected={expected_value}:actual={actual_value}"
+            )
+
+    quality_flags = set(feat.get("quality_flags") or [])
+    for expected_flag in list(expectation.get("quality_flags_contains") or []):
+        if expected_flag not in quality_flags:
+            errors.append(f"missing_quality_flag:{metric_name}:{expected_flag}")
+    for forbidden_flag in list(expectation.get("quality_flags_excludes") or []):
+        if forbidden_flag in quality_flags:
+            errors.append(f"unexpected_quality_flag:{metric_name}:{forbidden_flag}")
+    return actual
+
+

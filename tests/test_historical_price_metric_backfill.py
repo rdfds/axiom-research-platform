@@ -93,3 +93,41 @@ def test_backfill_historical_price_window_metrics_recovers_price_features_and_cl
         assert pd.notna(augmented_row["state_vector_v1.market_access"])
 
 
+def test_backfill_historical_price_window_metrics_uses_sparse_monthly_fallback_for_90d_stress_inputs() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        raw_path = Path(tmpdir) / "raw_timeseries.parquet"
+        _write_sparse_monthly_price_history_parquet(raw_path, company_id="001239")
+
+        hist = pd.DataFrame(
+            [
+                {
+                    "company_id": "001239",
+                    "action_date": "2020-05-15T00:00:00+00:00",
+                    "base_volatility_30d": np.nan,
+                    "base_volatility_90d": np.nan,
+                    "base_drawdown_90d": np.nan,
+                    "base_momentum_60d": np.nan,
+                    "state_vector_v1.market_stress": 0.77,
+                    "state_vector_v1.market_access": 0.23,
+                    "base_credit_window_proxy": 0.55,
+                    "base_equity_window_proxy": 0.48,
+                    "base_credit_spread_level": 0.045,
+                    "base_market_cap": 300.0,
+                    "base_total_debt": 200.0,
+                    "base_cash": 40.0,
+                    "base_ebitda_ttm": 50.0,
+                }
+            ]
+        )
+
+        backfilled = backfill_historical_price_window_metrics(hist, raw_timeseries_path=raw_path)
+        row = backfilled.iloc[0]
+
+        assert pd.isna(row["base_volatility_30d"])
+        assert pd.notna(row["base_volatility_90d"])
+        assert pd.notna(row["base_drawdown_90d"])
+        assert pd.notna(row["base_momentum_60d"])
+        assert pd.isna(row["state_vector_v1.market_stress"])
+        assert pd.isna(row["state_vector_v1.market_access"])
+
+
