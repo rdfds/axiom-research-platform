@@ -22,3 +22,7 @@ def _feature(snapshot: dict, name: str) -> Dict[str, Any]:
     return snapshot['features'].get(name, {}) or {}
 
 
+def _value(snapshot: dict, name: str) -> Any:
+    return _feature(snapshot, name).get("value")
+
+

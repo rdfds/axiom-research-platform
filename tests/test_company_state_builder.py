@@ -967,3 +967,69 @@ def test_arithmetic_identity_for_market_and_net_debt(tmp_path: Path):
     assert snap.features["liquidity.liquidity_total"]["value"] >= snap.features["liquidity.cash"]["value"]
 
 
+def test_market_fcf_yield_prefers_operating_cash_flow_minus_capex(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("shares", "ABC", "financial.shares_out", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ocf", "ABC", "financial.operating_cash_flow", 120.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("capex", "ABC", "financial.capex", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("fcf_provider", "ABC", "financial.free_cash_flow", 70.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": "2026-02-20T00:00:00Z",
+                "available_time": "2026-02-20T00:00:00Z",
+                "ingestion_time": "2026-02-20T00:00:00Z",
+                "close": 10.0,
+            }
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["market.market_cap"]["value"] == 1000.0
+    assert snap.features["market.fcf_yield"]["value"] == 0.1
+    assert snap.features["market.fcf_yield"]["fallback_used"] is None
+    assert snap.features["operating.fcf_conversion"]["value"] == 0.5
+    assert snap.features["operating.fcf_conversion"]["fallback_used"] is None
+    assert snap.features["operating.fcf_conversion"]["input_source_classification"] == "external_raw_plus_deterministic_formula"
+    assert snap.features["operating.fcf_conversion"]["definition_requirement"] == "can_be_externally_anchored"
+    assert snap.features["operating.fcf_conversion"]["component_breakdown"]["formula"] == "(operating_cash_flow - capex) / ebitda"
+
+
+def test_operating_ebitda_margin_uses_matched_reporting_periods(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("rev_older", "ABC", "financial.revenue", 80.0, "2025-01-15T00:00:00Z", "2025-01-16T00:00:00Z", "2025-01-15T00:00:00Z"),
+            _facts_row("ebitda_older", "ABC", "financial.ebitda", 12.0, "2025-01-15T00:00:00Z", "2025-01-16T00:00:00Z", "2025-01-15T00:00:00Z"),
+            _facts_row("rev_latest", "ABC", "financial.revenue", 100.0, "2026-01-20T00:00:00Z", "2026-01-21T00:00:00Z", "2026-01-20T00:00:00Z"),
+            _facts_row("ebitda_latest", "ABC", "financial.ebitda", 20.0, "2026-01-20T00:00:00Z", "2026-01-21T00:00:00Z", "2026-01-20T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["operating.ebitda_margin_ttm"]
+    assert feature["value"] == 0.2
+    assert feature["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert feature["component_breakdown"]["period_match_type"] == "exact_period_match"
+    assert feature["component_breakdown"]["formula"] == "ebitda / revenue"
+    assert feature["quality_flags"] is None
+
+

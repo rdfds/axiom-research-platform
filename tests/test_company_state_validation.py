@@ -95,3 +95,63 @@ def test_invariant_liquidity_total_ge_cash():
     assert "liquidity_total_lt_cash" in check_invariants(snap_bad)
 
 
+def test_metric_invariants_accept_market_view_triplets():
+    total_debt_reported = _metric_feature(200.0, view_type="reported", component_breakdown={"reported_debt": 200.0})
+    total_debt_market = _metric_feature(
+        240.0,
+        view_type="market",
+        component_breakdown={
+            "reported_debt": 200.0,
+            "lease_liabilities": 40.0,
+            "lease_weight": 1.0,
+            "supplier_finance": 0.0,
+            "supplier_finance_weight": 1.0,
+            "preferred_equity": 0.0,
+            "preferred_weight": 0.5,
+            "convertibles": 0.0,
+            "convertible_weight": 0.5,
+            "unfunded_pension": 0.0,
+            "pension_weight": 0.25,
+        },
+    )
+    total_debt_decision = _metric_feature(
+        240.0,
+        view_type="decision",
+        component_breakdown=total_debt_market["component_breakdown"],
+    )
+    net_debt_market = _metric_feature(
+        180.0,
+        view_type="market",
+        component_breakdown={"economic_debt": 240.0, "usable_cash_market": 60.0},
+    )
+    snap = {
+        "company_id": "001",
+        "as_of_time": "2026-02-28T00:00:00Z",
+        "features": {
+            "liquidity.cash": {"value": 50.0, "as_of_time": "2026-02-28T00:00:00Z"},
+            "liquidity.liquidity_total": {"value": 50.0, "as_of_time": "2026-02-28T00:00:00Z"},
+            "liquidity.usable_cash_market": _metric_feature(60.0, view_type="market", component_breakdown={"cash": 75.0, "restricted_cash": 15.0}),
+            "capital_structure.total_debt_reported": total_debt_reported,
+            "capital_structure.total_debt_market": total_debt_market,
+            "capital_structure.total_debt": total_debt_decision,
+            "capital_structure.net_debt_market": net_debt_market,
+            "capital_structure.net_debt_reported": _metric_feature(150.0, view_type="reported", component_breakdown={"economic_debt": 200.0}),
+            "capital_structure.net_debt": _metric_feature(180.0, view_type="decision", component_breakdown={"economic_debt": 240.0, "usable_cash_market": 60.0}),
+            "market.market_cap": {"value": 500.0, "as_of_time": "2026-02-28T00:00:00Z"},
+            "market.enterprise_value": {"value": 650.0, "as_of_time": "2026-02-28T00:00:00Z"},
+        },
+        "provenance": {
+            "feature_lineage": {
+                "capital_structure.total_debt_reported": _lineage_for_metric(total_debt_reported),
+                "capital_structure.total_debt_market": _lineage_for_metric(total_debt_market),
+                "capital_structure.total_debt": _lineage_for_metric(total_debt_decision),
+                "capital_structure.net_debt_market": _lineage_for_metric(net_debt_market),
+                "capital_structure.net_debt_reported": _lineage_for_metric(_metric_feature(150.0, view_type="reported", component_breakdown={"economic_debt": 200.0})),
+                "capital_structure.net_debt": _lineage_for_metric(_metric_feature(180.0, view_type="decision", component_breakdown={"economic_debt": 240.0, "usable_cash_market": 60.0})),
+                "liquidity.usable_cash_market": _lineage_for_metric(_metric_feature(60.0, view_type="market", component_breakdown={"cash": 75.0, "restricted_cash": 15.0})),
+            }
+        },
+    }
+    assert check_invariants(snap) == []
+
+
