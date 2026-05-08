@@ -81,3 +81,17 @@ def _lineage_for_metric(feat: dict):
     }
 
 
+def test_invariant_liquidity_total_ge_cash():
+    snap = _snapshot(**{
+        "liquidity.cash": 100.0,
+        "liquidity.liquidity_total": 100.0,
+    })
+    assert "liquidity_total_lt_cash" not in check_invariants(snap)
+
+    snap_bad = _snapshot(**{
+        "liquidity.cash": 100.0,
+        "liquidity.liquidity_total": 50.0,
+    })
+    assert "liquidity_total_lt_cash" in check_invariants(snap_bad)
+
+
