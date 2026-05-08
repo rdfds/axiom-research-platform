@@ -196,3 +196,68 @@ def test_enrich_snapshot_with_revenue_growth_inputs_backfills_buyback_matching_i
     assert "market.market_cap_provider_direct" in summary["metrics"]
 
 
+def test_enrich_snapshot_with_revenue_growth_inputs_backfills_liquidity_proxies_from_companyfacts(tmp_path, monkeypatch):
+    companyfacts_root = tmp_path / "companyfacts"
+    companyfacts_root.mkdir()
+    (companyfacts_root / "CIK0000002488.json").write_text("{}")
+
+    def _fake_builders():
+        def _load(path: Path):
+            return {"ok": True}
+
+        def _build(metric_name: str, companyfacts: dict, as_of_date: str):
+            if metric_name == "operating.revenue_ttm_provider_direct":
+                return None, "unsupported", "missing", None, None
+            if metric_name == "operating.revenue_ttm_lag_1y":
+                return None, "unsupported", "missing", None, None
+            if metric_name == "liquidity.cash_and_short_term_investments_provider_direct":
+                return 7_500_000_000.0, "exact", None, {"formula": "cash"}, None
+            if metric_name == "capital_structure.total_debt_provider_direct":
+                return 1_700_000_000.0, "exact", None, {"formula": "debt"}, None
+            raise AssertionError(metric_name)
+
+        return _load, _build
+
+    monkeypatch.setattr("src.replay_snapshot_enrichment._sec_metric_builders", _fake_builders)
+
+    snapshot = {
+        "company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "features": {
+            "capital_structure.maturity_wall_ratio_24m": {
+                "name": "capital_structure.maturity_wall_ratio_24m",
+                "value": 0.4,
+                "support_mode": "exact",
+            },
+            "capital_structure.total_debt": {
+                "name": "capital_structure.total_debt",
+                "value": 1_700_000_000.0,
+                "support_mode": "proxy_missing_component",
+            },
+            "operating.ebitda_ltm_provider_direct": {
+                "name": "operating.ebitda_ltm_provider_direct",
+                "value": 5_100_000_000.0,
+                "support_mode": "proxy_missing_component",
+            },
+            "liquidity.revolver_undrawn": {
+                "name": "liquidity.revolver_undrawn",
+                "value": None,
+                "support_mode": "unsupported",
+            },
+        },
+    }
+
+    enriched, changed, summary = enrich_snapshot_with_revenue_growth_inputs(
+        snapshot,
+        companyfacts_root=companyfacts_root,
+    )
+
+    assert changed is True
+    features = enriched["features"]
+    assert features["liquidity.cash"]["value"] == 7_500_000_000.0
+    assert features["liquidity.available_for_actions"]["value"] == 7_500_000_000.0
+    assert features["capital_structure.net_debt"]["value"] == -5_800_000_000.0
+    assert round(features["capital_structure.net_leverage"]["value"], 8) == round(-5_800_000_000.0 / 5_100_000_000.0, 8)
+    assert summary["metrics"]["liquidity.available_for_actions"]["changed"] is True
+
+

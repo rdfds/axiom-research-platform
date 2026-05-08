@@ -108,7 +108,7 @@ def _dedupe_provenance(*records: Any) -> list[dict[str, Any]]:
     for record in records:
         if not isinstance(record, dict):
             continue
-        for item in list(record['provenance'] or []):
+        for item in list(record.get("provenance") or []):
             if not isinstance(item, dict):
                 continue
             key = json.dumps(item, sort_keys=True, default=str)
