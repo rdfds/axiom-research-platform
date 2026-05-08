@@ -119,3 +119,11 @@ def _dedupe_provenance(*records: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _companyfacts_path(companyfacts_root: Path, company_id: str) -> Path:
+    normalized = str(company_id or "").strip()
+    if normalized.startswith("CIK"):
+        normalized = normalized.removeprefix("CIK")
+    normalized = normalized.zfill(10)
+    return companyfacts_root / f"CIK{normalized}.json"
+
+

@@ -111,3 +111,88 @@ def test_enrich_snapshot_with_revenue_growth_inputs_keeps_existing_supported_met
     assert summary["metrics"]["liquidity.cash"]["changed"] is True
 
 
+def test_enrich_snapshot_with_revenue_growth_inputs_backfills_buyback_matching_inputs_without_companyfacts():
+    snapshot = {
+        "company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "features": {
+            "market.market_cap": {
+                "name": "market.market_cap",
+                "value": 2336.0,
+                "support_mode": "exact",
+                "confidence": 0.22,
+                "fallback_used": "price*shares",
+                "component_breakdown": {"price_observation_age_days": 33.0},
+            },
+            "market.enterprise_value": {
+                "name": "market.enterprise_value",
+                "value": 2333.0,
+                "support_mode": "exact",
+            },
+            "market.ev_ebitda": {
+                "name": "market.ev_ebitda",
+                "value": 454.0,
+                "support_mode": "proxy_missing_component",
+                "component_breakdown": {
+                    "ebitda_ttm": 5.0,
+                    "reference_ev_ebitda": 60.0,
+                    "reference_instrument": "AMD.OQ",
+                },
+            },
+            "capital_structure.net_debt_normalized": {
+                "name": "capital_structure.net_debt_normalized",
+                "value": -2.0,
+                "support_mode": "proxy_missing_component",
+            },
+            "capital_structure.total_debt": {
+                "name": "capital_structure.total_debt",
+                "value": 2.5,
+                "support_mode": "proxy_missing_component",
+            },
+            "liquidity.cash": {
+                "name": "liquidity.cash",
+                "value": 4.1,
+                "support_mode": "exact",
+            },
+            "operating.fcf_conversion": {
+                "name": "operating.fcf_conversion",
+                "value": 0.75,
+                "support_mode": "proxy_missing_component",
+            },
+            "capital_structure.debt_due_0_12m": {
+                "name": "capital_structure.debt_due_0_12m",
+                "value": 0.0,
+                "support_mode": "exact",
+            },
+            "capital_structure.debt_due_12_24m": {
+                "name": "capital_structure.debt_due_12_24m",
+                "value": 0.7,
+                "support_mode": "exact",
+            },
+        },
+    }
+
+    enriched, changed, summary = enrich_snapshot_with_revenue_growth_inputs(
+        snapshot,
+        companyfacts_root=None,
+    )
+
+    assert changed is True
+    features = enriched["features"]
+    assert features["operating.ebitda_ltm_provider_direct"]["value"] == 5.0
+    assert features["capital_structure.total_debt_provider_direct"]["value"] == 2.5
+    assert features["liquidity.usable_cash"]["value"] == 4.1
+    assert features["liquidity.available_liquidity_normalized"]["value"] == 4.1
+    assert features["liquidity.available_for_actions"]["value"] == 4.1
+    assert round(features["capital_structure.net_debt"]["value"], 8) == round(-1.6, 8)
+    assert round(features["capital_structure.net_leverage"]["value"], 8) == round(-1.6 / 5.0, 8)
+    assert features["capital_structure.debt_due_next_24m"]["value"] == 0.7
+    assert features["liquidity.cash_and_short_term_investments_provider_direct"]["value"] == 4.1
+    assert features["market.market_cap_provider_direct"]["value"] == 302.0
+    assert features["market.enterprise_value"]["value"] == 300.0
+    assert features["market.ev_ebitda"]["value"] == 60.0
+    assert features["cash_flow.free_cash_flow_ttm"]["value"] == 3.75
+    assert round(features["market.fcf_yield"]["value"], 8) == round(3.75 / 302.0, 8)
+    assert "market.market_cap_provider_direct" in summary["metrics"]
+
+
