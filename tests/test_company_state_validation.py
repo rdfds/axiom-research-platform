@@ -56,3 +56,28 @@ def _metric_feature(
     }
 
 
+def _lineage_for_metric(feat: dict):
+    return {
+        "metric_context": {
+            "metric_policy_id": feat["metric_policy_id"],
+            "market_owner": feat["market_owner"],
+            "primary_source_basis": feat["primary_source_basis"],
+            "methodology_registry_id": feat["methodology_registry_id"],
+            "methodology_metric_id": feat["methodology_metric_id"],
+            "canonical_owner_id": feat["canonical_owner_id"],
+            "canonical_classification": feat["canonical_classification"],
+            "market_layer_status": feat["market_layer_status"],
+            "current_alignment_status": feat["current_alignment_status"],
+            "archetype": feat["archetype"],
+            "sector": feat["sector"],
+            "subsector": feat["subsector"],
+            "override_level_applied": feat["override_level_applied"],
+            "support_mode": feat["support_mode"],
+            "applicability_status": feat["applicability_status"],
+            "view_type": feat["view_type"],
+            "component_breakdown": feat["component_breakdown"],
+            "quality_flags": feat["quality_flags"],
+        }
+    }
+
+

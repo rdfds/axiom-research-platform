@@ -674,3 +674,296 @@ def test_liquidity_structured_support_derives_marketable_securities_from_combine
     assert snap.features["liquidity.usable_cash_market"]["component_breakdown"]["marketable_securities"] == 40.0
 
 
+def test_liquidity_structured_support_uses_reference_cash_and_short_term_investments(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Corp",
+                "Cash and Short Term Investments": 165.0,
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Industrial Conglomerates",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.marketable_securities"]["value"] == 65.0
+    assert snap.features["liquidity.marketable_securities"]["fallback_used"] == "reference_cash_and_short_term_investments"
+    assert "reference_cash_and_short_term_investments_fallback" in (
+        snap.features["liquidity.marketable_securities"]["quality_flags"] or []
+    )
+    assert snap.features["liquidity.usable_cash_market"]["component_breakdown"]["marketable_securities"] == 65.0
+
+
+def test_liquidity_structured_support_resolves_revolver_capacity_patterns(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("revolver", "ABC", "financial.unused_revolving_credit_capacity", 75.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.revolver_undrawn"]["value"] == 75.0
+    assert snap.features["liquidity.liquidity_total"]["value"] == 125.0
+
+
+def test_liquidity_pattern_matching_uses_fact_id_for_restricted_cash(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("us-gaap_CashAndCashEquivalentsAtCarryingValue", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            },
+            {
+                **_facts_row(
+                    "us-gaap_RestrictedCashAndCashEquivalentsAtCarryingValue",
+                    "ABC",
+                    "financial.other_balance_sheet_item",
+                    12.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+            },
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.restricted_cash"]["value"] == 12.0
+    assert snap.features["liquidity.usable_cash_market"]["component_breakdown"]["restricted_cash"] == 12.0
+
+
+def test_liquidity_pattern_matching_uses_fact_id_for_revolver_undrawn(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            {
+                **_facts_row(
+                    "custom_UnusedCommitmentUnderRevolvingCreditFacility",
+                    "ABC",
+                    "financial.other_liquidity_item",
+                    80.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+            },
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["liquidity.revolver_undrawn"]["value"] == 80.0
+    assert snap.features["liquidity.liquidity_total"]["value"] == 130.0
+
+
+def test_market_metric_engine_resolves_transport_logistics_policy(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "TRNS", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "TRNS", "financial.total_debt", 500.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_current", "TRNS", "financial.lease_liability_current", 40.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_long", "TRNS", "financial.lease_liability_noncurrent", 60.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "TRNS", "financial.ebitda", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "TRNS", "financial.ebit", 70.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("interest", "TRNS", "financial.interest_expense", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("TRNS", sector="Industrials", subsector="Air Freight & Logistics", sic="4213")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("TRNS", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "transport_logistics"
+    assert snap.features["capital_structure.total_debt_market"]["value"] == 600.0
+    assert snap.features["capital_structure.fixed_charge_coverage"]["applicability_status"] == "primary"
+    assert snap.features["capital_structure.interest_coverage"]["applicability_status"] == "secondary"
+
+
+def test_market_metric_engine_resolves_aerospace_defense_policy(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "AERO", "financial.cash", 80.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "AERO", "financial.total_debt", 400.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("pension", "AERO", "financial.unfunded_pension", 120.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "AERO", "financial.ebitda", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("AERO", sector="Industrials", subsector="Aerospace & Defense", sic="3721")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("AERO", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "aerospace_defense"
+    assert snap.features["capital_structure.total_debt_market"]["value"] == 400.0
+    assert "pension_excluded_from_debt" in snap.features["capital_structure.total_debt_market"]["quality_flags"]
+
+
+def test_market_metric_engine_uses_taxonomy_reference_when_entity_table_is_thin(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "NPO_CIK", "financial.cash", 60.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "NPO_CIK", "financial.total_debt", 300.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "NPO_CIK", "financial.ebitda", 75.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [{"entity_id": "NPO_CIK", "legal_name": "Enpro Inc"}],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "NPO_CIK", "identifier_type": "ticker", "identifier_value": "NPO"},
+            {"entity_id": "NPO_CIK", "identifier_type": "cik", "identifier_value": "NPO_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "NPO.N",
+                "Company Common Name": "Enpro Inc",
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Machinery",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("NPO_CIK", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "machinery_capital_goods"
+    assert snap.features["taxonomy.sector"]["value"] == "Industrials"
+    assert snap.features["taxonomy.subsector"]["value"] == "Machinery"
+
+
+def test_market_metric_engine_resolves_automotive_oem_policy(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "AUTO", "financial.cash", 120.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "AUTO", "financial.total_debt", 800.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("pension", "AUTO", "financial.unfunded_pension", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "AUTO", "financial.ebitda", 160.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("AUTO", sector="Consumer Discretionary", subsector="Automobiles", sic="3711")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("AUTO", "2026-02-28")
+
+    assert snap.features["taxonomy.archetype"]["value"] == "automotive_oem"
+    assert snap.features["capital_structure.total_debt_market"]["value"] == 800.0
+    assert "pension_excluded_from_debt" in snap.features["capital_structure.total_debt_market"]["quality_flags"]
+
+
+def test_arithmetic_identity_for_market_and_net_debt(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    facts_rows = [
+        _facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("debt", "ABC", "financial.total_debt", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("ebitda", "ABC", "financial.ebitda", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("shares", "ABC", "financial.shares_out", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+    ]
+    _write_parquet(facts_path, facts_rows)
+
+    ts_rows = [
+        {
+            "entity_id": "ABC",
+            "series_type": "price",
+            "trade_date": "2026-02-20T00:00:00Z",
+            "available_time": "2026-02-20T00:00:00Z",
+            "ingestion_time": "2026-02-20T00:00:00Z",
+            "close": 10.0,
+        }
+    ]
+    _write_parquet(ts_path, ts_rows)
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["capital_structure.net_debt"]["value"] == 150.0
+    assert snap.features["market.market_cap"]["value"] == 1000.0
+    assert snap.features["market.market_cap"]["component_breakdown"]["formula"] == "close_price * shares_outstanding"
+    assert snap.features["market.market_cap"]["component_breakdown"]["shares_source"] == "shares_basic"
+    assert snap.features["market.market_cap"]["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert "price_shares_fallback" in (snap.features["market.market_cap"]["quality_flags"] or [])
+    assert snap.features["market.enterprise_value"]["value"] == 1150.0
+    assert snap.features["liquidity.liquidity_total"]["value"] >= snap.features["liquidity.cash"]["value"]
+
+
