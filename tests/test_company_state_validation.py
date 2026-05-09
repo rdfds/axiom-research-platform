@@ -215,3 +215,17 @@ def test_peer_zscore_numeric():
     assert "peer_zscore_not_numeric:peer_context.margin_z" in errs
 
 
+def test_peer_bands():
+    snap = _snapshot(**{
+        "peer_context.valuation_band": "q1",
+        "peer_context.leverage_band": "q2",
+        "peer_context.margin_band": "q4",
+        "peer_context.action_rate_band": "q3",
+    })
+    assert validate_peer_bands(snap) == []
+
+    snap_bad = _snapshot(**{
+        "peer_context.valuation_band": "top",
+    })
+    errs = validate_peer_bands(snap_bad)
+    assert "peer_band_invalid:peer_context.valuation_band" in errs

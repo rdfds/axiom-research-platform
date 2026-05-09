@@ -1033,3 +1033,145 @@ def test_operating_ebitda_margin_uses_matched_reporting_periods(tmp_path: Path):
     assert feature["quality_flags"] is None
 
 
+def test_operating_metrics_use_reference_fallbacks_in_historical_backfill_mode(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("rev_latest", "ABC", "financial.revenue", 100.0, "2026-01-20T00:00:00Z", "2026-01-21T00:00:00Z", "2026-01-20T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Revenue": 120.0,
+                "EBITDA": 24.0,
+                "Free Cash Flow": 12.0,
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+        skip_timeseries=True,
+        historical_backfill_mode=True,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    margin = snap.features["operating.ebitda_margin_ttm"]
+    fcf_conversion = snap.features["operating.fcf_conversion"]
+
+    assert margin["value"] == 0.2
+    assert margin["fallback_used"] == "reference_ebitda_margin_fallback"
+    assert margin["component_breakdown"]["reference_revenue"] == 120.0
+    assert margin["component_breakdown"]["reference_ebitda"] == 24.0
+    assert margin["component_breakdown"]["period_match_type"] == "reference_ttm_fallback"
+    assert "reference_ebitda_margin_fallback" in (margin["quality_flags"] or [])
+
+    assert fcf_conversion["value"] == 0.5
+    assert fcf_conversion["fallback_used"] == "reference_fcf_conversion_fallback"
+    assert fcf_conversion["component_breakdown"]["reference_free_cash_flow"] == 12.0
+    assert fcf_conversion["component_breakdown"]["reference_ebitda"] == 24.0
+    assert "reference_fcf_conversion_fallback" in (fcf_conversion["quality_flags"] or [])
+
+
+def test_stability_without_new_data(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    rows = [
+        _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("debt", "ABC", "financial.total_debt", 500.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        _facts_row("ebitda", "ABC", "financial.ebitda", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+    ]
+    _write_parquet(facts_path, rows)
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap_t = builder.build("ABC", "2026-02-28")
+    snap_t1 = builder.build("ABC", "2026-03-01")
+
+    for key in snap_t.features:
+        left = snap_t.features[key]
+        right = snap_t1.features[key]
+        assert left["value"] == right["value"], key
+        assert left["missing_reason"] == right["missing_reason"], key
+        assert left["fallback_used"] == right["fallback_used"], key
+
+
+def test_capital_structure_maturity_and_rating_from_events(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 1000.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "ABC", "financial.ebit", 80.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ie", "ABC", "financial.interest_expense", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_debt_1",
+                "company_id": "ABC",
+                "event_type": "debt_issuance",
+                "event_subtype": None,
+                "announced_at": "2026-01-01T00:00:00Z",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "source_type": "fisd",
+                "params": {"maturity_date": "2026-10-01T00:00:00Z", "offering_amt_k": 100.0},
+            },
+            {
+                "event_id": "evt_debt_2",
+                "company_id": "ABC",
+                "event_type": "debt_issuance",
+                "event_subtype": None,
+                "announced_at": "2026-01-01T00:00:00Z",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "source_type": "fisd",
+                "params": {"maturity_date": "2027-08-01T00:00:00Z", "offering_amt_k": 300.0},
+            },
+            {
+                "event_id": "evt_rating_1",
+                "company_id": "ABC",
+                "event_type": "rating_action",
+                "event_subtype": "FCLONG",
+                "announced_at": "2026-02-05T00:00:00Z",
+                "effective_at": "2026-02-05T00:00:00Z",
+                "created_at": "2026-02-05T00:00:00Z",
+                "source_type": "ciq_ratings",
+                "params": {"current_rating_symbol": "BBB-", "outlook": "stable", "creditwatch": "N"},
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["capital_structure.debt_due_0_12m"]["value"] == 100.0
+    assert snap.features["capital_structure.debt_due_12_24m"]["value"] == 300.0
+    assert snap.features["capital_structure.debt_schedule_total"]["value"] == 400.0
+    assert snap.features["capital_structure.debt_schedule_vs_total_debt"]["value"] == 0.4
+    assert snap.features["capital_structure.debt_schedule_inconsistency_flag"]["value"] == 0.0
+    assert snap.features["capital_structure.maturity_wall_ratio_24m"]["value"] == 0.4
+    assert snap.features["capital_structure.refi_pressure_flag"]["value"] == 1.0
+    rating_state = snap.features["capital_structure.rating_state"]["value"]
+    assert isinstance(rating_state, dict)
+    assert rating_state["rating"] == "BBB-"
+    assert rating_state["outlook"] == "stable"
+
+
