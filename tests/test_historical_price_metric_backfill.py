@@ -131,3 +131,32 @@ def test_backfill_historical_price_window_metrics_uses_sparse_monthly_fallback_f
         assert pd.isna(row["state_vector_v1.market_access"])
 
 
+def test_backfill_historical_price_window_metrics_preserves_existing_price_metrics() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        raw_path = Path(tmpdir) / "raw_timeseries.parquet"
+        _write_price_history_parquet(raw_path, company_id="001234")
+
+        hist = pd.DataFrame(
+            [
+                {
+                    "company_id": "001234",
+                    "action_date": "2024-04-15T00:00:00+00:00",
+                    "base_volatility_30d": 0.11,
+                    "base_volatility_90d": 0.22,
+                    "base_drawdown_90d": -0.18,
+                    "base_momentum_60d": 0.05,
+                    "state_vector_v1.market_stress": 0.31,
+                    "state_vector_v1.market_access": 0.69,
+                }
+            ]
+        )
+
+        backfilled = backfill_historical_price_window_metrics(hist, raw_timeseries_path=raw_path)
+        row = backfilled.iloc[0]
+
+        assert row["base_volatility_30d"] == 0.11
+        assert row["base_volatility_90d"] == 0.22
+        assert row["base_drawdown_90d"] == -0.18
+        assert row["base_momentum_60d"] == 0.05
+        assert row["state_vector_v1.market_stress"] == 0.31
+        assert row["state_vector_v1.market_access"] == 0.69

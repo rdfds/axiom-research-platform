@@ -245,3 +245,26 @@ def validate_golden_case(case: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def validate_metric_goldens(
+    path: Path | str | None = None,
+    *,
+    case_ids: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    payload = load_metric_goldens(path)
+    selected_case_ids = _clean_case_ids(case_ids)
+    selected_cases = [
+        case for case in payload["cases"]
+        if selected_case_ids is None or str(case.get("case_id")) in selected_case_ids
+    ]
+    results = [validate_golden_case(case) for case in selected_cases]
+    summary = {
+        "total_cases": len(results),
+        "passed_cases": sum(1 for result in results if result.get("passed")),
+        "failed_cases": sum(1 for result in results if not result.get("passed")),
+    }
+    return {
+        "goldens_path": payload["path"],
+        "metadata": payload["metadata"],
+        "summary": summary,
+        "results": results,
+    }
