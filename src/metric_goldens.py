@@ -217,3 +217,31 @@ def _validate_metric(snapshot: Dict[str, Any], metric_name: str, expectation: Di
     return actual
 
 
+def validate_golden_case(case: Dict[str, Any]) -> Dict[str, Any]:
+    errors: List[str] = []
+    warnings: List[str] = []
+    with TemporaryDirectory(prefix="metric_golden_") as tmp_dir:
+        snapshot_obj = _build_snapshot(case, Path(tmp_dir))
+        snapshot = asdict(snapshot_obj)
+    invariant_errors = check_invariants(snapshot)
+    if invariant_errors:
+        errors.extend(f"invariant:{err}" for err in invariant_errors)
+
+    actual_taxonomy = _validate_taxonomy(snapshot, dict(case.get("expected_taxonomy") or {}), errors)
+    actual_metrics: Dict[str, Any] = {}
+    for metric_name, expectation in dict(case.get("metrics") or {}).items():
+        actual_metrics[metric_name] = _validate_metric(snapshot, metric_name, dict(expectation or {}), errors)
+
+    return {
+        "case_id": case.get("case_id"),
+        "description": case['description'],
+        "company_id": case.get("company_id"),
+        "as_of_date": case.get("as_of_date"),
+        "passed": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "actual_taxonomy": actual_taxonomy,
+        "actual_metrics": actual_metrics,
+    }
+
+
