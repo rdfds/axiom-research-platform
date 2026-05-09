@@ -82,3 +82,11 @@ def _node_support(node: Dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _candidate_units_map(companyfacts: dict, concept_name: str) -> dict | None:
+    for taxonomy in ("us-gaap", "dei", "ifrs-full"):
+        facts = (companyfacts.get("facts") or {}).get(taxonomy) or {}
+        if concept_name in facts:
+            return facts[concept_name].get("units") or {}
+    return None
+
+

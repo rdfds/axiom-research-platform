@@ -199,3 +199,19 @@ def test_peer_percentiles_range():
     assert "peer_percentile_out_of_range:peer_context.valuation_percentile" in errs
 
 
+def test_peer_zscore_numeric():
+    snap = _snapshot(**{
+        "peer_context.valuation_z": 0.5,
+        "peer_context.leverage_z": -1.2,
+        "peer_context.margin_z": 2.1,
+        "peer_context.action_rate_z": 0.3,
+    })
+    assert validate_peer_zscores(snap) == []
+
+    snap_bad = _snapshot(**{
+        "peer_context.margin_z": "not_a_number",
+    })
+    errs = validate_peer_zscores(snap_bad)
+    assert "peer_zscore_not_numeric:peer_context.margin_z" in errs
+
+

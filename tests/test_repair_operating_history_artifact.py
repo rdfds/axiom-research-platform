@@ -116,3 +116,159 @@ def _companyfacts_with_revenue_fy_series():
     }
 
 
+def _companyfacts_with_negative_revenue_anchor():
+    return {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2022-01-01",
+                                "end": "2022-12-31",
+                                "val": -50.0,
+                                "fy": 2022,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-02-20",
+                                "frame": "CY2022",
+                            },
+                            {
+                                "start": "2024-01-01",
+                                "end": "2024-12-31",
+                                "val": 100.0,
+                                "fy": 2024,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2025-02-20",
+                                "frame": "CY2024",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+
+def _companyfacts_with_stale_legacy_and_fresh_current_revenue_concepts():
+    return {
+        "facts": {
+            "us-gaap": {
+                "SalesRevenueNet": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2017-07-01",
+                                "end": "2017-09-30",
+                                "val": 100.0,
+                                "fy": 2017,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2017-10-30",
+                                "frame": "CY2017Q3",
+                            },
+                            {
+                                "start": "2018-07-01",
+                                "end": "2018-09-30",
+                                "val": 125.0,
+                                "fy": 2018,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2018-10-30",
+                                "frame": "CY2018Q3",
+                            },
+                            {
+                                "start": "2015-01-01",
+                                "end": "2015-12-31",
+                                "val": 400.0,
+                                "fy": 2015,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2016-02-20",
+                                "frame": "CY2015",
+                            },
+                            {
+                                "start": "2018-01-01",
+                                "end": "2018-12-31",
+                                "val": 500.0,
+                                "fy": 2018,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2019-02-20",
+                                "frame": "CY2018",
+                            },
+                        ]
+                    }
+                },
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2023-07-01",
+                                "end": "2023-09-30",
+                                "val": 200.0,
+                                "fy": 2023,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2023-10-30",
+                                "frame": "CY2023Q3",
+                            },
+                            {
+                                "start": "2024-07-01",
+                                "end": "2024-09-30",
+                                "val": 220.0,
+                                "fy": 2024,
+                                "fp": "Q3",
+                                "form": "10-Q",
+                                "filed": "2024-10-30",
+                                "frame": "CY2024Q3",
+                            },
+                            {
+                                "start": "2021-01-01",
+                                "end": "2021-12-31",
+                                "val": 800.0,
+                                "fy": 2021,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2022-02-20",
+                                "frame": "CY2021",
+                            },
+                            {
+                                "start": "2022-01-01",
+                                "end": "2022-12-31",
+                                "val": 880.0,
+                                "fy": 2022,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-02-20",
+                                "frame": "CY2022",
+                            },
+                            {
+                                "start": "2023-01-01",
+                                "end": "2023-12-31",
+                                "val": 968.0,
+                                "fy": 2023,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2024-02-20",
+                                "frame": "CY2023",
+                            },
+                            {
+                                "start": "2024-01-01",
+                                "end": "2024-12-31",
+                                "val": 1064.8,
+                                "fy": 2024,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2025-02-20",
+                                "frame": "CY2024",
+                            },
+                        ]
+                    }
+                },
+            }
+        }
+    }
+
+
