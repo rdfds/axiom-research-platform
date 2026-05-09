@@ -217,7 +217,7 @@ def _iter_component_ends(component_breakdown: object) -> list[date]:
     return ends
 
 
-def _selected_component_gap_days(component_breakdown: object, keys: tuple[str, ...]) :
+def _selected_component_gap_days(component_breakdown: object, keys: tuple[str, ...]) -> int | None:
     if not isinstance(component_breakdown, dict):
         return None
     ends: list[date] = []

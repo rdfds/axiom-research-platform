@@ -155,3 +155,47 @@ def test_metric_invariants_accept_market_view_triplets():
     assert check_invariants(snap) == []
 
 
+def test_metric_invariants_flag_unsupported_decision_values():
+    unsupported = _metric_feature(
+        3.5,
+        view_type="decision",
+        support_mode="unsupported",
+        applicability_status="unsupported",
+        quality_flags=["unsupported_metric"],
+    )
+    snap = {
+        "company_id": "001",
+        "as_of_time": "2026-02-28T00:00:00Z",
+        "features": {
+            "capital_structure.net_leverage_reported": _metric_feature(3.5, view_type="reported"),
+            "capital_structure.net_leverage_market": _metric_feature(None, view_type="market", support_mode="unsupported", applicability_status="unsupported"),
+            "capital_structure.net_leverage": unsupported,
+        },
+        "provenance": {
+            "feature_lineage": {
+                "capital_structure.net_leverage_reported": _lineage_for_metric(_metric_feature(3.5, view_type="reported")),
+                "capital_structure.net_leverage_market": _lineage_for_metric(_metric_feature(None, view_type="market", support_mode="unsupported", applicability_status="unsupported")),
+                "capital_structure.net_leverage": _lineage_for_metric(unsupported),
+            }
+        },
+    }
+    errs = check_invariants(snap)
+    assert "unsupported_decision_metric_has_value:capital_structure.net_leverage" in errs
+
+
+def test_peer_percentiles_range():
+    snap = _snapshot(**{
+        "peer_context.valuation_percentile": 50.0,
+        "peer_context.leverage_percentile": 0.0,
+        "peer_context.margin_percentile": 100.0,
+        "peer_context.action_rate_percentile": 75.0,
+    })
+    assert validate_peer_percentiles(snap) == []
+
+    snap_bad = _snapshot(**{
+        "peer_context.valuation_percentile": 120.0,
+    })
+    errs = validate_peer_percentiles(snap_bad)
+    assert "peer_percentile_out_of_range:peer_context.valuation_percentile" in errs
+
+
