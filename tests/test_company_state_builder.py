@@ -1310,3 +1310,105 @@ def test_build_uses_extra_aliases_for_event_matching(tmp_path: Path):
     assert rating_state["rating"] == "BBB-"
 
 
+def test_build_uses_extra_aliases_for_fact_matching_even_when_primary_id_has_other_facts(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("div_hist", "0001", "financial.common_dividends_cash", 0.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("cash_alias", "SRC123", "financial.cash", 250.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt_alias", "SRC123", "financial.total_debt", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        skip_events=True,
+    )
+    snap = builder.build("0001", "2026-02-28", extra_aliases=["SRC123"])
+
+    assert snap.features["liquidity.cash"]["value"] == 250.0
+    assert snap.features["capital_structure.total_debt"]["value"] == 100.0
+    assert snap.features["capital_structure.net_debt"]["value"] == -150.0
+    assert snap.features["liquidity.available_for_actions"]["value"] == 250.0
+
+
+def test_resolve_entity_aliases_can_canonicalize_from_extra_alias_when_primary_id_is_unknown(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    _write_parquet(facts_path, [])
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "0001932393", "identifier_value": "GEHC", "identifier_type": "ticker"},
+            {"entity_id": "0001932393", "identifier_value": "1932393", "identifier_type": "cik"},
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        entity_identifier_path=ident_path,
+        skip_timeseries=True,
+        skip_events=True,
+    )
+
+    canonical, aliases = builder._resolve_entity_aliases("041818", extra_aliases=["GEHC"])
+
+    assert canonical == "0001932393"
+    assert "GEHC" in aliases
+    assert "0001932393" in aliases
+    assert "1932393" in aliases
+
+
+def test_dividend_payer_flag_from_recent_dividend_events(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_div_1",
+                "company_id": "ABC",
+                "event_type": "dividend_regular",
+                "event_subtype": "regular",
+                "announced_at": "2025-12-01T00:00:00Z",
+                "effective_at": "2025-12-01T00:00:00Z",
+                "created_at": "2025-12-01T00:00:00Z",
+                "source_type": "event_store",
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["capital_return.dividend_payer_flag"]
+    assert feature["value"] is True
+    assert feature["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert feature["input_layer_bucket"] == "secondary_externally_anchored"
+    assert feature["strict_market_defined"] is False
+    assert feature["input_source_classification"] == "external_raw_plus_deterministic_formula"
+    assert feature["fallback_used"] is None
+    assert feature["component_breakdown"]["recurring_event_count_450d"] == 1
+    last_feature = snap.features["capital_return.last_dividend_event_type"]
+    assert last_feature["value"] == "dividend_regular"
+    assert last_feature["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert last_feature["input_layer_bucket"] == "secondary_externally_anchored"
+    assert last_feature["component_breakdown"]["formula"] == "latest_recurring_dividend_event_type"
+
+
