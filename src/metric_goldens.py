@@ -234,7 +234,7 @@ def validate_golden_case(case: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "case_id": case.get("case_id"),
-        "description": case['description'],
+        "description": case.get("description"),
         "company_id": case.get("company_id"),
         "as_of_date": case.get("as_of_date"),
         "passed": not errors,

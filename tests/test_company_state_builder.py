@@ -1175,3 +1175,138 @@ def test_capital_structure_maturity_and_rating_from_events(tmp_path: Path):
     assert rating_state["outlook"] == "stable"
 
 
+def test_build_flags_inconsistent_debt_schedule(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 150.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "ABC", "financial.ebit", 40.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ie", "ABC", "financial.interest_expense", 5.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_debt_1",
+                "company_id": "ABC",
+                "event_type": "debt_issuance",
+                "event_subtype": None,
+                "announced_at": "2026-01-01T00:00:00Z",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "source_type": "fisd",
+                "params": {"maturity_date": "2026-10-01T00:00:00Z", "offering_amt_k": 100.0},
+            },
+            {
+                "event_id": "evt_debt_2",
+                "company_id": "ABC",
+                "event_type": "debt_issuance",
+                "event_subtype": None,
+                "announced_at": "2026-01-01T00:00:00Z",
+                "effective_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "source_type": "fisd",
+                "params": {"maturity_date": "2030-01-01T00:00:00Z", "offering_amt_k": 200.0},
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["capital_structure.debt_schedule_total"]["value"] == 300.0
+    assert snap.features["capital_structure.debt_schedule_vs_total_debt"]["value"] == 3.0
+    assert snap.features["capital_structure.debt_schedule_inconsistency_flag"]["value"] == 1.0
+    assert snap.features["capital_structure.debt_due_0_12m"]["value"] is None
+    assert snap.features["capital_structure.debt_due_60m_plus"]["value"] is None
+    assert snap.features["capital_structure.debt_due_0_12m"]["missing_reason"] == "anomalous_schedule"
+    assert snap.features["capital_structure.maturity_wall_ratio_24m"]["value"] is None
+    assert snap.features["capital_structure.maturity_wall_ratio_24m"]["missing_reason"] == "anomalous_schedule"
+    assert snap.features["capital_structure.refi_pressure_flag"]["value"] is None
+
+
+def test_build_uses_note_extracted_maturity_schedule_when_events_absent(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 150.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 1000.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _note_fact_row("sec:abc:10k:2024", "ABC", "financial.debt_maturity_bucket", 200.0, "2025", "2024-12-20T00:00:00Z"),
+            _note_fact_row("sec:abc:10k:2024", "ABC", "financial.debt_maturity_bucket", 350.0, "2026", "2024-12-20T00:00:00Z"),
+            _note_fact_row("sec:abc:10k:2024", "ABC", "financial.debt_maturity_bucket", 1200.0, "Thereafter", "2024-12-20T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        skip_events=True,
+        historical_backfill_mode=True,
+    )
+    snap = builder.build("ABC", "2024-12-31")
+
+    assert snap.features["capital_structure.debt_due_0_12m"]["value"] == 200.0
+    assert snap.features["capital_structure.debt_due_12_24m"]["value"] == 350.0
+    assert snap.features["capital_structure.debt_due_60m_plus"]["value"] == 1200.0
+    assert snap.features["capital_structure.debt_schedule_total"]["value"] == 1750.0
+    assert snap.features["capital_structure.maturity_wall_ratio_24m"]["value"] == 0.55
+    assert snap.features["capital_structure.maturity_wall_ratio_24m"]["fallback_used"] == "note_pattern_extract"
+    assert "maturity_schedule_note_extract" in (snap.features["capital_structure.maturity_wall_ratio_24m"]["quality_flags"] or [])
+
+
+def test_build_uses_extra_aliases_for_event_matching(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "0001", "financial.cash", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "0001", "financial.total_debt", 1000.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "0001", "financial.ebitda", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "0001", "financial.ebit", 80.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ie", "0001", "financial.interest_expense", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_rating_alias",
+                "company_id": "SRC123",
+                "event_type": "rating_action",
+                "event_subtype": "FCLONG",
+                "announced_at": "2026-02-05T00:00:00Z",
+                "effective_at": "2026-02-05T00:00:00Z",
+                "created_at": "2026-02-05T00:00:00Z",
+                "source_type": "ciq_ratings",
+                "params": {"current_rating_symbol": "BBB-", "outlook": "stable", "creditwatch": "N"},
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("0001", "2026-02-28", extra_aliases=["SRC123"])
+    rating_state = snap.features["capital_structure.rating_state"]["value"]
+    assert isinstance(rating_state, dict)
+    assert rating_state["rating"] == "BBB-"
+
+
