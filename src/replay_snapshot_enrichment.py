@@ -127,3 +127,116 @@ def _companyfacts_path(companyfacts_root: Path, company_id: str) -> Path:
     return companyfacts_root / f"CIK{normalized}.json"
 
 
+def _metric_record(
+    *,
+    metric_name: str,
+    unit: str,
+    value: Any,
+    support_mode: str,
+    missing_reason: str | None,
+    component_breakdown: Optional[Dict[str, Any]],
+    quality_flags: Optional[list[str]],
+    as_of_time: str,
+    artifact_id: str,
+) -> Dict[str, Any]:
+    flags = list(dict.fromkeys([*(quality_flags or []), "replay_snapshot_growth_enrichment"]))
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": None,
+        "provenance": [
+            {
+                "artifact_type": "sec_companyfacts",
+                "artifact_id": artifact_id,
+                "source": "sec_companyfacts",
+                "published_at": None,
+                "ingested_at": None,
+                "hash": None,
+            }
+        ],
+        "missing_reason": missing_reason if value is None else None,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": None,
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": "replay_snapshot_growth_enrichment_v1",
+        "input_source_owner_id": "sec_companyfacts",
+        "input_source_owner_name": "SEC companyfacts",
+        "input_source_classification": "external_raw_plus_deterministic_formula",
+        "input_source_formula_basis": (component_breakdown or {}).get("formula"),
+        "input_source_alignment_status": "point_in_time_asof_safe",
+        "input_source_document_ids": ["sec_companyfacts"],
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": "adopt_exact_external_methodology",
+        "methodology_execution_reason": "Backfilled from SEC companyfacts using the same point-in-time logic as input-layer metric materialization.",
+        "input_layer_bucket": "strict_market_defined",
+        "input_layer_bucket_reason": "Backfilled from SEC companyfacts using deterministic point-in-time methodology.",
+        "strict_market_defined": True,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown or {},
+        "quality_flags": flags or None,
+        "view_type": None,
+    }
+
+
+def _clone_metric_record(
+    source_record: dict[str, Any],
+    *,
+    metric_name: str,
+    value: Any = None,
+    support_mode: str | None = None,
+    as_of_time: str,
+    extra_quality_flags: Optional[Iterable[str]] = None,
+    fallback_used: str | None = None,
+    component_breakdown_updates: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    out = deepcopy(dict(source_record or {}))
+    out["name"] = metric_name
+    out["computed_at"] = datetime.now(timezone.utc).isoformat()
+    out["as_of_time"] = as_of_time
+    if value is not None or "value" not in out:
+        out["value"] = value
+    if support_mode is not None:
+        out["support_mode"] = support_mode
+    if fallback_used is not None:
+        out["fallback_used"] = fallback_used
+    breakdown = dict(out.get("component_breakdown") or {})
+    breakdown["replay_snapshot_matching_enrichment"] = {
+        "source_metric": source_record.get("name"),
+        "target_metric": metric_name,
+    }
+    if component_breakdown_updates:
+        breakdown.update(component_breakdown_updates)
+    out["component_breakdown"] = breakdown
+    flags = list(
+        dict.fromkeys(
+            [
+                *(_quality_flags(source_record)),
+                *(list(extra_quality_flags or [])),
+                "replay_snapshot_matching_enrichment",
+            ]
+        )
+    )
+    out["quality_flags"] = flags or None
+    return out
+
+

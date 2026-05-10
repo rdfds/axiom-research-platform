@@ -261,3 +261,55 @@ def test_enrich_snapshot_with_revenue_growth_inputs_backfills_liquidity_proxies_
     assert summary["metrics"]["liquidity.available_for_actions"]["changed"] is True
 
 
+def test_enrich_snapshot_with_revenue_growth_inputs_repairs_price_history_metrics_from_crsp(monkeypatch):
+    trade_dates = pd.date_range("2024-05-01", "2024-08-30", freq="B", tz="UTC")
+    price_history = pd.DataFrame(
+        {
+            "trade_date": trade_dates,
+            "price": [100.0 + (idx * 0.4) + ((idx % 5) * 0.1) for idx in range(len(trade_dates))],
+        }
+    )
+
+    def _fake_load_exact_price_history(**kwargs):
+        return "61241", "crsp_daily_root", "/tmp/crsp_daily_root", price_history
+
+    monkeypatch.setattr(
+        "src.replay_snapshot_enrichment._load_exact_price_history",
+        _fake_load_exact_price_history,
+    )
+
+    snapshot = {
+        "company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "features": {
+            "market.volatility_90d": {
+                "name": "market.volatility_90d",
+                "value": None,
+                "support_mode": "unsupported",
+                "component_breakdown": {"median_observation_gap_days": 31.0},
+                "quality_flags": ["low_frequency_price_history"],
+            },
+            "market.drawdown_90d": {
+                "name": "market.drawdown_90d",
+                "value": None,
+                "support_mode": "unsupported",
+                "component_breakdown": {"median_observation_gap_days": 31.0},
+                "quality_flags": ["low_frequency_price_history"],
+            },
+        },
+    }
+
+    enriched, changed, summary = enrich_snapshot_with_revenue_growth_inputs(
+        snapshot,
+        companyfacts_root=None,
+        entity_identifier_path="/tmp/entity_identifier.parquet",
+        crsp_daily_root="/tmp/crsp_daily_root",
+    )
+
+    assert changed is True
+    assert enriched["features"]["market.volatility_90d"]["value"] is not None
+    assert enriched["features"]["market.volatility_90d"]["support_mode"] == "exact"
+    assert enriched["features"]["market.volatility_90d"]["fallback_used"] == "crsp_daily_root_price_history"
+    assert enriched["features"]["market.drawdown_90d"]["value"] is not None
+    assert enriched["features"]["market.drawdown_90d"]["support_mode"] == "exact"
+    assert summary["price_history_permno"] == "61241"
