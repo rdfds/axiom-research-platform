@@ -1412,3 +1412,91 @@ def test_dividend_payer_flag_from_recent_dividend_events(tmp_path: Path):
     assert last_feature["component_breakdown"]["formula"] == "latest_recurring_dividend_event_type"
 
 
+def test_dividend_payer_flag_false_without_recurring_dividend_history(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_special_1",
+                "company_id": "ABC",
+                "event_type": "dividend_special",
+                "event_subtype": "special",
+                "announced_at": "2025-12-01T00:00:00Z",
+                "effective_at": "2025-12-01T00:00:00Z",
+                "created_at": "2025-12-01T00:00:00Z",
+                "source_type": "event_store",
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["capital_return.dividend_payer_flag"]
+    assert feature["value"] is False
+    assert feature["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert "no_recurring_dividend_events_in_history" in (feature["quality_flags"] or [])
+
+
+def test_dividend_payer_flag_falls_back_to_dividend_facts(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row(
+                    "div_ps_1",
+                    "ABC",
+                    "financial.dividends_per_share_cash",
+                    0.5,
+                    "2025-08-15T00:00:00Z",
+                    "2025-08-15T00:00:00Z",
+                    "2025-08-15T00:00:00Z",
+                ),
+                "period_end": "2025-06-30T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "div_ps_2",
+                    "ABC",
+                    "financial.dividends_per_share_cash",
+                    0.5,
+                    "2025-11-15T00:00:00Z",
+                    "2025-11-15T00:00:00Z",
+                    "2025-11-15T00:00:00Z",
+                ),
+                "period_end": "2025-09-30T00:00:00Z",
+            },
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        skip_events=True,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["capital_return.dividend_payer_flag"]
+    assert feature["value"] is True
+    assert "dividend_fact_fallback" in (feature["quality_flags"] or [])
+    assert feature["component_breakdown"]["dividend_fact_fallback_recent_count_24m"] == 2
+
+    last_feature = snap.features["capital_return.last_dividend_event_type"]
+    assert last_feature["value"] == "dividend_regular"
+
+

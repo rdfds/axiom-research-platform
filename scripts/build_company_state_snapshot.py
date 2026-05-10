@@ -30,3 +30,20 @@ def _parse_company_ids(arg: Optional[str]) :
         return [x.strip() for x in arg.split(",") if x.strip()]
     return [arg.strip()]
 
+def _load_company_ids_file(path: Optional[str]) -> List[str]:
+    if not path:
+        return []
+    p = Path(path)
+    if not p.exists():
+        raise SystemExit(f"--company-ids-file not found: {path}")
+    ids: List[str] = []
+    with p.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            # allow comma-separated or whitespace-separated
+            parts = [x.strip() for x in line.replace(",", " ").split() if x.strip()]
+            ids.extend(parts)
+    return ids
+
