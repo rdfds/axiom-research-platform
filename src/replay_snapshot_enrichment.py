@@ -240,3 +240,73 @@ def _clone_metric_record(
     return out
 
 
+def _derived_metric_record(
+    *,
+    metric_name: str,
+    unit: str,
+    value: Any,
+    support_mode: str,
+    as_of_time: str,
+    formula: str,
+    source_records: Iterable[dict[str, Any] | None] = (),
+    component_values: Optional[Dict[str, Any]] = None,
+    fallback_used: str | None = None,
+    quality_flags: Optional[Iterable[str]] = None,
+    missing_reason: str | None = None,
+) -> Dict[str, Any]:
+    component_breakdown = dict(component_values or {})
+    component_breakdown["formula"] = formula
+    flags = list(dict.fromkeys([*(list(quality_flags or [])), "replay_snapshot_matching_enrichment"]))
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": None,
+        "provenance": _dedupe_provenance(*list(source_records or ())),
+        "missing_reason": missing_reason if value is None else None,
+        "fallback_used": fallback_used,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": None,
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": "replay_snapshot_matching_enrichment_v1",
+        "input_source_owner_id": "axiom_replay_snapshot_enrichment",
+        "input_source_owner_name": "Axiom replay snapshot enrichment",
+        "input_source_classification": "internal_derived",
+        "input_source_formula_basis": formula,
+        "input_source_alignment_status": "point_in_time_asof_safe",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": "retain_internal_inference",
+        "methodology_execution_reason": "Derived from already-available point-in-time snapshot inputs without using future information.",
+        "input_layer_bucket": "internal_inference",
+        "input_layer_bucket_reason": "As-of-safe enrichment from replay snapshot inputs.",
+        "strict_market_defined": False,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": flags or None,
+        "view_type": None,
+    }
+
+
+def _record_value(features: Dict[str, Any], *keys: str) -> Optional[float]:
+    return _safe_float(_feature_value(_record(features, *keys)))
+
+

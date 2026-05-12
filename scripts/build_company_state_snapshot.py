@@ -47,3 +47,24 @@ def _load_company_ids_file(path: Optional[str]) -> List[str]:
             ids.extend(parts)
     return ids
 
+def _apply_shard(ids: List[str], shard: Optional[int], shard_count: Optional[int]) -> List[str]:
+    if shard is None or shard_count is None:
+        return ids
+    if shard < 0 or shard_count <= 0 or shard >= shard_count:
+        raise SystemExit("--shard must be in [0, shard_count)")
+    out: List[str] = []
+    for cid in ids:
+        h = zlib.crc32(cid.encode("utf-8")) % shard_count
+        if h == shard:
+            out.append(cid)
+    return out
+
+def _count_jsonl_rows(path: Path) -> int:
+    n = 0
+    with path.open("r") as f:
+        for line in f:
+            if line.strip():
+                n += 1
+    return n
+
+
