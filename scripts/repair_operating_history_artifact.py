@@ -90,3 +90,12 @@ def _candidate_units_map(companyfacts: dict, concept_name: str) -> dict | None:
     return None
 
 
+def _load_companyfacts(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+
+
