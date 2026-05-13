@@ -1500,3 +1500,182 @@ def test_dividend_payer_flag_falls_back_to_dividend_facts(tmp_path: Path):
     assert last_feature["value"] == "dividend_regular"
 
 
+def test_event_history_falls_back_to_corporate_actions_master(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    corp_actions_path = tmp_path / "corporate_actions_master.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row(
+                    "cash",
+                    "ABC",
+                    "financial.cash",
+                    200.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+        ],
+    )
+    _write_parquet(
+        corp_actions_path,
+        [
+            {
+                "ticker": "ABC",
+                "action_type": "dividend_regular",
+                "action_subtype": "regular",
+                "action_date": "2025-12-10T00:00:00Z",
+                "dclrdt": "2025-12-01T00:00:00Z",
+                "paydt": "2025-12-20T00:00:00Z",
+                "amount": 25.0,
+                "source": "crsp",
+            },
+            {
+                "ticker": "ABC",
+                "action_type": "buyback",
+                "action_subtype": "open_market",
+                "action_date": "2025-11-15T00:00:00Z",
+                "dclrdt": "2025-11-14T00:00:00Z",
+                "amount": 150.0,
+                "source": "compustat_prstkcy",
+            },
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        skip_events=False,
+        corporate_actions_path=corp_actions_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    dividend_flag = snap.features["capital_return.dividend_payer_flag"]
+    assert dividend_flag["value"] is True
+    assert dividend_flag["missing_reason"] is None
+    assert dividend_flag["fallback_used"] is None
+
+    last_dividend = snap.features["capital_return.last_dividend_event_type"]
+    assert last_dividend["value"] == "dividend_regular"
+
+    recent_actions = snap.features["strategic.recent_actions_count_24m"]
+    assert recent_actions["value"] == 1.0
+    assert recent_actions["missing_reason"] is None
+
+    last_action = snap.features["strategic.last_action_type"]
+    assert last_action["value"] == "buyback"
+
+
+def test_market_window_and_credit_spread_features(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 200.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("shares", "ABC", "financial.shares_out", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    ts_rows = []
+    for i in range(120):
+        ts_rows.append(
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": f"2025-11-{(i % 28) + 1:02d}T00:00:00Z",
+                "available_time": f"2025-11-{(i % 28) + 1:02d}T00:00:00Z",
+                "ingestion_time": f"2025-11-{(i % 28) + 1:02d}T00:00:00Z",
+                "close": 90.0 + i * 0.2,
+            }
+        )
+    for i in range(60):
+        ts_rows.append(
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": f"2025-12-{(i % 28) + 1:02d}T00:00:00Z",
+                "available_time": f"2025-12-{(i % 28) + 1:02d}T00:00:00Z",
+                "ingestion_time": f"2025-12-{(i % 28) + 1:02d}T00:00:00Z",
+                "series_id": "issuer_oas",
+                "value": 120.0 + i,
+            }
+        )
+    _write_parquet(ts_path, ts_rows)
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+    assert snap.features["market.credit_spread_level"]["value"] is not None
+    assert snap.features["market.equity_window_proxy"]["value"] is not None
+    assert snap.features["market.credit_window_proxy"]["value"] is not None
+    assert snap.features["market.credit_spread_level"]["input_layer_bucket"] == "strict_market_defined"
+    assert snap.features["market.credit_spread_level"]["strict_market_defined"] is True
+    assert snap.features["market.credit_spread_level"]["support_mode"] == "exact"
+    assert snap.features["market.credit_window_proxy"]["input_layer_bucket"] == "internal_inference"
+    assert snap.features["market.credit_window_proxy"]["strict_market_defined"] is False
+    assert snap.features["market.credit_window_proxy"]["support_mode"] == "inferred"
+    views = snap.provenance["input_layer_views"]
+    assert views["strict_market_defined"]["registry_metric_count"] == 41
+    assert views["secondary_externally_anchored"]["registry_metric_count"] == 6
+    assert views["internal_inference"]["registry_metric_count"] == 33
+    assert "market.credit_spread_level" in views["strict_market_defined"]["snapshot_input_metric_ids_present"]
+    assert "market.credit_window_proxy" in views["internal_inference"]["snapshot_input_metric_ids_present"]
+
+
+def test_market_volatility_and_drawdown_have_explicit_formula_metadata(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    dates = pd.date_range("2025-10-01", periods=100, freq="D", tz="UTC")
+    prices = pd.Series([100.0 + i for i in range(100)])
+    returns = prices.pct_change().dropna()
+    expected_vol_30 = float(returns.tail(30).std(ddof=0) * (252 ** 0.5))
+    expected_vol_90 = float(returns.tail(90).std(ddof=0) * (252 ** 0.5))
+    expected_dd_90 = float((prices.tail(90).min() / prices.tail(90).max()) - 1.0)
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": date.isoformat(),
+                "available_time": date.isoformat(),
+                "ingestion_time": date.isoformat(),
+                "close": float(price),
+            }
+            for date, price in zip(dates, prices)
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    vol_30 = snap.features["market.volatility_30d"]
+    vol_90 = snap.features["market.volatility_90d"]
+    dd_90 = snap.features["market.drawdown_90d"]
+
+    assert round(vol_30["value"], 10) == round(expected_vol_30, 10)
+    assert round(vol_90["value"], 10) == round(expected_vol_90, 10)
+    assert round(dd_90["value"], 10) == round(expected_dd_90, 10)
+    assert vol_30["support_mode"] == "exact"
+    assert vol_90["support_mode"] == "exact"
+    assert dd_90["support_mode"] == "exact"
+    assert vol_30["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert vol_90["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert dd_90["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert vol_30["input_layer_bucket"] == "strict_market_defined"
+    assert vol_30["strict_market_defined"] is True
+    assert vol_30["component_breakdown"]["formula"] == "stddev(daily_returns_30d) * sqrt(252)"
+    assert vol_90["component_breakdown"]["formula"] == "stddev(daily_returns_90d) * sqrt(252)"
+    assert dd_90["component_breakdown"]["formula"] == "min(price_window_90d) / max(price_window_90d) - 1"
+
+

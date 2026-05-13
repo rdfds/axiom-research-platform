@@ -83,3 +83,11 @@ th,td{{padding:11px 12px;border-bottom:1px solid #2b3a61;text-align:left}} th{{c
     return output
 
 
+def main() :
+    build_dir = Path(os.environ.get("AXIOM_MNA_INSIGHTS_DIR", "examples/hd_market_expectations/build"))
+    build_dir.mkdir(parents=True, exist_ok=True)
+    output = build_page(build_dir)
+    print(f"Built {output}")
+    return 0
+
+
