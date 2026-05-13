@@ -318,3 +318,38 @@ def _record(features: Dict[str, Any], *keys: str) -> Optional[dict]:
     return None
 
 
+def _needs_exact_price_history_repair(raw: Any) -> bool:
+    if raw is None:
+        return True
+    if not isinstance(raw, dict):
+        return True
+    if raw.get("value") is None:
+        return True
+    if _support_mode(raw) != "exact":
+        return True
+    fallback_used = str(raw.get("fallback_used") or "")
+    quality_flags = set(_quality_flags(raw))
+    breakdown = dict(raw.get("component_breakdown") or {})
+    formula = str(breakdown.get("formula") or "")
+    source_kind = str(breakdown.get("source_kind") or "")
+    selected_price_series = breakdown.get("selected_price_series") or {}
+    selected_source_kind = str(selected_price_series.get("source_kind") or "")
+    median_gap = _safe_float(
+        breakdown.get("median_observation_gap_days")
+        or selected_price_series.get("median_observation_gap_days")
+    )
+    if fallback_used == "monthly_price_history_proxy":
+        return True
+    if "monthly_returns" in formula or "monthly_price_window" in formula:
+        return True
+    if {"low_frequency_price_history", "insufficient_return_history", "insufficient_price_history"} & quality_flags:
+        return True
+    if source_kind and source_kind not in {"crsp_market_cache", "crsp_daily_root"}:
+        return True
+    if selected_source_kind and selected_source_kind not in {"crsp_market_cache", "crsp_daily_root"}:
+        return True
+    if median_gap is not None and median_gap >= 7.0:
+        return True
+    return False
+
+

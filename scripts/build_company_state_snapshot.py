@@ -23,7 +23,7 @@ from src.company_state_builder import CompanyStateBuilder
 from src.company_state_store import SnapshotStore
 
 
-def _parse_company_ids(arg: Optional[str]) :
+def _parse_company_ids(arg: Optional[str]) -> List[str]:
     if not arg:
         return []
     if "," in arg:
