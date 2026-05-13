@@ -99,3 +99,177 @@ def _load_companyfacts(path: Path) -> dict | None:
         return None
 
 
+def _collect_duration_entries(companyfacts: dict, concept_name: str, as_of_date: str) -> list[dict[str, Any]]:
+    units_map = _candidate_units_map(companyfacts, concept_name)
+    if not units_map:
+        return []
+    as_of_dt = _parse_iso_date(as_of_date)
+    if as_of_dt is None:
+        return []
+    rows = []
+    for unit, entries in units_map.items():
+        if unit.upper() != "USD":
+            continue
+        for entry in entries:
+            start_dt = _parse_iso_date(entry.get("start"))
+            end_dt = _parse_iso_date(entry.get("end"))
+            filed_dt = _parse_iso_date(entry.get("filed"))
+            value = entry.get("val")
+            if start_dt is None or end_dt is None or value is None:
+                continue
+            if end_dt > as_of_dt:
+                continue
+            if filed_dt is not None and filed_dt > as_of_dt:
+                continue
+            if (as_of_dt - end_dt).days > MAX_SEC_FACT_AGE_DAYS:
+                continue
+            rows.append(
+                {
+                    "concept": concept_name,
+                    "start": start_dt,
+                    "end": end_dt,
+                    "filed": filed_dt or end_dt,
+                    "value": float(value),
+                    "fy": entry.get("fy"),
+                    "fp": entry.get("fp"),
+                    "frame": entry.get("frame"),
+                    "form": entry.get("form"),
+                    "duration_days": max(1, (end_dt - start_dt).days + 1),
+                }
+            )
+    rows.sort(key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    return rows
+
+
+def _compute_ttm_from_concept(companyfacts: dict, concept_name: str, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    entries = _collect_duration_entries(companyfacts, concept_name, as_of_date)
+    if not entries:
+        return None, None
+
+    latest = max(entries, key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    latest_fp = str(latest.get("fp") or "").upper()
+    if latest_fp == "FY" or latest["duration_days"] >= 300:
+        return latest["value"], {
+            "concept": concept_name,
+            "mode": "latest_fy",
+            "end": latest["end"].isoformat(),
+            "filed": latest["filed"].isoformat(),
+            "fy": latest.get("fy"),
+            "fp": latest.get("fp"),
+            "frame": latest.get("frame"),
+            "form": latest.get("form"),
+            "formula": "latest_fiscal_year_value",
+        }
+
+    if latest_fp not in {"Q1", "Q2", "Q3"}:
+        return None, None
+
+    current_fy = latest.get("fy")
+    if current_fy is None:
+        return None, None
+    try:
+        prior_fy = int(current_fy) - 1
+    except Exception:  # noqa: BLE001
+        return None, None
+
+    annual = None
+    prior_same = None
+    for entry in entries:
+        entry_fp = str(entry.get("fp") or "").upper()
+        if entry.get("fy") == prior_fy and entry_fp == "FY":
+            if annual is None or (entry["end"], entry["filed"], entry["duration_days"]) > (annual["end"], annual["filed"], annual["duration_days"]):
+                annual = entry
+        if entry.get("fy") == prior_fy and entry_fp == latest_fp:
+            if prior_same is None or (entry["end"], entry["filed"], entry["duration_days"]) > (prior_same["end"], prior_same["filed"], prior_same["duration_days"]):
+                prior_same = entry
+
+    if annual is None or prior_same is None:
+        return None, None
+
+    return float(latest["value"] + annual["value"] - prior_same["value"]), {
+        "concept": concept_name,
+        "mode": "ytd_plus_prior_fy_minus_prior_ytd",
+        "latest": {
+            "end": latest["end"].isoformat(),
+            "filed": latest["filed"].isoformat(),
+            "fy": latest.get("fy"),
+            "fp": latest.get("fp"),
+            "frame": latest.get("frame"),
+            "form": latest.get("form"),
+            "value": latest["value"],
+        },
+        "prior_fy": {
+            "end": annual["end"].isoformat(),
+            "filed": annual["filed"].isoformat(),
+            "fy": annual.get("fy"),
+            "fp": annual.get("fp"),
+            "frame": annual.get("frame"),
+            "form": annual.get("form"),
+            "value": annual["value"],
+        },
+        "prior_same_period": {
+            "end": prior_same["end"].isoformat(),
+            "filed": prior_same["filed"].isoformat(),
+            "fy": prior_same.get("fy"),
+            "fp": prior_same.get("fp"),
+            "frame": prior_same.get("frame"),
+            "form": prior_same.get("form"),
+            "value": prior_same["value"],
+        },
+        "formula": "latest_ytd + prior_fy - prior_same_period_ytd",
+    }
+
+
+def _collect_duration_entries_all(companyfacts: dict, concept_name: str, as_of_date: str) -> list[dict[str, Any]]:
+    units_map = _candidate_units_map(companyfacts, concept_name)
+    if not units_map:
+        return []
+    as_of_dt = _parse_iso_date(as_of_date)
+    if as_of_dt is None:
+        return []
+    rows = []
+    for unit, entries in units_map.items():
+        if unit.upper() != "USD":
+            continue
+        for entry in entries:
+            start_dt = _parse_iso_date(entry.get("start"))
+            end_dt = _parse_iso_date(entry.get("end"))
+            filed_dt = _parse_iso_date(entry.get("filed")) or end_dt
+            value = entry.get("val")
+            if start_dt is None or end_dt is None or value is None:
+                continue
+            if end_dt > as_of_dt or (filed_dt is not None and filed_dt > as_of_dt):
+                continue
+            rows.append(
+                {
+                    "concept": concept_name,
+                    "start": start_dt,
+                    "end": end_dt,
+                    "filed": filed_dt or end_dt,
+                    "value": float(value),
+                    "fy": entry.get("fy"),
+                    "fp": str(entry.get("fp") or "").upper() or None,
+                    "frame": entry.get("frame"),
+                    "form": entry['form'],
+                    "duration_days": max(1, (end_dt - start_dt).days + 1),
+                }
+            )
+    rows.sort(key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+    return rows
+
+
+def _companyfacts_priority_ttm(
+    companyfacts: Dict[str, Any] | None,
+    concepts: list[str],
+    *,
+    as_of_date: str,
+) -> tuple[float | None, Dict[str, Any] | None]:
+    if companyfacts is None:
+        return None, None
+    for concept_name in concepts:
+        value, meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+        if value is not None:
+            return value, meta
+    return None, None
+
+
