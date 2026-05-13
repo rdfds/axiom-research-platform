@@ -16,3 +16,25 @@ def load_snapshots(path: Path) -> List[dict]:
     return out
 
 
+def main() :
+    parser = argparse.ArgumentParser(description="Update market/regime fields in snapshots.")
+    parser.add_argument("--in-path", required=True)
+    parser.add_argument("--out-path", required=True)
+    parser.add_argument("--asof", required=True)
+    parser.add_argument("--mode", choices=["market", "regime", "both"], default="both")
+    args = parser.parse_args()
+
+    in_path = Path(args.in_path)
+    out_path = Path(args.out_path)
+
+    builder = CompanyStateBuilder()
+    snapshots = load_snapshots(in_path)
+
+    with out_path.open("w") as f:
+        for snap in snapshots:
+            snap = update_snapshot(snap, builder, args.asof, args.mode)
+            f.write(json.dumps(snap) + "\n")
+
+    print(f"Wrote updated snapshots -> {out_path}")
+
+

@@ -31,3 +31,12 @@ class DummyBuilder:
         return {"credit_regime": "neutral"}
 
 
+def _snapshot():
+    return {
+        "company_id": "001",
+        "as_of_time": "2026-02-01T00:00:00Z",
+        "features": {},
+        "regime": {},
+    }
+
+
