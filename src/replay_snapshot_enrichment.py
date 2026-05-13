@@ -310,3 +310,11 @@ def _record_value(features: Dict[str, Any], *keys: str) -> Optional[float]:
     return _safe_float(_feature_value(_record(features, *keys)))
 
 
+def _record(features: Dict[str, Any], *keys: str) -> Optional[dict]:
+    for key in keys:
+        record = features.get(key)
+        if record is not None:
+            return record
+    return None
+
+
