@@ -1740,3 +1740,501 @@ def test_market_volatility_uses_single_equity_price_series_when_multiple_price_c
     assert "multiple_price_series_candidates" in (vol_30["quality_flags"] or [])
 
 
+def test_market_volatility_and_drawdown_require_actual_30d_90d_history_not_just_30_90_observations(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    dates = pd.date_range("2018-01-31", periods=120, freq="ME", tz="UTC")
+    prices = pd.Series([100.0 + (i * 2.0) for i in range(120)])
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "security_id": "EQ1",
+                "trade_date": date.isoformat(),
+                "available_time": date.isoformat(),
+                "close": float(price),
+                "adjusted_close": float(price),
+            }
+            for date, price in zip(dates, prices)
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2028-01-31")
+
+    assert snap.features["market.volatility_30d"]["value"] is None
+    assert snap.features["market.volatility_90d"]["value"] is None
+    assert snap.features["market.drawdown_90d"]["value"] is None
+    assert snap.features["market.volatility_30d"]["missing_reason"] == "unavailable"
+    assert "insufficient_return_history" in (snap.features["market.volatility_30d"]["quality_flags"] or [])
+    assert "insufficient_price_history" in (snap.features["market.drawdown_90d"]["quality_flags"] or [])
+
+
+def test_market_volatility_and_drawdown_fail_honestly_for_monthly_only_history_in_historical_backfill_mode(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    dates = pd.date_range("2025-01-31", periods=24, freq="ME", tz="UTC")
+    prices = pd.Series([100.0 + (i * 3.0) for i in range(24)], index=dates)
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "security_id": "EQ1",
+                "trade_date": date.isoformat(),
+                "available_time": date.isoformat(),
+                "close": float(price),
+                "adjusted_close": float(price),
+            }
+            for date, price in zip(dates, prices)
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        historical_backfill_mode=True,
+    )
+    snap = builder.build("ABC", "2026-12-31")
+
+    vol_30 = snap.features["market.volatility_30d"]
+    vol_90 = snap.features["market.volatility_90d"]
+    dd_90 = snap.features["market.drawdown_90d"]
+
+    assert vol_30["value"] is None
+    assert vol_90["value"] is None
+    assert dd_90["value"] is None
+    assert vol_30["support_mode"] == "unsupported"
+    assert vol_90["support_mode"] == "unsupported"
+    assert dd_90["support_mode"] == "unsupported"
+    assert vol_30["fallback_used"] is None
+    assert vol_90["fallback_used"] is None
+    assert dd_90["fallback_used"] is None
+    assert "low_frequency_price_history" in (vol_30["quality_flags"] or [])
+    assert "low_frequency_price_history" in (vol_90["quality_flags"] or [])
+    assert "low_frequency_price_history" in (dd_90["quality_flags"] or [])
+
+
+def test_market_pe_metrics_are_strict_and_company_specific(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    entity_path = tmp_path / "entity.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("shares", "ABC", "financial.shares_diluted", 100.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [
+            {
+                **_entity_row("ABC", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 21.0,
+            },
+            {
+                **_entity_row("P1", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 10.0,
+            },
+            {
+                **_entity_row("P2", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 12.0,
+            },
+            {
+                **_entity_row("P3", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 15.0,
+            },
+            {
+                **_entity_row("P4", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 18.0,
+            },
+            {
+                **_entity_row("P5", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 24.0,
+            },
+            {
+                **_entity_row("P6", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 27.0,
+            },
+            {
+                **_entity_row("P7", sector="Consumer Staples", subsector="Food Retail"),
+                "pe_ratio": 30.0,
+            },
+        ],
+    )
+
+    pe_dates = pd.date_range("2025-03-31", periods=12, freq="ME", tz="UTC")
+    pe_values = [10.0 + idx for idx in range(12)]
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": date.isoformat(),
+                "available_time": date.isoformat(),
+                "ingestion_time": date.isoformat(),
+                "series_id": "pe_ratio",
+                "value": float(value),
+            }
+            for date, value in zip(pe_dates, pe_values)
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    pe_ratio = snap.features["market.pe_ratio"]
+    pe_peer = snap.features["market.pe_percentile_peers"]
+    pe_hist = snap.features["market.pe_percentile_history"]
+
+    assert pe_ratio["value"] == 21.0
+    assert pe_ratio["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert pe_ratio["input_layer_bucket"] == "strict_market_defined"
+    assert pe_ratio["strict_market_defined"] is True
+    assert pe_ratio["component_breakdown"]["formula"] == "provider_pe_series"
+
+    assert pe_peer["value"] == 62.5
+    assert pe_peer["input_layer_bucket"] == "strict_market_defined"
+    assert pe_peer["component_breakdown"]["peer_group_col"] == "gics_sub_industry"
+    assert pe_peer["component_breakdown"]["peer_row_count"] == 8
+
+    assert pe_hist["value"] == 100.0
+    assert pe_hist["input_layer_bucket"] == "strict_market_defined"
+    assert pe_hist["component_breakdown"]["observation_count"] == 12
+
+
+def test_market_pe_ratio_uses_ttm_net_income_bridge_for_q1(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("ni_annual", "ABC", "financial.net_income", 800.0, "2025-11-15T00:00:00Z", "2025-11-16T00:00:00Z", "2025-11-15T00:00:00Z"),
+                "effective_at": "2025-09-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-09-30 00:00:00; fiscal_year=2025; fiscal_quarter=",
+            },
+            {
+                **_facts_row("ni_q1_prior", "ABC", "financial.net_income", 180.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2024-12-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-12-31 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("ni_q1_current", "ABC", "financial.net_income", 220.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-12-31 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("shares", "ABC", "financial.shares_out", 100.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+            },
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": "2025-12-31T00:00:00Z",
+                "available_time": "2025-12-31T00:00:00Z",
+                "ingestion_time": "2026-01-02T00:00:00Z",
+                "adjusted_close": 50.0,
+            }
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    pe_ratio = snap.features["market.pe_ratio"]
+    assert round(pe_ratio["value"], 6) == round(5000.0 / (800.0 + 220.0 - 180.0), 6)
+    assert pe_ratio["fallback_used"] == "derived_from_market_cap_and_net_income_ttm"
+    assert pe_ratio["component_breakdown"]["formula"] == "market_cap / net_income_ttm"
+    assert pe_ratio["component_breakdown"]["net_income_ttm"] == 840.0
+
+
+def test_market_ev_ebitda_uses_ttm_bridge_for_q1(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("cash", "ABC", "financial.cash", 50.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row("debt", "ABC", "financial.total_debt", 200.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row("shares", "ABC", "financial.shares_out", 100.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row("ebitda_annual", "ABC", "financial.ebitda", 1000.0, "2025-11-15T00:00:00Z", "2025-11-16T00:00:00Z", "2025-11-15T00:00:00Z"),
+                "effective_at": "2025-09-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-09-30 00:00:00; fiscal_year=2025; fiscal_quarter=",
+            },
+            {
+                **_facts_row("ebitda_q1_prior", "ABC", "financial.ebitda", 220.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2024-12-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-12-31 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("ebitda_q1_current", "ABC", "financial.ebitda", 260.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+                "effective_at": "2025-12-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-12-31 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "trade_date": "2025-12-31T00:00:00Z",
+                "available_time": "2025-12-31T00:00:00Z",
+                "ingestion_time": "2026-01-02T00:00:00Z",
+                "close": 10.0,
+            }
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["market.ev_ebitda"]
+    assert round(feature["value"], 6) == round(1150.0 / 1040.0, 6)
+    assert feature["component_breakdown"]["ebitda_ttm"] == 1040.0
+    assert feature["component_breakdown"]["ebitda_ttm_context"]["formula"] == "latest_annual + current_q1 - prior_year_q1"
+
+
+def test_market_pe_ratio_uses_reference_market_cap_when_shares_missing(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("ni_annual", "ABC_CIK", "financial.net_income", 800.0, "2025-11-15T00:00:00Z", "2025-11-16T00:00:00Z", "2025-11-15T00:00:00Z"),
+                "effective_at": "2025-09-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-09-30 00:00:00; fiscal_year=2025; fiscal_quarter=",
+            },
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC_CIK",
+                "series_type": "price",
+                "trade_date": "2025-12-31T00:00:00Z",
+                "available_time": "2025-12-31T00:00:00Z",
+                "ingestion_time": "2026-01-02T00:00:00Z",
+                "adjusted_close": 50.0,
+            }
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC_CIK", "identifier_type": "ticker", "identifier_value": "ABC"},
+            {"entity_id": "ABC_CIK", "identifier_type": "cik", "identifier_value": "ABC_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Inc",
+                "Company Market Cap": 5000.0,
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Machinery",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC_CIK", "2026-02-28")
+
+    market_cap = snap.features["market.market_cap"]
+    pe_ratio = snap.features["market.pe_ratio"]
+    assert market_cap["value"] == 5000.0
+    assert market_cap["fallback_used"] == "reference_company_market_cap"
+    assert market_cap["support_mode"] == "exact"
+    assert "reference_market_cap_fallback" in (market_cap["quality_flags"] or [])
+    assert round(pe_ratio["value"], 6) == round(5000.0 / 800.0, 6)
+    assert pe_ratio["fallback_used"] == "derived_from_market_cap_and_net_income_ttm"
+    assert pe_ratio["support_mode"] == "exact"
+
+
+def test_market_ev_ebitda_uses_reference_ebitda_when_statement_metric_missing(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC_CIK", "financial.cash", 50.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+            _facts_row("debt", "ABC_CIK", "financial.total_debt", 200.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC_CIK",
+                "series_type": "price",
+                "trade_date": "2025-12-31T00:00:00Z",
+                "available_time": "2025-12-31T00:00:00Z",
+                "ingestion_time": "2026-01-02T00:00:00Z",
+                "adjusted_close": 50.0,
+            }
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC_CIK", "identifier_type": "ticker", "identifier_value": "ABC"},
+            {"entity_id": "ABC_CIK", "identifier_type": "cik", "identifier_value": "ABC_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Inc",
+                "Company Market Cap": 5000.0,
+                "EBITDA": 1000.0,
+                "Enterprise Value To EBITDA (Daily Time Series Ratio)": 5.15,
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Machinery",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC_CIK", "2026-02-28")
+
+    feature = snap.features["market.ev_ebitda"]
+    assert round(feature["value"], 6) == round((5000.0 + 150.0) / 1000.0, 6)
+    assert feature["fallback_used"] == "reference_ebitda"
+    assert feature["support_mode"] == "proxy_missing_component"
+    assert feature["component_breakdown"]["ebitda_ttm"] == 1000.0
+    assert feature["component_breakdown"]["ebitda_ttm_context"]["formula"] == "provider_ebitda_reference"
+
+
+def test_market_cap_prefers_reference_over_stale_price_shares(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("shares", "ABC_CIK", "financial.shares_out", 100.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC_CIK",
+                "series_type": "price",
+                "trade_date": "2025-01-31T00:00:00Z",
+                "available_time": "2025-01-31T00:00:00Z",
+                "ingestion_time": "2025-02-01T00:00:00Z",
+                "adjusted_close": 10.0,
+            }
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC_CIK", "identifier_type": "ticker", "identifier_value": "ABC"},
+            {"entity_id": "ABC_CIK", "identifier_type": "cik", "identifier_value": "ABC_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Inc",
+                "Company Market Cap": 5000.0,
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Machinery",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC_CIK", "2026-02-28")
+
+    market_cap = snap.features["market.market_cap"]
+    assert market_cap["value"] == 5000.0
+    assert market_cap["fallback_used"] == "reference_company_market_cap"
+    assert "reference_market_cap_preferred_over_stale_price_shares" in (market_cap["quality_flags"] or [])
+
+
