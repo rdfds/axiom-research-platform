@@ -48,3 +48,32 @@ def _build_input_refs(snapshot: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     }
 
 
+def _fallback_refs(name: str, inputs: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if name.startswith("liquidity."):
+        return [inputs["facts"]]
+    if name.startswith("capital_structure."):
+        out = [inputs["facts"]]
+        if "rating" in name:
+            out.extend([inputs["issuer_ratings"], inputs["events"]])
+        if "debt_due_" in name or "maturity" in name or "refi" in name:
+            out.append(inputs["events"])
+        return out
+    if name.startswith("market."):
+        out = [inputs["timeseries"], inputs["facts"]]
+        if "window_proxy" in name:
+            out.append(inputs["macro"])
+        return out
+    if name.startswith("operating."):
+        out = [inputs["facts"]]
+        if "cyclicality" in name:
+            out.append(inputs["macro"])
+        return out
+    if name.startswith("ownership_governance."):
+        return [inputs["ownership"], inputs["events"], inputs["facts"]]
+    if name.startswith("strategic."):
+        return [inputs["facts"], inputs["events"]]
+    if name.startswith("peer_context."):
+        return [inputs["entity"], inputs["events"], inputs["facts"]]
+    return [inputs["facts"]]
+
+
