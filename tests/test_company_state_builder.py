@@ -3152,3 +3152,144 @@ def test_policy_feature_aliases_for_peer_and_activist_context(tmp_path: Path):
     assert market_share_pct["primary_source_basis"] == "peer_relative_revenue_scale_proxy"
 
 
+def test_segment_portfolio_context_uses_archetype_and_portfolio_events(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    taxonomy_path = tmp_path / "taxonomy_reference.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash_abc", "ABC", "financial.cash", 20.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash_p1", "PEER1", "financial.cash", 20.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash_p2", "PEER2", "financial.cash", 20.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [
+            {"entity_id": "ABC", "sector": "Conglomerates", "ev_ebitda": 8.0, "fcf_yield": 0.05, "ebitda_margin": 0.12, "revenue": 100.0},
+            {"entity_id": "PEER1", "sector": "Conglomerates", "ev_ebitda": 11.0, "fcf_yield": 0.04, "ebitda_margin": 0.18, "revenue": 220.0},
+            {"entity_id": "PEER2", "sector": "Conglomerates", "ev_ebitda": 13.0, "fcf_yield": 0.03, "ebitda_margin": 0.24, "revenue": 320.0},
+        ],
+    )
+    _write_parquet(
+        taxonomy_path,
+        [
+            {
+                "Instrument": "ABC",
+                "Company Common Name": "Example Conglomerate",
+                "GICS Sector Name": "Conglomerate",
+                "GICS Industry Name": "Industrial Conglomerates",
+            }
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_div",
+                "company_id": "ABC",
+                "event_type": "divestiture",
+                "event_subtype": None,
+                "announced_at": "2025-06-01T00:00:00Z",
+                "effective_at": "2025-06-15T00:00:00Z",
+                "created_at": "2025-06-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": {"deal_value": 600_000_000.0},
+            }
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+        entity_table_path=entity_path,
+        taxonomy_reference_path=taxonomy_path,
+        skip_peer_context=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    segment_count = snap.features["strategic.segment_count"]
+    assert segment_count["value"] == 3.0
+    assert segment_count["support_mode"] == "inferred"
+    assert "archetype_multisegment_profile" in (segment_count["quality_flags"] or [])
+
+    segment_refs = snap.features["strategic.segment_references"]
+    assert segment_refs["value"] == ["segment_1", "segment_2", "segment_3"]
+
+    divergence = snap.features["operating.segment_margin_divergence"]
+    assert divergence["value"] is not None
+    assert divergence["value"] > 0.0
+    assert divergence["primary_source_basis"] == "segment_portfolio_divergence_house_formula"
+
+    discount = snap.features["market.conglomerate_discount_signal"]
+    assert discount["value"] is not None
+    assert discount["value"] > 0.0
+    assert discount["primary_source_basis"] == "conglomerate_discount_house_formula"
+
+
+def test_segment_portfolio_context_infers_multisegment_from_portfolio_events(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash_abc", "ABC", "financial.cash", 15.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_spin",
+                "company_id": "ABC",
+                "event_type": "spin_off",
+                "event_subtype": None,
+                "announced_at": "2024-07-01T00:00:00Z",
+                "effective_at": "2024-07-15T00:00:00Z",
+                "created_at": "2024-07-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": None,
+            },
+            {
+                "event_id": "evt_div",
+                "company_id": "ABC",
+                "event_type": "divestiture",
+                "event_subtype": None,
+                "announced_at": "2025-08-01T00:00:00Z",
+                "effective_at": "2025-08-20T00:00:00Z",
+                "created_at": "2025-08-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": None,
+            },
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+        skip_peer_context=True,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    segment_count = snap.features["strategic.segment_count"]
+    assert segment_count["value"] == 3.0
+    assert "portfolio_event_multisegment_inference" in (segment_count["quality_flags"] or [])
+
+    segment_refs = snap.features["strategic.segment_references"]
+    assert segment_refs["value"] == ["segment_1", "segment_2", "segment_3"]
+
+    divergence = snap.features["operating.segment_margin_divergence"]
+    assert divergence["value"] == pytest.approx(0.4)
+    assert "portfolio_events_support_segment_divergence" in (divergence["quality_flags"] or [])
+
+    discount = snap.features["market.conglomerate_discount_signal"]
+    assert discount["value"] is None
+    assert discount["missing_reason"] == "unavailable"
+
+
