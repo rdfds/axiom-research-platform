@@ -273,3 +273,47 @@ def _companyfacts_priority_ttm(
     return None, None
 
 
+def _companyfacts_depreciation_ttm(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[float | None, Dict[str, Any] | None, bool]:
+    if companyfacts is None:
+        return None, None, False
+    for concept_group in DEPRECIATION_TTM_CONCEPT_GROUPS:
+        if len(concept_group) == 1:
+            value, meta = _compute_ttm_from_concept(companyfacts, concept_group[0], as_of_date)
+            if value is not None:
+                return value, meta, concept_group[0] != "Depreciation"
+        else:
+            parts = []
+            parts_meta = []
+            for concept_name in concept_group:
+                part_value, part_meta = _compute_ttm_from_concept(companyfacts, concept_name, as_of_date)
+                if part_value is None:
+                    parts = []
+                    break
+                parts.append(part_value)
+                parts_meta.append(part_meta)
+            if parts:
+                return float(sum(parts)), {
+                    "mode": "sum_concepts",
+                    "components": parts_meta,
+                    "formula": "sum_component_ttm_values",
+                }, True
+    return None, None, False
+
+
+def _companyfacts_provenance(companyfacts_path: Path, *, as_of_time: str, computed_at: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "artifact_type": "SecCompanyFacts",
+            "artifact_id": f"sec_companyfacts:{companyfacts_path.name}",
+            "source": str(companyfacts_path),
+            "published_at": as_of_time,
+            "ingested_at": computed_at,
+            "hash": None,
+        }
+    ]
+
+

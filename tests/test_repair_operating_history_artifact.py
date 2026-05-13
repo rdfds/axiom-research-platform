@@ -272,3 +272,24 @@ def _companyfacts_with_stale_legacy_and_fresh_current_revenue_concepts():
     }
 
 
+def test_repair_revenue_yoy_from_sec_companyfacts_quarter_history():
+    features = {
+        "operating.revenue_yoy_last_q": _node("operating.revenue_yoy_last_q", None),
+    }
+
+    repaired = repair_revenue_yoy_last_q(
+        features=features,
+        companyfacts=_companyfacts_with_revenue_quarters(),
+        companyfacts_path=Path("/tmp/CIK0000000001.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2024-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    node = features["operating.revenue_yoy_last_q"]
+    assert round(node["value"], 6) == round((110.0 - 90.0) / 90.0, 6)
+    assert node["support_mode"] == "exact"
+    assert node["fallback_used"] == "sec_companyfacts_quarterly_revenue_history"
+    assert node["component_breakdown"]["source_concept"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
+
+
