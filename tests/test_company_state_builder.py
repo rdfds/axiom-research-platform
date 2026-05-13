@@ -3293,3 +3293,642 @@ def test_segment_portfolio_context_infers_multisegment_from_portfolio_events(tmp
     assert discount["missing_reason"] == "unavailable"
 
 
+def test_expectations_and_revisions_features_from_warehouse_estimates(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    estimates_path = tmp_path / "warehouse_estimates.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash_abc", "ABC", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        estimates_path,
+        [
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2025-12-01T00:00:00Z",
+                "available_time": "2025-12-01T00:00:00Z",
+                "ingestion_time": "2025-12-01T00:00:00Z",
+                "version_id": "eps_old",
+                "raw_payload_hash": "h1",
+                "metric": "eps",
+                "period": "FY1",
+                "consensus_value": 5.0,
+                "num_estimates": 12,
+                "revision_direction": None,
+                "revision_magnitude": None,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2026-02-01T00:00:00Z",
+                "available_time": "2026-02-01T00:00:00Z",
+                "ingestion_time": "2026-02-01T00:00:00Z",
+                "version_id": "eps_new",
+                "raw_payload_hash": "h2",
+                "metric": "eps",
+                "period": "FY1",
+                "consensus_value": 5.5,
+                "num_estimates": 14,
+                "revision_direction": "up",
+                "revision_magnitude": 0.1,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2025-12-01T00:00:00Z",
+                "available_time": "2025-12-01T00:00:00Z",
+                "ingestion_time": "2025-12-01T00:00:00Z",
+                "version_id": "rev_old",
+                "raw_payload_hash": "h3",
+                "metric": "revenue",
+                "period": "FY1",
+                "consensus_value": 1000.0,
+                "num_estimates": 10,
+                "revision_direction": None,
+                "revision_magnitude": None,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2026-02-01T00:00:00Z",
+                "available_time": "2026-02-01T00:00:00Z",
+                "ingestion_time": "2026-02-01T00:00:00Z",
+                "version_id": "rev_new",
+                "raw_payload_hash": "h4",
+                "metric": "revenue",
+                "period": "FY1",
+                "consensus_value": 1050.0,
+                "num_estimates": 11,
+                "revision_direction": "up",
+                "revision_magnitude": 0.05,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2025-12-15T00:00:00Z",
+                "available_time": "2025-12-15T00:00:00Z",
+                "ingestion_time": "2025-12-15T00:00:00Z",
+                "version_id": "ebitda_old",
+                "raw_payload_hash": "h5",
+                "metric": "ebitda",
+                "period": "FY1",
+                "consensus_value": 200.0,
+                "num_estimates": 8,
+                "revision_direction": None,
+                "revision_magnitude": None,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+            {
+                "source_system": "refinitiv_estimates",
+                "entity_id": "ABC",
+                "company_id": "ABC",
+                "security_id": "ABC",
+                "event_time": "2026-02-10T00:00:00Z",
+                "available_time": "2026-02-10T00:00:00Z",
+                "ingestion_time": "2026-02-10T00:00:00Z",
+                "version_id": "ebitda_new",
+                "raw_payload_hash": "h6",
+                "metric": "ebitda",
+                "period": "FY1",
+                "consensus_value": 190.0,
+                "num_estimates": 9,
+                "revision_direction": "down",
+                "revision_magnitude": 0.05,
+                "period_end": "2026-12-31T00:00:00Z",
+            },
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        estimates_path=estimates_path,
+        skip_timeseries=True,
+        skip_events=True,
+        skip_peer_context=True,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    assert snap.features["expectations.eps_consensus_fy1"]["value"] == pytest.approx(5.5)
+    assert snap.features["expectations.revenue_consensus_fy1"]["value"] == pytest.approx(1050.0)
+    assert snap.features["expectations.ebitda_consensus_fy1"]["value"] == pytest.approx(190.0)
+    assert snap.features["expectations.analyst_coverage_count"]["value"] == pytest.approx(14.0)
+    assert snap.features["expectations.eps_revision_score_90d"]["value"] == pytest.approx(0.1)
+    assert snap.features["expectations.revenue_revision_score_90d"]["value"] == pytest.approx(0.05)
+    assert snap.features["expectations.ebitda_revision_score_90d"]["value"] == pytest.approx(-0.05)
+    assert snap.features["expectations.revision_signal"]["value"] == pytest.approx((0.1 + 0.05 - 0.05) / 3.0)
+
+
+def test_capital_return_support_features_from_share_history_and_balance_sheet(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row(
+                    "cash",
+                    "ABC",
+                    "financial.cash",
+                    250.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "revenue",
+                    "ABC",
+                    "financial.revenue",
+                    1000.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "ebitda",
+                    "ABC",
+                    "financial.ebitda",
+                    200.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "fcf",
+                    "ABC",
+                    "financial.free_cash_flow",
+                    160.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "debt",
+                    "ABC",
+                    "financial.total_debt",
+                    300.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "shares_old",
+                    "ABC",
+                    "financial.shares_basic",
+                    110.0,
+                    "2025-02-01T00:00:00Z",
+                    "2025-02-01T00:00:00Z",
+                    "2025-02-01T00:00:00Z",
+                ),
+                "period_end": "2024-12-31T00:00:00Z",
+            },
+            {
+                **_facts_row(
+                    "shares_new",
+                    "ABC",
+                    "financial.shares_basic",
+                    100.0,
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                    "2026-02-01T00:00:00Z",
+                ),
+                "period_end": "2025-12-31T00:00:00Z",
+            },
+        ],
+    )
+    _write_parquet(
+        ts_path,
+        [
+            {
+                "entity_id": "ABC",
+                "observation_time": "2026-02-20T00:00:00Z",
+                "market_cap": 1000.0,
+            }
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=False,
+        skip_events=True,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    share_trend = snap.features["capital_return.share_count_trend"]
+    assert share_trend["value"] == pytest.approx((100.0 / 110.0) - 1.0, rel=1e-3)
+    assert share_trend["primary_source_basis"] == "share_count_fact_history"
+
+    buyback_capacity = snap.features["capital_return.buyback_capacity_proxy"]
+    assert buyback_capacity["value"] == pytest.approx(0.20)
+    assert buyback_capacity["primary_source_basis"] == "capital_return_capacity_house_formula"
+
+
+def test_fact_revision_dedup_keeps_history(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    rows = [
+        {
+            "fact_id": "rev_old",
+            "entity_id": "ABC",
+            "fact_type": "financial.revenue",
+            "fact_value": 100.0,
+            "fact_time": "2025-12-31T00:00:00Z",
+            "confidence_score": 0.8,
+            "source_type": "SEC",
+            "published_at": "2026-01-15T00:00:00Z",
+            "ingested_at": "2026-01-16T00:00:00Z",
+            "valid_from": "2026-01-15T00:00:00Z",
+            "valid_to": None,
+        },
+        {
+            "fact_id": "rev_new",
+            "entity_id": "ABC",
+            "fact_type": "financial.revenue",
+            "fact_value": 120.0,
+            "fact_time": "2025-12-31T00:00:00Z",
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-01-20T00:00:00Z",
+            "ingested_at": "2026-01-21T00:00:00Z",
+            "valid_from": "2026-01-20T00:00:00Z",
+            "valid_to": None,
+        },
+        {
+            "fact_id": "prior_year_same_q",
+            "entity_id": "ABC",
+            "fact_type": "financial.revenue",
+            "fact_value": 90.0,
+            "fact_time": "2024-12-31T00:00:00Z",
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2025-01-20T00:00:00Z",
+            "ingested_at": "2025-01-21T00:00:00Z",
+            "valid_from": "2025-01-20T00:00:00Z",
+            "valid_to": None,
+        },
+    ]
+    _write_parquet(facts_path, rows)
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+    # Uses the closest same-quarter prior-year revenue, not the immediately preceding quarter.
+    feature = snap.features["operating.revenue_yoy_last_q"]
+    assert round(feature["value"], 6) == round((120.0 - 90.0) / 90.0, 6)
+    assert feature["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert feature["component_breakdown"]["latest_revenue"] == 120.0
+    assert feature["component_breakdown"]["prior_revenue"] == 90.0
+    assert feature["component_breakdown"]["matching_window_days"] == [270, 460]
+
+
+def test_revenue_yoy_uses_context_period_end_same_quarter_pair(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("rev_q1_prior", "ABC", "financial.revenue", 62.151, "2026-01-15T00:00:00Z", "2026-01-16T00:00:00Z", "2026-01-15T00:00:00Z"),
+                "effective_at": "2024-11-24T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-11-24 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("rev_q1_current", "ABC", "financial.revenue", 67.307, "2026-01-15T00:00:00Z", "2026-01-16T00:00:00Z", "2026-01-15T00:00:00Z"),
+                "effective_at": "2025-11-23T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-11-23 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["operating.revenue_yoy_last_q"]
+    assert round(feature["value"], 6) == round((67.307 - 62.151) / 62.151, 6)
+    assert feature["component_breakdown"]["match_basis"] == "fiscal_quarter_period_end"
+    assert feature["component_breakdown"]["latest_period"] == "2025-11-23 00:00:00+00:00"
+    assert feature["component_breakdown"]["prior_period"] == "2024-11-24 00:00:00+00:00"
+
+
+def test_revenue_yoy_normalizes_mixed_ytd_and_quarter_reporting(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("rev_q1_prior", "ABC", "financial.revenue", 95.0, "2025-05-10T00:00:00Z", "2025-05-11T00:00:00Z", "2025-05-10T00:00:00Z"),
+                "effective_at": "2024-03-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-03-31 00:00:00; fiscal_year=2025; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("rev_q2_prior", "ABC", "financial.revenue", 200.0, "2025-08-10T00:00:00Z", "2025-08-11T00:00:00Z", "2025-08-10T00:00:00Z"),
+                "effective_at": "2024-06-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-06-30 00:00:00; fiscal_year=2025; fiscal_quarter=2",
+            },
+            {
+                **_facts_row("rev_q3_prior", "ABC", "financial.revenue", 290.0, "2025-11-10T00:00:00Z", "2025-11-11T00:00:00Z", "2025-11-10T00:00:00Z"),
+                "effective_at": "2024-09-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2024-09-30 00:00:00; fiscal_year=2025; fiscal_quarter=3",
+            },
+            {
+                **_facts_row("rev_q1_current", "ABC", "financial.revenue", 100.0, "2026-05-10T00:00:00Z", "2026-05-11T00:00:00Z", "2026-05-10T00:00:00Z"),
+                "effective_at": "2025-03-31T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-03-31 00:00:00; fiscal_year=2026; fiscal_quarter=1",
+            },
+            {
+                **_facts_row("rev_q2_current", "ABC", "financial.revenue", 210.0, "2026-08-10T00:00:00Z", "2026-08-11T00:00:00Z", "2026-08-10T00:00:00Z"),
+                "effective_at": "2025-06-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-06-30 00:00:00; fiscal_year=2026; fiscal_quarter=2",
+            },
+            {
+                **_facts_row("rev_q3_current", "ABC", "financial.revenue", 110.0, "2026-11-10T00:00:00Z", "2026-11-11T00:00:00Z", "2026-11-10T00:00:00Z"),
+                "effective_at": "2025-09-30T00:00:00Z",
+                "context_norm": "statement_type=income; fiscal_period_end=2025-09-30 00:00:00; fiscal_year=2026; fiscal_quarter=3",
+            },
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-12-01")
+
+    feature = snap.features["operating.revenue_yoy_last_q"]
+    assert round(feature["value"], 6) == round((110.0 - (290.0 - 200.0)) / (290.0 - 200.0), 6)
+    assert feature["component_breakdown"]["latest_value_basis"] == "as_reported_quarter"
+    assert feature["component_breakdown"]["prior_value_basis"] == "derived_from_ytd_delta"
+    assert feature["support_mode"] == "proxy_missing_component"
+    assert "quarter_value_derived_from_ytd_delta" in (feature["quality_flags"] or [])
+    assert "mixed_quarter_value_basis" in (feature["quality_flags"] or [])
+
+
+def test_revenue_cagr_3y_uses_closest_three_year_observation(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("rev_2022", "ABC", "financial.revenue", 100.0, "2023-01-20T00:00:00Z", "2023-01-21T00:00:00Z", "2023-01-20T00:00:00Z"),
+            _facts_row("rev_2023", "ABC", "financial.revenue", 110.0, "2024-01-20T00:00:00Z", "2024-01-21T00:00:00Z", "2024-01-20T00:00:00Z"),
+            _facts_row("rev_2025", "ABC", "financial.revenue", 133.1, "2026-01-20T00:00:00Z", "2026-01-21T00:00:00Z", "2026-01-20T00:00:00Z"),
+        ],
+    )
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+
+    feature = snap.features["operating.revenue_cagr_3y"]
+    assert round(feature["value"], 4) == 0.1000
+    assert feature["methodology_execution_decision"] == "adopt_exact_external_methodology"
+    assert feature["component_breakdown"]["prior_revenue"] == 100.0
+    assert feature["component_breakdown"]["latest_revenue"] == 133.1
+    assert round(feature["component_breakdown"]["elapsed_years"], 2) == 3.00
+
+
+def test_ownership_from_13f_summary_fallback(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ownership_path = tmp_path / "ownership.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                "shares",
+                "ABC",
+                "financial.shares_out",
+                100.0,
+                "2026-02-01T00:00:00Z",
+                "2026-02-01T00:00:00Z",
+                "2026-02-01T00:00:00Z",
+            ),
+        ],
+    )
+    _write_parquet(
+        ownership_path,
+        [
+            {
+                "company_id": "ABC",
+                "report_date": "2025-12-31T00:00:00Z",
+                "filing_date": "2026-02-14T00:00:00Z",
+                "total_13f_shares": 80.0,
+                "top5_13f_shares": 40.0,
+                "holder_count": 12.0,
+                "total_13f_value_usd": 10_000_000.0,
+                "published_at": "2026-02-14T00:00:00Z",
+                "ingested_at": "2026-02-14T00:00:00Z",
+                "effective_at": "2025-12-31T00:00:00Z",
+                "source_type": "wrds_13f",
+                "artifact_id": "own_abc_2025q4",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        ownership_path=ownership_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+    assert snap.features["ownership_governance.top5_holder_pct"]["value"] == 0.5
+    assert snap.features["ownership_governance.institutional_pct"]["value"] == 0.8
+    assert snap.features["ownership_governance.holder_count_13f"]["value"] == 12.0
+    assert snap.features["ownership_governance.crowding_signal"]["value"] == pytest.approx(
+        ((0.5 - 0.35) / 0.35 + (0.8 - 0.5) / 0.4 + (25.0 - 12.0) / 25.0) / 3.0
+    )
+
+
+def test_ownership_summary_prefers_richer_latest_quarter_snapshot(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ownership_path = tmp_path / "ownership.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                "shares",
+                "ABC",
+                "financial.shares_out",
+                1_000.0,
+                "2026-02-01T00:00:00Z",
+                "2026-02-01T00:00:00Z",
+                "2026-02-01T00:00:00Z",
+            ),
+        ],
+    )
+    _write_parquet(
+        ownership_path,
+        [
+            {
+                "company_id": "ABC",
+                "report_date": "2025-12-31T00:00:00Z",
+                "filing_date": "2026-02-14T00:00:00Z",
+                "total_13f_shares": 10.0,
+                "top5_13f_shares": 10.0,
+                "holder_count": 1.0,
+                "published_at": "2026-02-14T00:00:00Z",
+                "ingested_at": "2026-02-14T00:00:00Z",
+                "effective_at": "2025-12-31T00:00:00Z",
+                "source_type": "wrds_13f",
+                "artifact_id": "own_abc_thin",
+            },
+            {
+                "company_id": "ABC",
+                "report_date": "2025-12-31T00:00:00Z",
+                "filing_date": "2026-02-13T00:00:00Z",
+                "total_13f_shares": 800.0,
+                "top5_13f_shares": 400.0,
+                "holder_count": 50.0,
+                "published_at": "2026-02-13T00:00:00Z",
+                "ingested_at": "2026-02-13T00:00:00Z",
+                "effective_at": "2025-12-31T00:00:00Z",
+                "source_type": "wrds_13f",
+                "artifact_id": "own_abc_rich",
+            },
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        ownership_path=ownership_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+    assert snap.features["ownership_governance.top5_holder_pct"]["value"] == 0.5
+    assert snap.features["ownership_governance.institutional_pct"]["value"] == 0.8
+    assert snap.features["ownership_governance.holder_count_13f"]["value"] == 50.0
+
+
+def test_rating_state_from_issuer_ratings_fallback(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    ratings_path = tmp_path / "issuer_ratings.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 100.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("debt", "ABC", "financial.total_debt", 500.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("ebitda", "ABC", "financial.ebitda", 50.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_other",
+                "company_id": "OTHER",
+                "event_type": "buyback",
+                "event_subtype": None,
+                "announced_at": "2026-01-10T00:00:00Z",
+                "effective_at": "2026-01-10T00:00:00Z",
+                "created_at": "2026-01-10T00:00:00Z",
+                "source_type": "event_store",
+                "params": None,
+            }
+        ],
+    )
+    _write_parquet(
+        ratings_path,
+        [
+            {
+                "company_id": "ABC",
+                "rating_date": "2026-01-25T00:00:00Z",
+                "rating_symbol": "BBB-",
+                "current_rating_symbol": "BBB-",
+                "rating_type_code": "LT",
+                "outlook": "stable",
+                "creditwatch": "N",
+                "source_type": "moodys_ratings",
+                "agency": "Moody's",
+                "artifact_id": "rating_abc_moodys",
+                "published_at": "2026-01-25T00:00:00Z",
+                "ingested_at": "2026-01-25T00:00:00Z",
+                "effective_at": "2026-01-25T00:00:00Z",
+            },
+            {
+                "company_id": "ABC",
+                "rating_date": "2026-01-20T00:00:00Z",
+                "rating_symbol": "BB+",
+                "current_rating_symbol": "BB+",
+                "rating_type_code": "SPR",
+                "outlook": "negative",
+                "creditwatch": "Y",
+                "source_type": "fitch_ratings",
+                "agency": "Fitch",
+                "artifact_id": "rating_abc_1",
+                "published_at": "2026-01-20T00:00:00Z",
+                "ingested_at": "2026-01-20T00:00:00Z",
+                "effective_at": "2026-01-20T00:00:00Z",
+            }
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+        issuer_ratings_path=ratings_path,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+    rating_state = snap.features["capital_structure.rating_state"]["value"]
+    assert rating_state["rating"] == "BB+"
+    assert rating_state["watchlist"] is True
+
+
+def test_confidence_framework_proxy_penalty(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row(
+                "cash",
+                "ABC",
+                "financial.cash",
+                100.0,
+                "2026-02-20T00:00:00Z",
+                "2026-02-20T00:00:00Z",
+                "2026-02-20T00:00:00Z",
+            ),
+            _facts_row(
+                "revenue",
+                "ABC",
+                "financial.revenue",
+                1000.0,
+                "2026-02-20T00:00:00Z",
+                "2026-02-20T00:00:00Z",
+                "2026-02-20T00:00:00Z",
+            ),
+        ],
+    )
+    builder = _base_builder(tmp_path, facts_path=facts_path, skip_timeseries=True)
+    snap = builder.build("ABC", "2026-02-28")
+    cash_conf = snap.features["liquidity.cash"]["confidence"]
+    proxy_conf = snap.features["liquidity.minimum_cash_policy_proxy"]["confidence"]
+    assert cash_conf is not None and 0.0 <= cash_conf <= 1.0
+    assert proxy_conf is not None and 0.0 <= proxy_conf <= 1.0
+    assert proxy_conf < cash_conf

@@ -248,3 +248,5 @@ def main() -> None:
         print(f"Wrote keyed snapshots -> {out_dir_keyed}")
 
 
+if __name__ == "__main__":
+    main()
