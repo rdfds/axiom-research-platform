@@ -33,7 +33,7 @@ def build_page(build_dir: Path) -> Path:
             f"<td>{html.escape(item['label'])}</td>"
             f"<td>{item.get('weight', 0):.1%}</td>"
             f"<td>{item.get('current_percentile', 0):.0%}</td>"
-            f"<td>{item['required_percentile_clipped']:.0%}</td>"
+            f"<td>{item.get('required_percentile_clipped', 0):.0%}</td>"
             f"<td>{html.escape(str(item.get('feasibility', 'unknown')))}</td>"
             "</tr>"
         )

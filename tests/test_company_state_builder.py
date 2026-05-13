@@ -2238,3 +2238,917 @@ def test_market_cap_prefers_reference_over_stale_price_shares(tmp_path: Path):
     assert "reference_market_cap_preferred_over_stale_price_shares" in (market_cap["quality_flags"] or [])
 
 
+def test_gross_leverage_uses_reference_ebitda_and_proxy_denominator_when_lease_charge_missing(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("debt", "ABC_CIK", "financial.total_debt", 300.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+            _facts_row("cash", "ABC_CIK", "financial.cash", 25.0, "2026-02-10T00:00:00Z", "2026-02-11T00:00:00Z", "2026-02-10T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC_CIK", "identifier_type": "ticker", "identifier_value": "ABC"},
+            {"entity_id": "ABC_CIK", "identifier_type": "cik", "identifier_value": "ABC_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Retail",
+                "Company Market Cap": 5000.0,
+                "EBITDA": 100.0,
+                "GICS Sector Name": "Consumer Staples",
+                "GICS Industry Name": "Consumer Staples Distribution & Retail",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC_CIK", "2026-02-28")
+
+    gross_leverage = snap.features["capital_structure.gross_leverage"]
+    assert gross_leverage["value"] == 3.0
+    assert gross_leverage["support_mode"] == "proxy_missing_component"
+    assert gross_leverage["component_breakdown"]["ebitda"] == 100.0
+    assert gross_leverage["component_breakdown"]["effective_denominator_policy"] == "ebitda_proxy_for_missing_lease_charge"
+    assert "reference_ebitda_fallback" in (gross_leverage["quality_flags"] or [])
+    assert "lease_adjusted_denominator_fallback_to_ebitda" in (gross_leverage["quality_flags"] or [])
+
+
+def test_fixed_charge_preference_flag_does_not_downgrade_exact_support(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "RETL", "financial.cash", 20.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("debt", "RETL", "financial.total_debt", 120.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_current", "RETL", "financial.lease_liability_current", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_long", "RETL", "financial.lease_liability_noncurrent", 30.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("lease_expense", "RETL", "financial.lease_expense", 12.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebitda", "RETL", "financial.ebitda", 80.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("ebit", "RETL", "financial.ebit", 68.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+            _facts_row("interest", "RETL", "financial.interest_expense", 8.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("RETL", sector="Consumer Discretionary", subsector="Specialty Retail", sic="5331")],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+    )
+    snap = builder.build("RETL", "2026-02-28")
+
+    fixed_charge = snap.features["capital_structure.fixed_charge_coverage"]
+    interest_cov = snap.features["capital_structure.interest_coverage"]
+    assert fixed_charge["applicability_status"] == "primary"
+    assert fixed_charge["support_mode"] == "exact"
+    assert "fixed_charge_coverage_preferred" in (fixed_charge["quality_flags"] or [])
+    assert interest_cov["applicability_status"] == "secondary"
+    assert interest_cov["support_mode"] == "exact"
+
+
+def test_coverage_metrics_fall_back_to_repaired_statement_direct_interest_expense(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    companyfacts_root = tmp_path / "companyfacts"
+    companyfacts_root.mkdir(parents=True, exist_ok=True)
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "RETL", "financial.cash", 20.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("debt", "RETL", "financial.total_debt", 120.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("lease_current", "RETL", "financial.lease_liability_current", 10.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("lease_long", "RETL", "financial.lease_liability_noncurrent", 30.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("lease_expense", "RETL", "financial.lease_expense", 12.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("ebitda", "RETL", "financial.ebitda", 80.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+            _facts_row("ebit", "RETL", "financial.ebit", 68.0, "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z", "2024-10-31T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("RETL", sector="Consumer Discretionary", subsector="Specialty Retail", sic="5331")],
+    )
+    _write_parquet(
+        ident_path,
+        [{"entity_id": "RETL", "identifier_type": "cik", "identifier_value": "1234567890"}],
+    )
+    (companyfacts_root / "CIK1234567890.json").write_text(
+        json.dumps(
+            {
+                "facts": {
+                    "us-gaap": {
+                        "InterestExpense": {
+                            "units": {
+                                "USD": [
+                                    {
+                                        "start": "2024-01-01",
+                                        "end": "2024-09-30",
+                                        "filed": "2024-10-31",
+                                        "val": 24.0,
+                                        "fy": 2024,
+                                        "fp": "Q3",
+                                        "form": "10-Q",
+                                    },
+                                    {
+                                        "start": "2023-01-01",
+                                        "end": "2023-12-31",
+                                        "filed": "2024-02-15",
+                                        "val": 30.0,
+                                        "fy": 2023,
+                                        "fp": "FY",
+                                        "form": "10-K",
+                                    },
+                                    {
+                                        "start": "2023-01-01",
+                                        "end": "2023-09-30",
+                                        "filed": "2023-10-31",
+                                        "val": 18.0,
+                                        "fy": 2023,
+                                        "fp": "Q3",
+                                        "form": "10-Q",
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+        entity_identifier_path=ident_path,
+        companyfacts_root=companyfacts_root,
+        enable_market_relevant_smart_normalized_inputs=True,
+    )
+    snap = builder.build("RETL", "2024-12-31")
+
+    fixed_charge = snap.features["capital_structure.fixed_charge_coverage"]
+    interest_cov = snap.features["capital_structure.interest_coverage"]
+    assert interest_cov["support_mode"] == "exact"
+    assert fixed_charge["support_mode"] == "exact"
+    assert interest_cov["fallback_used"] == "statement_direct_interest_expense_fallback"
+    assert fixed_charge["fallback_used"] == "statement_direct_interest_expense_fallback"
+
+
+def test_builder_keeps_smart_normalized_market_inputs_as_sidecar_features(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    companyfacts_root = tmp_path / "companyfacts"
+    companyfacts_root.mkdir(parents=True, exist_ok=True)
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "TEST", "financial.cash", 100.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row(
+                "cash_sti",
+                "TEST",
+                "financial.cash_and_short_term_investments",
+                140.0,
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+            ),
+            _facts_row("debt", "TEST", "financial.total_debt", 400.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row("debt_current", "TEST", "financial.debt_current", 50.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row("debt_long", "TEST", "financial.debt_long", 350.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row("ebitda", "TEST", "financial.ebitda", 100.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row("net_income", "TEST", "financial.net_income", 60.0, "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z", "2024-12-15T00:00:00Z"),
+            _facts_row(
+                "pension",
+                "TEST",
+                "financial.net_pension_liability",
+                30.0,
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+            ),
+            _facts_row(
+                "interest_expense",
+                "TEST",
+                "financial.interest_expense",
+                20.0,
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+                "2024-12-15T00:00:00Z",
+            ),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [_entity_row("TEST", sector="Industrials", subsector="Machinery", sic="3530")],
+    )
+    _write_parquet(
+        ident_path,
+        [{"entity_id": "TEST", "identifier_type": "cik", "identifier_value": "1234567890"}],
+    )
+    (companyfacts_root / "CIK1234567890.json").write_text(
+        json.dumps(
+            {
+                "facts": {
+                    "us-gaap": {
+                        "RestrictedCash": {
+                            "units": {
+                                "USD": [
+                                    {"val": 10.0, "end": "2024-12-31", "filed": "2024-12-31", "fy": 2024, "fp": "FY", "form": "10-K"}
+                                ]
+                            }
+                        },
+                        "ShortTermInvestments": {
+                            "units": {
+                                "USD": [
+                                    {"val": 40.0, "end": "2024-12-31", "filed": "2024-12-31", "fy": 2024, "fp": "FY", "form": "10-K"}
+                                ]
+                            }
+                        },
+                        "OperatingLeaseLiabilityCurrent": {
+                            "units": {
+                                "USD": [
+                                    {"val": 15.0, "end": "2024-12-31", "filed": "2024-12-31", "fy": 2024, "fp": "FY", "form": "10-K"}
+                                ]
+                            }
+                        },
+                        "OperatingLeaseLiabilityNoncurrent": {
+                            "units": {
+                                "USD": [
+                                    {"val": 35.0, "end": "2024-12-31", "filed": "2024-12-31", "fy": 2024, "fp": "FY", "form": "10-K"}
+                                ]
+                            }
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    baseline_builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+        entity_identifier_path=ident_path,
+        companyfacts_root=companyfacts_root,
+    )
+    baseline_snap = baseline_builder.build("TEST", "2024-12-31")
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_table_path=entity_path,
+        entity_identifier_path=ident_path,
+        companyfacts_root=companyfacts_root,
+        enable_market_relevant_smart_normalized_inputs=True,
+    )
+    snap = builder.build("TEST", "2024-12-31")
+
+    assert snap.features["liquidity.available_liquidity_normalized"]["value"] == 130.0
+    assert snap.features["capital_structure.debt_like_obligations_normalized"]["value"] == 450.0
+    assert snap.features["capital_structure.net_debt_normalized"]["value"] == 320.0
+    assert snap.features["capital_structure.gross_leverage_normalized"]["value"] == 4.5
+    assert snap.features["capital_structure.net_leverage_normalized"]["value"] == 3.2
+    assert snap.features["capital_structure.net_pension_liability"]["value"] == 30.0
+    assert snap.features["capital_structure.debt_like_obligations_including_pension"]["value"] == 450.0
+    assert snap.features["capital_structure.debt_like_obligations_including_pension"]["support_mode"] == "proxy_missing_component"
+    assert snap.features["capital_structure.net_debt_including_pension"]["value"] == 320.0
+    assert snap.features["capital_structure.gross_leverage_including_pension"]["value"] == 4.5
+    assert snap.features["capital_structure.net_leverage_including_pension"]["value"] == 3.2
+    assert snap.features["liquidity.available_for_actions"]["value"] == baseline_snap.features["liquidity.available_for_actions"]["value"]
+    assert snap.features["liquidity.available_for_actions_market"]["value"] == baseline_snap.features["liquidity.available_for_actions_market"]["value"]
+    assert snap.features["capital_structure.net_debt"]["value"] == baseline_snap.features["capital_structure.net_debt"]["value"]
+    assert snap.features["capital_structure.gross_leverage"]["value"] == baseline_snap.features["capital_structure.gross_leverage"]["value"]
+    assert snap.features["capital_structure.net_leverage"]["value"] == baseline_snap.features["capital_structure.net_leverage"]["value"]
+    assert snap.features["capital_structure.net_leverage"]["support_mode"] == baseline_snap.features["capital_structure.net_leverage"]["support_mode"]
+
+
+def test_builder_prefers_fresher_companyfacts_for_raw_cash_and_total_debt(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    companyfacts_root = tmp_path / "companyfacts"
+    companyfacts_root.mkdir(parents=True, exist_ok=True)
+
+    stale_published = "2025-11-04T00:00:00Z"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash_stale", "ABC", "financial.cash", 80.0, stale_published, stale_published, stale_published),
+            _facts_row("debt_stale", "ABC", "financial.total_debt", 90.0, stale_published, stale_published, stale_published),
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [{"entity_id": "ABC", "identifier_type": "cik", "identifier_value": "1"}],
+    )
+    (companyfacts_root / "CIK0000000001.json").write_text(
+        json.dumps(
+            {
+                "facts": {
+                    "us-gaap": {
+                        "CashAndCashEquivalentsAtCarryingValue": {
+                            "units": {
+                                "USD": [
+                                    {
+                                        "val": 70.0,
+                                        "end": "2025-12-31",
+                                        "filed": "2026-02-13",
+                                        "fy": 2025,
+                                        "fp": "FY",
+                                        "form": "10-K",
+                                    }
+                                ]
+                            }
+                        },
+                        "DebtLongtermAndShorttermCombinedAmount": {
+                            "units": {
+                                "USD": [
+                                    {
+                                        "val": 120.0,
+                                        "end": "2025-12-31",
+                                        "filed": "2026-02-13",
+                                        "fy": 2025,
+                                        "fp": "FY",
+                                        "form": "10-K",
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        entity_identifier_path=ident_path,
+        companyfacts_root=companyfacts_root,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    cash_feature = snap.features["liquidity.cash"]
+    debt_feature = snap.features["capital_structure.total_debt_reported"]
+
+    assert cash_feature["value"] == 70.0
+    assert cash_feature["fallback_used"] == "companyfacts_cash_exact_fresher"
+    assert "companyfacts_cash_fresher" in (cash_feature["quality_flags"] or [])
+
+    assert debt_feature["value"] == 120.0
+    assert debt_feature["fallback_used"] == "companyfacts_total_debt_exact_fresher"
+    assert "companyfacts_total_debt_fresher" in (debt_feature["quality_flags"] or [])
+
+
+def test_total_debt_completeness_uses_reference_when_latest_local_is_implausibly_low(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ident_path = tmp_path / "entity_identifier.parquet"
+    taxonomy_reference_path = tmp_path / "taxonomy_reference.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            {
+                **_facts_row("debt_annual", "ABC_CIK", "financial.total_debt", 250.0, "2025-02-10T00:00:00Z", "2025-02-11T00:00:00Z", "2025-02-10T00:00:00Z"),
+                "effective_at": "2024-12-31T00:00:00Z",
+                "context_norm": "statement_type=derived; fiscal_period_end=2024-12-31 00:00:00; fiscal_year=2025; fiscal_quarter=",
+            },
+            {
+                **_facts_row("debt_latest", "ABC_CIK", "financial.total_debt", 10.0, "2025-11-10T00:00:00Z", "2025-11-11T00:00:00Z", "2025-11-10T00:00:00Z"),
+                "effective_at": "2025-09-30T00:00:00Z",
+                "context_norm": "statement_type=derived; fiscal_period_end=2025-09-30 00:00:00; fiscal_year=2026; fiscal_quarter=3",
+            },
+            _facts_row("cash", "ABC_CIK", "financial.cash", 50.0, "2025-11-10T00:00:00Z", "2025-11-11T00:00:00Z", "2025-11-10T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        ident_path,
+        [
+            {"entity_id": "ABC_CIK", "identifier_type": "ticker", "identifier_value": "ABC"},
+            {"entity_id": "ABC_CIK", "identifier_type": "cik", "identifier_value": "ABC_CIK"},
+        ],
+    )
+    _write_parquet(
+        taxonomy_reference_path,
+        [
+            {
+                "Instrument": "ABC.N",
+                "Company Common Name": "ABC Logistics",
+                "Total Debt": 260.0,
+                "EBITDA": 100.0,
+                "GICS Sector Name": "Industrials",
+                "GICS Industry Name": "Air Freight & Logistics",
+            }
+        ],
+    )
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        entity_identifier_path=ident_path,
+        taxonomy_reference_path=taxonomy_reference_path,
+    )
+    snap = builder.build("ABC_CIK", "2026-02-28")
+
+    total_debt = snap.features["capital_structure.total_debt"]
+    gross_leverage = snap.features["capital_structure.gross_leverage"]
+    assert total_debt["value"] == 260.0
+    assert total_debt["component_breakdown"]["local_reported_debt"] == 10.0
+    assert total_debt["component_breakdown"]["debt_reference_source"] == "reference_total_debt"
+    assert "reference_total_debt_used_for_completeness" in (total_debt["quality_flags"] or [])
+    assert round(gross_leverage["value"], 6) == 2.6
+
+
+def test_macro_strict_market_metrics_use_public_series_and_history_percentiles(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    macro_rows = []
+    monthly_dates = pd.date_range("2025-03-31", periods=12, freq="ME", tz="UTC")
+    for idx, date in enumerate(monthly_dates):
+        macro_rows.extend(
+            [
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "SP500_PE_RATIO",
+                    "value": float(18.0 + idx),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "DGS10",
+                    "value": float(3.0 + (0.1 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "DGS2",
+                    "value": float(2.5 + (0.1 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "BAMLC0A0CM",
+                    "value": float(95.0 + idx),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "BAMLH0A0HYM2",
+                    "value": float(300.0 + (5.0 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "BAMLH0A0HYM2EY",
+                    "value": float(7.0 + (0.2 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "DFF",
+                    "value": float(4.0 + (0.05 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "SOFR",
+                    "value": float(4.1 + (0.05 * idx)),
+                },
+                {
+                    "entity_id": "MACRO",
+                    "series_type": "macro",
+                    "trade_date": date.isoformat(),
+                    "available_time": date.isoformat(),
+                    "ingestion_time": date.isoformat(),
+                    "series_id": "VIXCLS",
+                    "value": float(15.0 + idx),
+                },
+            ]
+        )
+
+    quarterly_dates = pd.date_range("2022-09-30", periods=14, freq="QE", tz="UTC")
+    gdp_values = [
+        100.0,
+        101.0,
+        102.5,
+        104.0,
+        106.0,
+        108.0,
+        110.5,
+        113.0,
+        116.0,
+        118.0,
+        120.5,
+        123.0,
+        126.0,
+        130.0,
+    ]
+    for date, value in zip(quarterly_dates, gdp_values):
+        macro_rows.append(
+            {
+                "entity_id": "MACRO",
+                "series_type": "macro",
+                "trade_date": date.isoformat(),
+                "available_time": date.isoformat(),
+                "ingestion_time": date.isoformat(),
+                "series_id": "GDPC1",
+                "value": float(value),
+            }
+        )
+
+    _write_parquet(ts_path, macro_rows)
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=True,
+        skip_macro=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    sp500_pe = snap.features["macro.sp500_pe_ttm"]
+    us2y = snap.features["macro.ust_2y_yield"]
+    us10y = snap.features["macro.us10y_treasury_yield"]
+    ust10y = snap.features["macro.ust_10y_yield"]
+    ig_oas = snap.features["macro.us_ig_oas"]
+    ig_oas_alias = snap.features["macro.ig_oas"]
+    hy_oas = snap.features["macro.hy_oas"]
+    hy_yield = snap.features["macro.us_hy_all_in_yield"]
+    fed_funds = snap.features["macro.fed_funds_effective"]
+    sofr = snap.features["macro.sofr"]
+    vix = snap.features["market.vix"]
+    gdp = snap.features["macro.real_gdp_growth_yoy"]
+
+    assert sp500_pe["value"] == 29.0
+    assert sp500_pe["input_layer_bucket"] == "strict_market_defined"
+    assert sp500_pe["strict_market_defined"] is True
+    assert sp500_pe["component_breakdown"]["formula"] == "latest(sp500_pe_ttm_series)"
+    assert snap.features["macro.sp500_pe_ttm_percentile_history"]["value"] == 100.0
+
+    assert round(us2y["value"], 10) == 3.6
+    assert round(us10y["value"], 10) == 4.1
+    assert round(ust10y["value"], 10) == 4.1
+    assert snap.features["macro.us10y_treasury_yield_percentile_history"]["value"] == 100.0
+    assert ig_oas["value"] == 106.0
+    assert ig_oas_alias["value"] == 106.0
+    assert snap.features["macro.us_ig_oas_percentile_history"]["value"] == 100.0
+    assert hy_oas["value"] == 355.0
+    assert hy_yield["value"] == 9.2
+    assert snap.features["macro.us_hy_all_in_yield_percentile_history"]["value"] == 100.0
+    assert round(fed_funds["value"], 10) == 4.55
+    assert round(sofr["value"], 10) == 4.65
+    assert vix["value"] == 26.0
+
+    expected_gdp_growth = (130.0 / 118.0) - 1.0
+    assert round(gdp["value"], 10) == round(expected_gdp_growth, 10)
+    assert snap.features["macro.real_gdp_growth_yoy_percentile_history"]["value"] == 100.0
+    assert gdp["component_breakdown"]["formula"] == "(real_gdp_t / real_gdp_t_minus_4) - 1"
+
+
+def test_macro_history_uses_instrument_id_when_metric_column_is_empty(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2024-07-28T00:00:00Z", "2024-07-28T00:00:00Z", "2024-07-28T00:00:00Z"),
+        ],
+    )
+
+    macro_rows = [
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "DGS10",
+            "value": 4.2,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "DGS2",
+            "value": 4.6,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "DFF",
+            "value": 5.3,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "SOFR",
+            "value": 5.31,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "BAMLC0A0CM",
+            "value": 1.12,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "BAMLH0A0HYM2",
+            "value": 3.8,
+        },
+        {
+            "entity_id": "MACRO",
+            "series_type": "macro",
+            "trade_date": "2024-07-26T00:00:00+00:00",
+            "available_time": "2024-07-27T00:00:00+00:00",
+            "ingestion_time": "2024-07-27T00:00:00+00:00",
+            "metric": None,
+            "instrument_id": "VIXCLS",
+            "value": 16.4,
+        },
+    ]
+    _write_parquet(ts_path, macro_rows)
+
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        timeseries_path=ts_path,
+        skip_timeseries=True,
+        skip_macro=False,
+        historical_backfill_mode=True,
+    )
+    snap = builder.build("ABC", "2024-07-28")
+
+    assert snap.features["macro.ust_10y_yield"]["value"] == 4.2
+    assert snap.features["macro.ust_2y_yield"]["value"] == 4.6
+    assert snap.features["macro.fed_funds_effective"]["value"] == 5.3
+    assert snap.features["macro.sofr"]["value"] == 5.31
+    assert snap.features["macro.ig_oas"]["value"] == 1.12
+    assert snap.features["macro.hy_oas"]["value"] == 3.8
+    assert snap.features["market.vix"]["value"] == 16.4
+
+
+def test_strategic_recent_actions_and_consolidation_score(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    _write_parquet(facts_path, [_facts_row("cash", "ABC", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z")])
+    events = []
+    for i in range(6):
+        events.append(
+            {
+                "event_id": f"evt_{i}",
+                "company_id": "ABC",
+                "event_type": "acquisition" if i % 2 == 0 else "buyback",
+                "event_subtype": None,
+                "announced_at": f"2025-0{(i % 6) + 1}-01T00:00:00Z",
+                "effective_at": f"2025-0{(i % 6) + 1}-02T00:00:00Z",
+                "created_at": f"2025-0{(i % 6) + 1}-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": {"deal_value": 1_000_000_000.0 if i % 2 == 0 else None},
+            }
+        )
+    _write_parquet(events_path, events)
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+    assert snap.features["strategic.recent_actions_count_24m"]["value"] == 6.0
+    assert snap.features["strategic.recent_actions_count_24m"]["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    assert snap.features["strategic.recent_actions_count_24m"]["input_layer_bucket"] == "secondary_externally_anchored"
+    assert snap.features["strategic.recent_actions_count_24m"]["component_breakdown"]["strategic_event_count_24m"] == 6
+    assert snap.features["strategic.last_action_type"]["value"] == "buyback"
+    assert snap.features["strategic.last_action_type"]["component_breakdown"]["formula"] == "latest_action_type(strategic_events_24m)"
+    assert snap.features["strategic.action_frequency_24m"]["value"] == 0.25
+    assert snap.features["strategic.action_frequency_24m"]["input_layer_bucket"] == "secondary_externally_anchored"
+    assert snap.features["strategic.action_frequency_24m"]["component_breakdown"]["formula"] == "count(strategic_events_24m) / 24"
+    assert snap.features["strategic.action_fatigue_score"]["value"] > 0
+
+
+def test_peer_consolidation_wave_score(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash2", "PEER1", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash3", "PEER2", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [
+            {"entity_id": "ABC", "sector": "Tech"},
+            {"entity_id": "PEER1", "sector": "Tech"},
+            {"entity_id": "PEER2", "sector": "Tech"},
+            {"entity_id": "OTHER", "sector": "Energy"},
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_abc_1",
+                "company_id": "ABC",
+                "event_type": "acquisition",
+                "event_subtype": None,
+                "announced_at": "2025-12-01T00:00:00Z",
+                "effective_at": "2025-12-05T00:00:00Z",
+                "created_at": "2025-12-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": {"deal_value": 2_000_000_000.0},
+            },
+            {
+                "event_id": "evt_p1_1",
+                "company_id": "PEER1",
+                "event_type": "acquisition",
+                "event_subtype": None,
+                "announced_at": "2025-11-01T00:00:00Z",
+                "effective_at": "2025-11-03T00:00:00Z",
+                "created_at": "2025-11-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": {"deal_value": 1_000_000_000.0},
+            },
+            {
+                "event_id": "evt_p2_1",
+                "company_id": "PEER2",
+                "event_type": "divestiture",
+                "event_subtype": None,
+                "announced_at": "2025-10-01T00:00:00Z",
+                "effective_at": "2025-10-03T00:00:00Z",
+                "created_at": "2025-10-01T00:00:00Z",
+                "source_type": "event_store",
+                "params": {"deal_value": 500_000_000.0},
+            },
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+        entity_table_path=entity_path,
+        skip_peer_context=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+    score = snap.features["peer_context.consolidation_wave_score"]["value"]
+    assert score is not None
+    assert 0.0 <= score <= 1.0
+
+
+def test_policy_feature_aliases_for_peer_and_activist_context(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    events_path = tmp_path / "events.parquet"
+    entity_path = tmp_path / "entity.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash_abc", "ABC", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash_p1", "PEER1", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+            _facts_row("cash_p2", "PEER2", "financial.cash", 10.0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        ],
+    )
+    _write_parquet(
+        entity_path,
+        [
+            {"entity_id": "ABC", "sector": "Retail", "ev_ebitda": 8.0, "fcf_yield": 0.06, "ebitda_margin": 0.10, "revenue": 100.0},
+            {"entity_id": "PEER1", "sector": "Retail", "ev_ebitda": 10.0, "fcf_yield": 0.04, "ebitda_margin": 0.20, "revenue": 200.0},
+            {"entity_id": "PEER2", "sector": "Retail", "ev_ebitda": 12.0, "fcf_yield": 0.03, "ebitda_margin": 0.30, "revenue": 300.0},
+        ],
+    )
+    _write_parquet(
+        events_path,
+        [
+            {
+                "event_id": "evt_activist",
+                "company_id": "ABC",
+                "event_type": "activist_campaign",
+                "event_subtype": "13d",
+                "announced_at": "2026-01-10T00:00:00Z",
+                "effective_at": "2026-01-10T00:00:00Z",
+                "created_at": "2026-01-10T00:00:00Z",
+                "source_type": "event_store",
+                "params": None,
+            }
+        ],
+    )
+    builder = _base_builder(
+        tmp_path,
+        facts_path=facts_path,
+        skip_timeseries=True,
+        events_path=events_path,
+        skip_events=False,
+        entity_table_path=entity_path,
+        skip_peer_context=False,
+    )
+    snap = builder.build("ABC", "2026-02-28")
+
+    activist_flag = snap.features["ownership_governance.activist_presence_flag"]
+    assert activist_flag["value"] is True
+    assert activist_flag["primary_source_basis"] == "ownership_governance.activist_signal_alias"
+    assert "policy_feature_alias" in (activist_flag["quality_flags"] or [])
+
+    ev_z = snap.features["market.ev_ebitda_vs_peer_z"]
+    assert ev_z["value"] == pytest.approx(-1.22474487139)
+    assert ev_z["primary_source_basis"] == "peer_relative_ev_ebitda"
+
+    fcf_pct = snap.features["market.fcf_yield_percentile_peers"]
+    assert fcf_pct["value"] == pytest.approx(1.0)
+    assert fcf_pct["primary_source_basis"] == "peer_relative_fcf_yield"
+
+    margin_pct = snap.features["operating.ebitda_margin_percentile_peers"]
+    assert margin_pct["value"] == pytest.approx(1.0 / 3.0)
+    assert margin_pct["primary_source_basis"] == "peer_context.margin_percentile_alias"
+
+    market_share_pct = snap.features["peer_context.relative_positioning.market_share_percentile"]
+    assert market_share_pct["value"] == pytest.approx(1.0 / 3.0)
+    assert market_share_pct["primary_source_basis"] == "peer_relative_revenue_scale_proxy"
+
+
