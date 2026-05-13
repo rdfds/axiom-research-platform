@@ -1679,3 +1679,64 @@ def test_market_volatility_and_drawdown_have_explicit_formula_metadata(tmp_path:
     assert dd_90["component_breakdown"]["formula"] == "min(price_window_90d) / max(price_window_90d) - 1"
 
 
+def test_market_volatility_uses_single_equity_price_series_when_multiple_price_candidates_exist(tmp_path: Path):
+    facts_path = tmp_path / "facts.parquet"
+    ts_path = tmp_path / "timeseries.parquet"
+    _write_parquet(
+        facts_path,
+        [
+            _facts_row("cash", "ABC", "financial.cash", 10.0, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"),
+        ],
+    )
+
+    dates = pd.date_range("2025-10-01", periods=100, freq="D", tz="UTC")
+    equity_prices = pd.Series([100.0 + i for i in range(100)])
+    distressed_bond_prices = pd.Series([100.0 if i % 2 == 0 else 10.0 for i in range(100)])
+    expected_returns = equity_prices.pct_change().dropna()
+    expected_vol_30 = float(expected_returns.tail(30).std(ddof=0) * (252 ** 0.5))
+    expected_vol_90 = float(expected_returns.tail(90).std(ddof=0) * (252 ** 0.5))
+    expected_dd_90 = float((equity_prices.tail(90).min() / equity_prices.tail(90).max()) - 1.0)
+
+    rows = []
+    for date, eq_price, bond_price in zip(dates, equity_prices, distressed_bond_prices):
+        rows.append(
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "security_id": "EQ1",
+                "instrument_type": "equity",
+                "trade_date": date.isoformat(),
+                "available_time": (date + pd.Timedelta(hours=20)).isoformat(),
+                "close": float(eq_price),
+                "adjusted_close": float(eq_price),
+            }
+        )
+        rows.append(
+            {
+                "entity_id": "ABC",
+                "series_type": "price",
+                "security_id": "BOND1",
+                "instrument_type": "bond",
+                "trade_date": date.isoformat(),
+                "available_time": (date + pd.Timedelta(hours=21)).isoformat(),
+                "close": float(bond_price),
+                "adjusted_close": float(bond_price),
+            }
+        )
+    _write_parquet(ts_path, rows)
+
+    builder = _base_builder(tmp_path, facts_path=facts_path, timeseries_path=ts_path, skip_timeseries=False)
+    snap = builder.build("ABC", "2026-02-28")
+
+    vol_30 = snap.features["market.volatility_30d"]
+    vol_90 = snap.features["market.volatility_90d"]
+    dd_90 = snap.features["market.drawdown_90d"]
+
+    assert round(vol_30["value"], 10) == round(expected_vol_30, 10)
+    assert round(vol_90["value"], 10) == round(expected_vol_90, 10)
+    assert round(dd_90["value"], 10) == round(expected_dd_90, 10)
+    assert vol_30["component_breakdown"]["selected_price_series"]["group_field"] == "security_id"
+    assert vol_30["component_breakdown"]["selected_price_series"]["group_value"] == "EQ1"
+    assert "multiple_price_series_candidates" in (vol_30["quality_flags"] or [])
+
+

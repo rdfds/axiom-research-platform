@@ -47,3 +47,53 @@ def _row(
     }
 
 
+def _run_registry_build(fin_root: Path, out_root: Path) -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_financial_facts_registry.py"),
+            "--financials-root",
+            str(fin_root),
+            "--out-root",
+            str(out_root),
+            "--years",
+            "2025",
+            "--overwrite",
+            "--threads",
+            "1",
+            "--memory",
+            "1GB",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+
+
+def _load_output(out_root: Path) -> pd.DataFrame:
+    return pd.read_parquet(out_root / "year=2025" / "part_financials.parquet")
+
+
+def test_build_financial_facts_registry_derives_restricted_cash_and_revolver(tmp_path: Path):
+    fin_root = tmp_path / "warehouse_financials"
+    out_root = tmp_path / "extracted_fact_registry_enriched"
+    _write_financial_rows(
+        fin_root,
+        2025,
+        [
+            _row(entity_id="ABC", line_item="CashAndCashEquivalentsAtCarryingValue", value=100.0),
+            _row(entity_id="ABC", line_item="CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", value=112.0),
+            _row(entity_id="ABC", line_item="LineOfCreditFacilityMaximumBorrowingCapacity", value=500.0),
+            _row(entity_id="ABC", line_item="LineOfCreditFacilityAmountOutstanding", value=120.0),
+        ],
+    )
+
+    _run_registry_build(fin_root, out_root)
+    out = _load_output(out_root)
+
+    restricted = out[out["fact_type"] == "financial.restricted_cash"]["fact_value"].tolist()
+    revolver = out[out["fact_type"] == "financial.revolver_undrawn"]["fact_value"].tolist()
+
+    assert 12.0 in restricted
+    assert 380.0 in revolver
+
+

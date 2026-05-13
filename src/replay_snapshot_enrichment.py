@@ -353,3 +353,49 @@ def _needs_exact_price_history_repair(raw: Any) -> bool:
     return False
 
 
+def _load_exact_price_history(
+    *,
+    company_id: str,
+    as_of_time: str,
+    entity_identifier_path: Path | None,
+    crsp_market_cache_path: Path | None,
+    crsp_daily_root: Path | None,
+) -> tuple[str | None, str | None, str | None, pd.DataFrame]:
+    if entity_identifier_path is None or not entity_identifier_path.exists():
+        return None, None, None, pd.DataFrame()
+    permno = _permno_lookup(str(entity_identifier_path)).get(str(company_id))
+    if not permno:
+        return None, None, None, pd.DataFrame()
+
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    load_crsp_daily_from_repo, load_crsp_market_cache = _price_history_loaders()
+    if crsp_market_cache_path is not None and crsp_market_cache_path.exists():
+        price_history = load_crsp_market_cache(crsp_market_cache_path, [permno])
+        source_kind = "crsp_market_cache"
+        source_path = str(crsp_market_cache_path)
+    elif crsp_daily_root is not None and crsp_daily_root.exists():
+        price_history = load_crsp_daily_from_repo(
+            crsp_daily_root,
+            [permno],
+            min_asof_date=as_of_date,
+            max_asof_date=as_of_date,
+        )
+        source_kind = "crsp_daily_root"
+        source_path = str(crsp_daily_root)
+    else:
+        return permno, None, None, pd.DataFrame()
+
+    if price_history is None or price_history.empty:
+        return permno, source_kind, source_path, pd.DataFrame()
+    frame = price_history[price_history["permno"].astype(str) == permno].copy()
+    if frame.empty:
+        return permno, source_kind, source_path, pd.DataFrame()
+    price_col = "price_proxy" if "price_proxy" in frame.columns else "close_price"
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"], utc=True).dt.normalize()
+    frame["price"] = pd.to_numeric(frame[price_col], errors="coerce")
+    frame = frame.dropna(subset=["trade_date", "price"])
+    frame = frame[(frame["price"] > 0.0) & (frame["trade_date"] <= as_of_date)].copy()
+    frame = frame.sort_values("trade_date").drop_duplicates(subset=["trade_date"], keep="last")
+    return permno, source_kind, source_path, frame[["trade_date", "price"]].reset_index(drop=True)
+
+
