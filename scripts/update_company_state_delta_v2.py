@@ -16,7 +16,7 @@ def load_snapshots(path: Path) -> List[dict]:
     return out
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser(description="Update market/regime fields in snapshots.")
     parser.add_argument("--in-path", required=True)
     parser.add_argument("--out-path", required=True)

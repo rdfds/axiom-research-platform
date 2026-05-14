@@ -40,3 +40,10 @@ def _snapshot():
     }
 
 
+def test_update_market_only():
+    snap = _snapshot()
+    out = update_snapshot(snap, DummyBuilder(), "2026-02-28", mode="market")
+    assert "market.market_cap" in out["features"]
+    assert out["regime"] == {}
+
+
