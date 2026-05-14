@@ -155,3 +155,6 @@ def main() -> None:
     print(f"Wrote provenance-backfilled snapshots -> {out_path} rows={rows}")
 
 
+if __name__ == "__main__":
+    main()
+

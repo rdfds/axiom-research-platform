@@ -47,3 +47,10 @@ def test_update_market_only():
     assert out["regime"] == {}
 
 
+def test_update_regime_only():
+    snap = _snapshot()
+    out = update_snapshot(snap, DummyBuilder(), "2026-02-28", mode="regime")
+    assert out["regime"]["credit_regime"] == "neutral"
+    assert out["features"] == {}
+
+
