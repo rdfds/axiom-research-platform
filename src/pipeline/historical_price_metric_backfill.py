@@ -29,3 +29,7 @@ def _normalize_company_id_for_price_join(value: object) -> str:
     return digits.group(0).rjust(6, "0")[:6]
 
 
+def default_raw_timeseries_path() -> Path:
+    return _DEFAULT_RAW_TIMESERIES_PATH
+
+

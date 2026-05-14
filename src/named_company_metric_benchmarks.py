@@ -33,3 +33,16 @@ def _snapshot_path(snapshot_root: Path, company_id: str, as_of_date: str) -> Pat
     return snapshot_root / f'as_of_date={as_of_date}' / f'company_id={company_id}.json'
 
 
+def _snapshot_materialization(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {'exists': False, 'materialized': False, 'size': None, 'blocks': None}
+    stat_result = os.stat(path)
+    blocks = getattr(stat_result, 'st_blocks', None)
+    return {
+        'exists': True,
+        'materialized': bool(blocks and blocks > 0),
+        'size': stat_result.st_size,
+        'blocks': blocks,
+    }
+
+
