@@ -26,3 +26,18 @@ def _value(snapshot: dict, name: str) -> Any:
     return _feature(snapshot, name).get("value")
 
 
+def _metric_context(snapshot: dict, name: str) -> Dict[str, Any]:
+    provenance = snapshot.get("provenance", {}) or {}
+    lineage = (provenance.get("feature_lineage") or {}).get(name) or {}
+    return dict(lineage.get("metric_context") or {})
+
+
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
