@@ -36,7 +36,7 @@ def _default_ref(
 def _build_input_refs(snapshot: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     prov = snapshot.get("provenance", {}) if isinstance(snapshot.get("provenance"), dict) else {}
     inputs = prov.get("inputs_used", {}) if isinstance(prov.get("inputs_used"), dict) else {}
-    as_of = snapshot['as_of_time']
+    as_of = snapshot.get("as_of_time")
     return {
         "facts": _default_ref("ExtractedFact", "facts:scan", str(inputs.get("facts")) if inputs.get("facts") is not None else None, as_of),
         "timeseries": _default_ref("RawTimeseries", "timeseries:scan", str(inputs.get("timeseries")) if inputs.get("timeseries") is not None else None, as_of),
