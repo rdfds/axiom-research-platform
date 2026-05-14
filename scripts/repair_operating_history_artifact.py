@@ -317,3 +317,11 @@ def _companyfacts_provenance(companyfacts_path: Path, *, as_of_time: str, comput
     ]
 
 
+def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, Any]:
+    repaired = copy.deepcopy(node)
+    repaired["computed_at"] = computed_at
+    repaired["missing_reason"] = None
+    repaired["quality_flags"] = repaired.get("quality_flags") or None
+    return repaired
+
+

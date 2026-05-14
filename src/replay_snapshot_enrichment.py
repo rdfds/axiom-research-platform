@@ -399,3 +399,59 @@ def _load_exact_price_history(
     return permno, source_kind, source_path, frame[["trade_date", "price"]].reset_index(drop=True)
 
 
+def _compute_exact_price_metrics(
+    price_history: pd.DataFrame,
+    *,
+    as_of_time: str,
+    source_kind: str,
+) -> Dict[str, Dict[str, Any]]:
+    if price_history is None or price_history.empty:
+        return {}
+    frame = price_history.sort_values("trade_date").drop_duplicates(subset=["trade_date"], keep="last").copy()
+    if frame.empty:
+        return {}
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    latest_trade_date = frame["trade_date"].iloc[-1]
+    if not (0 <= int((as_of_date - latest_trade_date).days) <= _MAX_DAILY_ANCHOR_GAP_DAYS):
+        return {}
+
+    frame["ret"] = frame["price"].pct_change()
+    results: Dict[str, Dict[str, Any]] = {}
+    for days, min_obs, metric_name in ((30, 10, "market.volatility_30d"), (90, 20, "market.volatility_90d")):
+        returns_window = frame.loc[frame["trade_date"] > (latest_trade_date - pd.Timedelta(days=days)), ["trade_date", "ret"]].dropna()
+        if len(returns_window) < min_obs:
+            continue
+        results[metric_name] = {
+            "value": float(returns_window["ret"].std(ddof=0) * math.sqrt(252)),
+            "unit": "annualized",
+            "formula": f"stddev(daily_returns_{days}d) * sqrt(252)",
+            "component_values": {
+                "return_observations": int(len(returns_window)),
+                "annualization_factor": 252,
+                "window_start": str(returns_window["trade_date"].iloc[0]),
+                "window_end": str(returns_window["trade_date"].iloc[-1]),
+                "source_kind": source_kind,
+            },
+        }
+
+    price_window_90 = frame.loc[frame["trade_date"] > (latest_trade_date - pd.Timedelta(days=90)), ["trade_date", "price"]].copy()
+    if len(price_window_90) >= 20:
+        peak_price = float(price_window_90["price"].max())
+        trough_price = float(price_window_90["price"].min())
+        if peak_price != 0.0:
+            results["market.drawdown_90d"] = {
+                "value": (trough_price / peak_price) - 1.0,
+                "unit": "ratio",
+                "formula": "min(price_window_90d) / max(price_window_90d) - 1",
+                "component_values": {
+                    "price_observations": int(len(price_window_90)),
+                    "peak_price": peak_price,
+                    "trough_price": trough_price,
+                    "window_start": str(price_window_90["trade_date"].iloc[0]),
+                    "window_end": str(price_window_90["trade_date"].iloc[-1]),
+                    "source_kind": source_kind,
+                },
+            }
+    return results
+
+
