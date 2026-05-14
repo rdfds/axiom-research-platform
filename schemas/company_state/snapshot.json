@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompanyStateSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "snapshot_id": {"type": "string"},
+    "company_id": {"type": "string"},
+    "as_of_time": {"type": "string", "format": "date-time"},
+    "features": {
+      "type": "object",
+      "additionalProperties": {"$ref": "feature_record.json"}
+    },
+    "regime": {"type": "object"},
+    "constraint_set": {
+      "type": "object",
+      "properties": {
+        "hard": {"type": "array", "items": {"$ref": "constraint_object.json"}},
+        "soft": {"type": "array", "items": {"$ref": "constraint_object.json"}}
+      },
+      "additionalProperties": false
+    },
+    "peer_set": {"$ref": "peer_set.json"},
+    "provenance": {"type": "object"}
+  },
+  "required": ["snapshot_id", "company_id", "as_of_time", "features", "regime", "constraint_set", "peer_set", "provenance"]
+}
