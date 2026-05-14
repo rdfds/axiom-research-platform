@@ -250,7 +250,7 @@ def _collect_duration_entries_all(companyfacts: dict, concept_name: str, as_of_d
                     "fy": entry.get("fy"),
                     "fp": str(entry.get("fp") or "").upper() or None,
                     "frame": entry.get("frame"),
-                    "form": entry['form'],
+                    "form": entry.get("form"),
                     "duration_days": max(1, (end_dt - start_dt).days + 1),
                 }
             )

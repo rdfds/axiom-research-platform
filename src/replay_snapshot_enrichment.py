@@ -455,3 +455,55 @@ def _compute_exact_price_metrics(
     return results
 
 
+def _copy_metric_if_missing(
+    features: Dict[str, Any],
+    *,
+    target_key: str,
+    source_keys: tuple[str, ...],
+    as_of_time: str,
+    summary: Dict[str, Any],
+) -> bool:
+    previous = features.get(target_key)
+    if not _feature_record_needs_enrichment(previous):
+        return False
+    source_record = _record(features, *source_keys)
+    if not isinstance(source_record, dict) or _safe_float(_feature_value(source_record)) is None:
+        return False
+    record = _clone_metric_record(
+        source_record,
+        metric_name=target_key,
+        as_of_time=as_of_time,
+        extra_quality_flags=["copied_from_same_date_snapshot_metric"],
+    )
+    features[target_key] = record
+    summary["metrics"][target_key] = {
+        "value": record.get("value"),
+        "support_mode": record.get("support_mode"),
+        "missing_reason": None,
+        "changed": previous != record,
+    }
+    return previous != record
+
+
+def _write_metric(
+    features: Dict[str, Any],
+    *,
+    metric_name: str,
+    record: Dict[str, Any],
+    summary: Dict[str, Any],
+) -> bool:
+    previous = features.get(metric_name)
+    features[metric_name] = record
+    summary["metrics"][metric_name] = {
+        "value": record.get("value"),
+        "support_mode": record.get("support_mode"),
+        "missing_reason": record.get("missing_reason"),
+        "changed": previous != record,
+    }
+    return previous != record
+
+
+def _supports_are_exactish(*records: Any) -> bool:
+    return all(_is_exactish_support_mode(_support_mode(record)) for record in records if record is not None)
+
+
