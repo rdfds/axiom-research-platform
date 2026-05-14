@@ -338,3 +338,45 @@ def _parse_breakdown_date(value: Any) -> date | None:
         return None
 
 
+def _should_refresh_existing_metric(
+    node: Dict[str, Any] | None,
+    *,
+    replacement_period: date,
+    period_key: str,
+    fallback_prefix: str,
+) -> bool:
+    if not node or node.get("value") is None:
+        return True
+    breakdown = node.get("component_breakdown") or {}
+    existing_period = _parse_breakdown_date(breakdown.get(period_key))
+    if existing_period is not None and existing_period < replacement_period:
+        return True
+    fallback_used = str(node.get("fallback_used") or "")
+    if fallback_used.startswith(fallback_prefix):
+        return True
+    return False
+
+
+def _choose_revenue_concept(companyfacts: Dict[str, Any] | None, *, as_of_date: str) -> tuple[str | None, list[dict[str, Any]]]:
+    if companyfacts is None:
+        return None, []
+    best_choice: tuple[tuple[Any, ...], str, list[dict[str, Any]]] | None = None
+    for preference_idx, concept_name in enumerate(REVENUE_CONCEPTS):
+        entries = _collect_duration_entries_all(companyfacts, concept_name, as_of_date)
+        if not entries:
+            continue
+        latest_entry = max(entries, key=lambda item: (item["end"], item["filed"], item["duration_days"]))
+        distinct_period_count = len({entry["end"] for entry in entries})
+        score = (
+            latest_entry["end"],
+            latest_entry["filed"],
+            distinct_period_count,
+            -preference_idx,
+        )
+        if best_choice is None or score > best_choice[0]:
+            best_choice = (score, concept_name, entries)
+    if best_choice is None:
+        return None, []
+    return best_choice[1], best_choice[2]
+
+
