@@ -325,3 +325,16 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _parse_breakdown_date(value: Any) -> date | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    date_part = text.split(" ", 1)[0]
+    try:
+        return date.fromisoformat(date_part)
+    except ValueError:
+        return None
+
+
