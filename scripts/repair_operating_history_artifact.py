@@ -670,3 +670,73 @@ def repair_revenue_yoy_last_q(
     return True
 
 
+def repair_revenue_cagr_3y(
+    *,
+    features: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    companyfacts_path: Path,
+    computed_at: str,
+    as_of_time: str,
+) -> bool:
+    target = features.get("operating.revenue_cagr_3y")
+    if not target:
+        return False
+
+    rows, concept_name = _build_ttm_revenue_series(companyfacts, as_of_date=as_of_time[:10])
+    if len(rows) < 2:
+        return False
+    latest = rows[-1]
+    latest_end = latest["period_end"]
+    if latest_end is None or latest.get("value") in (None, 0):
+        return False
+    if not _should_refresh_existing_metric(
+        target,
+        replacement_period=latest_end,
+        period_key="latest_period",
+        fallback_prefix="sec_companyfacts_ttm_revenue_history",
+    ):
+        return False
+    prior = _find_best_prior_match(
+        rows[:-1],
+        latest_end=latest_end,
+        min_days=365 * 2,
+        max_days=365 * 4,
+        target_days=int(365.25 * 3),
+    )
+    if prior is None or prior.get("value") in (None, 0):
+        return False
+
+    elapsed_years = (latest_end - prior["period_end"]).days / 365.25
+    if elapsed_years <= 0:
+        return False
+    latest_value = float(latest["value"])
+    prior_value = float(prior["value"])
+    # CAGR is only well-defined for strictly positive revenue anchors.
+    if latest_value <= 0 or prior_value <= 0:
+        return False
+    computed_value = (latest_value / prior_value) ** (1.0 / elapsed_years) - 1.0
+    if isinstance(computed_value, complex) or not math.isfinite(float(computed_value)):
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = float(computed_value)
+    repaired["fallback_used"] = "sec_companyfacts_ttm_revenue_history"
+    repaired["support_mode"] = "exact" if latest.get("exact") and prior.get("exact") else "proxy_missing_component"
+    repaired["provenance"] = _companyfacts_provenance(companyfacts_path, as_of_time=as_of_time, computed_at=computed_at)
+    repaired["component_breakdown"] = {
+        "formula": "(latest_revenue / prior_revenue) ** (1 / elapsed_years) - 1",
+        "latest_revenue": float(latest["value"]),
+        "prior_revenue": float(prior["value"]),
+        "latest_period": f"{latest_end.isoformat()} 00:00:00+00:00",
+        "prior_period": f"{prior['period_end'].isoformat()} 00:00:00+00:00",
+        "elapsed_years": elapsed_years,
+        "target_prior_period": f"{(latest_end - timedelta(days=int(365.25 * 3))).isoformat()} 00:00:00+00:00",
+        "source_concept": concept_name,
+        "latest_mode": (latest.get("meta") or {}).get("mode"),
+        "prior_mode": (prior.get("meta") or {}).get("mode"),
+    }
+    repaired["quality_flags"] = None
+    features["operating.revenue_cagr_3y"] = repaired
+    return True
+
+
