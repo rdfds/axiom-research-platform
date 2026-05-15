@@ -571,3 +571,24 @@ def _build_ttm_margin_series(
     return observations, concept_name
 
 
+def _find_best_prior_match(
+    rows: list[dict[str, Any]],
+    *,
+    latest_end: date,
+    min_days: int,
+    max_days: int,
+    target_days: int,
+) -> dict[str, Any] | None:
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for row in rows:
+        period_end = row.get("period_end")
+        if period_end is None:
+            continue
+        delta_days = (latest_end - period_end).days
+        if min_days <= delta_days <= max_days:
+            candidates.append((abs(delta_days - target_days), row))
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: (item[0], item[1]["period_end"]))[0][1]
+
+

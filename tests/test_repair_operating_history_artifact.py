@@ -406,3 +406,56 @@ def test_repair_revenue_cagr_refreshes_stale_existing_companyfacts_value():
     assert node["component_breakdown"]["latest_period"] == "2024-12-31 00:00:00+00:00"
 
 
+def test_repair_revenue_cagr_skips_non_positive_revenue_anchors():
+    features = {
+        "operating.revenue_cagr_3y": _node("operating.revenue_cagr_3y", None),
+    }
+
+    repaired = repair_revenue_cagr_3y(
+        features=features,
+        companyfacts=_companyfacts_with_negative_revenue_anchor(),
+        companyfacts_path=Path("/tmp/CIK0000000006.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2025-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is False
+    assert features["operating.revenue_cagr_3y"]["value"] is None
+
+
+def test_repair_margin_history_metrics_from_ttm_margin_series(monkeypatch):
+    features = {
+        "operating.ebitda_margin_trend_8q": _node("operating.ebitda_margin_trend_8q", None, unit="slope"),
+        "operating.margin_volatility_8q": _node("operating.margin_volatility_8q", None, unit="stddev"),
+    }
+
+    monkeypatch.setattr(
+        "scripts.repair_operating_history_artifact._build_ttm_margin_series",
+        lambda companyfacts, as_of_date: (
+            [
+                {"period_end": date(2023, 3, 31), "margin": 0.10, "exact": True},
+                {"period_end": date(2023, 6, 30), "margin": 0.11, "exact": True},
+                {"period_end": date(2023, 9, 30), "margin": 0.12, "exact": True},
+                {"period_end": date(2023, 12, 31), "margin": 0.13, "exact": True},
+            ],
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+        ),
+    )
+
+    repaired = repair_margin_history_metrics(
+        features=features,
+        companyfacts={},
+        companyfacts_path=Path("/tmp/CIK0000000003.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2024-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    trend = features["operating.ebitda_margin_trend_8q"]
+    vol = features["operating.margin_volatility_8q"]
+    assert trend["value"] > 0
+    assert vol["value"] > 0
+    assert trend["support_mode"] == "exact"
+    assert vol["fallback_used"] == "sec_companyfacts_ttm_margin_history"
+
+
