@@ -46,3 +46,28 @@ def _snapshot_materialization(path: Path) -> Dict[str, Any]:
     }
 
 
+def _fundamentals_context(ticker: str, fundamentals_path: Path) -> Dict[str, Any]:
+    import duckdb
+
+    con = duckdb.connect()
+    escaped_path = fundamentals_path.as_posix().replace("'", "''")
+    normalized = ''.join(ch for ch in ticker.upper() if ch.isalnum())
+    rows = con.execute(
+        f'''
+        select Instrument, "Company Common Name", "GICS Sector Name", "GICS Industry Name"
+        from read_parquet('{escaped_path}', union_by_name=true)
+        where upper(regexp_replace(split_part(Instrument,'.',1), '[^A-Za-z0-9]', '', 'g')) = '{normalized}'
+        limit 1
+        '''
+    ).fetchall()
+    if not rows:
+        return {}
+    instrument, company_name, sector, industry = rows[0]
+    return {
+        'instrument': instrument,
+        'company_name': company_name,
+        'sector': sector,
+        'subsector': industry,
+    }
+
+
