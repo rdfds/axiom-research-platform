@@ -560,3 +560,28 @@ def _derive_reference_ebitda_record(features: Dict[str, Any], *, as_of_time: str
     )
 
 
+def _derive_margin_ebitda_record(features: Dict[str, Any], *, as_of_time: str) -> Optional[Dict[str, Any]]:
+    revenue_record = _record(features, "operating.revenue_ttm_provider_direct", "operating.revenue_ttm")
+    margin_record = _record(features, "operating.ebitda_margin_ttm")
+    revenue = _safe_float(_feature_value(revenue_record))
+    margin = _safe_float(_feature_value(margin_record))
+    if revenue is None or revenue <= 0.0 or margin is None:
+        return None
+    support_mode = "exact" if _supports_are_exactish(revenue_record, margin_record) else "proxy_missing_component"
+    return _derived_metric_record(
+        metric_name="operating.ebitda_ltm_provider_direct",
+        unit="usd",
+        value=revenue * margin,
+        support_mode=support_mode,
+        as_of_time=as_of_time,
+        formula="revenue_ttm * ebitda_margin_ttm",
+        source_records=[revenue_record, margin_record],
+        component_values={
+            "revenue_ttm": revenue,
+            "ebitda_margin_ttm": margin,
+        },
+        fallback_used="revenue_times_margin",
+        quality_flags=["ebitda_derived_from_margin_and_revenue"],
+    )
+
+

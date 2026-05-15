@@ -40,3 +40,15 @@ def _modern_snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_t
     return snapshot_cache_root / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
 
 
+def _legacy_snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_time: str) -> Path:
+    ts = str(as_of_time).replace("-", "").replace(":", "")
+    if ts.endswith("+0000"):
+        ts = ts[:-5]
+    if ts.endswith("+00:00"):
+        ts = ts[:-6]
+    ts = ts.replace("T", "T").replace("Z", "")
+    date_part, _, time_part = str(as_of_time).partition("T")
+    time_part = (time_part or "00:00:00+00:00").split("+", 1)[0].replace(":", "")
+    return snapshot_cache_root / f"company_id={company_id}" / f"snapshot_as_of={date_part.replace('-', '')}T{time_part}Z.json"
+
+
