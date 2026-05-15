@@ -534,3 +534,29 @@ def _market_cap_looks_suspicious(features: Dict[str, Any], *, reference_enterpri
     return suspicious
 
 
+def _derive_reference_ebitda_record(features: Dict[str, Any], *, as_of_time: str) -> Optional[Dict[str, Any]]:
+    ev_record = _record(features, "market.ev_ebitda")
+    if not isinstance(ev_record, dict):
+        return None
+    breakdown = dict(ev_record.get("component_breakdown") or {})
+    reference_ebitda = _safe_float(breakdown.get("ebitda_ttm"))
+    if reference_ebitda is None or reference_ebitda <= 0.0:
+        return None
+    return _derived_metric_record(
+        metric_name="operating.ebitda_ltm_provider_direct",
+        unit="usd",
+        value=reference_ebitda,
+        support_mode="proxy_missing_component",
+        as_of_time=as_of_time,
+        formula="reference_ebitda_from_market_ev_ebitda_component_breakdown",
+        source_records=[ev_record],
+        component_values={
+            "reference_ebitda_ttm": reference_ebitda,
+            "reference_ev_ebitda": _safe_float(breakdown.get("reference_ev_ebitda")),
+            "reference_instrument": breakdown.get("reference_instrument"),
+        },
+        fallback_used="reference_ebitda_snapshot_fallback",
+        quality_flags=["ebitda_derived_from_reference_market_metric"],
+    )
+
+
