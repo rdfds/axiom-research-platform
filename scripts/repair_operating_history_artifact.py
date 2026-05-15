@@ -380,3 +380,167 @@ def _choose_revenue_concept(companyfacts: Dict[str, Any] | None, *, as_of_date: 
     return best_choice[1], best_choice[2]
 
 
+def _build_revenue_single_quarter_series(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    concept_name, entries = _choose_revenue_concept(companyfacts, as_of_date=as_of_date)
+    if not entries:
+        return [], concept_name
+
+    exact_by_end: dict[date, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+    ytd_by_key: dict[tuple[Any, Any], tuple[tuple[Any, ...], dict[str, Any]]] = {}
+
+    for entry in entries:
+        fp = entry.get("fp")
+        duration_days = entry.get("duration_days") or 0
+        frame = str(entry.get("frame") or "")
+        looks_exact_quarter = duration_days <= 110 or ("Q" in frame and duration_days <= 120)
+        if looks_exact_quarter:
+            rank = (1 if "Q" in frame else 0, entry["filed"], -abs(duration_days - 91))
+            current = exact_by_end.get(entry["end"])
+            if current is None or rank > current[0]:
+                exact_by_end[entry["end"]] = (rank, entry)
+        if fp in {"Q1", "Q2", "Q3", "FY"}:
+            rank = (entry["filed"], duration_days)
+            current = ytd_by_key.get((entry.get("fy"), fp))
+            if current is None or rank > current[0]:
+                ytd_by_key[(entry.get("fy"), fp)] = (rank, entry)
+
+    series: list[dict[str, Any]] = []
+    for period_end in sorted({entry["end"] for entry in entries}):
+        if period_end in exact_by_end:
+            exact = exact_by_end[period_end][1]
+            series.append(
+                {
+                    "period_end": period_end,
+                    "value": exact["value"],
+                    "basis": "as_reported_quarter",
+                    "concept": concept_name,
+                    "fy": exact.get("fy"),
+                    "fp": exact.get("fp"),
+                }
+            )
+            continue
+
+        ending_candidates = [row for _, row in ytd_by_key.values() if row["end"] == period_end]
+        if not ending_candidates:
+            continue
+        current = sorted(ending_candidates, key=lambda item: (item["filed"], item["duration_days"]))[-1]
+        fiscal_year = current.get("fy")
+        fiscal_period = current.get("fp")
+        if fiscal_period == "Q1":
+            series.append(
+                {
+                    "period_end": period_end,
+                    "value": current["value"],
+                    "basis": "as_reported_without_prior_quarter",
+                    "concept": concept_name,
+                    "fy": fiscal_year,
+                    "fp": fiscal_period,
+                }
+            )
+        elif fiscal_period in {"Q2", "Q3"}:
+            prior_fp = "Q1" if fiscal_period == "Q2" else "Q2"
+            prior = ytd_by_key.get((fiscal_year, prior_fp))
+            if prior is not None:
+                series.append(
+                    {
+                        "period_end": period_end,
+                        "value": current["value"] - prior[1]["value"],
+                        "basis": "derived_from_ytd_delta",
+                        "concept": concept_name,
+                        "fy": fiscal_year,
+                        "fp": fiscal_period,
+                    }
+                )
+        elif fiscal_period == "FY":
+            prior = ytd_by_key.get((fiscal_year, "Q3"))
+            if prior is not None:
+                series.append(
+                    {
+                        "period_end": period_end,
+                        "value": current["value"] - prior[1]["value"],
+                        "basis": "derived_from_ytd_delta",
+                        "concept": concept_name,
+                        "fy": fiscal_year,
+                        "fp": "Q4",
+                    }
+                )
+    deduped = {row["period_end"]: row for row in series}
+    return [deduped[key] for key in sorted(deduped)], concept_name
+
+
+def _build_ttm_revenue_series(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    concept_name, entries = _choose_revenue_concept(companyfacts, as_of_date=as_of_date)
+    if not entries:
+        return [], concept_name
+    period_ends = sorted(
+        {
+            entry["end"].isoformat()
+            for entry in entries
+            if entry.get("fp") in {"Q1", "Q2", "Q3", "FY"} or (entry.get("duration_days") or 0) >= 300
+        }
+    )
+    observations = []
+    for period_end in period_ends:
+        value, meta = _compute_ttm_from_concept(companyfacts, concept_name, period_end)
+        if value is not None:
+            observations.append(
+                {
+                    "period_end": _parse_iso_date(period_end),
+                    "value": value,
+                    "meta": meta,
+                    "concept": concept_name,
+                    "exact": True,
+                }
+            )
+    return observations, concept_name
+
+
+def _operating_earnings_ttm_at(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[float | None, bool]:
+    operating_income, _ = _companyfacts_priority_ttm(
+        companyfacts,
+        OPERATING_INCOME_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    depreciation, _, depreciation_exact = _companyfacts_depreciation_ttm(
+        companyfacts,
+        as_of_date=as_of_date,
+    )
+    if operating_income is not None and depreciation is not None:
+        return operating_income + depreciation, depreciation_exact
+
+    net_income, _ = _companyfacts_priority_ttm(
+        companyfacts,
+        NET_INCOME_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    interest_expense, _ = _companyfacts_priority_ttm(
+        companyfacts,
+        INTEREST_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    tax, _ = _companyfacts_priority_ttm(
+        companyfacts,
+        TAX_TTM_CONCEPTS,
+        as_of_date=as_of_date,
+    )
+    depreciation, _, depreciation_exact = _companyfacts_depreciation_ttm(
+        companyfacts,
+        as_of_date=as_of_date,
+    )
+    if None in (net_income, interest_expense, tax, depreciation):
+        return None, False
+    return float(net_income + interest_expense + tax + depreciation), depreciation_exact
+
+

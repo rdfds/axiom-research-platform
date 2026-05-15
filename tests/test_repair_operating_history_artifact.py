@@ -360,3 +360,24 @@ def test_repair_revenue_cagr_from_sec_companyfacts_ttm_history():
     assert node["fallback_used"] == "sec_companyfacts_ttm_revenue_history"
 
 
+def test_repair_revenue_cagr_prefers_fresh_revenue_concept_over_stale_legacy_series():
+    features = {
+        "operating.revenue_cagr_3y": _node("operating.revenue_cagr_3y", None),
+    }
+
+    repaired = repair_revenue_cagr_3y(
+        features=features,
+        companyfacts=_companyfacts_with_stale_legacy_and_fresh_current_revenue_concepts(),
+        companyfacts_path=Path("/tmp/CIK0000000005.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2025-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    node = features["operating.revenue_cagr_3y"]
+    assert round(node["value"], 6) == round((988.0 / 800.0) ** (1.0 / 2.001368925393566) - 1.0, 6)
+    assert node["component_breakdown"]["source_concept"] == "Revenues"
+    assert node["component_breakdown"]["latest_period"] == "2024-12-31 00:00:00+00:00"
+    assert node["component_breakdown"]["prior_period"] == "2022-12-31 00:00:00+00:00"
+
+
