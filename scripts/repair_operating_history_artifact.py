@@ -544,3 +544,30 @@ def _operating_earnings_ttm_at(
     return float(net_income + interest_expense + tax + depreciation), depreciation_exact
 
 
+def _build_ttm_margin_series(
+    companyfacts: Dict[str, Any] | None,
+    *,
+    as_of_date: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    revenue_ttm_series, concept_name = _build_ttm_revenue_series(companyfacts, as_of_date=as_of_date)
+    observations = []
+    for revenue_row in revenue_ttm_series:
+        period_end = revenue_row.get("period_end")
+        if period_end is None or revenue_row.get("value") in (None, 0):
+            continue
+        earnings_value, earnings_exact = _operating_earnings_ttm_at(
+            companyfacts,
+            as_of_date=period_end.isoformat(),
+        )
+        if earnings_value is None:
+            continue
+        observations.append(
+            {
+                "period_end": period_end,
+                "margin": float(earnings_value) / float(revenue_row["value"]),
+                "exact": revenue_row.get("exact", False) and earnings_exact,
+            }
+        )
+    return observations, concept_name
+
+
