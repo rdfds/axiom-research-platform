@@ -585,3 +585,597 @@ def _derive_margin_ebitda_record(features: Dict[str, Any], *, as_of_time: str) -
     )
 
 
+def enrich_snapshot_with_revenue_growth_inputs(
+    snapshot: Dict[str, Any],
+    *,
+    companyfacts_root: str | Path | None,
+    entity_identifier_path: str | Path | None = None,
+    crsp_market_cache_path: str | Path | None = None,
+    crsp_daily_root: str | Path | None = None,
+    company_id: str | None = None,
+    as_of_time: str | None = None,
+    loaders: Optional[tuple[MetricLoader, MetricBuilder]] = None,
+) -> tuple[Dict[str, Any], bool, Dict[str, Any]]:
+    payload = deepcopy(dict(snapshot or {}))
+    features = dict(payload.get("features") or {})
+    payload["features"] = features
+    resolved_company_id = str(company_id or payload.get("company_id") or "").strip()
+    resolved_as_of_time = str(as_of_time or payload.get("as_of_time") or "").strip()
+    root = Path(companyfacts_root) if companyfacts_root else None
+    summary: Dict[str, Any] = {
+        "company_id": resolved_company_id,
+        "as_of_time": resolved_as_of_time,
+        "companyfacts_path": None,
+        "loaded_companyfacts": False,
+        "price_history_source": None,
+        "price_history_permno": None,
+        "metrics": {},
+    }
+    if not resolved_company_id or not resolved_as_of_time:
+        return payload, False, summary
+
+    pending = [metric_name for metric_name, _ in _COMPANYFACTS_METRICS if _feature_record_needs_enrichment(features.get(metric_name))]
+    changed = False
+    if pending and root is not None:
+        companyfacts_path = _companyfacts_path(root, resolved_company_id)
+        summary["companyfacts_path"] = str(companyfacts_path)
+        if companyfacts_path.exists():
+            load_companyfacts, build_metric = loaders or _sec_metric_builders()
+            companyfacts = load_companyfacts(companyfacts_path)
+            summary["loaded_companyfacts"] = companyfacts is not None
+            if companyfacts:
+                artifact_id = companyfacts_path.stem
+                as_of_date = resolved_as_of_time[:10]
+                for metric_name, unit in _COMPANYFACTS_METRICS:
+                    previous = features.get(metric_name)
+                    if not _feature_record_needs_enrichment(previous):
+                        continue
+                    value, support_mode, missing_reason, component_breakdown, quality_flags = build_metric(metric_name, companyfacts, as_of_date)
+                    record = _metric_record(
+                        metric_name=metric_name,
+                        unit=unit,
+                        value=value,
+                        support_mode=support_mode,
+                        missing_reason=missing_reason,
+                        component_breakdown=component_breakdown,
+                        quality_flags=quality_flags,
+                        as_of_time=resolved_as_of_time,
+                        artifact_id=artifact_id,
+                    )
+                    summary["metrics"][metric_name] = {
+                        "value": value,
+                        "support_mode": support_mode,
+                        "missing_reason": missing_reason,
+                        "changed": previous != record,
+                    }
+                    if previous != record:
+                        features[metric_name] = record
+                        changed = True
+
+    if _feature_record_needs_enrichment(features.get("liquidity.cash")):
+        cash_and_sti_record = _record(features, "liquidity.cash_and_short_term_investments_provider_direct")
+        cash_and_sti_value = _safe_float(_feature_value(cash_and_sti_record))
+        if cash_and_sti_value is not None:
+            cash_record = _clone_metric_record(
+                cash_and_sti_record,
+                metric_name="liquidity.cash",
+                value=cash_and_sti_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                fallback_used="cash_and_short_term_investments_provider_direct",
+                extra_quality_flags=["cash_proxy_from_cash_and_short_term_investments"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.cash",
+                record=cash_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("operating.ebitda_ltm_provider_direct")):
+        ebitda_record = _derive_reference_ebitda_record(features, as_of_time=resolved_as_of_time)
+        if ebitda_record is None:
+            ebitda_record = _derive_margin_ebitda_record(features, as_of_time=resolved_as_of_time)
+        if ebitda_record is not None:
+            changed |= _write_metric(
+                features,
+                metric_name="operating.ebitda_ltm_provider_direct",
+                record=ebitda_record,
+                summary=summary,
+            )
+
+    changed |= _copy_metric_if_missing(
+        features,
+        target_key="capital_structure.total_debt_provider_direct",
+        source_keys=("capital_structure.total_debt", "capital_structure.total_debt_reported"),
+        as_of_time=resolved_as_of_time,
+        summary=summary,
+    )
+
+    marketable_record = features.get("liquidity.marketable_securities_sec_exact")
+    if _feature_record_needs_enrichment(marketable_record):
+        available_liquidity_record = _record(features, "liquidity.available_liquidity_normalized")
+        available_breakdown = dict((available_liquidity_record or {}).get("component_breakdown") or {})
+        marketable_value = _safe_float(available_breakdown.get("marketable_securities_sec_exact"))
+        if marketable_value is not None:
+            derived_marketable = _derived_metric_record(
+                metric_name="liquidity.marketable_securities_sec_exact",
+                unit="usd",
+                value=marketable_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="available_liquidity_normalized.component_breakdown.marketable_securities_sec_exact",
+                source_records=[available_liquidity_record],
+                component_values={"marketable_securities_sec_exact": marketable_value},
+                fallback_used="available_liquidity_component_breakdown",
+                quality_flags=["marketable_securities_derived_from_available_liquidity"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.marketable_securities_sec_exact",
+                record=derived_marketable,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("liquidity.cash_and_short_term_investments_provider_direct")):
+        cash_record = _record(features, "liquidity.cash")
+        cash_value = _safe_float(_feature_value(cash_record))
+        marketable_value = _record_value(features, "liquidity.marketable_securities_sec_exact")
+        if cash_value is not None:
+            cash_and_sti_record = _derived_metric_record(
+                metric_name="liquidity.cash_and_short_term_investments_provider_direct",
+                unit="usd",
+                value=cash_value + (marketable_value or 0.0),
+                support_mode=(
+                    "exact"
+                    if _supports_are_exactish(cash_record) and (marketable_value in (None, 0.0) or _supports_are_exactish(features.get("liquidity.marketable_securities_sec_exact")))
+                    else "proxy_missing_component"
+                ),
+                as_of_time=resolved_as_of_time,
+                formula="cash + marketable_securities",
+                source_records=[cash_record, features.get("liquidity.marketable_securities_sec_exact")],
+                component_values={
+                    "cash": cash_value,
+                    "marketable_securities": marketable_value,
+                },
+                fallback_used="cash_plus_marketable_securities_snapshot_fallback",
+                quality_flags=["cash_and_short_term_investments_derived_from_snapshot_inputs"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.cash_and_short_term_investments_provider_direct",
+                record=cash_and_sti_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("liquidity.usable_cash")):
+        cash_record = _record(
+            features,
+            "liquidity.cash",
+            "liquidity.cash_and_short_term_investments_provider_direct",
+        )
+        cash_value = _safe_float(_feature_value(cash_record))
+        if cash_value is not None:
+            usable_cash_record = _derived_metric_record(
+                metric_name="liquidity.usable_cash",
+                unit="usd",
+                value=max(0.0, cash_value),
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="max(0, cash_proxy)",
+                source_records=[cash_record],
+                component_values={"cash_proxy": cash_value},
+                fallback_used="cash_proxy_no_restriction_adjustment",
+                quality_flags=["usable_cash_derived_from_cash_proxy"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.usable_cash",
+                record=usable_cash_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("liquidity.available_liquidity_normalized")):
+        cash_and_sti_record = _record(features, "liquidity.cash_and_short_term_investments_provider_direct")
+        revolver_record = _record(features, "liquidity.revolver_undrawn")
+        cash_and_sti_value = _safe_float(_feature_value(cash_and_sti_record))
+        revolver_value = _safe_float(_feature_value(revolver_record))
+        if cash_and_sti_value is not None or revolver_value is not None:
+            available_liquidity_value = max(0.0, (cash_and_sti_value or 0.0) + (revolver_value or 0.0))
+            available_liquidity_record = _derived_metric_record(
+                metric_name="liquidity.available_liquidity_normalized",
+                unit="usd",
+                value=available_liquidity_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="cash_and_short_term_investments_provider_direct + revolver_undrawn",
+                source_records=[cash_and_sti_record, revolver_record],
+                component_values={
+                    "cash_and_short_term_investments_provider_direct": cash_and_sti_value,
+                    "revolver_undrawn": revolver_value,
+                },
+                fallback_used="cash_and_short_term_plus_revolver",
+                quality_flags=["available_liquidity_derived_from_cash_and_revolver"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.available_liquidity_normalized",
+                record=available_liquidity_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("liquidity.available_for_actions")):
+        usable_cash_record = _record(
+            features,
+            "liquidity.available_liquidity_normalized",
+            "liquidity.usable_cash",
+            "liquidity.cash_and_short_term_investments_provider_direct",
+        )
+        usable_cash_value = _safe_float(_feature_value(usable_cash_record))
+        revolver_record = _record(features, "liquidity.revolver_undrawn")
+        revolver_value = _safe_float(_feature_value(revolver_record))
+        minimum_cash_record = _record(features, "liquidity.minimum_cash_policy_proxy")
+        minimum_cash_value = _safe_float(_feature_value(minimum_cash_record))
+        if usable_cash_value is not None or revolver_value is not None:
+            deployable_cash = usable_cash_value
+            fallback_used = "available_liquidity_proxy"
+            quality_flags = ["available_for_actions_derived_from_proxy_liquidity"]
+            component_values = {
+                "usable_cash_proxy": usable_cash_value,
+                "revolver_undrawn": revolver_value,
+                "minimum_cash_policy_proxy": minimum_cash_value,
+            }
+            if deployable_cash is not None and minimum_cash_value is not None:
+                deployable_cash = max(0.0, deployable_cash - minimum_cash_value)
+                fallback_used = "proxy_liquidity_minus_minimum_cash_policy"
+            available_for_actions_value = max(0.0, (deployable_cash or 0.0) + (revolver_value or 0.0))
+            available_for_actions_record = _derived_metric_record(
+                metric_name="liquidity.available_for_actions",
+                unit="usd",
+                value=available_for_actions_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="max(0, usable_cash_proxy - minimum_cash_policy_proxy) + revolver_undrawn",
+                source_records=[usable_cash_record, minimum_cash_record, revolver_record],
+                component_values=component_values,
+                fallback_used=fallback_used,
+                quality_flags=quality_flags,
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="liquidity.available_for_actions",
+                record=available_for_actions_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("capital_structure.net_debt")):
+        total_debt_record = _record(
+            features,
+            "capital_structure.total_debt_provider_direct",
+            "capital_structure.total_debt",
+        )
+        total_debt_value = _safe_float(_feature_value(total_debt_record))
+        cash_and_sti_record = _record(features, "liquidity.cash_and_short_term_investments_provider_direct")
+        cash_and_sti_value = _safe_float(_feature_value(cash_and_sti_record))
+        if total_debt_value is not None and cash_and_sti_value is not None:
+            net_debt_record = _derived_metric_record(
+                metric_name="capital_structure.net_debt",
+                unit="usd",
+                value=total_debt_value - cash_and_sti_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="total_debt_provider_direct - cash_and_short_term_investments_provider_direct",
+                source_records=[total_debt_record, cash_and_sti_record],
+                component_values={
+                    "total_debt_provider_direct": total_debt_value,
+                    "cash_and_short_term_investments_provider_direct": cash_and_sti_value,
+                },
+                fallback_used="total_debt_minus_cash_and_short_term_investments",
+                quality_flags=["net_debt_derived_from_companyfacts_proxies"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="capital_structure.net_debt",
+                record=net_debt_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("capital_structure.net_leverage")):
+        net_debt_record = _record(features, "capital_structure.net_debt")
+        net_debt_value = _safe_float(_feature_value(net_debt_record))
+        ebitda_record = _record(features, "operating.ebitda_ltm_provider_direct")
+        ebitda_value = _safe_float(_feature_value(ebitda_record))
+        if net_debt_value is not None and ebitda_value is not None and ebitda_value > 0:
+            net_leverage_record = _derived_metric_record(
+                metric_name="capital_structure.net_leverage",
+                unit="x",
+                value=net_debt_value / ebitda_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="net_debt / ebitda_ltm_provider_direct",
+                source_records=[net_debt_record, ebitda_record],
+                component_values={
+                    "net_debt": net_debt_value,
+                    "ebitda_ltm_provider_direct": ebitda_value,
+                },
+                fallback_used="net_debt_divided_by_ebitda",
+                quality_flags=["net_leverage_derived_from_proxy_net_debt"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="capital_structure.net_leverage",
+                record=net_leverage_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("capital_structure.debt_due_next_24m")):
+        debt_0_12_record = _record(features, "capital_structure.debt_due_0_12m")
+        debt_12_24_record = _record(features, "capital_structure.debt_due_12_24m")
+        debt_0_12 = _safe_float(_feature_value(debt_0_12_record))
+        debt_12_24 = _safe_float(_feature_value(debt_12_24_record))
+        if debt_0_12 is not None or debt_12_24 is not None:
+            debt_next_24m = max(0.0, (debt_0_12 or 0.0) + (debt_12_24 or 0.0))
+            debt_due_next_record = _derived_metric_record(
+                metric_name="capital_structure.debt_due_next_24m",
+                unit="usd",
+                value=debt_next_24m,
+                support_mode=(
+                    "exact"
+                    if _supports_are_exactish(debt_0_12_record, debt_12_24_record)
+                    else "proxy_missing_component"
+                ),
+                as_of_time=resolved_as_of_time,
+                formula="debt_due_0_12m + debt_due_12_24m",
+                source_records=[debt_0_12_record, debt_12_24_record],
+                component_values={
+                    "debt_due_0_12m": debt_0_12,
+                    "debt_due_12_24m": debt_12_24,
+                },
+                fallback_used="debt_due_bucket_sum",
+                quality_flags=["debt_due_next_24m_derived_from_maturity_buckets"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="capital_structure.debt_due_next_24m",
+                record=debt_due_next_record,
+                summary=summary,
+            )
+
+    market_ev_record = _record(features, "market.ev_ebitda")
+    market_ev_breakdown = dict((market_ev_record or {}).get("component_breakdown") or {})
+    reference_ev_multiple = _safe_float(market_ev_breakdown.get("reference_ev_ebitda"))
+    ebitda_value = _record_value(features, "operating.ebitda_ltm_provider_direct")
+    if ebitda_value is None:
+        ebitda_value = _safe_float(market_ev_breakdown.get("ebitda_ttm"))
+    reference_enterprise_value = None
+    if reference_ev_multiple is not None and ebitda_value is not None and ebitda_value > 0.0:
+        reference_enterprise_value = reference_ev_multiple * ebitda_value
+    suspicious_market_cap = _market_cap_looks_suspicious(
+        features,
+        reference_enterprise_value=reference_enterprise_value,
+    )
+    net_debt_value = _record_value(
+        features,
+        "capital_structure.net_debt_normalized",
+    )
+    if net_debt_value is None:
+        total_debt_value = _record_value(features, "capital_structure.total_debt_provider_direct", "capital_structure.total_debt")
+        available_liquidity_value = _record_value(features, "liquidity.available_liquidity_normalized")
+        if total_debt_value is not None and available_liquidity_value is not None:
+            net_debt_value = total_debt_value - available_liquidity_value
+
+    if reference_enterprise_value is not None and net_debt_value is not None:
+        safe_market_cap = reference_enterprise_value - net_debt_value
+        if safe_market_cap > 0.0 and (
+            suspicious_market_cap or _feature_record_needs_enrichment(features.get("market.market_cap_provider_direct"))
+        ):
+            market_cap_record = _derived_metric_record(
+                metric_name="market.market_cap_provider_direct",
+                unit="usd",
+                value=safe_market_cap,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="reference_enterprise_value - net_debt_normalized",
+                source_records=[market_ev_record, features.get("capital_structure.net_debt_normalized")],
+                component_values={
+                    "reference_enterprise_value": reference_enterprise_value,
+                    "net_debt_normalized": net_debt_value,
+                    "reference_ev_ebitda": reference_ev_multiple,
+                    "ebitda_ttm": ebitda_value,
+                },
+                fallback_used="reference_ev_ebitda_minus_net_debt",
+                quality_flags=(
+                    ["replaced_suspicious_price_shares_market_cap"]
+                    if suspicious_market_cap
+                    else ["market_cap_reconstructed_from_reference_ev_ebitda"]
+                ),
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="market.market_cap_provider_direct",
+                record=market_cap_record,
+                summary=summary,
+            )
+
+            enterprise_value_record = _derived_metric_record(
+                metric_name="market.enterprise_value",
+                unit="usd",
+                value=reference_enterprise_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="reference_ev_ebitda * ebitda_ttm",
+                source_records=[market_ev_record, features.get("operating.ebitda_ltm_provider_direct")],
+                component_values={
+                    "reference_ev_ebitda": reference_ev_multiple,
+                    "ebitda_ttm": ebitda_value,
+                },
+                fallback_used="reference_ev_ebitda_times_ebitda",
+                quality_flags=(
+                    ["replaced_suspicious_enterprise_value"]
+                    if suspicious_market_cap
+                    else ["enterprise_value_reconstructed_from_reference_ev_ebitda"]
+                ),
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="market.enterprise_value",
+                record=enterprise_value_record,
+                summary=summary,
+            )
+
+            ev_ebitda_record = _derived_metric_record(
+                metric_name="market.ev_ebitda",
+                unit="x",
+                value=reference_ev_multiple,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="reference_ev_ebitda",
+                source_records=[market_ev_record, features.get("operating.ebitda_ltm_provider_direct")],
+                component_values={
+                    "reference_ev_ebitda": reference_ev_multiple,
+                    "ebitda_ttm": ebitda_value,
+                    "reference_enterprise_value": reference_enterprise_value,
+                },
+                fallback_used="reference_ev_ebitda",
+                quality_flags=(
+                    ["replaced_suspicious_ev_ebitda"]
+                    if suspicious_market_cap
+                    else ["ev_ebitda_reconstructed_from_reference_metric"]
+                ),
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="market.ev_ebitda",
+                record=ev_ebitda_record,
+                summary=summary,
+            )
+    elif _feature_record_needs_enrichment(features.get("market.market_cap_provider_direct")):
+        changed |= _copy_metric_if_missing(
+            features,
+            target_key="market.market_cap_provider_direct",
+            source_keys=("market.market_cap",),
+            as_of_time=resolved_as_of_time,
+            summary=summary,
+        )
+
+    if _feature_record_needs_enrichment(features.get("cash_flow.free_cash_flow_ttm")):
+        fcf_conversion_record = _record(features, "operating.fcf_conversion")
+        fcf_conversion_value = _safe_float(_feature_value(fcf_conversion_record))
+        if fcf_conversion_value is not None and ebitda_value is not None and ebitda_value > 0.0:
+            free_cash_flow_record = _derived_metric_record(
+                metric_name="cash_flow.free_cash_flow_ttm",
+                unit="usd",
+                value=fcf_conversion_value * ebitda_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="fcf_conversion * ebitda_ttm",
+                source_records=[fcf_conversion_record, features.get("operating.ebitda_ltm_provider_direct")],
+                component_values={
+                    "fcf_conversion": fcf_conversion_value,
+                    "ebitda_ttm": ebitda_value,
+                },
+                fallback_used="fcf_conversion_times_ebitda",
+                quality_flags=["free_cash_flow_derived_from_fcf_conversion"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="cash_flow.free_cash_flow_ttm",
+                record=free_cash_flow_record,
+                summary=summary,
+            )
+
+    if _feature_record_needs_enrichment(features.get("market.fcf_yield")):
+        free_cash_flow_value = _record_value(features, "cash_flow.free_cash_flow_ttm")
+        market_cap_value = _record_value(features, "market.market_cap_provider_direct", "market.market_cap")
+        if free_cash_flow_value is not None and market_cap_value is not None and market_cap_value > 0.0:
+            fcf_yield_record = _derived_metric_record(
+                metric_name="market.fcf_yield",
+                unit="ratio",
+                value=free_cash_flow_value / market_cap_value,
+                support_mode="proxy_missing_component",
+                as_of_time=resolved_as_of_time,
+                formula="free_cash_flow_ttm / market_cap",
+                source_records=[features.get("cash_flow.free_cash_flow_ttm"), _record(features, "market.market_cap_provider_direct", "market.market_cap")],
+                component_values={
+                    "free_cash_flow_ttm": free_cash_flow_value,
+                    "equity_market_cap": market_cap_value,
+                },
+                fallback_used="free_cash_flow_over_market_cap",
+                quality_flags=["fcf_yield_derived_from_snapshot_inputs"],
+            )
+            changed |= _write_metric(
+                features,
+                metric_name="market.fcf_yield",
+                record=fcf_yield_record,
+                summary=summary,
+            )
+
+    entity_identifier = Path(entity_identifier_path) if entity_identifier_path else None
+    market_cache_path = Path(crsp_market_cache_path) if crsp_market_cache_path else None
+    daily_root = Path(crsp_daily_root) if crsp_daily_root else None
+    permno, source_kind, source_path, price_history = _load_exact_price_history(
+        company_id=resolved_company_id,
+        as_of_time=resolved_as_of_time,
+        entity_identifier_path=entity_identifier,
+        crsp_market_cache_path=market_cache_path,
+        crsp_daily_root=daily_root,
+    )
+    summary["price_history_permno"] = permno
+    summary["price_history_source"] = source_path
+    if source_kind and not price_history.empty:
+        exact_price_metrics = _compute_exact_price_metrics(
+            price_history,
+            as_of_time=resolved_as_of_time,
+            source_kind=source_kind,
+        )
+        for metric_name, metric_payload in exact_price_metrics.items():
+            previous = features.get(metric_name)
+            if not _needs_exact_price_history_repair(previous):
+                continue
+            previous_flags = set(_quality_flags(previous))
+            repair_flags = {"repaired_exact_price_history_from_crsp"}
+            if "low_frequency_price_history" in previous_flags:
+                repair_flags.add("replaced_low_frequency_price_history")
+            repaired_record = _derived_metric_record(
+                metric_name=metric_name,
+                unit=str(metric_payload["unit"]),
+                value=metric_payload["value"],
+                support_mode="exact",
+                as_of_time=resolved_as_of_time,
+                formula=str(metric_payload["formula"]),
+                source_records=[previous] if isinstance(previous, dict) else [],
+                component_values={
+                    **dict(metric_payload["component_values"]),
+                    "selected_price_series": {
+                        "source_kind": source_kind,
+                        "group_field": "permno",
+                        "group_value": permno,
+                        "price_field": "price_proxy",
+                        "time_field": "trade_date",
+                    },
+                },
+                fallback_used=f"{source_kind}_price_history",
+                quality_flags=sorted(repair_flags),
+            )
+            repaired_record["provenance"] = _dedupe_provenance(
+                previous,
+                {
+                    "provenance": [
+                        {
+                            "artifact_type": "MarketTimeseries",
+                            "artifact_id": f"{source_kind}:{permno}",
+                            "source": source_path,
+                            "published_at": resolved_as_of_time,
+                            "ingested_at": resolved_as_of_time,
+                            "hash": None,
+                        }
+                    ]
+                },
+            )
+            changed |= _write_metric(
+                features,
+                metric_name=metric_name,
+                record=repaired_record,
+                summary=summary,
+            )
+    return payload, changed, summary

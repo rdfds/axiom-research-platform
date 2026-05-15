@@ -68,7 +68,7 @@ class AsOfSnapshotBuilder:
         gvkey: str,
         as_of_date: Union[str, datetime],
         lookback_quarters: int = 4
-    ) :
+    ) -> Optional[pd.DataFrame]:
         """
         Get the most recent fundamentals snapshot for a company as of a given date.
 
