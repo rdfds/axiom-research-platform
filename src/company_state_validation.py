@@ -41,3 +41,14 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
+def _close_enough(left: Any, right: Any, *, rel_tol: float = 0.01, abs_tol: float = 1.0) -> bool:
+    if left is None or right is None:
+        return left is right
+    left_f = _to_float(left)
+    right_f = _to_float(right)
+    if left_f is None or right_f is None:
+        return left == right
+    tolerance = max(abs_tol, abs(right_f) * rel_tol)
+    return abs(left_f - right_f) <= tolerance
+
+

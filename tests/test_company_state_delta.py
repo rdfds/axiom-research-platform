@@ -54,3 +54,8 @@ def test_update_regime_only():
     assert out["features"] == {}
 
 
+def test_update_both():
+    snap = _snapshot()
+    out = update_snapshot(snap, DummyBuilder(), "2026-02-28", mode="both")
+    assert "market.market_cap" in out["features"]
+    assert out["regime"]["credit_regime"] == "neutral"
