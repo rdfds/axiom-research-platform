@@ -149,3 +149,22 @@ def test_company_state_input_source_registry_has_methodology_execution_decision(
     assert metrics["market.credit_window_proxy"]["methodology_execution_decision"] == "retain_internal_inference"
 
 
+def test_company_state_input_source_registry_remaining_house_formula_set_is_explicit_and_stable():
+    payload = json.loads(REGISTRY_PATH.read_text())
+    metrics = payload["metrics"]
+    remaining = {
+        metric_id
+        for metric_id, rec in metrics.items()
+        if rec["methodology_execution_decision"] == "keep_externally_anchored_house_formula"
+    }
+
+    assert remaining == {
+        "capital_return.dividend_payer_flag",
+        "capital_return.last_dividend_event_type",
+        "operating.fcf_conversion",
+        "strategic.action_frequency_24m",
+        "strategic.last_action_type",
+        "strategic.recent_actions_count_24m",
+    }
+
+
