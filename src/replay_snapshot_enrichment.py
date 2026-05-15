@@ -507,3 +507,30 @@ def _supports_are_exactish(*records: Any) -> bool:
     return all(_is_exactish_support_mode(_support_mode(record)) for record in records if record is not None)
 
 
+def _market_cap_looks_suspicious(features: Dict[str, Any], *, reference_enterprise_value: Optional[float]) -> bool:
+    market_cap_record = _record(features, "market.market_cap_provider_direct", "market.market_cap")
+    if not isinstance(market_cap_record, dict):
+        return False
+    fallback_used = str(market_cap_record.get("fallback_used") or "").strip().lower()
+    component_breakdown = dict(market_cap_record.get("component_breakdown") or {})
+    age_days = _safe_float(component_breakdown.get("price_observation_age_days"))
+    confidence = _safe_float(market_cap_record.get("confidence"))
+    suspicious = False
+    if fallback_used == "price*shares" and (
+        (age_days is not None and age_days > _MAX_SAFE_PRICE_STALENESS_DAYS)
+        or (confidence is not None and confidence < 0.35)
+    ):
+        suspicious = True
+    current_enterprise_value = _record_value(features, "market.enterprise_value")
+    if (
+        not suspicious
+        and reference_enterprise_value is not None
+        and current_enterprise_value is not None
+        and reference_enterprise_value > 0.0
+    ):
+        ratio = current_enterprise_value / reference_enterprise_value
+        if ratio > _MAX_SAFE_REFERENCE_EV_RATIO or ratio < (1.0 / _MAX_SAFE_REFERENCE_EV_RATIO):
+            suspicious = True
+    return suspicious
+
+

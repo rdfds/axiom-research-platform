@@ -31,3 +31,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
