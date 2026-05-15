@@ -52,3 +52,13 @@ def _legacy_snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_t
     return snapshot_cache_root / f"company_id={company_id}" / f"snapshot_as_of={date_part.replace('-', '')}T{time_part}Z.json"
 
 
+def _snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_time: str) :
+    modern = _modern_snapshot_path(snapshot_cache_root, company_id=company_id, as_of_time=as_of_time)
+    if modern.exists():
+        return modern
+    legacy = _legacy_snapshot_path(snapshot_cache_root, company_id=company_id, as_of_time=as_of_time)
+    if legacy.exists():
+        return legacy
+    return modern
+
+
