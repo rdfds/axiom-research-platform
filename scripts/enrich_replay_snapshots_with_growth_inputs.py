@@ -35,3 +35,8 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _modern_snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_time: str) -> Path:
+    as_of_date = str(as_of_time).split("T", 1)[0]
+    return snapshot_cache_root / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
+
+
