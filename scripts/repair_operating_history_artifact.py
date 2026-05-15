@@ -592,3 +592,81 @@ def _find_best_prior_match(
     return sorted(candidates, key=lambda item: (item[0], item[1]["period_end"]))[0][1]
 
 
+def _linear_slope(values: list[float]) -> float | None:
+    if len(values) < 3:
+        return None
+    n = len(values)
+    x_mean = (n - 1) / 2.0
+    y_mean = sum(values) / n
+    denominator = sum((i - x_mean) ** 2 for i in range(n))
+    if denominator == 0:
+        return None
+    numerator = sum((i - x_mean) * (value - y_mean) for i, value in enumerate(values))
+    return numerator / denominator
+
+
+def repair_revenue_yoy_last_q(
+    *,
+    features: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    companyfacts_path: Path,
+    computed_at: str,
+    as_of_time: str,
+) -> bool:
+    target = features.get("operating.revenue_yoy_last_q")
+    if not target:
+        return False
+
+    rows, concept_name = _build_revenue_single_quarter_series(companyfacts, as_of_date=as_of_time[:10])
+    if len(rows) < 2:
+        return False
+    latest = rows[-1]
+    latest_end = latest["period_end"]
+    if not _should_refresh_existing_metric(
+        target,
+        replacement_period=latest_end,
+        period_key="latest_period",
+        fallback_prefix="sec_companyfacts_quarterly_revenue_history",
+    ):
+        return False
+    prior = _find_best_prior_match(
+        rows[:-1],
+        latest_end=latest_end,
+        min_days=270,
+        max_days=460,
+        target_days=365,
+    )
+    if prior is None or prior.get("value") in (None, 0) or latest.get("value") is None:
+        return False
+
+    latest_basis = str(latest.get("basis") or "")
+    prior_basis = str(prior.get("basis") or "")
+    quality_flags: list[str] = []
+    if latest_basis == "derived_from_ytd_delta" or prior_basis == "derived_from_ytd_delta":
+        quality_flags.append("quarter_value_derived_from_ytd_delta")
+    if latest_basis != prior_basis:
+        quality_flags.append("mixed_quarter_value_basis")
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = (float(latest["value"]) - float(prior["value"])) / float(prior["value"])
+    repaired["fallback_used"] = "sec_companyfacts_quarterly_revenue_history"
+    repaired["support_mode"] = "exact" if not quality_flags else "proxy_missing_component"
+    repaired["provenance"] = _companyfacts_provenance(companyfacts_path, as_of_time=as_of_time, computed_at=computed_at)
+    repaired["component_breakdown"] = {
+        "formula": "latest_quarter_revenue / prior_year_same_quarter_revenue - 1",
+        "latest_revenue": float(latest["value"]),
+        "prior_revenue": float(prior["value"]),
+        "latest_period": f"{latest_end.isoformat()} 00:00:00+00:00",
+        "prior_period": f"{prior['period_end'].isoformat()} 00:00:00+00:00",
+        "target_prior_period": f"{(latest_end - timedelta(days=365)).isoformat()} 00:00:00+00:00",
+        "matching_window_days": [270, 460],
+        "match_basis": "fiscal_quarter_period_end",
+        "latest_value_basis": latest_basis or None,
+        "prior_value_basis": prior_basis or None,
+        "source_concept": concept_name,
+    }
+    repaired["quality_flags"] = quality_flags or None
+    features["operating.revenue_yoy_last_q"] = repaired
+    return True
+
+

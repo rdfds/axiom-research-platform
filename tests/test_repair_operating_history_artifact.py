@@ -459,3 +459,37 @@ def test_repair_margin_history_metrics_from_ttm_margin_series(monkeypatch):
     assert vol["fallback_used"] == "sec_companyfacts_ttm_margin_history"
 
 
+def test_repair_margin_history_metrics_refreshes_stale_existing_companyfacts_values(monkeypatch):
+    features = {
+        "operating.ebitda_margin_trend_8q": _node("operating.ebitda_margin_trend_8q", 0.01, support_mode="exact", unit="slope"),
+        "operating.margin_volatility_8q": _node("operating.margin_volatility_8q", 0.03, support_mode="exact", unit="stddev"),
+    }
+    features["operating.ebitda_margin_trend_8q"]["fallback_used"] = "sec_companyfacts_ttm_margin_history"
+    features["operating.margin_volatility_8q"]["fallback_used"] = "sec_companyfacts_ttm_margin_history"
+    features["operating.ebitda_margin_trend_8q"]["component_breakdown"] = {"window_end": "2018-06-30 00:00:00+00:00"}
+    features["operating.margin_volatility_8q"]["component_breakdown"] = {"window_end": "2018-06-30 00:00:00+00:00"}
+
+    monkeypatch.setattr(
+        "scripts.repair_operating_history_artifact._build_ttm_margin_series",
+        lambda companyfacts, as_of_date: (
+            [
+                {"period_end": date(2023, 3, 31), "margin": 0.10, "exact": True},
+                {"period_end": date(2023, 6, 30), "margin": 0.11, "exact": True},
+                {"period_end": date(2023, 9, 30), "margin": 0.12, "exact": True},
+                {"period_end": date(2023, 12, 31), "margin": 0.13, "exact": True},
+            ],
+            "Revenues",
+        ),
+    )
+
+    repaired = repair_margin_history_metrics(
+        features=features,
+        companyfacts={},
+        companyfacts_path=Path("/tmp/CIK0000000009.json"),
+        computed_at="2026-03-23T00:00:00+00:00",
+        as_of_time="2024-12-31T00:00:00+00:00",
+    )
+
+    assert repaired is True
+    assert features["operating.ebitda_margin_trend_8q"]["component_breakdown"]["window_end"] == "2023-12-31 00:00:00+00:00"
+    assert features["operating.margin_volatility_8q"]["component_breakdown"]["window_end"] == "2023-12-31 00:00:00+00:00"
