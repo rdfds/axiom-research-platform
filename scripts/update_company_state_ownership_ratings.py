@@ -22,3 +22,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _sql_quote(s: str) -> str:
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def _asof_ts(asof: str) -> str:
+    return str(np.datetime64(asof))
+
+

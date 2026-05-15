@@ -52,3 +52,12 @@ def _close_enough(left: Any, right: Any, *, rel_tol: float = 0.01, abs_tol: floa
     return abs(left_f - right_f) <= tolerance
 
 
+def _metric_feature_names(snapshot: dict) -> List[str]:
+    features = snapshot.get("features", {}) or {}
+    return [
+        name
+        for name, feat in features.items()
+        if isinstance(feat, dict) and feat.get("metric_policy_id")
+    ]
+
+
