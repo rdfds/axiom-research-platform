@@ -97,3 +97,28 @@ def test_build_financial_facts_registry_derives_restricted_cash_and_revolver(tmp
     assert 380.0 in revolver
 
 
+def test_build_financial_facts_registry_maps_marketable_and_restricted_components(tmp_path: Path):
+    fin_root = tmp_path / "warehouse_financials"
+    out_root = tmp_path / "extracted_fact_registry_enriched"
+    _write_financial_rows(
+        fin_root,
+        2025,
+        [
+            _row(entity_id="ABC", line_item="MarketableSecuritiesCurrent", value=65.0),
+            _row(entity_id="ABC", line_item="RestrictedCashAndCashEquivalentsNoncurrent", value=14.0),
+            _row(entity_id="ABC", line_item="RestrictedCashAndCashEquivalentsCurrent", value=6.0),
+        ],
+    )
+
+    _run_registry_build(fin_root, out_root)
+    out = _load_output(out_root)
+
+    marketable = out[out["fact_type"] == "financial.marketable_securities"]["fact_value"].tolist()
+    restricted_current = out[out["fact_type"] == "financial.restricted_cash_current"]["fact_value"].tolist()
+    restricted_noncurrent = out[out["fact_type"] == "financial.restricted_cash_noncurrent"]["fact_value"].tolist()
+
+    assert 65.0 in marketable
+    assert 6.0 in restricted_current
+    assert 14.0 in restricted_noncurrent
+
+
