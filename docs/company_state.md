@@ -27,3 +27,11 @@ Columns:
 - `asof`
 - `built_at`
 
+## Example Rows
+
+| entity_id | feature_group | feature_key | value_num | value_str | value_ts |
+|---|---|---|---:|---|---|
+| 001004 | ts | price.close | 102.4 | NULL | NULL |
+| 001004 | fact | guidance_change | NULL | "down" | NULL |
+| 001004 | event | acquisition | NULL | NULL | 2023‑08‑12 |
+

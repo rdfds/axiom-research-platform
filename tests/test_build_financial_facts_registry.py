@@ -122,3 +122,40 @@ def test_build_financial_facts_registry_maps_marketable_and_restricted_component
     assert 14.0 in restricted_noncurrent
 
 
+def test_build_financial_facts_registry_revolver_keeps_component_availability(tmp_path: Path):
+    fin_root = tmp_path / "warehouse_financials"
+    out_root = tmp_path / "extracted_fact_registry_enriched"
+    _write_financial_rows(
+        fin_root,
+        2025,
+        [
+            _row(
+                entity_id="ABC",
+                line_item="LineOfCreditFacilityMaximumBorrowingCapacity",
+                value=500.0,
+                available_time="2025-02-01T00:00:00Z",
+                ingestion_time="2025-02-01T00:00:00Z",
+            ),
+            _row(
+                entity_id="ABC",
+                line_item="LineOfCreditFacilityAmountOutstanding",
+                value=120.0,
+                available_time="2025-02-01T00:00:00Z",
+                ingestion_time="2025-02-01T00:00:00Z",
+            ),
+            _row(
+                entity_id="ABC",
+                line_item="CashAndCashEquivalentsAtCarryingValue",
+                value=100.0,
+                available_time="2026-02-01T00:00:00Z",
+                ingestion_time="2026-02-01T00:00:00Z",
+            ),
+        ],
+    )
+
+    _run_registry_build(fin_root, out_root)
+    out = _load_output(out_root)
+    revolver = out[out["fact_type"] == "financial.revolver_undrawn"].copy()
+
+    assert revolver["fact_value"].tolist() == [380.0]
+    assert str(revolver.iloc[0]["published_at"]) == "2025-02-01 00:00:00+00:00"
