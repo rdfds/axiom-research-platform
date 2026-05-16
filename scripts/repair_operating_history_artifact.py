@@ -740,3 +740,77 @@ def repair_revenue_cagr_3y(
     return True
 
 
+def repair_margin_history_metrics(
+    *,
+    features: Dict[str, Any],
+    companyfacts: Dict[str, Any] | None,
+    companyfacts_path: Path,
+    computed_at: str,
+    as_of_time: str,
+) -> bool:
+    trend_target = features.get("operating.ebitda_margin_trend_8q")
+    vol_target = features.get("operating.margin_volatility_8q")
+    if not trend_target or not vol_target:
+        return False
+
+    rows, concept_name = _build_ttm_margin_series(companyfacts, as_of_date=as_of_time[:10])
+    rows = rows[-8:]
+    if len(rows) < 3:
+        return False
+    margins = [float(row["margin"]) for row in rows if row.get("margin") is not None]
+    if len(margins) < 3:
+        return False
+    trend_value = _linear_slope(margins)
+    if trend_value is None:
+        return False
+    volatility_value = statistics.pstdev(margins)
+    support_mode = "exact" if all(row.get("exact") for row in rows) else "proxy_missing_component"
+    latest_period = rows[-1]["period_end"]
+    should_refresh_trend = _should_refresh_existing_metric(
+        trend_target,
+        replacement_period=latest_period,
+        period_key="window_end",
+        fallback_prefix="sec_companyfacts_ttm_margin_history",
+    )
+    should_refresh_vol = _should_refresh_existing_metric(
+        vol_target,
+        replacement_period=latest_period,
+        period_key="window_end",
+        fallback_prefix="sec_companyfacts_ttm_margin_history",
+    )
+    if not should_refresh_trend and not should_refresh_vol:
+        return False
+    breakdown = {
+        "formula": "slope(last_8_quarterly_ttm_margins)",
+        "volatility_formula": "population_stddev(last_8_quarterly_ttm_margins)",
+        "observation_count": len(rows),
+        "window_start": f"{rows[0]['period_end'].isoformat()} 00:00:00+00:00",
+        "window_end": f"{rows[-1]['period_end'].isoformat()} 00:00:00+00:00",
+        "latest_margin": margins[-1],
+        "oldest_margin": margins[0],
+        "source_concept": concept_name,
+        "period_basis": "quarterly_ttm_observations",
+    }
+
+    if should_refresh_trend:
+        repaired_trend = _base_repaired_node(trend_target, computed_at=computed_at)
+        repaired_trend["value"] = trend_value
+        repaired_trend["fallback_used"] = "sec_companyfacts_ttm_margin_history"
+        repaired_trend["support_mode"] = support_mode
+        repaired_trend["provenance"] = _companyfacts_provenance(companyfacts_path, as_of_time=as_of_time, computed_at=computed_at)
+        repaired_trend["component_breakdown"] = breakdown
+        repaired_trend["quality_flags"] = None
+        features["operating.ebitda_margin_trend_8q"] = repaired_trend
+
+    if should_refresh_vol:
+        repaired_vol = _base_repaired_node(vol_target, computed_at=computed_at)
+        repaired_vol["value"] = volatility_value
+        repaired_vol["fallback_used"] = "sec_companyfacts_ttm_margin_history"
+        repaired_vol["support_mode"] = support_mode
+        repaired_vol["provenance"] = _companyfacts_provenance(companyfacts_path, as_of_time=as_of_time, computed_at=computed_at)
+        repaired_vol["component_breakdown"] = breakdown
+        repaired_vol["quality_flags"] = None
+        features["operating.margin_volatility_8q"] = repaired_vol
+    return True
+
+

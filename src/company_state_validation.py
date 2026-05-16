@@ -105,3 +105,132 @@ def _validate_metric_metadata(snapshot: dict) -> List[str]:
     return errors
 
 
+def _validate_metric_views(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+    features = snapshot.get("features", {}) or {}
+    for name, feat in features.items():
+        if not isinstance(feat, dict):
+            continue
+        if feat.get("view_type") != "decision":
+            continue
+        if name.endswith("_reported") or name.endswith("_market"):
+            continue
+        reported = features.get(f"{name}_reported")
+        market = features.get(f"{name}_market")
+        if not isinstance(reported, dict) or not isinstance(market, dict):
+            continue
+
+        applicability_status = str(feat.get("applicability_status") or "").lower()
+        support_mode = str(feat.get("support_mode") or "").lower()
+        if applicability_status == "unsupported":
+            if feat.get("value") is not None:
+                errors.append(f"unsupported_decision_metric_has_value:{name}")
+            if support_mode != "unsupported":
+                errors.append(f"unsupported_decision_metric_bad_support_mode:{name}")
+            continue
+
+        if feat.get("fallback_used") == "reported_view_fallback":
+            if not _close_enough(feat.get("value"), reported.get("value")):
+                errors.append(f"decision_reported_fallback_mismatch:{name}")
+            quality_flags = feat.get("quality_flags") or []
+            if "decision_uses_reported_view" not in quality_flags:
+                errors.append(f"decision_reported_fallback_missing_flag:{name}")
+            continue
+
+        if market.get("value") is not None and not _close_enough(feat.get("value"), market.get("value")):
+            errors.append(f"decision_view_not_equal_market:{name}")
+    return errors
+
+
+def _validate_metric_arithmetic(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+    total_debt_market = _feature(snapshot, "capital_structure.total_debt_market")
+    if total_debt_market:
+        breakdown = total_debt_market.get("component_breakdown") or {}
+        reported_debt = _to_float(breakdown.get("reported_debt"))
+        if reported_debt is not None:
+            expected = reported_debt
+            included_lease = breakdown.get("included_lease_liabilities")
+            if included_lease is not None:
+                expected += _to_float(included_lease) or 0.0
+            else:
+                expected += (_to_float(breakdown.get("lease_liabilities")) or 0.0) * (
+                    _to_float(breakdown.get("lease_weight")) or 0.0
+                )
+
+            included_supplier_finance = breakdown.get("included_supplier_finance")
+            if included_supplier_finance is not None:
+                expected += _to_float(included_supplier_finance) or 0.0
+            else:
+                expected += (_to_float(breakdown.get("supplier_finance")) or 0.0) * (
+                    _to_float(breakdown.get("supplier_finance_weight")) or 0.0
+                )
+
+            expected += (_to_float(breakdown.get("preferred_equity")) or 0.0) * (
+                _to_float(breakdown.get("preferred_weight")) or 0.0
+            )
+            expected += (_to_float(breakdown.get("convertibles")) or 0.0) * (
+                _to_float(breakdown.get("convertible_weight")) or 0.0
+            )
+            expected += (_to_float(breakdown.get("unfunded_pension")) or 0.0) * (
+                _to_float(breakdown.get("pension_weight")) or 0.0
+            )
+            if total_debt_market.get("value") is not None and not _close_enough(total_debt_market.get("value"), expected):
+                errors.append("market_total_debt_component_mismatch")
+
+    net_debt_market = _feature(snapshot, "capital_structure.net_debt_market")
+    if net_debt_market:
+        breakdown = net_debt_market.get("component_breakdown") or {}
+        economic_debt = _to_float(breakdown.get("economic_debt"))
+        usable_cash = _to_float(breakdown.get("usable_cash_market"))
+        if economic_debt is not None and usable_cash is not None:
+            expected = economic_debt - usable_cash
+            if net_debt_market.get("value") is not None and not _close_enough(net_debt_market.get("value"), expected):
+                errors.append("market_net_debt_component_mismatch")
+    return errors
+
+
+def check_invariants(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+
+    snap_asof = snapshot.get("as_of_time")
+    for k, feat in snapshot.get("features", {}).items():
+        feat_asof = feat.get("as_of_time")
+        if feat_asof and snap_asof and feat_asof > snap_asof:
+            errors.append(f"feature_asof_gt_snapshot:{k}")
+
+    cash = _value(snapshot, "liquidity.cash")
+    liq = _value(snapshot, "liquidity.liquidity_total")
+    if cash is not None and liq is not None and liq < cash:
+        errors.append("liquidity_total_lt_cash")
+
+    total_debt_reported = _value(snapshot, "capital_structure.total_debt_reported")
+    if total_debt_reported is None:
+        total_debt_reported = _value(snapshot, "capital_structure.total_debt")
+    net_debt_reported = _value(snapshot, "capital_structure.net_debt_reported")
+    if net_debt_reported is None:
+        net_debt_reported = _value(snapshot, "capital_structure.net_debt")
+    if total_debt_reported is not None and cash is not None and net_debt_reported is not None:
+        if abs((total_debt_reported - cash) - net_debt_reported) > max(1.0, abs(net_debt_reported) * 0.01):
+            errors.append("net_debt_mismatch")
+
+    total_debt_market = _value(snapshot, "capital_structure.total_debt_market")
+    net_debt_market = _value(snapshot, "capital_structure.net_debt_market")
+    usable_cash_market = _value(snapshot, "liquidity.usable_cash_market")
+    if total_debt_market is not None and usable_cash_market is not None and net_debt_market is not None:
+        if abs((total_debt_market - usable_cash_market) - net_debt_market) > max(1.0, abs(net_debt_market) * 0.01):
+            errors.append("market_net_debt_mismatch")
+
+    mcap = _value(snapshot, "market.market_cap")
+    ev = _value(snapshot, "market.enterprise_value")
+    if mcap is not None and total_debt_reported is not None and cash is not None and ev is not None:
+        target = mcap + total_debt_reported - cash
+        if abs(ev - target) > max(1.0, abs(ev) * 0.01):
+            errors.append("enterprise_value_mismatch")
+
+    errors.extend(_validate_metric_metadata(snapshot))
+    errors.extend(_validate_metric_views(snapshot))
+    errors.extend(_validate_metric_arithmetic(snapshot))
+    return errors
+
+

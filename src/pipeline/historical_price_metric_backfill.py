@@ -33,3 +33,13 @@ def default_raw_timeseries_path() -> Path:
     return _DEFAULT_RAW_TIMESERIES_PATH
 
 
+def _missing_metric_mask(frame: pd.DataFrame, cols: Iterable[str]) -> pd.Series:
+    mask = pd.Series(False, index=frame.index, dtype=bool)
+    for col in cols:
+        if col not in frame.columns:
+            mask = mask | True
+            continue
+        mask = mask | pd.to_numeric(frame[col], errors="coerce").isna()
+    return mask
+
+
