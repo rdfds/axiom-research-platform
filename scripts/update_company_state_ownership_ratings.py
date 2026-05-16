@@ -55,3 +55,9 @@ def _feature_record(
     }
 
 
+def _facts_source_sql(path: Path) -> str:
+    if path.is_dir():
+        return f"read_parquet('{path.as_posix()}/year=*/part.parquet', union_by_name=True)"
+    return f"read_parquet('{path.as_posix()}', union_by_name=True)"
+
+
