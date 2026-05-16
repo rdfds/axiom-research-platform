@@ -275,3 +275,18 @@ def validate_peer_zscores(snapshot: dict) -> List[str]:
     return errors
 
 
+def validate_peer_bands(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+    keys = [
+        "peer_context.valuation_band",
+        "peer_context.leverage_band",
+        "peer_context.margin_band",
+        "peer_context.action_rate_band",
+    ]
+    for k in keys:
+        val = _value(snapshot, k)
+        if val is None:
+            continue
+        if val not in ("q1", "q2", "q3", "q4"):
+            errors.append(f"peer_band_invalid:{k}")
+    return errors
