@@ -18,7 +18,7 @@ from src.named_company_snapshot_builder import (
 from src.named_company_metric_benchmarks import DEFAULT_TARGETS_PATH
 
 
-def main() :
+def main() -> int:
     parser = argparse.ArgumentParser(description="Build fresh named-company snapshots with the current market metric engine.")
     parser.add_argument("--targets-path", default=str(DEFAULT_TARGETS_PATH), help="Path to named-company target config.")
     parser.add_argument("--snapshot-root", default=str(DEFAULT_FRESH_SNAPSHOT_ROOT), help="Output keyed snapshot root.")
