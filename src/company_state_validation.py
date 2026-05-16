@@ -256,3 +256,22 @@ def validate_peer_percentiles(snapshot: dict) -> List[str]:
     return errors
 
 
+def validate_peer_zscores(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+    keys = [
+        "peer_context.valuation_z",
+        "peer_context.leverage_z",
+        "peer_context.margin_z",
+        "peer_context.action_rate_z",
+    ]
+    for k in keys:
+        val = _value(snapshot, k)
+        if val is None:
+            continue
+        try:
+            float(val)
+        except Exception:
+            errors.append(f"peer_zscore_not_numeric:{k}")
+    return errors
+
+

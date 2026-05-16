@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser(description="Run CompanyState checks suite.")
     parser.add_argument("--snapshot", required=True, help="Snapshot jsonl/parquet path")
     parser.add_argument("--sample", type=int, default=200)

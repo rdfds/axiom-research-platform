@@ -168,3 +168,65 @@ def test_company_state_input_source_registry_remaining_house_formula_set_is_expl
     }
 
 
+def test_company_state_input_source_registry_strict_market_defined_layer_is_explicit_and_stable():
+    registry = CompanyStateInputSourceRegistry(REGISTRY_PATH)
+    assert registry.strict_market_defined_metric_ids() == [
+        "capital_structure.debt_schedule_total",
+        "capital_structure.debt_schedule_vs_total_debt",
+        "capital_structure.fixed_charge_coverage",
+        "capital_structure.gross_leverage",
+        "capital_structure.interest_coverage",
+        "capital_structure.maturity_wall_ratio_24m",
+        "capital_structure.net_debt",
+        "capital_structure.net_leverage",
+        "capital_structure.rating_state",
+        "capital_structure.total_debt",
+        "liquidity.cash",
+        "liquidity.marketable_securities",
+        "liquidity.restricted_cash",
+        "liquidity.revolver_undrawn",
+        "liquidity.usable_cash",
+        "macro.real_gdp_growth_yoy",
+        "macro.real_gdp_growth_yoy_percentile_history",
+        "macro.sp500_pe_ttm",
+        "macro.sp500_pe_ttm_percentile_history",
+        "macro.us10y_treasury_yield",
+        "macro.us10y_treasury_yield_percentile_history",
+        "macro.us_hy_all_in_yield",
+        "macro.us_hy_all_in_yield_percentile_history",
+        "macro.us_ig_oas",
+        "macro.us_ig_oas_percentile_history",
+        "market.credit_spread_level",
+        "market.drawdown_90d",
+        "market.enterprise_value",
+        "market.ev_ebitda",
+        "market.fcf_yield",
+        "market.market_cap",
+        "market.pe_percentile_history",
+        "market.pe_percentile_peers",
+        "market.pe_ratio",
+        "market.volatility_30d",
+        "market.volatility_90d",
+        "operating.ebitda_margin_ttm",
+        "operating.revenue_cagr_3y",
+        "operating.revenue_yoy_last_q",
+        "ownership_governance.institutional_pct",
+        "ownership_governance.top5_holder_pct",
+    ]
+    assert registry.secondary_externally_anchored_metric_ids() == [
+        "capital_return.dividend_payer_flag",
+        "capital_return.last_dividend_event_type",
+        "operating.fcf_conversion",
+        "strategic.action_frequency_24m",
+        "strategic.last_action_type",
+        "strategic.recent_actions_count_24m",
+    ]
+    assert len(registry.internal_inference_metric_ids()) == 33
+
+
+def test_company_state_input_source_registry_input_layer_summary_counts():
+    registry = CompanyStateInputSourceRegistry(REGISTRY_PATH)
+    summary = registry.input_layer_summary()
+    assert summary["strict_market_defined"]["registry_metric_count"] == 41
+    assert summary["secondary_externally_anchored"]["registry_metric_count"] == 6
+    assert summary["internal_inference"]["registry_metric_count"] == 33
