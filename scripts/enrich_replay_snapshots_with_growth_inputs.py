@@ -62,3 +62,76 @@ def _snapshot_path(snapshot_cache_root: Path, *, company_id: str, as_of_time: st
     return modern
 
 
+def main() -> None:
+    args = _parse_args()
+    manifest_path = Path(args.manifest_path)
+    snapshot_cache_root = Path(args.snapshot_cache_root)
+    companyfacts_root = Path(args.companyfacts_root)
+    entity_identifier_path = Path(args.entity_identifier_path) if args.entity_identifier_path else None
+    crsp_daily_root = Path(args.crsp_daily_root) if args.crsp_daily_root else None
+    crsp_market_cache_path = Path(args.crsp_market_cache_path) if args.crsp_market_cache_path else None
+    summary_path = Path(args.summary_path) if args.summary_path else None
+
+    manifest = _load_json(manifest_path)
+    cases = list(manifest.get("cases") or manifest.get("selection_rankings") or [])
+    summaries: List[Dict[str, Any]] = []
+    changed_count = 0
+    for case in cases:
+        company_id = str(case.get("company_id") or "").strip()
+        as_of_time = str(case.get("as_of_time") or "").strip()
+        if not company_id or not as_of_time:
+            continue
+        snapshot_path = _snapshot_path(snapshot_cache_root, company_id=company_id, as_of_time=as_of_time)
+        if not snapshot_path.exists():
+            summaries.append(
+                {
+                    "company_id": company_id,
+                    "as_of_time": as_of_time,
+                    "snapshot_path": str(snapshot_path),
+                    "exists": False,
+                    "changed": False,
+                }
+            )
+            continue
+        payload = _load_json(snapshot_path)
+        enriched, changed, summary = enrich_snapshot_with_revenue_growth_inputs(
+            payload,
+            companyfacts_root=companyfacts_root,
+            entity_identifier_path=entity_identifier_path,
+            crsp_market_cache_path=crsp_market_cache_path,
+            crsp_daily_root=crsp_daily_root,
+            company_id=company_id,
+            as_of_time=as_of_time,
+        )
+        if changed:
+            snapshot_path.write_text(json.dumps(enriched, default=str))
+            changed_count += 1
+        summaries.append(
+            {
+                "company_id": company_id,
+                "as_of_time": as_of_time,
+                "snapshot_path": str(snapshot_path),
+                "exists": True,
+                "changed": changed,
+                "metrics": summary.get("metrics") or {},
+            }
+        )
+
+    aggregate = {
+        "manifest_path": str(manifest_path),
+        "snapshot_cache_root": str(snapshot_cache_root),
+        "companyfacts_root": str(companyfacts_root),
+        "entity_identifier_path": str(entity_identifier_path) if entity_identifier_path else None,
+        "crsp_daily_root": str(crsp_daily_root) if crsp_daily_root else None,
+        "crsp_market_cache_path": str(crsp_market_cache_path) if crsp_market_cache_path else None,
+        "requested_cases": len(cases),
+        "touched_cases": len(summaries),
+        "changed_cases": changed_count,
+        "case_summaries": summaries,
+    }
+    if summary_path is not None:
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(aggregate, indent=2, sort_keys=True))
+    print(json.dumps(aggregate, indent=2, sort_keys=True))
+
+
