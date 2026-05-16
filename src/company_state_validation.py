@@ -234,3 +234,25 @@ def check_invariants(snapshot: dict) -> List[str]:
     return errors
 
 
+def validate_peer_percentiles(snapshot: dict) -> List[str]:
+    errors: List[str] = []
+    keys = [
+        "peer_context.valuation_percentile",
+        "peer_context.leverage_percentile",
+        "peer_context.margin_percentile",
+        "peer_context.action_rate_percentile",
+    ]
+    for k in keys:
+        val = _value(snapshot, k)
+        if val is None:
+            continue
+        try:
+            v = float(val)
+        except Exception:
+            errors.append(f"peer_percentile_not_numeric:{k}")
+            continue
+        if v < 0 or v > 100:
+            errors.append(f"peer_percentile_out_of_range:{k}")
+    return errors
+
+
