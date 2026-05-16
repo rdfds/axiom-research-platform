@@ -834,3 +834,49 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    companyfacts_root = Path(args.companyfacts_root)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            entity_id = str(row.get("company_id") or "")
+            companyfacts_path = companyfacts_root / f"CIK{entity_id}.json"
+            companyfacts = _load_companyfacts(companyfacts_path)
+            features = row.get("features") or {}
+            repair_revenue_yoy_last_q(
+                features=features,
+                companyfacts=companyfacts,
+                companyfacts_path=companyfacts_path,
+                computed_at=computed_at,
+                as_of_time=str(row.get("as_of_time") or ""),
+            )
+            repair_revenue_cagr_3y(
+                features=features,
+                companyfacts=companyfacts,
+                companyfacts_path=companyfacts_path,
+                computed_at=computed_at,
+                as_of_time=str(row.get("as_of_time") or ""),
+            )
+            repair_margin_history_metrics(
+                features=features,
+                companyfacts=companyfacts,
+                companyfacts_path=companyfacts_path,
+                computed_at=computed_at,
+                as_of_time=str(row.get("as_of_time") or ""),
+            )
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        summary_path = Path(args.summary_out)
+        summary_path.write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired operating-history metrics -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()
