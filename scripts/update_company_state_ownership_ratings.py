@@ -261,3 +261,14 @@ def _rating_score(rating: Optional[str]) -> Optional[float]:
     return None
 
 
+def _normalize_watch(value: Any) -> Any:
+    if value is None:
+        return None
+    s = str(value).strip().lower()
+    if s in ("y", "yes", "true", "watch", "negative", "positive"):
+        return True
+    if s in ("n", "no", "false", "none", "stable"):
+        return False
+    return None
+
+
