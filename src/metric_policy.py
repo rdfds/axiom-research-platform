@@ -52,3 +52,15 @@ def _fallback_policy_payload() -> Dict[str, Any]:
     }
 
 
+@dataclass
+class TaxonomyContext:
+    company_id: str
+    archetype: str
+    sector: Optional[str]
+    subsector: Optional[str]
+    override_level_applied: str
+    confidence: float
+    quality_flags: List[str] = field(default_factory=list)
+    support_mode: str = "exact"
+
+
