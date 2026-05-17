@@ -26,3 +26,11 @@ def test_estimate_case_cost_increases_for_higher_friction_family_and_short_borro
     assert shorted["components_bps"]["short_borrow_carry"] > 0.0
 
 
+def test_resolve_conservative_cost_model_exposes_expected_metadata():
+    model = resolve_transaction_cost_model("manual_replay_conservative_v1")
+
+    payload = model.to_dict()
+
+    assert payload["key"] == "manual_replay_conservative_v1"
+    assert payload["annual_financing_bps"] == 20.0
+    assert "conservative" in payload["label"].lower()

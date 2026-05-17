@@ -102,3 +102,34 @@ class TransactionCostModel:
         }
 
 
+def default_transaction_cost_models() -> Dict[str, TransactionCostModel]:
+    return {
+        "manual_replay_event_equal_weight_v1": TransactionCostModel(
+            key="manual_replay_event_equal_weight_v1",
+            label="Manual Replay Event-Driven Equal-Weight Costs",
+            commission_bps=1.0,
+            half_spread_bps=4.0,
+            slippage_bps=4.0,
+            market_impact_bps=3.0,
+            annual_short_borrow_bps=30.0,
+            annual_financing_bps=0.0,
+            description=(
+                "Lightweight default friction model for historical recommendation replay. "
+                "Designed to keep us honest about turnover and implementation drag without "
+                "pretending we already have a full execution simulator."
+            ),
+        ),
+        "manual_replay_conservative_v1": TransactionCostModel(
+            key="manual_replay_conservative_v1",
+            label="Manual Replay Conservative Friction",
+            commission_bps=1.5,
+            half_spread_bps=5.0,
+            slippage_bps=6.0,
+            market_impact_bps=4.0,
+            annual_short_borrow_bps=60.0,
+            annual_financing_bps=20.0,
+            description="More conservative cost assumption for higher-friction governance and capital-structure moves.",
+        ),
+    }
+
+
