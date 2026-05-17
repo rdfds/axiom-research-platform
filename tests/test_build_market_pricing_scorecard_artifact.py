@@ -24,3 +24,11 @@ def _node(name, value, *, support_mode="exact", unit="ratio"):
     }
 
 
+def _row(company_id, features):
+    return {
+        "company_id": company_id,
+        "as_of_time": "2024-12-31T00:00:00+00:00",
+        "features": features,
+    }
+
+

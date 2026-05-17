@@ -33,3 +33,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
