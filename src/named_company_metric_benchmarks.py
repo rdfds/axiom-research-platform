@@ -159,3 +159,91 @@ def _snapshot_metric_packet(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def generate_named_company_metric_benchmarks(
+    targets_path: Path | str | None = None,
+    *,
+    snapshot_root: Path | str = DEFAULT_SNAPSHOT_ROOT,
+    fundamentals_path: Path | str = DEFAULT_FUNDAMENTALS_PATH,
+    case_ids: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    payload = load_named_company_targets(targets_path)
+    selected_case_ids = _clean_case_ids(case_ids)
+    targets = [
+        target for target in payload['targets']
+        if selected_case_ids is None or str(target.get('case_id')) in selected_case_ids
+    ]
+
+    snapshot_root_path = Path(snapshot_root)
+    fundamentals_path = Path(fundamentals_path)
+    results: List[Dict[str, Any]] = []
+    summary = {
+        'total_targets': len(targets),
+        'ready_packets': 0,
+        'blocked_dataless_snapshots': 0,
+        'missing_snapshots': 0,
+    }
+
+    for target in targets:
+        ticker = str(target.get('ticker') or '').strip()
+        company_id = str(target.get('company_id') or '').strip()
+        as_of_date = str(target.get('as_of_date') or '').strip()
+        has_embedded_context = any(
+            target.get(field)
+            for field in ('sector', 'subsector')
+        )
+        fundamentals = {}
+        if ticker and not has_embedded_context:
+            fundamentals = _fundamentals_context(ticker, fundamentals_path)
+        expected_archetype = target.get('expected_archetype')
+        rules = dict(target.get('policy_rules') or {})
+        taxonomy_support_mode = str(target.get('taxonomy_support_mode') or 'exact')
+        taxonomy_override_level = str(target.get('taxonomy_override_level') or 'subsector')
+        if not expected_archetype or not rules:
+            from .metric_policy import MetricPolicyEngine
+
+            policy = MetricPolicyEngine()
+            entity_context = _entity_context_for_policy(target, fundamentals)
+            taxonomy = policy.resolve_taxonomy(company_id, entity_row=entity_context, fingerprints={})
+            expected_archetype = expected_archetype or taxonomy.archetype
+            if not rules:
+                rules = policy.archetype_rules(str(expected_archetype))
+            if 'taxonomy_support_mode' not in target:
+                taxonomy_support_mode = taxonomy.support_mode
+            if 'taxonomy_override_level' not in target:
+                taxonomy_override_level = taxonomy.override_level_applied
+        snapshot_path = _snapshot_path(snapshot_root_path, company_id, as_of_date)
+        materialization = _snapshot_materialization(snapshot_path)
+        result: Dict[str, Any] = {
+            'case_id': target.get('case_id'),
+            'company_id': company_id,
+            'ticker': ticker,
+            'display_name': target.get('display_name') or fundamentals.get('company_name'),
+            'as_of_date': as_of_date,
+            'sector': fundamentals.get('sector') or target.get('sector'),
+            'subsector': fundamentals.get('subsector') or target.get('subsector'),
+            'expected_archetype': expected_archetype,
+            'taxonomy_support_mode': taxonomy_support_mode,
+            'taxonomy_override_level': taxonomy_override_level,
+            'policy_rules': rules,
+            'snapshot_path': str(snapshot_path),
+            'snapshot_exists': materialization['exists'],
+            'snapshot_materialized': materialization['materialized'],
+            'snapshot_blocks': materialization['blocks'],
+            'benchmark_status': 'ready' if materialization['materialized'] else ('missing_snapshot' if not materialization['exists'] else 'blocked_dataless_snapshot'),
+        }
+        if not materialization['exists']:
+            summary['missing_snapshots'] += 1
+        elif not materialization['materialized']:
+            summary['blocked_dataless_snapshots'] += 1
+        else:
+            snapshot = json.loads(snapshot_path.read_text())
+            result.update(_snapshot_metric_packet(snapshot))
+            summary['ready_packets'] += 1
+        results.append(result)
+
+    return {
+        'targets_path': payload['path'],
+        'metadata': payload['metadata'],
+        'summary': summary,
+        'results': results,
+    }

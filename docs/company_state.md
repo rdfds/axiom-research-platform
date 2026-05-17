@@ -46,3 +46,8 @@ python -u scripts/build_company_state.py \
   --memory 10GB
 ```
 
+## Wide Export (Optional)
+
+Wide format is convenient for modeling, but heavier.
+Use `scripts/export_company_state_wide.py`.
+
