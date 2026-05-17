@@ -175,3 +175,53 @@ def _load_ownership_map(
     return out
 
 
+def _load_rating_map(ratings_path: Path, asof: str) -> Dict[str, Dict[str, Any]]:
+    if not ratings_path.exists():
+        return {}
+    con = duckdb.connect()
+    asof_ts = _asof_ts(asof)
+    query = f"""
+    WITH r AS (
+      SELECT
+        CAST(company_id AS VARCHAR) AS company_id,
+        CAST(rating_symbol AS VARCHAR) AS rating_symbol,
+        CAST(current_rating_symbol AS VARCHAR) AS current_rating_symbol,
+        CAST(outlook AS VARCHAR) AS outlook,
+        CAST(creditwatch AS VARCHAR) AS creditwatch,
+        CAST(source_type AS VARCHAR) AS source_type,
+        CAST(artifact_id AS VARCHAR) AS artifact_id,
+        try_cast(rating_date AS TIMESTAMP) AS rating_date,
+        try_cast(published_at AS TIMESTAMP) AS published_at,
+        try_cast(ingested_at AS TIMESTAMP) AS ingested_at,
+        try_cast(effective_at AS TIMESTAMP) AS effective_at,
+        row_number() OVER (
+          PARTITION BY CAST(company_id AS VARCHAR)
+          ORDER BY
+            coalesce(try_cast(rating_date AS TIMESTAMP), try_cast(effective_at AS TIMESTAMP), try_cast(published_at AS TIMESTAMP)) DESC NULLS LAST,
+            coalesce(try_cast(published_at AS TIMESTAMP), try_cast(ingested_at AS TIMESTAMP)) DESC NULLS LAST
+        ) AS rn
+      FROM read_parquet('{ratings_path.as_posix()}', union_by_name=True)
+      WHERE (published_at IS NULL OR try_cast(published_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (ingested_at IS NULL OR try_cast(ingested_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (effective_at IS NULL OR try_cast(effective_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (rating_date IS NULL OR try_cast(rating_date AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+    )
+    SELECT * FROM r WHERE rn = 1
+    """
+    df = con.execute(query).df()
+    out: Dict[str, Dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        cid = str(row.get("company_id"))
+        out[cid] = {
+            "rating_symbol": row.get("rating_symbol"),
+            "current_rating_symbol": row.get("current_rating_symbol"),
+            "outlook": row.get("outlook"),
+            "creditwatch": row.get("creditwatch"),
+            "source_type": row.get("source_type"),
+            "artifact_id": row.get("artifact_id"),
+            "published_at": row.get("published_at"),
+            "ingested_at": row.get("ingested_at"),
+        }
+    return out
+
+
