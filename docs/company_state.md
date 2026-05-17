@@ -35,3 +35,14 @@ Columns:
 | 001004 | fact | guidance_change | NULL | "down" | NULL |
 | 001004 | event | acquisition | NULL | NULL | 2023‑08‑12 |
 
+## Rebuild (DuckDB Fast Path)
+
+```bash
+python -u scripts/build_company_state.py \
+  --asof 2024-12-31 \
+  --engine duckdb \
+  --format long \
+  --threads 6 \
+  --memory 10GB
+```
+

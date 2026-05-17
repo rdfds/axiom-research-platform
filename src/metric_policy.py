@@ -38,3 +38,17 @@ def _default_policy_path() -> Path:
     return ROOT / "configs" / "metric_policies" / "market_metric_policy_v1.json"
 
 
+def _fallback_policy_payload() -> Dict[str, Any]:
+    return {
+        "policy_id": "market_metric_policy_v1",
+        "version": 1,
+        "primary_credit_anchor": "moodys_primary_v1",
+        "taxonomy": {
+            "sector_field_candidates": list(_FALLBACK_SECTOR_FIELD_CANDIDATES),
+            "subsector_field_candidates": list(_FALLBACK_SUBSECTOR_FIELD_CANDIDATES),
+            "archetypes": {"generic_corporate": {"rules": {}}},
+        },
+        "metrics": {},
+    }
+
+

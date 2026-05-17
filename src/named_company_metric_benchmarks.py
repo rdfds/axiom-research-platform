@@ -118,3 +118,44 @@ def _metric_excerpt(features: Dict[str, Any], name: str) -> Optional[Dict[str, A
     }
 
 
+def _snapshot_metric_packet(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    features = dict(snapshot.get('features') or {})
+    metric_names = [
+        'capital_structure.total_debt_reported',
+        'capital_structure.total_debt_market',
+        'capital_structure.total_debt',
+        'capital_structure.net_debt_reported',
+        'capital_structure.net_debt_market',
+        'capital_structure.net_debt',
+        'capital_structure.gross_leverage_market',
+        'capital_structure.net_leverage_market',
+        'capital_structure.interest_coverage',
+        'capital_structure.fixed_charge_coverage',
+        'market.pe_ratio',
+        'market.pe_percentile_peers',
+        'market.pe_percentile_history',
+        'macro.sp500_pe_ttm',
+        'macro.sp500_pe_ttm_percentile_history',
+        'macro.us10y_treasury_yield',
+        'macro.us10y_treasury_yield_percentile_history',
+        'macro.us_ig_oas',
+        'macro.us_ig_oas_percentile_history',
+        'macro.us_hy_all_in_yield',
+        'macro.us_hy_all_in_yield_percentile_history',
+        'macro.real_gdp_growth_yoy',
+        'macro.real_gdp_growth_yoy_percentile_history',
+        'liquidity.available_for_actions_market',
+        'liquidity.runway_months',
+        'capital_structure.maturity_wall_ratio_24m',
+        'capital_structure.refi_pressure_flag',
+    ]
+    return {
+        'market_metric_context': dict((snapshot.get('provenance') or {}).get('market_metric_context') or {}),
+        'metrics': {
+            name: _metric_excerpt(features, name)
+            for name in metric_names
+            if _metric_excerpt(features, name) is not None
+        },
+    }
+
+

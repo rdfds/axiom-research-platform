@@ -61,3 +61,117 @@ def _facts_source_sql(path: Path) -> str:
     return f"read_parquet('{path.as_posix()}', union_by_name=True)"
 
 
+def _load_ownership_map(
+    ownership_path: Path,
+    facts_path: Optional[Path],
+    asof: str,
+) -> Dict[str, Dict[str, Any]]:
+    if not ownership_path.exists():
+        return {}
+    con = duckdb.connect()
+    asof_ts = _asof_ts(asof)
+    base_own = f"""
+    WITH own AS (
+      SELECT
+        CAST(company_id AS VARCHAR) AS company_id,
+        try_cast(total_13f_shares AS DOUBLE) AS total_13f_shares,
+        try_cast(top5_13f_shares AS DOUBLE) AS top5_13f_shares,
+        CAST(source_type AS VARCHAR) AS source_type,
+        CAST(artifact_id AS VARCHAR) AS artifact_id,
+        try_cast(published_at AS TIMESTAMP) AS published_at,
+        try_cast(ingested_at AS TIMESTAMP) AS ingested_at,
+        try_cast(effective_at AS TIMESTAMP) AS effective_at,
+        try_cast(report_date AS TIMESTAMP) AS report_date,
+        try_cast(filing_date AS TIMESTAMP) AS filing_date,
+        row_number() OVER (
+          PARTITION BY CAST(company_id AS VARCHAR)
+          ORDER BY
+            coalesce(try_cast(report_date AS TIMESTAMP), try_cast(effective_at AS TIMESTAMP)) DESC NULLS LAST,
+            coalesce(try_cast(filing_date AS TIMESTAMP), try_cast(published_at AS TIMESTAMP), try_cast(ingested_at AS TIMESTAMP)) DESC NULLS LAST
+        ) AS rn
+      FROM read_parquet('{ownership_path.as_posix()}', union_by_name=True)
+      WHERE (published_at IS NULL OR try_cast(published_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (ingested_at IS NULL OR try_cast(ingested_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (effective_at IS NULL OR try_cast(effective_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+    )
+    """
+    query = None
+    if facts_path is not None and facts_path.exists():
+        facts_source = _facts_source_sql(facts_path)
+        shares_types = [
+            "financial.shares_basic",
+            "financial.shares_outstanding",
+            "financial.shares_out",
+            "shares_outstanding",
+            "financial.shares_diluted",
+            "financial.diluted_shares_outstanding",
+            "diluted_shares_outstanding",
+        ]
+        shares_in = ", ".join(_sql_quote(x) for x in shares_types)
+        query = base_own + f"""
+    ,
+    shares AS (
+      SELECT
+        CAST(entity_id AS VARCHAR) AS company_id,
+        try_cast(fact_value AS DOUBLE) AS shares_out,
+        row_number() OVER (
+          PARTITION BY CAST(entity_id AS VARCHAR)
+          ORDER BY coalesce(try_cast(published_at AS TIMESTAMP), try_cast(effective_at AS TIMESTAMP), try_cast(ingested_at AS TIMESTAMP)) DESC NULLS LAST
+        ) AS rn
+      FROM {facts_source}
+      WHERE CAST(fact_type AS VARCHAR) IN ({shares_in})
+        AND (published_at IS NULL OR try_cast(published_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+        AND (ingested_at IS NULL OR try_cast(ingested_at AS TIMESTAMP) <= TIMESTAMP '{asof_ts}')
+    )
+    SELECT
+      o.company_id,
+      o.total_13f_shares,
+      o.top5_13f_shares,
+      s.shares_out,
+      o.source_type,
+      o.artifact_id,
+      o.published_at,
+      o.ingested_at
+    FROM own o
+    LEFT JOIN shares s
+      ON o.company_id = s.company_id AND s.rn = 1
+    WHERE o.rn = 1
+    """
+    else:
+        query = base_own + """
+    SELECT
+      o.company_id,
+      o.total_13f_shares,
+      o.top5_13f_shares,
+      CAST(NULL AS DOUBLE) AS shares_out,
+      o.source_type,
+      o.artifact_id,
+      o.published_at,
+      o.ingested_at
+    FROM own o
+    WHERE o.rn = 1
+    """
+    df = con.execute(query).df()
+    out: Dict[str, Dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        cid = str(row.get("company_id"))
+        total = row.get("total_13f_shares")
+        top5 = row.get("top5_13f_shares")
+        shares_out = row.get("shares_out")
+        top5_pct = None
+        inst_pct = None
+        if total is not None and not np.isnan(total) and total > 0 and top5 is not None and not np.isnan(top5):
+            top5_pct = float(np.clip(float(top5) / float(total), 0.0, 1.0))
+        if total is not None and not np.isnan(total) and shares_out is not None and not np.isnan(shares_out) and shares_out > 0:
+            inst_pct = float(np.clip(float(total) / float(shares_out), 0.0, 2.0))
+        out[cid] = {
+            "top5_pct": top5_pct,
+            "inst_pct": inst_pct,
+            "source_type": row.get("source_type"),
+            "artifact_id": row.get("artifact_id"),
+            "published_at": row.get("published_at"),
+            "ingested_at": row['ingested_at'],
+        }
+    return out
+
+
