@@ -356,3 +356,24 @@ class MetricPolicyEngine:
         return best_score, best_level
 
 
+def _clean_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _looks_like_financial_institution(
+    *,
+    sector: Optional[str],
+    subsector: Optional[str],
+    taxonomy_text: str,
+    sic_text: str,
+    naics_text: str,
+) -> bool:
+    combined = " ".join(part for part in [sector, subsector, taxonomy_text] if part).lower()
+    if any(token in combined for token in ["financial", "bank", "insurance", "capital markets", "asset management", "consumer finance", "reit"]):
+        return True
+    return sic_text.startswith(("60", "61", "62", "63", "64", "65", "67")) or naics_text.startswith(("52", "53"))
+
+

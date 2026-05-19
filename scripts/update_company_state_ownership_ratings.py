@@ -283,3 +283,109 @@ def _to_str(value: Any) -> Optional[str]:
     return str(value)
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Fast update of ownership/rating features in snapshot JSONL.")
+    parser.add_argument("--in-path", required=True)
+    parser.add_argument("--out-path", required=True)
+    parser.add_argument("--asof", required=True)
+    parser.add_argument("--ownership-path", default="data/inputs_layer/ownership_13f_summary.parquet")
+    parser.add_argument("--issuer-ratings-path", default="data/inputs_layer/issuer_rating_history.parquet")
+    parser.add_argument("--facts-path", default=None, help="Optional facts path for institutional_pct denominator")
+    args = parser.parse_args()
+
+    in_path = Path(args.in_path)
+    out_path = Path(args.out_path)
+    ownership_path = Path(args.ownership_path)
+    issuer_ratings_path = Path(args.issuer_ratings_path)
+    facts_path = Path(args.facts_path) if args.facts_path else None
+
+    ownership = _load_ownership_map(ownership_path, facts_path, args.asof)
+    ratings = _load_rating_map(issuer_ratings_path, args.asof)
+    print(f"[load] ownership companies={len(ownership)} ratings companies={len(ratings)}")
+
+    tmp_out = out_path.with_suffix(out_path.suffix + ".tmp")
+    updated = 0
+    with in_path.open("r") as fin, tmp_out.open("w") as fout:
+        for line in fin:
+            if not line.strip():
+                continue
+            snap = json.loads(line)
+            cid = str(snap.get("company_id"))
+            asof_time = snap.get("as_of_time", args.asof)
+            feats = snap.setdefault("features", {})
+
+            own = ownership.get(cid)
+            if own:
+                prov = [
+                    {
+                        "artifact_type": "RawDocument",
+                        "artifact_id": _to_str(own.get("artifact_id")) or f"wrds_13f:{cid}",
+                        "source": _to_str(own.get("source_type")) or "wrds_13f",
+                        "published_at": _to_str(own.get("published_at")),
+                        "ingested_at": _to_str(own.get("ingested_at")),
+                        "hash": None,
+                    }
+                ]
+                feats["ownership_governance.top5_holder_pct"] = _feature_record(
+                    name="ownership_governance.top5_holder_pct",
+                    value=own.get("top5_pct"),
+                    unit="ratio",
+                    as_of_time=asof_time,
+                    confidence=0.65 if own.get("top5_pct") is not None else None,
+                    provenance=prov,
+                    missing_reason="not_disclosed" if own.get("top5_pct") is None else None,
+                    window={"type": "asof", "length_days": 0},
+                )
+                feats["ownership_governance.institutional_pct"] = _feature_record(
+                    name="ownership_governance.institutional_pct",
+                    value=own.get("inst_pct"),
+                    unit="ratio",
+                    as_of_time=asof_time,
+                    confidence=0.6 if own.get("inst_pct") is not None else None,
+                    provenance=prov,
+                    missing_reason="not_disclosed" if own.get("inst_pct") is None else None,
+                    window={"type": "asof", "length_days": 0},
+                )
+
+            rt = ratings.get(cid)
+            if rt:
+                rating = rt.get("rating_symbol") or rt.get("current_rating_symbol")
+                payload = {
+                    "rating": _to_str(rating),
+                    "outlook": _to_str(rt.get("outlook")),
+                    "watchlist": _normalize_watch(rt.get("creditwatch")),
+                    "score": _rating_score(_to_str(rating)),
+                }
+                prov = [
+                    {
+                        "artifact_type": "ExtractedFact",
+                        "artifact_id": _to_str(rt.get("artifact_id")) or f"issuer_rating:{cid}",
+                        "source": _to_str(rt.get("source_type")) or "issuer_ratings",
+                        "published_at": _to_str(rt.get("published_at")),
+                        "ingested_at": _to_str(rt.get("ingested_at")),
+                        "hash": None,
+                    }
+                ]
+                feats["capital_structure.rating_state"] = _feature_record(
+                    name="capital_structure.rating_state",
+                    value=payload,
+                    unit="rating",
+                    as_of_time=asof_time,
+                    confidence=0.72 if payload.get("rating") is not None else 0.55,
+                    provenance=prov,
+                    missing_reason="not_disclosed" if payload.get("rating") is None else None,
+                )
+
+            prov_root = snap.setdefault("provenance", {})
+            inputs_used = prov_root.setdefault("inputs_used", {})
+            inputs_used["ownership"] = str(ownership_path)
+            inputs_used["issuer_ratings"] = str(issuer_ratings_path)
+            updated += 1
+            fout.write(json.dumps(snap) + "\n")
+
+    tmp_out.replace(out_path)
+    print(f"Wrote updated snapshots -> {out_path} rows={updated}")
+
+
+if __name__ == "__main__":
+    main()

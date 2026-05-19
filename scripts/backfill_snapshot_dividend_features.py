@@ -112,3 +112,27 @@ def _load_identifier_maps(entity_identifier_path: Path) :
     return identifier_to_entity, entity_to_identifiers
 
 
+def _resolve_tickers(
+    company_ids: List[str],
+    identifier_to_entity: Dict[str, str],
+    entity_to_identifiers: Dict[str, List[str]],
+) -> pd.DataFrame:
+    rows = []
+    for company_id in company_ids:
+        cid = str(company_id)
+        canonical = identifier_to_entity.get(cid, cid)
+        aliases = list(entity_to_identifiers.get(canonical, []))
+        if cid not in aliases:
+            aliases.append(cid)
+        if canonical not in aliases:
+            aliases.append(canonical)
+        seen = set()
+        for alias in aliases:
+            alias_s = str(alias)
+            if alias_s in seen or not alias_s.isalpha():
+                continue
+            seen.add(alias_s)
+            rows.append({"snapshot_company_id": cid, "ticker": alias_s.upper()})
+    return pd.DataFrame(rows)
+
+
