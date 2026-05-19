@@ -133,3 +133,11 @@ def default_transaction_cost_models() -> Dict[str, TransactionCostModel]:
     }
 
 
+def resolve_transaction_cost_model(model_key: Optional[str] = None) -> TransactionCostModel:
+    models = default_transaction_cost_models()
+    key = str(model_key or "manual_replay_event_equal_weight_v1")
+    if key not in models:
+        raise KeyError(f"Unknown transaction cost model '{key}'. Available: {sorted(models)}")
+    return models[key]
+
+
