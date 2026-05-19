@@ -76,3 +76,21 @@ def iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
                 yield json.loads(line)
 
 
+def _node_value(node: Dict[str, Any] | None) -> float | None:
+    if not node:
+        return None
+    value = node.get("value")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _node_support(node: Dict[str, Any] | None) -> str:
+    if not node:
+        return "unsupported"
+    return str(node.get("support_mode") or "unsupported")
+
+
