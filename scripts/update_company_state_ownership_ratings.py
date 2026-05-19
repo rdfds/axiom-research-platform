@@ -170,7 +170,7 @@ def _load_ownership_map(
             "source_type": row.get("source_type"),
             "artifact_id": row.get("artifact_id"),
             "published_at": row.get("published_at"),
-            "ingested_at": row['ingested_at'],
+            "ingested_at": row.get("ingested_at"),
         }
     return out
 

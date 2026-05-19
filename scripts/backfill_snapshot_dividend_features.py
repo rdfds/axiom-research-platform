@@ -60,3 +60,55 @@ def _load_company_ids(snapshot_dir: Path) -> List[str]:
     return ids
 
 
+def _load_identifier_maps(entity_identifier_path: Path) :
+    con = duckdb.connect()
+    df = con.execute(
+        "SELECT entity_id, identifier_value, identifier_type "
+        f"FROM read_parquet('{entity_identifier_path.as_posix()}', union_by_name=True)"
+    ).df()
+    df = df.dropna(subset=["entity_id", "identifier_value"])
+    df["entity_id"] = df["entity_id"].astype(str)
+    df["identifier_value"] = df["identifier_value"].astype(str)
+
+    identifier_to_entity: Dict[str, str] = {}
+    entity_to_identifiers: Dict[str, List[str]] = {}
+    for _, row in df.iterrows():
+        ent = row["entity_id"]
+        ident = row["identifier_value"]
+        ident_type = str(row.get("identifier_type", "")).lower() if row.get("identifier_type") is not None else ""
+        aliases = {ident}
+        if ident_type == "ticker":
+            aliases.add(ident.upper())
+        if ident_type in ("cusip", "isin", "sedol"):
+            aliases.add(ident.upper())
+        if ident.isdigit():
+            stripped = ident.lstrip("0")
+            if stripped:
+                aliases.add(stripped)
+                for width in (6, 8, 10):
+                    aliases.add(stripped.zfill(width))
+            for width in (6, 8, 10):
+                aliases.add(ident.zfill(width))
+        if ident_type == "permno":
+            aliases.add(f"permno:{ident}")
+            if ident.isdigit():
+                stripped = ident.lstrip("0")
+                if stripped:
+                    aliases.add(f"permno:{stripped}")
+        if ident_type == "permco":
+            aliases.add(f"permco:{ident}")
+            if ident.isdigit():
+                stripped = ident.lstrip("0")
+                if stripped:
+                    aliases.add(f"permco:{stripped}")
+        for alias in aliases:
+            identifier_to_entity[alias] = ent
+            entity_to_identifiers.setdefault(ent, []).append(alias)
+
+    for ent in list(entity_to_identifiers.keys()):
+        identifier_to_entity[ent] = ent
+        if ent not in entity_to_identifiers[ent]:
+            entity_to_identifiers[ent].append(ent)
+    return identifier_to_entity, entity_to_identifiers
+
+
