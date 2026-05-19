@@ -51,3 +51,12 @@ def _feature_record(
     }
 
 
+def _load_company_ids(snapshot_dir: Path) -> List[str]:
+    ids = []
+    for path in sorted(snapshot_dir.glob("company_id=*.json")):
+        company_id = path.stem.split("company_id=", 1)[-1]
+        if company_id:
+            ids.append(company_id)
+    return ids
+
+
