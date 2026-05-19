@@ -377,3 +377,9 @@ def _looks_like_financial_institution(
     return sic_text.startswith(("60", "61", "62", "63", "64", "65", "67")) or naics_text.startswith(("52", "53"))
 
 
+def _digits_only(value: Any) -> str:
+    if value is None:
+        return ""
+    return "".join(ch for ch in str(value) if ch.isdigit())
+
+
