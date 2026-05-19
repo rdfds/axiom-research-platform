@@ -272,3 +272,14 @@ def _normalize_watch(value: Any) -> Any:
     return None
 
 
+def _to_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        if np.isnan(value):
+            return None
+    except Exception:
+        pass
+    return str(value)
+
+
