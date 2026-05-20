@@ -87,7 +87,7 @@ class TransactionCostModel:
             "total_cost_fraction": round(total_cost_bps / 10000.0, 8),
         }
 
-    def to_dict(self) :
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "key": self.key,
             "label": self.label,
