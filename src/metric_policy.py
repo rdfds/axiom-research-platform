@@ -383,3 +383,10 @@ def _digits_only(value: Any) -> str:
     return "".join(ch for ch in str(value) if ch.isdigit())
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None

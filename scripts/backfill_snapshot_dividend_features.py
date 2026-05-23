@@ -60,7 +60,7 @@ def _load_company_ids(snapshot_dir: Path) -> List[str]:
     return ids
 
 
-def _load_identifier_maps(entity_identifier_path: Path) :
+def _load_identifier_maps(entity_identifier_path: Path) -> Tuple[Dict[str, str], Dict[str, List[str]]]:
     con = duckdb.connect()
     df = con.execute(
         "SELECT entity_id, identifier_value, identifier_type "
