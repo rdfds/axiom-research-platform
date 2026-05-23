@@ -32,3 +32,20 @@ produces:
 | `liquidity_concern_signal` | qualitative | 0–100 | Liquidity stress or runway concerns | “liquidity”, “covenant”, “going concern” | filings, transcripts |
 | `pricing_power_signal` | qualitative | 0–100 | Pricing power or discounting pressure | “pricing power”, “promotions”, “discounts” | transcripts, presentations |
 
+## Numeric Signal Encodings
+
+- `capital_allocation_intent`
+  - 0 = reinvestment / growth capex
+  - 50 = balanced / mixed
+  - 100 = return of capital / buybacks / dividends
+
+- `guidance_change`
+  - 0 = lowered
+  - 50 = reaffirmed
+  - 100 = raised
+
+## Required Canonical Table
+
+Signals are stored in `warehouse_text_signals` (see `docs/canonical_schemas.sql`)
+with the global bitemporal fields.
+
