@@ -29,3 +29,23 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     return float(sum(xs) / len(xs))
 
 
+def _stdev(values: Iterable[float]) :
+    xs = [float(value) for value in values]
+    if len(xs) < 2:
+        return None
+    mean_val = sum(xs) / len(xs)
+    variance = sum((value - mean_val) ** 2 for value in xs) / (len(xs) - 1)
+    return math.sqrt(max(0.0, variance))
+
+
+def _nested_lookup(payload: Dict[str, Any], dotted_path: str) -> Any:
+    current: Any = payload
+    for token in str(dotted_path or "").split("."):
+        if not token:
+            continue
+        if not isinstance(current, dict):
+            return None
+        current = current.get(token)
+    return current
+
+
