@@ -17,3 +17,18 @@ produces:
 - **Value type**: numeric; categorical values are encoded to numeric with a
   documented mapping.
 
+## Core Signals (Unstructured)
+
+| signal_name | type | scale | description | cues / examples | primary sources |
+|---|---|---|---|---|---|
+| `management_risk_posture` | qualitative | 0–100 | Management tone: risk‑seeking vs cautious | “aggressive expansion”, “conservative stance”, “risk mitigation” | transcripts, press releases |
+| `capital_allocation_intent` | categorical → numeric | 0–100 | Emphasis on buybacks/dividends vs reinvestment/deleveraging | “returning capital”, “buyback authorization”, “debt reduction” | press releases, presentations |
+| `growth_vs_defense` | qualitative | 0–100 | Growth orientation vs defensive posture | “accelerate growth”, “cost containment”, “protect margins” | transcripts, presentations |
+| `uncertainty_hedging_intensity` | qualitative | 0–100 | Degree of hedging language and uncertainty | “may”, “could”, “subject to”, “uncertain” | transcripts, press releases |
+| `strategic_pressure_indicator` | qualitative | 0–100 | Strategic stress or external pressure | “competitive pressure”, “regulatory headwinds”, “activist” | press releases, research |
+| `guidance_change` | categorical → numeric | 0–100 | Guidance raised/maintained/lowered | “raises guidance”, “reaffirms”, “lowers” | press releases, transcripts |
+| `restructuring_signal` | binary | 0/100 | Restructuring / layoffs / asset sales | “restructuring”, “cost‑cutting”, “divestiture” | press releases |
+| `mna_intent_signal` | qualitative | 0–100 | Intent or openness to M&A | “strategic alternatives”, “acquisition pipeline” | transcripts, press releases |
+| `liquidity_concern_signal` | qualitative | 0–100 | Liquidity stress or runway concerns | “liquidity”, “covenant”, “going concern” | filings, transcripts |
+| `pricing_power_signal` | qualitative | 0–100 | Pricing power or discounting pressure | “pricing power”, “promotions”, “discounts” | transcripts, presentations |
+

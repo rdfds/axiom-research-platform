@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.signals import SignalEngine
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--gvkey", required=True)
     parser.add_argument("--date", required=True, help="YYYY-MM-DD")
