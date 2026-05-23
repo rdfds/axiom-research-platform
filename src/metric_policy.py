@@ -346,7 +346,7 @@ class MetricPolicyEngine:
                 if score > best_score:
                     best_score = score
                     best_level = "sector"
-        for prefix in config['sic_prefixes'] or []:
+        for prefix in config.get("sic_prefixes") or []:
             prefix = str(prefix)
             if (sic_text and sic_text.startswith(prefix)) or (naics_text and naics_text.startswith(prefix)):
                 score = 1.0 + min(len(prefix) / 10.0, 0.5)
