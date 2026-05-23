@@ -94,3 +94,45 @@ def _node_support(node: Dict[str, Any] | None) -> str:
     return str(node.get("support_mode") or "unsupported")
 
 
+def _union_provenance(*nodes: Dict[str, Any] | None) -> list[Dict[str, Any]]:
+    merged: list[Dict[str, Any]] = []
+    seen = set()
+    for node in nodes:
+        for prov in (node or {}).get("provenance") or []:
+            key = json.dumps(prov, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(copy.deepcopy(prov))
+    return merged
+
+
+def _base_score_node(
+    *,
+    name: str,
+    value: float | None,
+    computed_at: str,
+    as_of_time: str,
+    support_mode: str,
+    fallback_used: str | None,
+    provenance: list[Dict[str, Any]],
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None = None,
+) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "value": value,
+        "unit": "score",
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": {"type": "cross_sectional", "length_days": 0},
+        "confidence": 0.7 if value is not None else None,
+        "provenance": provenance,
+        "missing_reason": None if value is not None else "insufficient_components",
+        "fallback_used": fallback_used,
+        "support_mode": support_mode if value is not None else "unsupported",
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+    }
+
+

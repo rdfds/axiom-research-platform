@@ -22,3 +22,10 @@ def _safe_float(value: Any) -> Optional[float]:
     return float(out)
 
 
+def _mean(values: Iterable[float]) -> Optional[float]:
+    xs = [float(value) for value in values]
+    if not xs:
+        return None
+    return float(sum(xs) / len(xs))
+
+
