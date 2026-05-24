@@ -44,3 +44,29 @@ def _report_fixture():
     }
 
 
+def test_build_portfolio_strategy_scorecard_adds_cost_adjusted_net_metrics():
+    protocol = BacktestProtocol(
+        key="test",
+        label="Test",
+        min_case_count=2,
+    )
+    model = resolve_transaction_cost_model("manual_replay_event_equal_weight_v1")
+
+    scorecard = build_portfolio_strategy_scorecard(
+        _report_fixture(),
+        protocol=protocol,
+        cost_model=model,
+    )
+
+    proxy = scorecard["portfolio_proxy"]
+    assert scorecard["case_counts"]["scored_cases"] == 2
+    assert scorecard["case_counts"]["unsupported_cases"] == 1
+    assert scorecard["case_counts"]["error_cases"] == 1
+    assert proxy["gross_mean_alignment_score"] > proxy["net_mean_alignment_score"]
+    assert scorecard["coverage"]["recommended_family_counts"] == {
+        "capital_return": 1,
+        "capital_structure": 1,
+    }
+    assert scorecard["benchmark_comparison"]["delta_unsupported_case_count"] == 1
+
+

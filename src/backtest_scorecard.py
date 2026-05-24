@@ -49,3 +49,12 @@ def _nested_lookup(payload: Dict[str, Any], dotted_path: str) -> Any:
     return current
 
 
+def _case_primary_family(case: Dict[str, Any]) -> str:
+    action_ids = list(case.get("top_action_ids", []) or [])
+    if action_ids:
+        primary = str(action_ids[0] or "")
+        if "." in primary:
+            return primary.split(".", 1)[0]
+    return str(case.get("anchor_action_family") or "")
+
+
