@@ -24,7 +24,7 @@ import duckdb
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def utc_now() :
+def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
