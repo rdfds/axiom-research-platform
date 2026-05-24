@@ -248,7 +248,7 @@ def _update_snapshot(path: Path, as_of: pd.Timestamp, dividend_lookup: Dict[str,
     )
 
     changed = (
-        features['capital_return.dividend_payer_flag'] != new_flag
+        features.get("capital_return.dividend_payer_flag") != new_flag
         or features.get("capital_return.last_dividend_event_type") != new_last
     )
     if not changed:

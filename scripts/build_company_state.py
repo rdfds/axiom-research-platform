@@ -228,3 +228,5 @@ def main() -> None:
     print(f"Saved CompanyState -> {out_path} ({len(df):,} entities)")
 
 
+if __name__ == "__main__":
+    main()
