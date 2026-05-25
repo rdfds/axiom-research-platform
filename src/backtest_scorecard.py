@@ -29,7 +29,7 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     return float(sum(xs) / len(xs))
 
 
-def _stdev(values: Iterable[float]) :
+def _stdev(values: Iterable[float]) -> Optional[float]:
     xs = [float(value) for value in values]
     if len(xs) < 2:
         return None

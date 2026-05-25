@@ -70,3 +70,20 @@ def test_build_portfolio_strategy_scorecard_adds_cost_adjusted_net_metrics():
     assert scorecard["benchmark_comparison"]["delta_unsupported_case_count"] == 1
 
 
+def test_render_portfolio_strategy_scorecard_markdown_includes_flags_section():
+    protocol = BacktestProtocol(
+        key="test",
+        label="Test",
+        min_case_count=10,
+    )
+    model = resolve_transaction_cost_model("manual_replay_event_equal_weight_v1")
+    scorecard = build_portfolio_strategy_scorecard(
+        _report_fixture(),
+        protocol=protocol,
+        cost_model=model,
+    )
+
+    markdown = render_portfolio_strategy_scorecard_markdown(scorecard)
+
+    assert "# Canonical Backtest Scorecard" in markdown
+    assert "`insufficient_scored_cases`" in markdown
