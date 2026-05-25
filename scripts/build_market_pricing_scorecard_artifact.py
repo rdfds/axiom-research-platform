@@ -153,3 +153,12 @@ def _percentile_map(values_by_company: Dict[str, float], direction: str) -> Dict
     return scores
 
 
+def _derived_metric_values(features: Dict[str, Any]) -> Dict[str, float | None]:
+    liquidity = _node_value(features.get("liquidity.available_liquidity_normalized"))
+    debt_like = _node_value(features.get("capital_structure.debt_like_obligations_normalized"))
+    liquidity_coverage_ratio = None
+    if liquidity is not None and debt_like not in (None, 0):
+        liquidity_coverage_ratio = liquidity / debt_like
+    return {"derived.liquidity_coverage_ratio": liquidity_coverage_ratio}
+
+

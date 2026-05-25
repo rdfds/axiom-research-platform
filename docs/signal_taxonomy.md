@@ -49,3 +49,8 @@ produces:
 Signals are stored in `warehouse_text_signals` (see `docs/canonical_schemas.sql`)
 with the global bitemporal fields.
 
+## Versioning
+
+- `signal_name` is stable. Changes create new `extraction_version`.
+- All signal extraction must reference `supporting_chunk_ids`.
+- No free‑form summaries are stored upstream.
