@@ -87,7 +87,7 @@ class MarketDataProvider:
                     'open': row.get('Price Open'),
                     'high': row.get('Price High'),
                     'low': row.get('Price Low'),
-                    'volume': row['Volume'],
+                    'volume': row.get('Volume'),
                     'change_pct': row.get('Percent Change - 1 Day'),
                     'market_cap': row.get('Company Market Cap'),
                     'high_52w': row.get('52 Week High'),

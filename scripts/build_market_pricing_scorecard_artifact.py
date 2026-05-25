@@ -323,3 +323,139 @@ def _overall_score_node(
     )
 
 
+def _valuation_gap_node(
+    *,
+    row: Dict[str, Any],
+    computed_at: str,
+) -> Dict[str, Any]:
+    features = row.get("features") or {}
+    as_of_time = str(row.get("as_of_time") or "")
+    value_node = features.get("market.value_score")
+    quality_node = features.get("market.quality_score")
+    balance_node = features.get("market.balance_sheet_score")
+    risk_node = features.get("market.risk_score")
+    value = _node_value(value_node)
+    quality = _node_value(quality_node)
+    balance = _node_value(balance_node)
+    risk = _node_value(risk_node)
+    if value is None or quality is None:
+        return _base_score_node(
+            name="market.valuation_gap_score",
+            value=None,
+            computed_at=computed_at,
+            as_of_time=as_of_time,
+            support_mode="unsupported",
+            fallback_used=None,
+            provenance=_union_provenance(value_node, quality_node, balance_node, risk_node),
+            component_breakdown=None,
+        )
+    support_stack = [n for n in [value_node, quality_node, balance_node, risk_node] if n is not None]
+    optional_values = [v for v in [balance, risk] if v is not None]
+    fundamental_anchor = (quality + sum(optional_values)) / (1 + len(optional_values))
+    gap = fundamental_anchor - value
+    exact_like = all(_node_support(node) == "exact" for node in support_stack if _node_value(node) is not None)
+    support_mode = "exact" if exact_like and balance is not None and risk is not None else "proxy_missing_component"
+    quality_flags = None if balance is not None and risk is not None else ["partial_anchor_coverage"]
+    return _base_score_node(
+        name="market.valuation_gap_score",
+        value=gap,
+        computed_at=computed_at,
+        as_of_time=as_of_time,
+        support_mode=support_mode,
+        fallback_used="fundamental_anchor_minus_value_score",
+        provenance=_union_provenance(value_node, quality_node, balance_node, risk_node),
+        component_breakdown={
+            "value_score": value,
+            "quality_score": quality,
+            "balance_sheet_score": balance,
+            "risk_score": risk,
+            "fundamental_anchor": fundamental_anchor,
+            "formula": "mean(quality, balance_sheet?, risk?) - value_score",
+        },
+        quality_flags=quality_flags,
+    )
+
+
+def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
+    counters: Dict[str, Counter[str]] = {metric: Counter() for metric in SCORE_METRICS}
+    for row in iter_rows(path):
+        features = row.get("features") or {}
+        for metric in SCORE_METRICS:
+            node = features.get(metric) or {}
+            mode = str(node.get("support_mode") or "unsupported")
+            if node.get("value") is None:
+                mode = "unsupported"
+            counters[metric][mode] += 1
+    summary: Dict[str, Dict[str, int]] = {}
+    for metric, counter in counters.items():
+        summary[metric] = {
+            "exact": counter["exact"],
+            "proxy_missing_component": counter["proxy_missing_component"],
+            "unsupported": counter["unsupported"],
+        }
+    return summary
+
+
+def build_leaderboard(path: Path, *, limit: int = 20) :
+    rows = list(iter_rows(path))
+    candidates = []
+    for row in rows:
+        features = row.get("features") or {}
+        overall = _node_value(features.get("market.comp_overall_score"))
+        if overall is None:
+            continue
+        candidates.append(
+            {
+                "company_id": str(row.get("company_id") or ""),
+                "overall_score": overall,
+                "value_score": _node_value(features.get("market.value_score")),
+                "quality_score": _node_value(features.get("market.quality_score")),
+                "balance_sheet_score": _node_value(features.get("market.balance_sheet_score")),
+                "risk_score": _node_value(features.get("market.risk_score")),
+                "valuation_gap_score": _node_value(features.get("market.valuation_gap_score")),
+            }
+        )
+    overall_top = sorted(candidates, key=lambda row: (row["overall_score"], row["valuation_gap_score"] or -999.0), reverse=True)[
+        :limit
+    ]
+    valuation_gap_top = sorted(
+        [row for row in candidates if row["valuation_gap_score"] is not None],
+        key=lambda row: row["valuation_gap_score"],
+        reverse=True,
+    )[:limit]
+    return {"top_overall": overall_top, "top_valuation_gap": valuation_gap_top}
+
+
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = list(iter_rows(artifact_path))
+    percentile_maps = _collect_cross_section(rows)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in rows:
+            features = row.get("features") or {}
+            for score_metric in RAW_SCORE_COMPONENTS:
+                features[score_metric] = _score_from_components(
+                    score_metric,
+                    row=row,
+                    percentile_maps=percentile_maps,
+                    computed_at=computed_at,
+                )
+            features["market.comp_overall_score"] = _overall_score_node(row=row, computed_at=computed_at)
+            features["market.valuation_gap_score"] = _valuation_gap_node(row=row, computed_at=computed_at)
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        Path(args.summary_out).write_text(json.dumps(build_summary(out_path), indent=2))
+    if args.leaderboard_out:
+        Path(args.leaderboard_out).write_text(json.dumps(build_leaderboard(out_path), indent=2))
+
+    print(f"Built market-pricing scorecard -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()
