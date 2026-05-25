@@ -173,3 +173,101 @@ def repair_ebitda_margin_ttm(*, features: Dict[str, Any], computed_at: str) -> b
     return True
 
 
+def repair_ev_ebitda(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("market.ev_ebitda")
+    if not target:
+        return False
+
+    enterprise_value_node = features.get("market.enterprise_value")
+    ebitda_node = features.get("operating.ebitda_ltm_provider_direct")
+    normalized_node = features.get("operating.operating_earnings_normalized")
+
+    ev = _node_value(enterprise_value_node)
+    ebitda = _node_value(ebitda_node)
+    ebitda_source_metric = "operating.ebitda_ltm_provider_direct"
+    fallback_used = "repaired_enterprise_value_plus_provider_ebitda"
+    if ebitda in (None, 0):
+        ebitda = _node_value(normalized_node)
+        ebitda_source_metric = "operating.operating_earnings_normalized"
+        fallback_used = "repaired_enterprise_value_plus_normalized_operating_earnings"
+
+    if ev is None or ebitda in (None, 0) or ebitda <= 0:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = ev / ebitda
+    repaired["fallback_used"] = fallback_used
+    repaired["support_mode"] = (
+        "exact"
+        if _node_support(enterprise_value_node) == "exact"
+        and (
+            (_node_support(ebitda_node) == "exact" and ebitda_source_metric == "operating.ebitda_ltm_provider_direct")
+            or (_node_support(normalized_node) == "exact" and ebitda_source_metric == "operating.operating_earnings_normalized")
+        )
+        else "proxy_missing_component"
+    )
+    repaired["provenance"] = _union_provenance(enterprise_value_node, ebitda_node, normalized_node)
+    repaired["component_breakdown"] = {
+        "enterprise_value": ev,
+        "ebitda_ttm": ebitda,
+        "ebitda_source_metric": ebitda_source_metric,
+        "formula": "enterprise_value / ebitda_ttm",
+    }
+    repaired["quality_flags"] = ["input_layer_ev_ebitda_repair"]
+    features["market.ev_ebitda"] = repaired
+    return True
+
+
+def repair_pe_ratio(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("market.pe_ratio")
+    if not target:
+        return False
+
+    market_cap_node = features.get("market.market_cap_provider_direct")
+    net_income_node = features.get("earnings.net_income_ttm_provider_direct")
+    price_node = features.get("market.price_spot")
+
+    market_cap = _node_value(market_cap_node)
+    net_income = _node_value(net_income_node)
+    price = _node_value(price_node)
+
+    if net_income is not None and net_income > 0 and market_cap is not None:
+        repaired = _base_repaired_node(target, computed_at=computed_at)
+        repaired["value"] = market_cap / net_income
+        repaired["fallback_used"] = "market_cap_plus_net_income_ttm"
+        repaired["support_mode"] = (
+            "exact"
+            if _node_support(market_cap_node) == "exact" and _node_support(net_income_node) == "exact"
+            else "proxy_missing_component"
+        )
+        repaired["provenance"] = _union_provenance(market_cap_node, net_income_node)
+        repaired["component_breakdown"] = {
+            "market_cap": market_cap,
+            "net_income_ttm": net_income,
+            "price": price,
+            "formula": "market_cap_provider_direct / net_income_ttm_provider_direct",
+        }
+        repaired["quality_flags"] = ["input_layer_pe_ratio_repair"]
+        features["market.pe_ratio"] = repaired
+        return True
+
+    if net_income is not None and net_income <= 0:
+        repaired = _base_repaired_node(target, computed_at=computed_at)
+        repaired["value"] = None
+        repaired["missing_reason"] = "non_positive_net_income_ttm"
+        repaired["fallback_used"] = "market_cap_plus_net_income_ttm"
+        repaired["support_mode"] = "unsupported"
+        repaired["provenance"] = _union_provenance(market_cap_node, net_income_node)
+        repaired["component_breakdown"] = {
+            "market_cap": market_cap,
+            "net_income_ttm": net_income,
+            "price": price,
+            "formula": "market_cap_provider_direct / net_income_ttm_provider_direct",
+        }
+        repaired["quality_flags"] = ["input_layer_pe_ratio_repair", "non_positive_net_income_ttm"]
+        features["market.pe_ratio"] = repaired
+        return True
+
+    return False
+
+
