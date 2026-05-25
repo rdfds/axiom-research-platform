@@ -269,3 +269,57 @@ def _score_from_components(
     )
 
 
+def _overall_score_node(
+    *,
+    row: Dict[str, Any],
+    computed_at: str,
+) -> Dict[str, Any]:
+    features = row.get("features") or {}
+    as_of_time = str(row.get("as_of_time") or "")
+    available = []
+    provenance_nodes = []
+    total_weight = 0.0
+    weighted_sum = 0.0
+    exact_like = True
+    for metric_name, weight in OVERALL_WEIGHTS.items():
+        node = features.get(metric_name)
+        provenance_nodes.append(node)
+        value = _node_value(node)
+        if value is None:
+            exact_like = False
+            continue
+        weighted_sum += value * weight
+        total_weight += weight
+        available.append({"metric": metric_name, "value": value, "weight": weight, "support_mode": _node_support(node)})
+        if _node_support(node) != "exact":
+            exact_like = False
+    if total_weight <= 0:
+        return _base_score_node(
+            name="market.comp_overall_score",
+            value=None,
+            computed_at=computed_at,
+            as_of_time=as_of_time,
+            support_mode="unsupported",
+            fallback_used=None,
+            provenance=_union_provenance(*provenance_nodes),
+            component_breakdown=None,
+        )
+    support_mode = "exact" if exact_like and len(available) == len(OVERALL_WEIGHTS) else "proxy_missing_component"
+    quality_flags = None if len(available) == len(OVERALL_WEIGHTS) else ["partial_subscore_coverage"]
+    return _base_score_node(
+        name="market.comp_overall_score",
+        value=weighted_sum / total_weight,
+        computed_at=computed_at,
+        as_of_time=as_of_time,
+        support_mode=support_mode,
+        fallback_used="weighted_market_pricing_scorecard",
+        provenance=_union_provenance(*provenance_nodes),
+        component_breakdown={
+            "subscores": available,
+            "total_weight_used": total_weight,
+            "formula": "weighted_mean(value_score, quality_score, balance_sheet_score, risk_score)",
+        },
+        quality_flags=quality_flags,
+    )
+
+
