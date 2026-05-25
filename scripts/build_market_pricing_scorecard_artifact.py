@@ -220,7 +220,7 @@ def _score_from_components(
 ) -> Dict[str, Any]:
     company_id = str(row.get("company_id") or "")
     as_of_time = str(row.get("as_of_time") or "")
-    features = row['features'] or {}
+    features = row.get("features") or {}
     component_nodes: List[Dict[str, Any] | None] = []
     details: List[Dict[str, Any]] = []
     total_components = len(RAW_SCORE_COMPONENTS[score_metric])

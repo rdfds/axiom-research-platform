@@ -156,3 +156,20 @@ def test_balance_sheet_score_uses_derived_liquidity_coverage_ratio():
     assert top["component_breakdown"]["components"][1]["metric"] == "derived.liquidity_coverage_ratio"
 
 
+def test_overall_and_valuation_gap_nodes():
+    row = _row(
+        "0001",
+        {
+            "market.value_score": _node("market.value_score", 40.0, unit="score"),
+            "market.quality_score": _node("market.quality_score", 75.0, unit="score"),
+            "market.balance_sheet_score": _node("market.balance_sheet_score", 70.0, unit="score"),
+            "market.risk_score": _node("market.risk_score", 65.0, unit="score"),
+        },
+    )
+
+    overall = _overall_score_node(row=row, computed_at="2026-03-23T00:00:00+00:00")
+    row["features"]["market.comp_overall_score"] = overall
+    gap = _valuation_gap_node(row=row, computed_at="2026-03-23T00:00:00+00:00")
+
+    assert round(overall["value"], 2) == 59.75
+    assert gap["value"] > 20.0
