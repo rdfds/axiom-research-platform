@@ -126,3 +126,50 @@ def repair_enterprise_value(*, features: Dict[str, Any], computed_at: str) -> bo
     return True
 
 
+def repair_ebitda_margin_ttm(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("operating.ebitda_margin_ttm")
+    if not target:
+        return False
+
+    revenue_node = features.get("operating.revenue_ttm_provider_direct")
+    ebitda_node = features.get("operating.ebitda_ltm_provider_direct")
+    normalized_node = features.get("operating.operating_earnings_normalized")
+
+    revenue = _node_value(revenue_node)
+    ebitda = _node_value(ebitda_node)
+    ebitda_source_metric = "operating.ebitda_ltm_provider_direct"
+    fallback_used = "provider_direct_revenue_and_ebitda"
+    if ebitda is None:
+        ebitda = _node_value(normalized_node)
+        ebitda_source_metric = "operating.operating_earnings_normalized"
+        fallback_used = "provider_revenue_plus_normalized_operating_earnings"
+
+    if revenue in (None, 0) or ebitda is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = ebitda / revenue
+    repaired["fallback_used"] = fallback_used
+    repaired["support_mode"] = (
+        "exact"
+        if _node_support(revenue_node) == "exact"
+        and (
+            (_node_support(ebitda_node) == "exact" and ebitda_source_metric == "operating.ebitda_ltm_provider_direct")
+            or (_node_support(normalized_node) == "exact" and ebitda_source_metric == "operating.operating_earnings_normalized")
+        )
+        else "proxy_missing_component"
+    )
+    repaired["provenance"] = _union_provenance(revenue_node, ebitda_node, normalized_node)
+    repaired["component_breakdown"] = {
+        "revenue": revenue,
+        "ebitda": ebitda,
+        "revenue_source_metric": "operating.revenue_ttm_provider_direct",
+        "ebitda_source_metric": ebitda_source_metric,
+        "formula": "ebitda / revenue",
+        "period_match_type": "input_layer_ttm_fallback",
+    }
+    repaired["quality_flags"] = ["input_layer_ebitda_margin_repair"]
+    features["operating.ebitda_margin_ttm"] = repaired
+    return True
+
+

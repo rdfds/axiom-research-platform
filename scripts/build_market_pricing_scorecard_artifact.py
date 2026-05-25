@@ -211,3 +211,61 @@ def _component_detail(
     }
 
 
+def _score_from_components(
+    score_metric: str,
+    *,
+    row: Dict[str, Any],
+    percentile_maps: Dict[str, Dict[str, float]],
+    computed_at: str,
+) -> Dict[str, Any]:
+    company_id = str(row.get("company_id") or "")
+    as_of_time = str(row.get("as_of_time") or "")
+    features = row['features'] or {}
+    component_nodes: List[Dict[str, Any] | None] = []
+    details: List[Dict[str, Any]] = []
+    total_components = len(RAW_SCORE_COMPONENTS[score_metric])
+    exact_like = True
+    for metric_name, _ in RAW_SCORE_COMPONENTS[score_metric]:
+        detail = _component_detail(metric_name, row=row, percentile_maps=percentile_maps)
+        component_nodes.append(features.get(metric_name))
+        if detail is None or detail.get("percentile") is None:
+            exact_like = False
+            continue
+        if detail.get("support_mode") != "exact":
+            exact_like = False
+        details.append(detail)
+    if not details:
+        return _base_score_node(
+            name=score_metric,
+            value=None,
+            computed_at=computed_at,
+            as_of_time=as_of_time,
+            support_mode="unsupported",
+            fallback_used=None,
+            provenance=_union_provenance(*component_nodes),
+            component_breakdown=None,
+        )
+
+    score_value = sum(d["percentile"] for d in details) / len(details)
+    support_mode = "exact" if exact_like and len(details) == total_components else "proxy_missing_component"
+    quality_flags = None
+    if len(details) < total_components:
+        quality_flags = ["partial_component_coverage"]
+    return _base_score_node(
+        name=score_metric,
+        value=score_value,
+        computed_at=computed_at,
+        as_of_time=as_of_time,
+        support_mode=support_mode,
+        fallback_used="cross_sectional_percentile_scorecard",
+        provenance=_union_provenance(*component_nodes),
+        component_breakdown={
+            "component_count_used": len(details),
+            "component_count_total": total_components,
+            "formula": "mean(component_percentiles)",
+            "components": details,
+        },
+        quality_flags=quality_flags,
+    )
+
+

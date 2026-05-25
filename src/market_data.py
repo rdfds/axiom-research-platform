@@ -326,3 +326,5 @@ class MarketDataProvider:
 
 
 # Convenience functions
+_provider = None
+
