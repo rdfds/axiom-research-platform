@@ -136,3 +136,20 @@ def _base_score_node(
     }
 
 
+def _percentile_map(values_by_company: Dict[str, float], direction: str) -> Dict[str, float]:
+    if not values_by_company:
+        return {}
+    ordered = sorted(values_by_company.items(), key=lambda item: (item[1], item[0]))
+    count = len(ordered)
+    scores: Dict[str, float] = {}
+    if count == 1:
+        company_id = ordered[0][0]
+        return {company_id: 50.0}
+    for idx, (company_id, _) in enumerate(ordered):
+        pct = idx / (count - 1)
+        if direction == "lower":
+            pct = 1.0 - pct
+        scores[company_id] = pct * 100.0
+    return scores
+
+

@@ -87,3 +87,72 @@ def test_score_from_components_ranks_value_and_quality():
     assert quality_top["value"] > 50.0
 
 
+def test_balance_sheet_score_uses_derived_liquidity_coverage_ratio():
+    rows = [
+        _row(
+            "0001",
+            {
+                "capital_structure.net_leverage_normalized": _node(
+                    "capital_structure.net_leverage_normalized",
+                    1.0,
+                    unit="x",
+                ),
+                "liquidity.available_liquidity_normalized": _node(
+                    "liquidity.available_liquidity_normalized",
+                    200.0,
+                    unit="usd",
+                ),
+                "capital_structure.debt_like_obligations_normalized": _node(
+                    "capital_structure.debt_like_obligations_normalized",
+                    400.0,
+                    unit="usd",
+                ),
+                "capital_structure.maturity_wall_ratio_24m": _node(
+                    "capital_structure.maturity_wall_ratio_24m",
+                    0.10,
+                ),
+            },
+        ),
+        _row(
+            "0002",
+            {
+                "capital_structure.net_leverage_normalized": _node(
+                    "capital_structure.net_leverage_normalized",
+                    4.0,
+                    unit="x",
+                ),
+                "liquidity.available_liquidity_normalized": _node(
+                    "liquidity.available_liquidity_normalized",
+                    50.0,
+                    unit="usd",
+                ),
+                "capital_structure.debt_like_obligations_normalized": _node(
+                    "capital_structure.debt_like_obligations_normalized",
+                    500.0,
+                    unit="usd",
+                ),
+                "capital_structure.maturity_wall_ratio_24m": _node(
+                    "capital_structure.maturity_wall_ratio_24m",
+                    0.35,
+                ),
+            },
+        ),
+    ]
+    percentile_maps = _collect_cross_section(rows)
+    top = _score_from_components(
+        "market.balance_sheet_score",
+        row=rows[0],
+        percentile_maps=percentile_maps,
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+    bottom = _score_from_components(
+        "market.balance_sheet_score",
+        row=rows[1],
+        percentile_maps=percentile_maps,
+        computed_at="2026-03-23T00:00:00+00:00",
+    )
+
+    assert top["value"] > bottom["value"]
+    assert top["component_breakdown"]["components"][1]["metric"] == "derived.liquidity_coverage_ratio"
+
+
