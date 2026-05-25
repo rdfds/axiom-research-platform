@@ -162,3 +162,52 @@ def _derived_metric_values(features: Dict[str, Any]) -> Dict[str, float | None]:
     return {"derived.liquidity_coverage_ratio": liquidity_coverage_ratio}
 
 
+def _collect_cross_section(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    values: Dict[str, Dict[str, float]] = {}
+    for components in RAW_SCORE_COMPONENTS.values():
+        for metric_name, _ in components:
+            values.setdefault(metric_name, {})
+    for row in rows:
+        company_id = str(row.get("company_id") or "")
+        features = row.get("features") or {}
+        derived = _derived_metric_values(features)
+        for metric_name in values:
+            value = derived.get(metric_name)
+            if value is None:
+                value = _node_value(features.get(metric_name))
+            if value is None or math.isnan(value) or math.isinf(value):
+                continue
+            values[metric_name][company_id] = float(value)
+    percentile_maps: Dict[str, Dict[str, float]] = {}
+    for score_metric, components in RAW_SCORE_COMPONENTS.items():
+        for metric_name, direction in components:
+            if metric_name in percentile_maps:
+                continue
+            percentile_maps[metric_name] = _percentile_map(values[metric_name], direction)
+    return percentile_maps
+
+
+def _component_detail(
+    metric_name: str,
+    *,
+    row: Dict[str, Any],
+    percentile_maps: Dict[str, Dict[str, float]],
+) -> Dict[str, Any] | None:
+    company_id = str(row.get("company_id") or "")
+    features = row.get("features") or {}
+    derived = _derived_metric_values(features)
+    value = derived.get(metric_name)
+    source_node = features.get(metric_name)
+    support_mode = _node_support(source_node)
+    if value is None:
+        value = _node_value(source_node)
+    if value is None:
+        return None
+    return {
+        "metric": metric_name,
+        "value": float(value),
+        "percentile": percentile_maps.get(metric_name, {}).get(company_id),
+        "support_mode": "exact" if metric_name.startswith("derived.") else support_mode,
+    }
+
+

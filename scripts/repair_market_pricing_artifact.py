@@ -81,3 +81,48 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def repair_enterprise_value(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("market.enterprise_value")
+    if not target:
+        return False
+
+    market_cap_node = features.get("market.market_cap_provider_direct") or features.get("market.market_cap")
+    debt_node = features.get("capital_structure.total_debt_provider_direct")
+    cash_grouped_node = features.get("liquidity.cash_and_short_term_investments_provider_direct")
+    cash_exact_node = features.get("liquidity.cash_and_equivalents_statement_direct")
+
+    market_cap = _node_value(market_cap_node)
+    debt = _node_value(debt_node)
+    cash = _node_value(cash_grouped_node)
+    cash_source_metric = "liquidity.cash_and_short_term_investments_provider_direct"
+    if cash is None:
+        cash = _node_value(cash_exact_node)
+        cash_source_metric = "liquidity.cash_and_equivalents_statement_direct"
+
+    if market_cap is None or debt is None or cash is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = market_cap + debt - cash
+    repaired["fallback_used"] = "input_layer_market_cap_plus_total_debt_minus_cash"
+    repaired["support_mode"] = (
+        "exact"
+        if all(
+            _node_support(node) == "exact"
+            for node in (market_cap_node, debt_node, cash_grouped_node if cash_source_metric.endswith("provider_direct") else cash_exact_node)
+        )
+        else "proxy_missing_component"
+    )
+    repaired["provenance"] = _union_provenance(market_cap_node, debt_node, cash_grouped_node, cash_exact_node)
+    repaired["component_breakdown"] = {
+        "market_cap": market_cap,
+        "total_debt": debt,
+        "cash": cash,
+        "cash_source_metric": cash_source_metric,
+        "formula": "market_cap_provider_direct + total_debt_provider_direct - cash",
+    }
+    repaired["quality_flags"] = ["input_layer_ev_repair"]
+    features["market.enterprise_value"] = repaired
+    return True
+
+
