@@ -53,3 +53,16 @@ def row_to_payload(row: Dict[str, Any]) -> Dict[str, Any]:
     return {k: normalize_value(v) for k, v in row.items()}
 
 
+def first_non_null(*values) -> Optional[Any]:
+    for value in values:
+        if value is None:
+            continue
+        try:
+            if pd.isna(value):
+                continue
+        except Exception:
+            pass
+        return value
+    return None
+
+
