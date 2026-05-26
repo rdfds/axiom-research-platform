@@ -38,3 +38,34 @@ class BacktestProtocol:
         }
 
 
+def default_backtest_protocols() -> Dict[str, BacktestProtocol]:
+    return {
+        "manual_replay_default_v1": BacktestProtocol(
+            key="manual_replay_default_v1",
+            label="Manual Replay Canonical OOS",
+            notes=(
+                "Event-driven equal-weight protocol on frozen historical replay cases.",
+                "Gross and net strategy scorecards are based on support-adjusted alignment scores.",
+            ),
+        ),
+        "capital_return_holdout_v1": BacktestProtocol(
+            key="capital_return_holdout_v1",
+            label="Capital Return Holdout OOS",
+            turnover_fraction=0.80,
+            cost_model_key="manual_replay_event_equal_weight_v1",
+            notes=(
+                "Capital return actions are a little less implementation-heavy than M&A or portfolio moves.",
+            ),
+        ),
+        "capital_structure_holdout_v1": BacktestProtocol(
+            key="capital_structure_holdout_v1",
+            label="Capital Structure Holdout OOS",
+            turnover_fraction=1.00,
+            cost_model_key="manual_replay_conservative_v1",
+            notes=(
+                "Uses the conservative friction profile because financing actions tend to be more path-dependent.",
+            ),
+        ),
+    }
+
+
