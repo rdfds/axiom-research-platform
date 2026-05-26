@@ -64,3 +64,16 @@ def _pct_change(new: Optional[float], old: Optional[float]) -> Optional[float]:
     return (new_val - old_val) / abs(old_val)
 
 
+def _pp_change(new: Optional[float], old: Optional[float]) -> Optional[float]:
+    if new is None or old is None:
+        return None
+    try:
+        old_val = float(old)
+        new_val = float(new)
+    except Exception:
+        return None
+    if pd.isna(old_val) or pd.isna(new_val):
+        return None
+    return new_val - old_val
+
+

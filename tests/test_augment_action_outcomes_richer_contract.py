@@ -21,3 +21,11 @@ def test_numeric_series_returns_aligned_nans_when_column_missing():
     assert int(series.notna().sum()) == 0
 
 
+def test_numeric_series_coerces_existing_column_to_numeric():
+    df = pd.DataFrame({"macro_ig_oas": ["1.2", None, "bad"]})
+
+    series = _MODULE._numeric_series(df, "macro_ig_oas")
+
+    assert float(series.iloc[0]) == 1.2
+    assert pd.isna(series.iloc[1])
+    assert pd.isna(series.iloc[2])
