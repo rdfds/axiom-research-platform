@@ -335,3 +335,17 @@ def get_provider() -> MarketDataProvider:
         _provider = MarketDataProvider()
     return _provider
 
+def get_quote(ticker: str) -> Dict:
+    """Get real-time quote for a ticker."""
+    return get_provider().get_quote(ticker)
+
+def get_quotes(tickers: List[str]) -> pd.DataFrame:
+    """Get real-time quotes for multiple tickers."""
+    return get_provider().get_quotes(tickers)
+
+def get_price_history(ticker: str, days: int = 30) -> pd.DataFrame:
+    """Get historical prices."""
+    return get_provider().get_price_history(ticker, days)
+
+
+# Demo
