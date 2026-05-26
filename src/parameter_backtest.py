@@ -353,3 +353,24 @@ def _size_bucket(value: Any) -> Optional[str]:
     return "large"
 
 
+def _score_historical_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    scored = frame.copy()
+    metric_scores: List[pd.Series] = []
+    for column in _POSITIVE_METRICS:
+        series = pd.to_numeric(scored.get(column), errors="coerce")
+        if series.notna().sum() < 5:
+            continue
+        metric_scores.append(series.rank(pct=True, method="average"))
+    for column in _NEGATIVE_METRICS:
+        series = pd.to_numeric(scored.get(column), errors="coerce")
+        if series.notna().sum() < 5:
+            continue
+        metric_scores.append(1.0 - series.rank(pct=True, method="average"))
+    if not metric_scores:
+        return pd.DataFrame()
+    score_table = pd.concat(metric_scores, axis=1)
+    scored["composite_score"] = score_table.mean(axis=1, skipna=True)
+    scored = scored[scored["composite_score"].notna()].copy()
+    return scored
+
+

@@ -209,3 +209,64 @@ def _write_outcomes(path: Path) -> Path:
     return path
 
 
+def test_build_parameter_backtest_report_and_markdown(tmp_path: Path):
+    runs_root = tmp_path / "runs_root"
+    snapshot_root = _snapshot_root(tmp_path)
+    outcomes_path = _write_outcomes(tmp_path / "outcomes.parquet")
+
+    buyback_run = _run("run-buyback", "0001111111")
+    _write_run(
+        runs_root=runs_root,
+        run=buyback_run,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                run_id=buyback_run.run_id,
+                value_creation=0.28,
+                params={
+                    "size_pct_market_cap": 0.09,
+                    "funding_mix": {"cash": 0.8, "debt": 0.2, "equity": 0.0},
+                    "pace": "gradual",
+                },
+            )
+        ],
+    )
+
+    dividend_run = _run("run-dividend", "0002222222")
+    _write_run(
+        runs_root=runs_root,
+        run=dividend_run,
+        candidates=[
+            _candidate(
+                "capital_return.dividend_initiate",
+                run_id=dividend_run.run_id,
+                value_creation=0.02,
+                params={
+                    "initial_yield_pct": 0.02,
+                    "annualized_cash_commitment_usd": 25_000_000.0,
+                    "effective_quarter": "Q2",
+                },
+            )
+        ],
+    )
+
+    report = build_parameter_backtest_report(
+        runs_roots=[runs_root],
+        snapshot_root=snapshot_root,
+        outcomes_path=outcomes_path,
+        review_count=5,
+        min_bucket_samples=10,
+    )
+    markdown = render_parameter_backtest_markdown(report)
+
+    assert report["runs_analyzed"] == 2
+    assert report["aggregate"]["historical_coverage_rate"] == 0.5
+    assert report["aggregate"]["bucket_match_rate"] == 1.0
+    assert report["aggregate"]["strong_support_rate"] == 1.0
+    supported = [case for case in report["cases"] if case["historical"].get("supported")]
+    assert len(supported) == 1
+    assert supported[0]["historical"]["recommended_bucket"] == "medium"
+    assert supported[0]["historical"]["best_bucket"] == "medium"
+    assert "Parameter Backtest Report" in markdown
+    assert "Tuning suggestion" in markdown
+    assert "no_backtestable_parameter" in markdown

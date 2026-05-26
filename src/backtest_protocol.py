@@ -69,3 +69,12 @@ def default_backtest_protocols() -> Dict[str, BacktestProtocol]:
     }
 
 
+def infer_default_protocol_key(benchmark_key: Optional[str]) -> str:
+    text = str(benchmark_key or "").strip().lower()
+    if "capital_return" in text:
+        return "capital_return_holdout_v1"
+    if "capital_structure" in text:
+        return "capital_structure_holdout_v1"
+    return "manual_replay_default_v1"
+
+
