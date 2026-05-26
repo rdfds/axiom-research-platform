@@ -349,3 +349,33 @@ def get_price_history(ticker: str, days: int = 30) -> pd.DataFrame:
 
 
 # Demo
+if __name__ == '__main__':
+    print("Market Data Provider Demo")
+    print("=" * 60)
+
+    mdp = MarketDataProvider()
+
+    # Single quote
+    print("\n1. Single Quote (AAPL):")
+    quote = mdp.get_quote('AAPL.O')
+    for k, v in quote.items():
+        print(f"   {k}: {v}")
+
+    # Multiple quotes
+    print("\n2. Multiple Quotes:")
+    quotes = mdp.get_quotes(['AAPL.O', 'MSFT.O', 'GOOGL.O', 'AMZN.O'])
+    print(quotes[['ticker', 'name', 'price', 'change_1d', 'volume']].to_string())
+
+    # Intraday
+    print("\n3. Intraday Quote (real-time):")
+    intraday = mdp.get_intraday_quote('AAPL.O')
+    for k, v in intraday.items():
+        print(f"   {k}: {v}")
+
+    # History
+    print("\n4. Price History (30 days):")
+    history = mdp.get_price_history('AAPL.O', days=30)
+    print(history.tail(10).to_string())
+
+    mdp.close()
+    print("\nDone!")
