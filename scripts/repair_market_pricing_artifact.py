@@ -274,7 +274,7 @@ def repair_pe_ratio(*, features: Dict[str, Any], computed_at: str) -> bool:
 def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     counters: Dict[str, Counter[str]] = {metric: Counter() for metric in REPAIR_METRICS}
     for row in iter_rows(path):
-        features = row['features'] or {}
+        features = row.get("features") or {}
         for metric in REPAIR_METRICS:
             node = features.get(metric) or {}
             mode = str(node.get("support_mode") or "unsupported")
