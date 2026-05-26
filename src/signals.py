@@ -707,3 +707,41 @@ class SignalEngine:
         }
 
 
+def demo():
+    """Demonstrate the signal engine."""
+    engine = SignalEngine()
+
+    print("\n" + "="*70)
+    print("DEMO: Signal Engine")
+    print("="*70)
+
+    # Get a sample company
+    as_of = '2023-06-30'
+    universe = engine.snapshot.get_universe_snapshot(as_of, min_assets=1000, min_revenue=200)
+
+    if len(universe) > 0:
+        sample = universe.iloc[0]
+        gvkey = sample['gvkey']
+        name = sample['conm']
+
+        print(f"\nComputing state profile for {name} ({gvkey}) as of {as_of}")
+        print("-" * 70)
+
+        profile = engine.compute_state_profile(gvkey, as_of)
+
+        if profile:
+            print(f"\nComposite Score: {profile['composite_score']}/100")
+            print(f"Signal Vector: {profile['vector']}")
+            print("\nIndividual Signals:")
+
+            for signal_name, signal_data in profile['signals'].items():
+                print(f"\n  {signal_name}: {signal_data['score']}/100")
+                for key, value in signal_data['components'].items():
+                    if isinstance(value, float):
+                        print(f"    {key}: {value:,.3f}")
+                    else:
+                        print(f"    {key}: {value}")
+
+
+if __name__ == "__main__":
+    demo()
