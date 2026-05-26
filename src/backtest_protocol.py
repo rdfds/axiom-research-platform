@@ -78,3 +78,15 @@ def infer_default_protocol_key(benchmark_key: Optional[str]) -> str:
     return "manual_replay_default_v1"
 
 
+def resolve_backtest_protocol(
+    *,
+    protocol_key: Optional[str] = None,
+    benchmark_key: Optional[str] = None,
+) -> BacktestProtocol:
+    protocols = default_backtest_protocols()
+    key = str(protocol_key or infer_default_protocol_key(benchmark_key))
+    if key not in protocols:
+        raise KeyError(f"Unknown backtest protocol '{key}'. Available: {sorted(protocols)}")
+    return protocols[key]
+
+
