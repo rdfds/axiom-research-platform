@@ -77,3 +77,14 @@ def _pp_change(new: Optional[float], old: Optional[float]) -> Optional[float]:
     return new_val - old_val
 
 
+def _pick_date(row: pd.Series, date_field: str) -> Optional[pd.Timestamp]:
+    if date_field != "auto":
+        val = row.get(date_field)
+        return pd.to_datetime(val, errors="coerce") if val is not None else None
+    for field in ("announcement_date", "event_time", "effective_date", "action_date"):
+        val = row.get(field)
+        if val is not None and not pd.isna(val):
+            return pd.to_datetime(val, errors="coerce")
+    return None
+
+
