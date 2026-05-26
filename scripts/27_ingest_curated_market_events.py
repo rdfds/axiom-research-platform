@@ -49,3 +49,7 @@ def normalize_value(value: Any) :
     return value
 
 
+def row_to_payload(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: normalize_value(v) for k, v in row.items()}
+
+
