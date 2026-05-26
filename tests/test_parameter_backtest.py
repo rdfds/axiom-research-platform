@@ -44,3 +44,44 @@ def _run(run_id: str, company_id: str) -> RecommendationRun:
     )
 
 
+def _snapshot_root(tmp_path: Path) -> Path:
+    root = tmp_path / "snapshots"
+    keyed = root / "keyed" / "as_of_date=2026-02-28"
+    keyed.mkdir(parents=True, exist_ok=True)
+    (keyed / "company_id=0001111111.json").write_text(
+        json.dumps(
+            {
+                "company_id": "0001111111",
+                "as_of_time": "2026-02-28T00:00:00+00:00",
+                "features": {
+                    "liquidity.available_for_actions": {"value": 200_000_000.0},
+                    "market.market_cap": {"value": 2_000_000_000.0},
+                    "capital_structure.net_leverage": {"value": 1.7},
+                    "capital_structure.maturity_wall_ratio_24m": {"value": 0.08},
+                    "operating.fcf_conversion": {"value": 0.8},
+                    "market.credit_window_proxy": {"value": 0.72},
+                    "market.equity_window_proxy": {"value": 0.68},
+                },
+            }
+        )
+    )
+    (keyed / "company_id=0002222222.json").write_text(
+        json.dumps(
+            {
+                "company_id": "0002222222",
+                "as_of_time": "2026-02-28T00:00:00+00:00",
+                "features": {
+                    "liquidity.available_for_actions": {"value": 150_000_000.0},
+                    "market.market_cap": {"value": 1_500_000_000.0},
+                    "capital_structure.net_leverage": {"value": 2.4},
+                    "capital_structure.maturity_wall_ratio_24m": {"value": 0.22},
+                    "operating.fcf_conversion": {"value": 0.65},
+                    "market.credit_window_proxy": {"value": 0.49},
+                    "market.equity_window_proxy": {"value": 0.55},
+                },
+            }
+        )
+    )
+    return root
+
+
