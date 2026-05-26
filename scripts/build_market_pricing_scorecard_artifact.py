@@ -396,7 +396,7 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
-def build_leaderboard(path: Path, *, limit: int = 20) :
+def build_leaderboard(path: Path, *, limit: int = 20) -> Dict[str, Any]:
     rows = list(iter_rows(path))
     candidates = []
     for row in rows:
