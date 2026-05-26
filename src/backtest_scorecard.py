@@ -257,3 +257,7 @@ def render_portfolio_strategy_scorecard_markdown(scorecard: Dict[str, Any]) -> s
     return "\n".join(lines)
 
 
+__all__ = [
+    "build_portfolio_strategy_scorecard",
+    "render_portfolio_strategy_scorecard_markdown",
+]
