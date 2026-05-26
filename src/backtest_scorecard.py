@@ -203,3 +203,57 @@ def build_portfolio_strategy_scorecard(
     }
 
 
+def render_portfolio_strategy_scorecard_markdown(scorecard: Dict[str, Any]) -> str:
+    portfolio = dict(scorecard.get("portfolio_proxy", {}) or {})
+    case_counts = dict(scorecard.get("case_counts", {}) or {})
+    coverage = dict(scorecard.get("coverage", {}) or {})
+    benchmark = dict(scorecard.get("benchmark_comparison", {}) or {})
+    lines: List[str] = []
+    lines.append("# Canonical Backtest Scorecard")
+    lines.append("")
+    lines.append(f"- Scored cases: `{case_counts.get('scored_cases', 0)}` / `{case_counts.get('requested_cases', 0)}`")
+    lines.append(f"- Unsupported cases: `{case_counts.get('unsupported_cases', 0)}`")
+    lines.append(f"- Error cases: `{case_counts.get('error_cases', 0)}`")
+    lines.append(f"- Gross mean alignment score: `{portfolio.get('gross_mean_alignment_score')}`")
+    lines.append(f"- Net mean alignment score: `{portfolio.get('net_mean_alignment_score')}`")
+    lines.append(f"- Average estimated cost (bps): `{portfolio.get('average_estimated_cost_bps')}`")
+    lines.append(f"- Gross strong alignment rate: `{portfolio.get('gross_strong_alignment_rate')}`")
+    lines.append(f"- Net strong alignment rate: `{portfolio.get('net_strong_alignment_rate')}`")
+    lines.append("")
+
+    if benchmark:
+        lines.append("## Benchmark Comparison")
+        lines.append("")
+        for key in (
+            "reference_mean_alignment_score",
+            "delta_mean_alignment_score",
+            "delta_net_alignment_score",
+            "reference_anchor_primary_exact_rate",
+            "reference_anchor_primary_family_rate",
+            "reference_unsupported_case_count",
+            "delta_unsupported_case_count",
+        ):
+            if key in benchmark:
+                lines.append(f"- `{key}`: `{benchmark.get(key)}`")
+        lines.append("")
+
+    family_counts = dict(coverage.get("recommended_family_counts", {}) or {})
+    if family_counts:
+        lines.append("## Family Mix")
+        lines.append("")
+        for family, count in family_counts.items():
+            lines.append(f"- `{family}`: `{count}`")
+        lines.append("")
+
+    flags = list(scorecard.get("flags", []) or [])
+    lines.append("## Flags")
+    lines.append("")
+    if flags:
+        for flag in flags:
+            lines.append(f"- `{flag}`")
+    else:
+        lines.append("- `none`")
+    lines.append("")
+    return "\n".join(lines)
+
+
