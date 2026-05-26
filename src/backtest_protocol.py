@@ -90,3 +90,9 @@ def resolve_backtest_protocol(
     return protocols[key]
 
 
+__all__ = [
+    "BacktestProtocol",
+    "default_backtest_protocols",
+    "infer_default_protocol_key",
+    "resolve_backtest_protocol",
+]
