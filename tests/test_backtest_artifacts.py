@@ -31,3 +31,28 @@ def test_fingerprint_path_marks_tmp_paths_and_files(tmp_path: Path):
     assert fingerprint["sample_sha256"]
 
 
+def test_build_backtest_artifact_manifest_captures_inputs_and_outputs(tmp_path: Path):
+    lock_path = tmp_path / "lock.json"
+    lock_path.write_text("{}")
+    input_path = tmp_path / "input.parquet"
+    input_path.write_text("data")
+    output_path = tmp_path / "report.json"
+    output_path.write_text("{}")
+
+    manifest = build_backtest_artifact_manifest(
+        suite="manual_replay_historical_benchmark",
+        benchmark_key="capital_return_holdout",
+        protocol=resolve_backtest_protocol(benchmark_key="capital_return_holdout"),
+        cost_model=resolve_transaction_cost_model("manual_replay_event_equal_weight_v1"),
+        lock_path=lock_path,
+        runs_root=tmp_path / "runs",
+        artifact_root=tmp_path / "artifacts",
+        snapshot_cache_dir=tmp_path / "artifacts" / "snapshot_cache",
+        resolved_paths={"outcomes_path": input_path},
+        resolved_env={"AXIOM_METRIC_POLICY_PATH": str(input_path)},
+        outputs={"historical_report": output_path},
+    )
+
+    assert manifest["protocol"]["key"] == "capital_return_holdout_v1"
+    assert manifest["resolved_inputs"]["outcomes_path"]["exists"] is True
+    assert manifest["outputs"]["historical_report"]["exists"] is True
