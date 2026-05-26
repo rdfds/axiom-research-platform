@@ -291,3 +291,28 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     return summary
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            features = row.get("features") or {}
+            repair_enterprise_value(features=features, computed_at=computed_at)
+            repair_ebitda_margin_ttm(features=features, computed_at=computed_at)
+            repair_ev_ebitda(features=features, computed_at=computed_at)
+            repair_pe_ratio(features=features, computed_at=computed_at)
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        summary_path = Path(args.summary_out)
+        summary_path.write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired market-pricing metrics -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()

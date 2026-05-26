@@ -328,3 +328,10 @@ class MarketDataProvider:
 # Convenience functions
 _provider = None
 
+def get_provider() -> MarketDataProvider:
+    """Get or create the global market data provider."""
+    global _provider
+    if _provider is None:
+        _provider = MarketDataProvider()
+    return _provider
+
