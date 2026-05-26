@@ -88,3 +88,61 @@ def _pick_date(row: pd.Series, date_field: str) -> Optional[pd.Timestamp]:
     return None
 
 
+def _months_from_quarters(quarters: int) -> int:
+    return int(quarters) * 3
+
+
+def _date_key(value: pd.Timestamp) -> str:
+    return value.normalize().strftime("%Y-%m-%d")
+
+
+def first_non_null(*values: Any) -> Optional[float]:
+    for value in values:
+        if value is None or pd.isna(value):
+            continue
+        return value
+    return None
+
+
+def first_positive_non_null(*values: Any) -> Optional[float]:
+    for value in values:
+        if value is None or pd.isna(value):
+            continue
+        try:
+            numeric = float(value)
+        except Exception:
+            continue
+        if numeric > 0:
+            return numeric
+    return None
+
+
+def _resolved_action_size(row: pd.Series) -> Optional[float]:
+    action_type = str(row.get("action_type") or "").strip().lower()
+    if action_type in {"split", "stock_split", "reverse_split"}:
+        return first_positive_non_null(
+            row.get("split_factor"),
+            row.get("facpr"),
+            row.get("ratio"),
+            row.get("size"),
+            row.get("amount"),
+            row.get("divamt"),
+            row.get("deal_value"),
+            row.get("offering_amt_k"),
+            row.get("principal_amt"),
+            row.get("dealamount"),
+        )
+    return first_non_null(
+        row.get("size"),
+        row.get("amount"),
+        row.get("ratio"),
+        row.get("split_factor"),
+        row.get("facpr"),
+        row.get("divamt"),
+        row.get("deal_value"),
+        row.get("offering_amt_k"),
+        row['principal_amt'],
+        row.get("dealamount"),
+    )
+
+
