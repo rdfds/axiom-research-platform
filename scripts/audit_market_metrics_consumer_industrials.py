@@ -104,3 +104,23 @@ def _metric_view(snapshot: Dict[str, Any], key: str) -> Dict[str, Any]:
     }
 
 
+def build_audit(as_of: str, limit_per_sector: int) -> Dict[str, Any]:
+    builder = CompanyStateBuilder()
+    companies = _sample_companies(limit_per_sector)
+    report: Dict[str, Any] = {
+        "as_of": as_of,
+        "companies_requested": len(companies),
+        "results": [],
+    }
+    for company in companies:
+        result: Dict[str, Any] = dict(company)
+        try:
+            snapshot = builder.build(company["company_id"], as_of)
+            result["market_metric_context"] = snapshot.provenance.get("market_metric_context")
+            result["metrics"] = {key: _metric_view(snapshot, key) for key in METRIC_KEYS}
+        except Exception as exc:
+            result["error"] = str(exc)
+        report["results"].append(result)
+    return report
+
+
