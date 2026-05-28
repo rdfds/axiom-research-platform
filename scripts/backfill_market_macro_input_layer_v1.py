@@ -136,3 +136,265 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _feature_template(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    provenance_artifact_type: str,
+    primary_source_basis: str,
+    support_mode: str,
+    value: Any,
+    unit: str,
+    missing_reason: str | None,
+    component_breakdown: Dict[str, Any] | None,
+    quality_flags: list[str] | None,
+) -> Dict[str, Any]:
+    return {
+        "name": metric_name,
+        "value": value,
+        "unit": unit,
+        "computed_at": computed_at,
+        "as_of_time": as_of_time,
+        "window": None,
+        "confidence": 1.0 if value is not None else None,
+        "provenance": [
+            {
+                "artifact_type": provenance_artifact_type,
+                "artifact_id": f"{primary_source_basis}:{Path(provenance_source).name}",
+                "source": provenance_source,
+                "published_at": as_of_time,
+                "ingested_at": computed_at,
+                "hash": None,
+            }
+        ],
+        "missing_reason": missing_reason,
+        "fallback_used": None,
+        "metric_policy_id": None,
+        "market_owner": None,
+        "primary_source_basis": primary_source_basis,
+        "methodology_registry_id": None,
+        "methodology_metric_id": None,
+        "canonical_owner_id": None,
+        "canonical_owner_name": None,
+        "canonical_classification": None,
+        "market_layer_status": None,
+        "current_alignment_status": None,
+        "primary_source_document_id": None,
+        "recommended_metric_name": None,
+        "input_source_registry_id": None,
+        "input_source_owner_id": None,
+        "input_source_owner_name": None,
+        "input_source_classification": primary_source_basis,
+        "input_source_formula_basis": None,
+        "input_source_alignment_status": "aligned",
+        "input_source_document_ids": None,
+        "definition_requirement": None,
+        "definition_requirement_reason": None,
+        "methodology_execution_decision": None,
+        "methodology_execution_reason": None,
+        "input_layer_bucket": "market_macro",
+        "input_layer_bucket_reason": primary_source_basis,
+        "strict_market_defined": None,
+        "archetype": None,
+        "sector": None,
+        "subsector": None,
+        "override_level_applied": None,
+        "support_mode": support_mode,
+        "applicability_status": None,
+        "component_breakdown": component_breakdown,
+        "quality_flags": quality_flags,
+        "view_type": None,
+    }
+
+
+def iter_snapshot_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
+def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) -> Iterable[list[Dict[str, Any]]]:
+    batch: list[Dict[str, Any]] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _permno_map(entity_identifier_path: Path) :
+    ids = pd.read_parquet(entity_identifier_path)
+    ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
+    ids["permno"] = ids["identifier_value"].astype(str).str.strip()
+    return ids[["entity_id", "permno"]].drop_duplicates()
+
+
+def _load_price_history(raw_timeseries_path: Path, permnos: list[str]) -> pd.DataFrame:
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(entity_id AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            adjusted_close,
+            close,
+            volume,
+            ret,
+            retx
+        FROM read_parquet('{raw_timeseries_path}')
+        WHERE series_type = 'price'
+          AND CAST(entity_id AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
+def _load_crsp_market_cache(crsp_market_cache_path: Path, permnos: list[str]) -> pd.DataFrame:
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    query = f"""
+        SELECT
+            CAST(permno AS VARCHAR) AS permno,
+            CAST(trade_date AS DATE) AS trade_date,
+            close_price,
+            price_proxy,
+            total_return,
+            price_return,
+            shares_outstanding,
+            daily_cap,
+            delist_flag
+        FROM read_parquet('{crsp_market_cache_path}')
+        WHERE CAST(permno AS VARCHAR) IN ({permno_sql})
+    """
+    prices = duckdb.sql(query).fetchdf()
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices["date_key"] = prices["trade_date"]
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
+def _load_price_history_for_row(
+    *,
+    permno: str | None,
+    as_of_time: str,
+    crsp_market_cache_path: Path | None,
+    crsp_daily_root: Path | None,
+    raw_timeseries_path: Path,
+    allow_monthly_market_proxy: bool,
+) -> pd.DataFrame:
+    if not permno:
+        return pd.DataFrame()
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    if crsp_market_cache_path is not None:
+        return _load_crsp_market_cache(crsp_market_cache_path, [permno])
+    if crsp_daily_root is not None:
+        return _load_crsp_daily_from_repo(
+            crsp_daily_root,
+            [permno],
+            min_asof_date=as_of_date,
+            max_asof_date=as_of_date,
+        )
+    if allow_monthly_market_proxy:
+        return _load_price_history(raw_timeseries_path, [permno])
+    return pd.DataFrame()
+
+
+def _load_price_history_for_batch(
+    *,
+    permnos: list[str],
+    as_of_times: list[str],
+    crsp_market_cache_path: Path | None,
+    crsp_daily_root: Path | None,
+    raw_timeseries_path: Path,
+    allow_monthly_market_proxy: bool,
+) -> Dict[str, pd.DataFrame]:
+    permnos = sorted({str(permno).strip() for permno in permnos if permno})
+    if not permnos:
+        return {}
+
+    if crsp_market_cache_path is not None:
+        prices = _load_crsp_market_cache(crsp_market_cache_path, permnos)
+    elif crsp_daily_root is not None:
+        as_of_dates = [pd.Timestamp(as_of_time).tz_convert("UTC").normalize() for as_of_time in as_of_times]
+        prices = _load_crsp_daily_from_repo(
+            crsp_daily_root,
+            permnos,
+            min_asof_date=min(as_of_dates),
+            max_asof_date=max(as_of_dates),
+        )
+    elif allow_monthly_market_proxy:
+        prices = _load_price_history(raw_timeseries_path, permnos)
+    else:
+        prices = pd.DataFrame()
+
+    if prices.empty:
+        return {}
+    return {
+        str(permno): frame.reset_index(drop=True)
+        for permno, frame in prices.groupby("permno", sort=False)
+    }
+
+
+def _load_crsp_daily_from_repo(
+    crsp_daily_root: Path,
+    permnos: list[str],
+    *,
+    min_asof_date: pd.Timestamp,
+    max_asof_date: pd.Timestamp,
+) -> pd.DataFrame:
+    if not permnos:
+        return pd.DataFrame()
+    start_year = int(min_asof_date.year) - 1
+    end_year = int(max_asof_date.year)
+    files: list[Path] = []
+    for year in range(start_year, end_year + 1):
+        candidate = crsp_daily_root / f"dsf_{year:04d}-01-01_to_{year:04d}-12-31.parquet"
+        if candidate.exists():
+            files.append(candidate)
+    if not files:
+        return pd.DataFrame()
+
+    permno_sql = ",".join(f"'{permno}'" for permno in sorted(set(permnos)))
+    min_trade_date = (min_asof_date - pd.Timedelta(days=370)).date().isoformat()
+    max_trade_date = max_asof_date.date().isoformat()
+    selects = []
+    for file_path in files:
+        selects.append(
+            f"""
+            SELECT
+                CAST(permno AS VARCHAR) AS permno,
+                CAST(date AS DATE) AS trade_date,
+                ABS(prc) AS close_price,
+                ABS(prc) AS price_proxy,
+                ret AS total_return,
+                retx AS price_return,
+                shrout AS shares_outstanding,
+                ABS(prc) * shrout AS daily_cap,
+                FALSE AS delist_flag
+            FROM read_parquet('{file_path.as_posix()}')
+            WHERE CAST(permno AS VARCHAR) IN ({permno_sql})
+              AND CAST(date AS DATE) >= DATE '{min_trade_date}'
+              AND CAST(date AS DATE) <= DATE '{max_trade_date}'
+            """
+        )
+    query = " UNION ALL ".join(selects)
+    prices = duckdb.sql(query).fetchdf()
+    if prices.empty:
+        return prices
+    prices["trade_date"] = pd.to_datetime(prices["trade_date"], utc=True).dt.normalize()
+    prices["date_key"] = prices["trade_date"]
+    prices = prices.sort_values(["permno", "trade_date"]).drop_duplicates(["permno", "trade_date"], keep="last")
+    return prices
+
+
