@@ -124,3 +124,17 @@ def build_audit(as_of: str, limit_per_sector: int) -> Dict[str, Any]:
     return report
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--as-of", default=DEFAULT_AS_OF)
+    parser.add_argument("--limit-per-sector", type=int, default=2)
+    parser.add_argument("--out", default=str(DEFAULT_OUT))
+    args = parser.parse_args()
+
+    report = build_audit(args.as_of, args.limit_per_sector)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2))
+    print(out_path)
+
+
