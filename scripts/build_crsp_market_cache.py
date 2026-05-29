@@ -66,3 +66,5 @@ def main() -> None:
     print(f"Wrote CRSP market cache -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()

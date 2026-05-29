@@ -377,3 +377,24 @@ def ingest_mna(path: Path, chunk_size: int) -> None:
             log(f"Ingested M&A chunk: {len(canonical_records):,}")
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prices", action="store_true", help="Ingest prices")
+    parser.add_argument("--corp-actions", action="store_true", help="Ingest corporate actions")
+    parser.add_argument("--mna", action="store_true", help="Ingest M&A deals")
+    parser.add_argument("--chunk-size", type=int, default=50000)
+    args = parser.parse_args()
+
+    if not (args.prices or args.corp_actions or args.mna):
+        args.prices = True
+        args.corp_actions = True
+        args.mna = True
+
+    if args.prices:
+        ingest_prices(CURATED_DIR / "prices_master_full.parquet", args.chunk_size)
+    if args.corp_actions:
+        ingest_corporate_actions(CURATED_DIR / "corporate_actions_master.parquet", args.chunk_size)
+    if args.mna:
+        ingest_mna(CURATED_DIR / "mna_master.parquet", args.chunk_size)
+
+
