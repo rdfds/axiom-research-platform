@@ -202,3 +202,8 @@ def _load_actions(path: Path, columns: Iterable[str]) -> pd.DataFrame:
     return pd.read_parquet(path, columns=list(columns))
 
 
+def _normalize_gvkey(series: pd.Series) -> pd.Series:
+    cleaned = series.astype(str).str.extract(r"(\d+)")[0]
+    return cleaned.str.zfill(6)
+
+
