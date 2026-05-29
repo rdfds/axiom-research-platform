@@ -446,3 +446,11 @@ def _load_macro_history(
     return macro
 
 
+def _latest_value_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp, value_col: str) -> float | None:
+    eligible = df[df["date_key"] <= date_key]
+    if eligible.empty:
+        return None
+    value = eligible.iloc[-1][value_col]
+    return None if pd.isna(value) else float(value)
+
+

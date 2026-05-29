@@ -168,3 +168,120 @@ def ingest_prices(path: Path, chunk_size: int) -> None:
             log(f"Ingested prices chunk: {len(canonical_records):,}")
 
 
+def ingest_corporate_actions(path: Path, chunk_size: int) -> None:
+    if not path.exists():
+        log(f"Corporate actions file not found: {path}")
+        return
+
+    df = pd.read_parquet(path)
+    log(f"Loaded corporate actions: {len(df):,} rows")
+
+    ingestion_time = datetime.utcnow()
+    source_system = "corporate_actions_master"
+
+    for chunk in iter_chunks(df, chunk_size):
+        raw_records = []
+        canonical_records = []
+
+        for _, row in chunk.iterrows():
+            action_date = first_non_null(
+                row.get("action_date"),
+                row.get("exdt"),
+                row.get("dclrdt"),
+                row.get("rcrddt"),
+                row.get("paydt"),
+                row.get("dlstdt"),
+            )
+            if action_date is None or pd.isna(action_date):
+                continue
+
+            announcement_date = first_non_null(row.get("dclrdt"), row.get("action_date"))
+            event_time = pd.to_datetime(announcement_date) if announcement_date is not None else pd.to_datetime(action_date)
+            available_time = pd.to_datetime(announcement_date) if announcement_date is not None else event_time
+
+            effective_date = first_non_null(row.get("exdt"), row['paydt'], row.get("action_date"))
+
+            permno = row.get("permno")
+            permco = row.get("permco")
+            gvkey = row.get("gvkey")
+            company_id = str(gvkey) if gvkey is not None and not pd.isna(gvkey) else (str(permco) if not pd.isna(permco) else None)
+            security_id = str(permno) if not pd.isna(permno) else None
+            entity_id = company_id or security_id
+            if not entity_id:
+                continue
+
+            if available_time < event_time:
+                available_time = event_time
+
+            payload = row_to_payload(row.to_dict())
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            raw_version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=entity_id,
+                event_time=event_time,
+                available_time=available_time,
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            raw_records.append(
+                {
+                    "entity_id": entity_id,
+                    "company_id": company_id,
+                    "security_id": security_id,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "payload": payload,
+                }
+            )
+
+            size = first_non_null(
+                row.get("amount"),
+                row.get("divamt"),
+                row.get("div_amount"),
+                row.get("deal_amount"),
+                row.get("buyback_amount_qtr"),
+                row.get("deal_value"),
+                row.get("ratio"),
+            )
+
+            quality_flags: List[str] = []
+            if announcement_date is None or pd.isna(announcement_date):
+                quality_flags.append("estimated_available_time")
+            if size is None or pd.isna(size):
+                quality_flags.append("missing_size")
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": entity_id,
+                    "company_id": company_id,
+                    "security_id": security_id,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingestion_time,
+                    "version_id": raw_version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [raw_version_id],
+                    "quality_flags": quality_flags,
+                    "action_type": normalize_value(row.get("action_type")),
+                    "action_subtype": normalize_value(row.get("action_subtype")),
+                    "announcement_date": pd.to_datetime(announcement_date) if announcement_date is not None else None,
+                    "effective_date": pd.to_datetime(effective_date) if effective_date is not None else None,
+                    "size": normalize_value(size),
+                    "units": None,
+                    "funding_source": None,
+                    "source_action_type": normalize_value(row.get("source_action_type")),
+                    "source_action_subtype": normalize_value(row.get("source_action_subtype")),
+                    "company_name": normalize_value(row.get("company_name")),
+                    "ticker": normalize_value(row.get("ticker")),
+                    "cusip": normalize_value(row.get("cusip")),
+                }
+            )
+
+        if raw_records:
+            write_raw_records(source_system=source_system, records=raw_records)
+        if canonical_records:
+            append_canonical_records("warehouse_corp_actions", canonical_records)
+            log(f"Ingested corp actions chunk: {len(canonical_records):,}")
+
+

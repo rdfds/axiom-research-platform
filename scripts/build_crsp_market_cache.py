@@ -14,7 +14,7 @@ from pathlib import Path
 import duckdb
 
 
-def parse_args() :
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--entity-identifier-path", required=True)
     parser.add_argument("--crsp-daily-path", required=True)
