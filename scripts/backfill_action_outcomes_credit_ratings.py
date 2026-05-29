@@ -39,3 +39,7 @@ def _parse_horizons(raw: str) :
     return sorted(set(out))
 
 
+def _quote_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+

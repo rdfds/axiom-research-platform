@@ -146,3 +146,53 @@ def _resolved_action_size(row: pd.Series) -> Optional[float]:
     )
 
 
+def _base_available_liquidity(metrics: Dict[str, Any]) -> Optional[float]:
+    value = metrics.get("available_liquidity")
+    if value is not None:
+        return value
+    return metrics.get("cash")
+
+
+def _apply_richer_base_fields(record: Dict[str, Any], base: Dict[str, Any]) -> None:
+    record["base_cash"] = base.get("cash")
+    record["base_total_debt"] = base.get("total_debt", base.get("debt"))
+    record["base_available_liquidity"] = _base_available_liquidity(base)
+
+
+def _enrich_macro_columns_from_helper(
+    df: pd.DataFrame,
+    *,
+    macro_series: Dict[str, str],
+) -> pd.DataFrame:
+    if df.empty or "action_date" not in df.columns or not macro_series:
+        return df
+
+    helper = FeatureBuilder()
+    dates = pd.to_datetime(df["action_date"], errors="coerce")
+    unique_dates = sorted({pd.Timestamp(d).normalize() for d in dates.dropna().tolist()})
+    if not unique_dates:
+        return df
+
+    macro_cache: Dict[str, Dict[str, Any]] = {}
+    for as_of in unique_dates:
+        macro_cache[_date_key(as_of)] = helper.compute_macro_features(as_of, macro_series)
+
+    enriched = df.copy()
+    date_keys = dates.dt.normalize().dt.strftime("%Y-%m-%d")
+    candidate_columns = sorted(
+        {
+            col
+            for payload in macro_cache.values()
+            for col in payload.keys()
+            if str(col).startswith("macro_")
+        }
+    )
+    for column in candidate_columns:
+        mapped = date_keys.map(lambda key: (macro_cache.get(key) or {}).get(column))
+        if column not in enriched.columns:
+            enriched[column] = mapped
+        else:
+            enriched[column] = enriched[column].where(enriched[column].notna(), mapped)
+    return enriched
+
+
