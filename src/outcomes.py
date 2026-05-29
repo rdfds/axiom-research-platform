@@ -207,3 +207,128 @@ class OutcomeCalculator:
         }
 
 
+def add_outcomes_to_profiles(profiles_path: Path, output_path: Optional[Path] = None):
+    """
+    Add TSR outcomes to existing action profiles.
+
+    This enriches the profiles with "how did it turn out?" data.
+    """
+    print("=" * 70)
+    print("ADDING TSR OUTCOMES TO ACTION PROFILES")
+    print("=" * 70)
+
+    if not profiles_path.exists():
+        print(f"Error: Profiles not found at {profiles_path}")
+        return None
+
+    # Load profiles
+    print(f"\nLoading profiles from {profiles_path}...")
+    profiles = pd.read_parquet(profiles_path)
+    print(f"Loaded {len(profiles):,} profiles")
+
+    # Initialize outcome calculator
+    calc = OutcomeCalculator()
+
+    # Compute outcomes
+    print(f"\nComputing TSR outcomes...")
+
+    outcomes = []
+    success = 0
+    fail = 0
+
+    for i, (idx, row) in enumerate(profiles.iterrows()):
+        gvkey = row.get('gvkey')
+
+        # Handle different date column names
+        action_date = row['action_date'] or row.get('deal_date')
+
+        if pd.isna(gvkey) or pd.isna(action_date):
+            outcomes.append({})
+            fail += 1
+            continue
+
+        try:
+            tsr = calc.compute_multi_horizon_tsr(str(gvkey), action_date)
+            if tsr:
+                outcomes.append(tsr)
+                success += 1
+            else:
+                outcomes.append({})
+                fail += 1
+        except Exception as e:
+            outcomes.append({})
+            fail += 1
+
+        if (i + 1) % 500 == 0:
+            print(f"  Processed {i + 1:,}/{len(profiles):,} - {success:,} with outcomes")
+
+    print(f"\n  Outcomes computed: {success:,} ({success/len(profiles)*100:.1f}%)")
+    print(f"  Missing data: {fail:,}")
+
+    # Merge outcomes
+    outcomes_df = pd.DataFrame(outcomes)
+    result = pd.concat([profiles.reset_index(drop=True), outcomes_df], axis=1)
+
+    # Save
+    if output_path is None:
+        output_path = profiles_path  # Overwrite
+
+    result.to_parquet(output_path, index=False)
+    print(f"\n✅ Saved enriched profiles to {output_path}")
+
+    # Summary stats
+    if 'tsr_12m' in result.columns:
+        valid_tsr = result['tsr_12m'].dropna()
+        if len(valid_tsr) > 0:
+            print(f"\n📊 TSR Statistics (12-month):")
+            print(f"   Mean: {valid_tsr.mean():.1f}%")
+            print(f"   Median: {valid_tsr.median():.1f}%")
+            print(f"   Std: {valid_tsr.std():.1f}%")
+            print(f"   Min: {valid_tsr.min():.1f}%")
+            print(f"   Max: {valid_tsr.max():.1f}%")
+
+            # By action type
+            if 'action_type' in result.columns:
+                print(f"\n📊 Median 12M TSR by Action Type:")
+                by_type = result.groupby('action_type')['tsr_12m'].median().sort_values(ascending=False)
+                for action, tsr in by_type.items():
+                    if pd.notna(tsr):
+                        print(f"   {action:25} {tsr:+.1f}%")
+
+    return result
+
+
+def demo():
+    """Demo the outcome calculator."""
+    print("=" * 70)
+    print("OUTCOME CALCULATOR DEMO")
+    print("=" * 70)
+
+    calc = OutcomeCalculator()
+
+    # Test with a sample company
+    # Apple's gvkey
+    test_gvkey = '001690'
+    test_date = '2020-03-15'  # COVID crash
+
+    print(f"\nTest: Apple ({test_gvkey}) from {test_date}")
+
+    tsr = calc.compute_multi_horizon_tsr(test_gvkey, test_date)
+    if tsr:
+        print(f"\nTSR Results:")
+        print(f"  1 month:  {tsr['tsr_1m']:+.1f}%" if tsr['tsr_1m'] else "  1 month:  N/A")
+        print(f"  3 months: {tsr['tsr_3m']:+.1f}%" if tsr['tsr_3m'] else "  3 months: N/A")
+        print(f"  6 months: {tsr['tsr_6m']:+.1f}%" if tsr['tsr_6m'] else "  6 months: N/A")
+        print(f"  12 months: {tsr['tsr_12m']:+.1f}%" if tsr['tsr_12m'] else "  12 months: N/A")
+
+    # Test relative TSR
+    rel = calc.compute_relative_tsr(test_gvkey, test_date, 12)
+    if rel:
+        print(f"\nRelative Performance (12M):")
+        print(f"  Company TSR: {rel['company_tsr']:+.1f}%")
+        print(f"  Market TSR:  {rel['market_tsr']:+.1f}%")
+        print(f"  Excess Return: {rel['excess_return']:+.1f}%")
+
+
+if __name__ == "__main__":
+    demo()
