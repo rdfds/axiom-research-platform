@@ -398,3 +398,51 @@ def _load_crsp_daily_from_repo(
     return prices
 
 
+def _load_macro_history(
+    raw_timeseries_path: Path,
+    *,
+    min_asof_date: pd.Timestamp | None = None,
+    max_asof_date: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    wanted_ids = {
+        "SOFR",
+        "DFF",
+        "DGS2",
+        "DGS10",
+        "BAMLC0A0CM",
+        "BAMLH0A0HYM2",
+        "CPIAUCSL",
+        "UNRATE",
+        "RSAFS",
+        "DCOILWTICO",
+        "GDPC1",
+    }
+    wanted_sql = ",".join(f"'{instrument_id}'" for instrument_id in sorted(wanted_ids))
+    date_filters = ""
+    if min_asof_date is not None and max_asof_date is not None:
+        # Monthly YoY metrics only need about a year of history, but quarterly GDP growth
+        # is keyed off release observations and needs a wider lookback so the prior-year
+        # release still survives the as-of-safe filter.
+        min_event_date = (min_asof_date - pd.Timedelta(days=MACRO_LAGGED_SERIES_LOOKBACK_DAYS)).date().isoformat()
+        max_event_date = max_asof_date.date().isoformat()
+        date_filters = (
+            f"\n          AND CAST(event_time AS DATE) >= DATE '{min_event_date}'"
+            f"\n          AND CAST(event_time AS DATE) <= DATE '{max_event_date}'"
+        )
+    query = f"""
+        SELECT
+            instrument_id,
+            CAST(event_time AS DATE) AS event_date,
+            value,
+            units
+        FROM read_parquet('{raw_timeseries_path}')
+        WHERE series_type = 'macro'
+          AND instrument_id IN ({wanted_sql})
+          {date_filters}
+    """
+    macro = duckdb.sql(query).fetchdf()
+    macro["event_date"] = pd.to_datetime(macro["event_date"], utc=True).dt.normalize()
+    macro = macro.sort_values(["instrument_id", "event_date"]).drop_duplicates(["instrument_id", "event_date"], keep="last")
+    return macro
+
+
