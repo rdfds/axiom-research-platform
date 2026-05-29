@@ -79,3 +79,32 @@ def test_load_price_history_for_row_uses_single_permno_crsp_slice(tmp_path: Path
     assert list(loaded["close_price"]) == [10.5, 11.0]
 
 
+def test_load_price_history_for_batch_groups_by_permno(tmp_path: Path):
+    crsp_root = tmp_path / "crsp"
+    crsp_root.mkdir()
+    dsf_path = crsp_root / "dsf_2024-01-01_to_2024-12-31.parquet"
+    pd.DataFrame(
+        {
+            "permno": [10001, 10001, 20002],
+            "date": pd.to_datetime(["2024-12-30", "2024-12-31", "2024-12-31"]),
+            "prc": [-10.5, -11.0, -99.0],
+            "ret": [0.01, 0.02, 0.03],
+            "retx": [0.009, 0.018, 0.02],
+            "shrout": [1000.0, 1000.0, 500.0],
+        }
+    ).to_parquet(dsf_path, index=False)
+
+    loaded = _load_price_history_for_batch(
+        permnos=["10001", "20002"],
+        as_of_times=["2024-12-31T00:00:00+00:00", "2024-12-31T00:00:00+00:00"],
+        crsp_market_cache_path=None,
+        crsp_daily_root=crsp_root,
+        raw_timeseries_path=tmp_path / "unused.parquet",
+        allow_monthly_market_proxy=False,
+    )
+
+    assert sorted(loaded) == ["10001", "20002"]
+    assert list(loaded["10001"]["close_price"]) == [10.5, 11.0]
+    assert list(loaded["20002"]["close_price"]) == [99.0]
+
+

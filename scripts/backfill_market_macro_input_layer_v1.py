@@ -233,7 +233,7 @@ def _iter_row_batches(rows: Iterable[Dict[str, Any]], batch_size: int) -> Iterab
         yield batch
 
 
-def _permno_map(entity_identifier_path: Path) :
+def _permno_map(entity_identifier_path: Path) -> pd.DataFrame:
     ids = pd.read_parquet(entity_identifier_path)
     ids = ids[ids["identifier_type"].astype(str).str.lower() == "permno"].copy()
     ids["permno"] = ids["identifier_value"].astype(str).str.strip()
