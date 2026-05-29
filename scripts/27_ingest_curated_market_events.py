@@ -74,3 +74,97 @@ def iter_chunks(df: pd.DataFrame, chunk_size: int) -> Iterable[pd.DataFrame]:
         yield df.iloc[start : start + chunk_size]
 
 
+def ingest_prices(path: Path, chunk_size: int) -> None:
+    if not path.exists():
+        log(f"Prices file not found: {path}")
+        return
+
+    df = pd.read_parquet(path)
+    df["date"] = pd.to_datetime(df["date"])
+    log(f"Loaded prices: {len(df):,} rows")
+
+    ingestion_time = datetime.utcnow()
+    source_system = "crsp_rdp_prices"
+
+    for chunk in iter_chunks(df, chunk_size):
+        raw_records = []
+        canonical_records = []
+
+        for _, row in chunk.iterrows():
+            trade_date = row.get("date")
+            if pd.isna(trade_date):
+                continue
+
+            event_time = pd.to_datetime(trade_date)
+            available_time = event_time + timedelta(hours=16)
+
+            permno = row.get("permno")
+            permco = row.get("permco")
+            entity_id = str(permno) if not pd.isna(permno) else None
+            company_id = str(permco) if not pd.isna(permco) else None
+            security_id = entity_id
+
+            if not entity_id:
+                continue
+
+            payload = row_to_payload(row.to_dict())
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            raw_version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=entity_id,
+                event_time=event_time,
+                available_time=available_time,
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            raw_records.append(
+                {
+                    "entity_id": entity_id,
+                    "company_id": company_id,
+                    "security_id": security_id,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "payload": payload,
+                }
+            )
+
+            prc = row.get("prc")
+            close_price = abs(prc) if prc is not None and not pd.isna(prc) else None
+            quality_flags: List[str] = ["estimated_available_time"]
+            if close_price is None:
+                quality_flags.append("missing_data")
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": entity_id,
+                    "company_id": company_id,
+                    "security_id": security_id,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingestion_time,
+                    "version_id": raw_version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [raw_version_id],
+                    "quality_flags": quality_flags,
+                    "trade_date": event_time,
+                    "open": None,
+                    "high": None,
+                    "low": None,
+                    "close": close_price,
+                    "adjusted_close": close_price,
+                    "volume": normalize_value(row.get("vol")),
+                    "total_return_index": None,
+                    "ret": normalize_value(row.get("ret")),
+                    "retx": normalize_value(row.get("retx")),
+                    "cusip": normalize_value(row.get("cusip")),
+                }
+            )
+
+        if raw_records:
+            write_raw_records(source_system=source_system, records=raw_records)
+        if canonical_records:
+            append_canonical_records("warehouse_prices", canonical_records)
+            log(f"Ingested prices chunk: {len(canonical_records):,}")
+
+

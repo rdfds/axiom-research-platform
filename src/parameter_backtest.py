@@ -374,3 +374,58 @@ def _score_historical_rows(frame: pd.DataFrame) -> pd.DataFrame:
     return scored
 
 
+def _cohort_spec_for_action(action_id: str) -> Optional[Dict[str, Any]]:
+    aid = str(action_id or "")
+    if not aid:
+        return None
+    exact = {
+        "capital_structure.equity_issuance",
+        "capital_return.dividend_increase",
+        "capital_return.dividend_cut",
+        "capital_return.dividend_initiate",
+        "capital_return.special_dividend",
+        "mna.go_private_lbo",
+    }
+    if aid in exact:
+        return {"cohort_key": aid, "normalized_action_id": aid}
+    if aid in {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.tender_offer_buyback",
+    }:
+        return {
+            "cohort_key": "capital_return.buyback",
+            "normalized_action_family": "capital_return",
+            "normalized_action_subfamilies": ["buyback"],
+        }
+    if aid in {
+        "capital_structure.refinancing",
+        "capital_structure.new_debt_issuance",
+        "capital_structure.revolver_draw_or_resize",
+        "capital_structure.tender_offer_debt",
+        "capital_structure.exchange_offer",
+        "capital_structure.liability_management_exercise",
+    }:
+        return {
+            "cohort_key": "capital_structure.debt_family",
+            "normalized_action_family": "capital_structure",
+            "normalized_action_subfamilies": ["debt_bond", "debt_loan", "revolver"],
+        }
+    if aid in {
+        "capital_structure.convertible_issuance",
+        "capital_structure.preferred_issuance",
+    }:
+        return {"cohort_key": "capital_structure.equity_issuance", "normalized_action_id": "capital_structure.equity_issuance"}
+    if aid in {"mna.platform_acquisition", "mna.tuck_in_acquisition", "mna.transformational_acquisition"}:
+        return {
+            "cohort_key": "mna.acquisition_family",
+            "normalized_action_family": "mna",
+        }
+    if aid.startswith("portfolio."):
+        return {
+            "cohort_key": "portfolio.divestiture_family",
+            "normalized_action_family": "portfolio",
+        }
+    return None
+
+

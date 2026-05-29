@@ -141,7 +141,7 @@ def _resolved_action_size(row: pd.Series) -> Optional[float]:
         row.get("divamt"),
         row.get("deal_value"),
         row.get("offering_amt_k"),
-        row['principal_amt'],
+        row.get("principal_amt"),
         row.get("dealamount"),
     )
 
