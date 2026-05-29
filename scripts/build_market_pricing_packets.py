@@ -18,3 +18,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_rows(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def _node_value(features: Dict[str, Any], name: str) -> float | None:
+    node = features.get(name) or {}
+    value = node.get("value")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:  # noqa: BLE001
+        return None
+
+
