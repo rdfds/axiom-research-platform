@@ -285,3 +285,95 @@ def ingest_corporate_actions(path: Path, chunk_size: int) -> None:
             log(f"Ingested corp actions chunk: {len(canonical_records):,}")
 
 
+def ingest_mna(path: Path, chunk_size: int) -> None:
+    if not path.exists():
+        log(f"M&A file not found: {path}")
+        return
+
+    df = pd.read_parquet(path)
+    log(f"Loaded M&A: {len(df):,} rows")
+
+    ingestion_time = datetime.utcnow()
+    source_system = "mna_master"
+
+    for chunk in iter_chunks(df, chunk_size):
+        raw_records = []
+        canonical_records = []
+
+        for _, row in chunk.iterrows():
+            announce_date = first_non_null(row.get("announce_date"), row.get("event_date"))
+            if announce_date is None or pd.isna(announce_date):
+                continue
+
+            event_time = pd.to_datetime(announce_date)
+            available_time = event_time
+
+            deal_id = row.get("deal_id") or row.get("source_id")
+            if deal_id is None or pd.isna(deal_id):
+                deal_id = f"mna_{event_time.date()}_{row.name}"
+
+            target_company_id = first_non_null(row.get("target_permco"), row.get("target_id"))
+            acquiror_company_id = first_non_null(row.get("acquiror_permco"), row.get("acquiror_id"))
+
+            entity_id = str(target_company_id) if target_company_id is not None and not pd.isna(target_company_id) else str(deal_id)
+
+            payload = row_to_payload(row.to_dict())
+            raw_payload_hash = compute_raw_payload_hash(payload)
+            raw_version_id = compute_version_id(
+                source_system=source_system,
+                entity_id=str(deal_id),
+                event_time=event_time,
+                available_time=available_time,
+                raw_payload_hash=raw_payload_hash,
+            )
+
+            raw_records.append(
+                {
+                    "entity_id": str(deal_id),
+                    "company_id": None,
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "payload": payload,
+                }
+            )
+
+            deal_value = row.get("deal_value")
+            quality_flags: List[str] = []
+            if deal_value is None or pd.isna(deal_value):
+                quality_flags.append("value_missing")
+
+            canonical_records.append(
+                {
+                    "source_system": source_system,
+                    "entity_id": entity_id,
+                    "company_id": None,
+                    "security_id": None,
+                    "event_time": event_time,
+                    "available_time": available_time,
+                    "ingestion_time": ingestion_time,
+                    "version_id": raw_version_id,
+                    "raw_payload_hash": raw_payload_hash,
+                    "upstream_version_ids": [raw_version_id],
+                    "quality_flags": quality_flags,
+                    "deal_id": normalize_value(deal_id),
+                    "acquirer_company_id": normalize_value(acquiror_company_id),
+                    "target_company_id": normalize_value(target_company_id),
+                    "announcement_date": event_time,
+                    "close_date": normalize_value(row.get("completion_date")),
+                    "deal_value": normalize_value(deal_value),
+                    "consideration_type": normalize_value(row.get("payment_type")),
+                    "deal_type": normalize_value(row['deal_type']),
+                    "status": normalize_value(row.get("deal_status")),
+                    "target_name": normalize_value(row.get("target_name")),
+                    "acquiror_name": normalize_value(row.get("acquiror_name")),
+                }
+            )
+
+        if raw_records:
+            write_raw_records(source_system=source_system, records=raw_records)
+        if canonical_records:
+            append_canonical_records("warehouse_mna_deals", canonical_records)
+            log(f"Ingested M&A chunk: {len(canonical_records):,}")
+
+
