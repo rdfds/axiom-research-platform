@@ -454,3 +454,29 @@ def _latest_value_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp, value_c
     return None if pd.isna(value) else float(value)
 
 
+def _latest_row_on_or_before(df: pd.DataFrame, date_key: pd.Timestamp) -> pd.Series | None:
+    eligible = df[df["date_key"] <= date_key]
+    if eligible.empty:
+        return None
+    return eligible.iloc[-1]
+
+
+def _has_dense_monthly_coverage(window: pd.DataFrame, months: int) -> tuple[bool, Dict[str, Any]]:
+    if window.empty:
+        return False, {"periods_used": 0}
+    unique_dates = sorted(pd.to_datetime(window["date_key"], utc=True).dt.normalize().unique())
+    gaps = []
+    for idx in range(1, len(unique_dates)):
+        gaps.append(int((unique_dates[idx] - unique_dates[idx - 1]).days))
+    diagnostics = {
+        "periods_used": int(len(unique_dates)),
+        "max_gap_days": max(gaps) if gaps else 0,
+        "required_months": months,
+    }
+    if len(unique_dates) < months:
+        return False, diagnostics
+    if gaps and max(gaps) > MAX_MONTHLY_GAP_DAYS:
+        return False, diagnostics
+    return True, diagnostics
+
+
