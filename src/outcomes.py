@@ -88,7 +88,7 @@ class OutcomeCalculator:
         gvkey: str,
         action_date: datetime,
         horizon_months: int = 12,
-    ) :
+    ) -> Optional[Dict]:
         """
         Compute TSR from action date over specified horizon.
 

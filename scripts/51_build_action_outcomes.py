@@ -196,3 +196,9 @@ def _enrich_macro_columns_from_helper(
     return enriched
 
 
+def _load_actions(path: Path, columns: Iterable[str]) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(f"Missing corporate actions dataset: {path}")
+    return pd.read_parquet(path, columns=list(columns))
+
+
