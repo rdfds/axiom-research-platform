@@ -83,3 +83,25 @@ def _thesis(row: Dict[str, Any]) -> str:
     return ", ".join(parts[:4])
 
 
+def _packet_row(row: Dict[str, Any], *, name: str | None) -> Dict[str, Any]:
+    features = row.get("features") or {}
+    return {
+        "company_id": str(row.get("company_id") or ""),
+        "company_name": name,
+        "overall_score": _node_value(features, "market.comp_overall_score"),
+        "valuation_gap_score": _node_value(features, "market.valuation_gap_score"),
+        "value_score": _node_value(features, "market.value_score"),
+        "quality_score": _node_value(features, "market.quality_score"),
+        "balance_sheet_score": _node_value(features, "market.balance_sheet_score"),
+        "risk_score": _node_value(features, "market.risk_score"),
+        "ev_ebitda": _node_value(features, "market.ev_ebitda"),
+        "fcf_yield": _node_value(features, "market.fcf_yield"),
+        "revenue_yoy_last_q": _node_value(features, "operating.revenue_yoy_last_q"),
+        "ebitda_margin_ttm": _node_value(features, "operating.ebitda_margin_ttm"),
+        "net_leverage_normalized": _node_value(features, "capital_structure.net_leverage_normalized"),
+        "available_liquidity_normalized": _node_value(features, "liquidity.available_liquidity_normalized"),
+        "credit_window_proxy": _node_value(features, "market.credit_window_proxy"),
+        "maturity_wall_ratio_24m": _node_value(features, "capital_structure.maturity_wall_ratio_24m"),
+    }
+
+

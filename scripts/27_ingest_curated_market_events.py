@@ -199,7 +199,7 @@ def ingest_corporate_actions(path: Path, chunk_size: int) -> None:
             event_time = pd.to_datetime(announcement_date) if announcement_date is not None else pd.to_datetime(action_date)
             available_time = pd.to_datetime(announcement_date) if announcement_date is not None else event_time
 
-            effective_date = first_non_null(row.get("exdt"), row['paydt'], row.get("action_date"))
+            effective_date = first_non_null(row.get("exdt"), row.get("paydt"), row.get("action_date"))
 
             permno = row.get("permno")
             permco = row.get("permco")
