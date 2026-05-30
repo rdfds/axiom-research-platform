@@ -480,3 +480,54 @@ def _has_dense_monthly_coverage(window: pd.DataFrame, months: int) -> tuple[bool
     return True, diagnostics
 
 
+def _compound_trailing_return(price_history: pd.DataFrame, as_of_date: pd.Timestamp, months: int) -> tuple[float | None, Dict[str, Any], str | None]:
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    if current_row is None:
+        return None, {"lookback_months": months}, "market_timeseries_unavailable"
+
+    current_trade_date = current_row["date_key"]
+    target_date = current_trade_date - pd.DateOffset(months=months)
+    window = price_history[(price_history["date_key"] > target_date) & (price_history["date_key"] <= current_trade_date)].copy()
+    if window.empty:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+        }, "market_timeseries_unavailable"
+
+    dense_enough, coverage_meta = _has_dense_monthly_coverage(window, months)
+    if not dense_enough:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            **coverage_meta,
+        }, "market_timeseries_sparse"
+
+    return_col = None
+    # This metric is meant to reflect market total return, so prefer `ret`
+    # (which includes distributions) over `retx` (which excludes them).
+    if window["ret"].notna().all():
+        return_col = "ret"
+    elif window["retx"].notna().all():
+        return_col = "retx"
+    else:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            **coverage_meta,
+        }, "market_return_series_unavailable"
+
+    compounded = float((1.0 + window[return_col].astype(float)).prod() - 1.0)
+    components = {
+        "lookback_months": months,
+        "current_trade_date": str(current_trade_date.date()),
+        "target_trade_date": str(target_date.date()),
+        **coverage_meta,
+        "return_column": return_col,
+        "formula": f"compound_{return_col}_over_dense_monthly_window",
+    }
+    return compounded, components, None
+
+
