@@ -702,3 +702,338 @@ def _map_gvkey_fallback(mna: pd.DataFrame, mapped_ids: Optional[Iterable[Any]]) 
     return fallback
 
 
+def build_action_outcomes(
+    actions_path: Path,
+    out_path: Path,
+    action_types: Optional[Iterable[str]],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    date_field: str,
+    limit: Optional[int],
+    log_every: int,
+    config_path: Optional[str],
+    fundamentals_path: Optional[str],
+    include_mna: bool,
+    mna_path: Optional[str],
+    mna_statuses: Optional[Iterable[str]],
+    mna_require_universe: bool,
+    mna_countries: Optional[Iterable[str]],
+    mna_limit: Optional[int],
+    mna_limit_total: Optional[int],
+    fmp_fallback: bool,
+    fmp_path: Optional[str],
+    horizons_override: Optional[Iterable[int]] = None,
+    processed_log_every: int = 0,
+    preload_fundamentals: bool = False,
+) -> None:
+    config = load_config(config_path)
+    baseline_cfg = config.get("baseline", {})
+    lag_q = int(baseline_cfg.get("post_action_lag_quarters", 1))
+    t1_q = int(baseline_cfg.get("t1_quarters", 4))
+    t1_offset = _months_from_quarters(lag_q + t1_q)
+
+    outcome_cfg = config.get("outcome", {})
+    horizons = list(horizons_override) if horizons_override else outcome_cfg.get("horizons_months", [3, 6, 12])
+
+    cols = [
+        "company_id",
+        "gvkey",
+        "acquiror_gvkey",
+        "target_gvkey",
+        "permco",
+        "permno",
+        "action_type",
+        "action_subtype",
+        "action_date",
+        "event_time",
+        "announcement_date",
+        "effective_date",
+        "size",
+        "amount",
+        "ratio",
+        "split_factor",
+        "ticker",
+        "mapping_source",
+        "source_id",
+        "source_dataset",
+    ]
+    actions = _load_actions(actions_path, cols)
+    if "company_id" not in actions.columns:
+        actions["company_id"] = pd.NA
+    if actions["company_id"].isna().any():
+        for fallback_col in ("gvkey", "acquiror_gvkey", "target_gvkey", "permco", "permno"):
+            if fallback_col in actions.columns:
+                fallback = actions[fallback_col]
+                actions["company_id"] = actions["company_id"].where(actions["company_id"].notna(), fallback)
+    actions = actions.dropna(subset=["company_id"]).copy()
+    actions["company_id"] = actions["company_id"].astype(str).str.zfill(6)
+    actions["source_dataset"] = "corp_actions"
+    print(f"[build_action_outcomes] loaded actions: {len(actions):,}", flush=True)
+    print(f"[build_action_outcomes] horizons (months): {horizons}", flush=True)
+
+    if action_types:
+        action_types = [a.strip() for a in action_types if a.strip()]
+        if action_types:
+            actions = actions[actions["action_type"].isin(action_types)]
+            print(f"[build_action_outcomes] filtered action_types: {len(actions):,}", flush=True)
+
+    if start_date:
+        start = pd.to_datetime(start_date)
+        actions = actions[actions["event_time"] >= start]
+    if end_date:
+        end = pd.to_datetime(end_date)
+        actions = actions[actions["event_time"] <= end]
+
+    actions = actions.sort_values(["company_id", "event_time"]).reset_index(drop=True)
+    if limit:
+        actions = actions.head(limit)
+
+    macro_series = config.get("macro_series", {})
+    macro_helper = FeatureBuilder()
+    macro_cache: Dict[str, Dict[str, Any]] = {}
+
+    fundamentals_path = fundamentals_path or config.get(
+        "fundamentals_path", DATA_DIR / "curated" / "fundamentals_master.parquet"
+    )
+    fundamentals = FundamentalsProvider(Path(fundamentals_path), preload=preload_fundamentals)
+    print(f"[build_action_outcomes] preload_fundamentals={preload_fundamentals}", flush=True)
+    fmp_provider = None
+    if fmp_fallback:
+        fmp_path = fmp_path or str(DATA_DIR / "warehouse" / "warehouse_financials" / "year=*" / "part_*.parquet")
+        price_path = DATA_DIR / "warehouse" / "warehouse_prices.parquet"
+        ciq_path = DATA_DIR / "wrds" / "ciq" / "ciq_identifiers_map.parquet"
+        fmp_provider = FmpFundamentalsProvider(fmp_path, price_path, ciq_path)
+
+    state_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def get_state(
+        company_id: str,
+        as_of: pd.Timestamp,
+        ticker: Optional[str] = None,
+        prefer_fmp: bool = False,
+    ) -> Dict[str, Any]:
+        key = (company_id, _date_key(as_of), str(ticker).upper() if ticker else "", "fmp" if prefer_fmp else "compustat")
+        if key in state_cache:
+            return state_cache[key]
+        features: Dict[str, Any] = {}
+        if not prefer_fmp:
+            features = fundamentals.get_metrics(company_id, as_of)
+        if (not features or (features.get("revenue_ttm") is None and features.get("pe") is None)) and fmp_provider and ticker:
+            features = fmp_provider.get_metrics(ticker, as_of)
+        macro_key = _date_key(as_of)
+        if macro_key in macro_cache:
+            macro = macro_cache[macro_key]
+        else:
+            macro = macro_helper.compute_macro_features(as_of, macro_series)
+            macro_cache[macro_key] = macro
+        if features:
+            features.update(macro)
+        state_cache[key] = features
+        return features
+
+    rows = []
+    skipped = 0
+    processed = 0
+
+    def process_actions(df: pd.DataFrame, label: str) -> int:
+        nonlocal skipped, rows, processed
+        if df.empty:
+            return 0
+        kept = 0
+        for idx, row in df.iterrows():
+            processed += 1
+            action_date = _pick_date(row, date_field)
+            if action_date is None or pd.isna(action_date):
+                skipped += 1
+                continue
+            company_id = str(row["company_id"])
+            t0 = pd.to_datetime(action_date)
+            ticker = row.get("ticker") or row.get("acquiror_ticker")
+            base = get_state(company_id, t0, ticker=ticker)
+
+            if not base or (base.get("revenue_ttm") is None and base.get("pe") is None):
+                skipped += 1
+                continue
+            source = base.get("fundamentals_source", "compustat")
+
+            t1 = t0 + pd.DateOffset(months=t1_offset)
+            after = get_state(company_id, t1, ticker=ticker, prefer_fmp=source == "fmp")
+
+            record: Dict[str, Any] = {
+                "company_id": company_id,
+                "action_type": row['action_type'],
+                "action_subtype": row.get("action_subtype"),
+                "action_date": t0,
+                "action_size": _resolved_action_size(row),
+                "source_dataset": row.get("source_dataset", label),
+                "source_id": row.get("source_id"),
+                "fundamentals_source": source,
+                "mapping_source": row.get("mapping_source"),
+                "base_market_cap": base.get("market_cap"),
+                "base_leverage": base.get("leverage_net_debt_ebitda"),
+                "base_margin": base.get("ebitda_margin"),
+                "base_revenue_ttm": base.get("revenue_ttm"),
+                "base_roic": base.get("roic_proxy"),
+                "base_fcf_margin": base.get("fcf_margin"),
+                "base_pe": base.get("pe"),
+                "base_ev_ebitda": base.get("ev_ebitda"),
+                "revenue_delta": _pct_change(after.get("revenue_ttm"), base.get("revenue_ttm")),
+                "margin_delta": _pp_change(after.get("ebitda_margin"), base.get("ebitda_margin")),
+                "leverage_delta": _pp_change(
+                    after.get("leverage_net_debt_ebitda"),
+                    base.get("leverage_net_debt_ebitda"),
+                ),
+                "eps_delta": _pct_change(after.get("eps_ttm"), base.get("eps_ttm")),
+                "roic_delta": _pp_change(after.get("roic_proxy"), base.get("roic_proxy")),
+                "fcf_margin_delta": _pp_change(after.get("fcf_margin"), base.get("fcf_margin")),
+            }
+            _apply_richer_base_fields(record, base)
+
+            for key, value in base.items():
+                if key.startswith("macro_"):
+                    record[key] = value
+
+            base_pe = base.get("pe")
+            base_ev = base.get("ev_ebitda")
+            for horizon in horizons:
+                t_h = t0 + pd.DateOffset(months=int(horizon))
+                future = get_state(company_id, t_h, ticker=ticker, prefer_fmp=source == "fmp")
+                record[f"outcome_pe_{int(horizon)}m"] = _pct_change(future.get("pe"), base_pe)
+                record[f"outcome_ev_ebitda_{int(horizon)}m"] = _pct_change(
+                    future.get("ev_ebitda"), base_ev
+                )
+
+            rows.append(record)
+            kept += 1
+            if log_every and (len(rows) % log_every == 0):
+                print(
+                    f"[build_action_outcomes] {label} kept {len(rows):,} rows "
+                    f"(skipped {skipped:,})"
+                )
+            if processed_log_every and (processed % processed_log_every == 0):
+                print(
+                    f"[build_action_outcomes] {label} processed {processed:,} rows "
+                    f"(kept {len(rows):,}, skipped {skipped:,})"
+                )
+        return kept
+
+    if actions.empty and not include_mna:
+        raise RuntimeError("No actions found after filtering.")
+
+    process_actions(actions, "corp_actions")
+
+    if include_mna:
+        mna_path = Path(mna_path or (DATA_DIR / "curated" / "mna_master.parquet"))
+        if not mna_path.exists():
+            raise FileNotFoundError(f"Missing M&A dataset: {mna_path}")
+        link_path = DATA_DIR / "wrds" / "crsp" / "ccmxpf_lnkhist.parquet"
+        link_table = _load_link_table(link_path)
+        if link_table.empty:
+            raise FileNotFoundError(f"Missing CRSP link table: {link_path}")
+
+        status_list = [s.strip() for s in (mna_statuses or ["Completed"]) if s.strip()]
+        country_list = [c.strip().lower() for c in (mna_countries or []) if c.strip()]
+        if country_list:
+            country_aliases = {
+                "us": "united states",
+                "usa": "united states",
+                "united states of america": "united states",
+                "u.s.": "united states",
+            }
+            country_list = [country_aliases.get(c, c) for c in country_list]
+
+        # Load by year to keep memory controlled
+        years = pd.read_parquet(mna_path, columns=["year"])["year"].dropna().unique().tolist()
+        years = sorted(int(y) for y in years)
+        mna_kept = 0
+        for yr in years:
+            if mna_limit_total and mna_kept >= mna_limit_total:
+                break
+            mna = pd.read_parquet(
+                mna_path,
+                columns=[
+                    "deal_id",
+                    "announce_date",
+                    "event_date",
+                    "completion_date",
+                    "deal_status",
+                    "deal_type",
+                    "deal_value",
+                    "acquiror_permno",
+                    "acquiror_gvkey",
+                    "acquiror_name",
+                    "acquiror_ticker",
+                    "acquiror_country",
+                    "acquiror_in_universe",
+                    "year",
+                ],
+                filters=[("year", "=", yr)],
+            )
+            if mna.empty:
+                continue
+            if log_every:
+                print(f"[build_action_outcomes] mna_master year {yr} rows {len(mna):,}")
+            if status_list:
+                mna = mna[mna["deal_status"].isin(status_list)]
+            if mna_require_universe and "acquiror_in_universe" in mna.columns:
+                mna = mna[mna["acquiror_in_universe"] == True]
+            if country_list and "acquiror_country" in mna.columns:
+                mna["_country_norm"] = (
+                    mna["acquiror_country"].astype("string").str.strip().str.lower()
+                )
+                mna.loc[mna["_country_norm"] == "u.s.", "_country_norm"] = "united states"
+                mna = mna[mna["_country_norm"].isin(country_list)]
+
+            date_col = "announce_date"
+            mna["announce_date"] = pd.to_datetime(mna["announce_date"], errors="coerce")
+            mna["event_date"] = pd.to_datetime(mna["event_date"], errors="coerce")
+            mna["completion_date"] = pd.to_datetime(mna["completion_date"], errors="coerce")
+            mna["action_date"] = mna["announce_date"].fillna(mna["event_date"]).fillna(mna["completion_date"])
+            if start_date:
+                mna = mna[mna["action_date"] >= pd.to_datetime(start_date)]
+            if end_date:
+                mna = mna[mna["action_date"] <= pd.to_datetime(end_date)]
+            if mna.empty:
+                continue
+
+            mapped = _map_permno_to_gvkey(mna, link_table, date_col="action_date")
+            if not mapped.empty:
+                mapped = mapped.copy()
+                mapped["mapping_source"] = "permno_link"
+
+            fallback = _map_gvkey_fallback(mna, mapped["deal_id"] if not mapped.empty else None)
+            combined = pd.concat([mapped, fallback], ignore_index=True, sort=False)
+            if combined.empty:
+                continue
+
+            combined["action_type"] = "acquisition"
+            combined["action_subtype"] = combined.get("deal_type")
+            combined["size"] = combined.get("deal_value")
+            combined["source_id"] = combined.get("deal_id")
+            combined["source_dataset"] = "mna_master"
+
+            combined = combined.rename(
+                columns={
+                    "action_date": "event_time",
+                }
+            )
+
+            if mna_limit:
+                combined = combined.head(mna_limit)
+            if mna_limit_total:
+                remaining = max(mna_limit_total - mna_kept, 0)
+                combined = combined.head(remaining)
+
+            mna_kept += process_actions(combined, "mna_master")
+
+
+    df = pd.DataFrame(rows)
+    df = augment_action_outcomes_df(df)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(out_path, index=False)
+    print(
+        f"[build_action_outcomes] wrote {len(df):,} rows to {out_path} "
+        f"(skipped {skipped:,})"
+    )
+
+

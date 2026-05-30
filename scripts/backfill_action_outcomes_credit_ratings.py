@@ -79,3 +79,7 @@ def _resolve_col(columns: Iterable[str], candidates: Iterable[str]) -> str | Non
     return None
 
 
+def _exists(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 0
+
+
