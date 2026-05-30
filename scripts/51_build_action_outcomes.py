@@ -207,3 +207,173 @@ def _normalize_gvkey(series: pd.Series) -> pd.Series:
     return cleaned.str.zfill(6)
 
 
+class FundamentalsProvider:
+    def __init__(self, path: Path, preload: bool = False):
+        self.path = path
+        self._cache: Dict[str, pd.DataFrame] = {}
+        self._full: Optional[pd.DataFrame] = None
+        if preload and self.path.exists():
+            df = pd.read_parquet(
+                self.path,
+                columns=[
+                    "gvkey",
+                    "datadate",
+                    "revtq",
+                    "oibdpq",
+                    "niq",
+                    "epspxq",
+                    "cshoq",
+                    "cheq",
+                    "dlttq",
+                    "dlcq",
+                    "atq",
+                    "oancfy",
+                    "capxy",
+                    "prccq",
+                    "mkvaltq",
+                    "sic",
+                ],
+            )
+            if not df.empty:
+                df["datadate"] = pd.to_datetime(df["datadate"], errors="coerce")
+                df = df.sort_values(["gvkey", "datadate"], ascending=[True, False])
+            self._full = df
+
+    def _load_company(self, gvkey: str) -> pd.DataFrame:
+        if gvkey in self._cache:
+            return self._cache[gvkey]
+        if self._full is not None:
+            df = self._full[self._full["gvkey"] == gvkey].copy()
+            self._cache[gvkey] = df
+            return df
+        if not self.path.exists():
+            self._cache[gvkey] = pd.DataFrame()
+            return self._cache[gvkey]
+        df = pd.read_parquet(
+            self.path,
+            columns=[
+                "gvkey",
+                "datadate",
+                "revtq",
+                "oibdpq",
+                "niq",
+                "epspxq",
+                "cshoq",
+                "cheq",
+                "dlttq",
+                "dlcq",
+                "atq",
+                "oancfy",
+                "capxy",
+                "prccq",
+                "mkvaltq",
+                "sic",
+            ],
+            filters=[("gvkey", "=", gvkey)],
+        )
+        if not df.empty:
+            df["datadate"] = pd.to_datetime(df["datadate"], errors="coerce")
+            df = df.sort_values("datadate", ascending=False)
+        self._cache[gvkey] = df
+        return df
+
+    def get_metrics(self, gvkey: str, as_of: pd.Timestamp) -> Dict[str, Any]:
+        df = self._load_company(gvkey)
+        if df.empty:
+            return {}
+        df = df[df["datadate"] <= as_of]
+        if df.empty:
+            return {}
+        df = df.sort_values("datadate", ascending=False)
+
+        def ttm_sum(col: str) -> Optional[float]:
+            series = df[col].dropna().head(4)
+            return float(series.sum()) if not series.empty else None
+
+        def latest(col: str) -> Optional[float]:
+            series = df[col].dropna().head(1)
+            return float(series.iloc[0]) if not series.empty else None
+
+        revenue_ttm = ttm_sum("revtq")
+        ebitda_ttm = ttm_sum("oibdpq")
+        net_income_ttm = ttm_sum("niq")
+        eps_ttm = ttm_sum("epspxq")
+
+        shares_out = latest("cshoq")
+        cash = latest("cheq")
+        debt_long = latest("dlttq")
+        debt_short = latest("dlcq")
+        total_assets = latest("atq")
+        price = latest("prccq")
+        market_cap = latest("mkvaltq")
+
+        if market_cap is None and price is not None and shares_out is not None:
+            market_cap = price * shares_out
+
+        debt = None
+        if debt_long is not None or debt_short is not None:
+            debt = (debt_long or 0.0) + (debt_short or 0.0)
+
+        net_debt = None
+        if debt is not None:
+            net_debt = debt - (cash or 0.0)
+
+        ebitda_margin = None
+        if revenue_ttm and ebitda_ttm is not None:
+            ebitda_margin = ebitda_ttm / revenue_ttm if revenue_ttm != 0 else None
+
+        leverage = None
+        if net_debt is not None and ebitda_ttm:
+            leverage = net_debt / ebitda_ttm if ebitda_ttm != 0 else None
+
+        roic = None
+        if net_income_ttm is not None and total_assets:
+            roic = net_income_ttm / total_assets if total_assets != 0 else None
+
+        fcf = None
+        oancfy = latest("oancfy")
+        capxy = latest("capxy")
+        if oancfy is not None and capxy is not None:
+            fcf = oancfy - capxy
+
+        fcf_margin = None
+        if fcf is not None and revenue_ttm:
+            fcf_margin = fcf / revenue_ttm if revenue_ttm != 0 else None
+
+        pe = None
+        if price is not None and eps_ttm:
+            if eps_ttm != 0:
+                pe = price / eps_ttm
+
+        ev_ebitda = None
+        if market_cap is not None and net_debt is not None and ebitda_ttm:
+            if ebitda_ttm != 0:
+                ev_ebitda = (market_cap + net_debt) / ebitda_ttm
+
+        sic = latest("sic")
+
+        return {
+            "revenue_ttm": revenue_ttm,
+            "ebitda_ttm": ebitda_ttm,
+            "net_income_ttm": net_income_ttm,
+            "eps_ttm": eps_ttm,
+            "shares_out": shares_out,
+            "cash": cash,
+            "debt": debt,
+            "total_debt": debt,
+            "net_debt": net_debt,
+            "available_liquidity": cash,
+            "total_assets": total_assets,
+            "ebitda_margin": ebitda_margin,
+            "leverage_net_debt_ebitda": leverage,
+            "roic_proxy": roic,
+            "fcf_margin": fcf_margin,
+            "price": price,
+            "market_cap": market_cap,
+            "pe": pe,
+            "ev_ebitda": ev_ebitda,
+            "sic": sic,
+            "fundamentals_source": "compustat",
+        }
+
+

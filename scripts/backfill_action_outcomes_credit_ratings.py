@@ -27,7 +27,7 @@ import pyarrow.parquet as pq
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _parse_horizons(raw: str) :
+def _parse_horizons(raw: str) -> List[int]:
     out: List[int] = []
     for part in (raw or "").split(","):
         part = part.strip()
