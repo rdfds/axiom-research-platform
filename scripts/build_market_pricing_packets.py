@@ -37,3 +37,49 @@ def _node_value(features: Dict[str, Any], name: str) -> float | None:
         return None
 
 
+def _load_company_name(companyfacts_root: Path | None, company_id: str) -> str | None:
+    if companyfacts_root is None:
+        return None
+    path = companyfacts_root / f"CIK{company_id}.json"
+    if not path.exists():
+        return None
+    try:
+        obj = json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+    name = obj.get("entityName")
+    if name is None:
+        return None
+    return str(name)
+
+
+def _thesis(row: Dict[str, Any]) -> str:
+    quality = row.get("quality_score")
+    balance = row.get("balance_sheet_score")
+    risk = row.get("risk_score")
+    value = row.get("value_score")
+    gap = row.get("valuation_gap_score")
+    parts: List[str] = []
+    if quality is not None and quality >= 70:
+        parts.append("strong quality")
+    elif quality is not None and quality <= 35:
+        parts.append("weak quality")
+    if balance is not None and balance >= 70:
+        parts.append("solid balance sheet")
+    elif balance is not None and balance <= 35:
+        parts.append("strained balance sheet")
+    if risk is not None and risk >= 70:
+        parts.append("stable tape/credit profile")
+    elif risk is not None and risk <= 35:
+        parts.append("fragile tape/credit profile")
+    if value is not None and value >= 70:
+        parts.append("cheap on value metrics")
+    elif value is not None and value <= 30:
+        parts.append("rich valuation")
+    if gap is not None and gap >= 20:
+        parts.append("fundamentals outrun price")
+    elif gap is not None and gap <= -20:
+        parts.append("price already discounts strength")
+    return ", ".join(parts[:4])
+
+
