@@ -70,3 +70,12 @@ def _rating_score_case(expr: str) -> str:
     """
 
 
+def _resolve_col(columns: Iterable[str], candidates: Iterable[str]) -> str | None:
+    lookup = {str(c).lower(): str(c) for c in columns}
+    for cand in candidates:
+        hit = lookup.get(str(cand).lower())
+        if hit:
+            return hit
+    return None
+
+
