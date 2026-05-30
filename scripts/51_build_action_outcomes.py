@@ -1037,3 +1037,146 @@ def build_action_outcomes(
     )
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--actions-path",
+        default=str(DATA_DIR / "warehouse" / "warehouse_corp_actions.parquet"),
+    )
+    parser.add_argument(
+        "--out",
+        default=str(DATA_DIR / "curated" / "action_outcomes.parquet"),
+    )
+    parser.add_argument(
+        "--action-types",
+        default=None,
+        help="Comma-separated action types to include. Default is all action types.",
+    )
+    parser.add_argument("--start-date", default=None)
+    parser.add_argument("--end-date", default=None)
+    parser.add_argument("--date-field", default="auto", choices=["auto", "event_time", "announcement_date", "effective_date"])
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--log-every", type=int, default=500)
+    parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--fundamentals-path",
+        default=str(DATA_DIR / "curated" / "fundamentals_master.parquet"),
+        help="Parquet file with quarterly fundamentals (Compustat-derived).",
+    )
+    parser.add_argument("--include-mna", action="store_true", help="Include M&A actions from mna_master.parquet.")
+    parser.add_argument(
+        "--mna-path",
+        default=str(DATA_DIR / "curated" / "mna_master.parquet"),
+        help="Parquet file with M&A deal data.",
+    )
+    parser.add_argument("--mna-status", default="Completed", help="Comma-separated M&A deal statuses to include.")
+    parser.add_argument("--mna-require-universe", dest="mna_require_universe", action="store_true")
+    parser.add_argument("--mna-no-require-universe", dest="mna_require_universe", action="store_false")
+    parser.set_defaults(mna_require_universe=True)
+    parser.add_argument(
+        "--mna-country",
+        default=None,
+        help="Comma-separated acquiror countries to include (case-insensitive).",
+    )
+    parser.add_argument("--mna-limit", type=int, default=None)
+    parser.add_argument(
+        "--mna-limit-total",
+        type=int,
+        default=None,
+        help="Cap total M&A rows kept across all years.",
+    )
+    parser.add_argument("--fmp-fallback", action="store_true", help="Fallback to FMP fundamentals when Compustat missing.")
+    parser.add_argument(
+        "--fmp-path",
+        default=str(DATA_DIR / "warehouse" / "warehouse_financials" / "year=*" / "part_*.parquet"),
+        help="Path glob to FMP financials parquet files.",
+    )
+    parser.add_argument(
+        "--horizons",
+        default=None,
+        help="Comma-separated outcome horizons in months (e.g., 6,12). Overrides config.",
+    )
+    parser.add_argument(
+        "--processed-log-every",
+        type=int,
+        default=0,
+        help="Log progress every N processed rows (kept + skipped).",
+    )
+    parser.add_argument(
+        "--preload-fundamentals",
+        action="store_true",
+        help="Preload fundamentals_master into memory for faster lookups.",
+    )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use DuckDB set-based pipeline for faster builds (ignores FMP fallback).",
+    )
+    parser.add_argument(
+        "--skip-macro",
+        action="store_true",
+        help="Skip macro join in fast mode; use backfill script later.",
+    )
+    parser.add_argument("--duckdb-memory", default=None, help="DuckDB memory limit, e.g. 8GB.")
+    parser.add_argument("--duckdb-threads", type=int, default=None, help="DuckDB threads (lower reduces memory).")
+    parser.add_argument(
+        "--duckdb-preserve-order",
+        action="store_true",
+        default=None,
+        help="Set preserve_insertion_order=true (default false).",
+    )
+    args = parser.parse_args()
+
+    action_types = args.action_types.split(",") if args.action_types else None
+    mna_statuses = args.mna_status.split(",") if args.mna_status else None
+    mna_countries = args.mna_country.split(",") if args.mna_country else None
+
+    horizons_override = None
+    if args.horizons:
+        horizons_override = [int(h.strip()) for h in args.horizons.split(",") if h.strip()]
+
+    if args.fast:
+        if args.include_mna or args.fmp_fallback:
+            print("[build_action_outcomes_fast] fast mode ignores M&A + FMP fallback for now.", flush=True)
+        build_action_outcomes_fast(
+            actions_path=Path(args.actions_path),
+            out_path=Path(args.out),
+            action_types=action_types,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            date_field=args.date_field,
+            config_path=args.config,
+            fundamentals_path=args.fundamentals_path,
+            horizons_override=horizons_override,
+            include_macro=not args.skip_macro,
+            duckdb_memory=args.duckdb_memory,
+            duckdb_threads=args.duckdb_threads,
+            duckdb_preserve_order=args.duckdb_preserve_order,
+        )
+    else:
+        build_action_outcomes(
+            actions_path=Path(args.actions_path),
+            out_path=Path(args.out),
+            action_types=action_types,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            date_field=args.date_field,
+            limit=args.limit,
+            log_every=args.log_every,
+            config_path=args.config,
+            fundamentals_path=args.fundamentals_path,
+            include_mna=args.include_mna,
+            mna_path=args.mna_path,
+            mna_statuses=mna_statuses,
+            mna_require_universe=args.mna_require_universe,
+            mna_countries=mna_countries,
+            mna_limit=args.mna_limit,
+            mna_limit_total=args.mna_limit_total,
+            fmp_fallback=args.fmp_fallback,
+            fmp_path=args.fmp_path,
+            horizons_override=horizons_override,
+            processed_log_every=args.processed_log_every,
+            preload_fundamentals=args.preload_fundamentals,
+        )
+
+

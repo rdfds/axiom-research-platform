@@ -240,7 +240,7 @@ def add_outcomes_to_profiles(profiles_path: Path, output_path: Optional[Path] = 
         gvkey = row.get('gvkey')
 
         # Handle different date column names
-        action_date = row['action_date'] or row.get('deal_date')
+        action_date = row.get('action_date') or row.get('deal_date')
 
         if pd.isna(gvkey) or pd.isna(action_date):
             outcomes.append({})
