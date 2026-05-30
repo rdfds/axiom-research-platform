@@ -398,3 +398,5 @@ def main() -> None:
         ingest_mna(CURATED_DIR / "mna_master.parquet", args.chunk_size)
 
 
+if __name__ == "__main__":
+    main()
