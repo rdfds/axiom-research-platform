@@ -363,7 +363,7 @@ def ingest_mna(path: Path, chunk_size: int) -> None:
                     "close_date": normalize_value(row.get("completion_date")),
                     "deal_value": normalize_value(deal_value),
                     "consideration_type": normalize_value(row.get("payment_type")),
-                    "deal_type": normalize_value(row['deal_type']),
+                    "deal_type": normalize_value(row.get("deal_type")),
                     "status": normalize_value(row.get("deal_status")),
                     "target_name": normalize_value(row.get("target_name")),
                     "acquiror_name": normalize_value(row.get("acquiror_name")),
