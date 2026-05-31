@@ -147,3 +147,30 @@ def _fragile_shorts(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, An
     return ranked
 
 
+def _mispriced_quality(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    candidates = []
+    for row in rows:
+        quality = row.get("quality_score")
+        gap = row.get("valuation_gap_score")
+        if quality is None or gap is None:
+            continue
+        if quality < 55 or gap <= 0:
+            continue
+        balance = row.get("balance_sheet_score") or 50.0
+        risk = row.get("risk_score") or 50.0
+        score = 0.45 * quality + 0.30 * gap + 0.15 * balance + 0.10 * risk
+        candidates.append((score, row))
+    ranked = [row for _, row in sorted(candidates, key=lambda item: item[0], reverse=True)[:limit]]
+    for row in ranked:
+        row["packet_score"] = round(
+            0.45 * row["quality_score"]
+            + 0.30 * row["valuation_gap_score"]
+            + 0.15 * (row["balance_sheet_score"] or 50.0)
+            + 0.10 * (row["risk_score"] or 50.0),
+            4,
+        )
+        row["packet_label"] = "mispriced_quality"
+        row["thesis"] = _thesis(row)
+    return ranked
+
+

@@ -617,3 +617,15 @@ def _aggregate_cases(
     }
 
 
+def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> List[Dict[str, Any]]:
+    ranked = sorted(
+        cases,
+        key=lambda case: (
+            0 if (case.get("historical", {}) or {}).get("supported") else 1,
+            float((case['historical'] or {}).get("alignment_score", 0.0) or 0.0),
+            str(case.get("company_id", "")),
+        ),
+    )
+    return ranked[: max(0, int(review_count))]
+
+
