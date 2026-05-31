@@ -1180,3 +1180,421 @@ def main() -> None:
         )
 
 
+def _sql_in_list(values: Iterable[str]) -> str:
+    vals = [f"'{v}'" for v in values]
+    return ",".join(vals) if vals else ""
+
+
+def build_action_outcomes_fast(
+    actions_path: Path,
+    out_path: Path,
+    action_types: Optional[Iterable[str]],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    date_field: str,
+    config_path: Optional[str],
+    fundamentals_path: Optional[str],
+    horizons_override: Optional[Iterable[int]] = None,
+    include_macro: bool = True,
+    duckdb_memory: Optional[str] = None,
+    duckdb_threads: Optional[int] = None,
+    duckdb_preserve_order: Optional[bool] = None,
+) -> None:
+    config = load_config(config_path)
+    baseline_cfg = config.get("baseline", {})
+    lag_q = int(baseline_cfg.get("post_action_lag_quarters", 1))
+    t1_q = int(baseline_cfg.get("t1_quarters", 4))
+    t1_offset = _months_from_quarters(lag_q + t1_q)
+
+    outcome_cfg = config.get("outcome", {})
+    horizons = list(horizons_override) if horizons_override else outcome_cfg.get("horizons_months", [3, 6, 12])
+
+    if not actions_path.exists():
+        raise FileNotFoundError(f"Missing corporate actions dataset: {actions_path}")
+    if not fundamentals_path or not Path(fundamentals_path).exists():
+        raise FileNotFoundError(f"Missing fundamentals dataset: {fundamentals_path}")
+
+    macro_series = config.get("macro_series", {})
+    macro_ids = [macro_series[k] for k in macro_series.keys()] if include_macro else []
+
+    import pyarrow.parquet as pq
+
+    cols = pq.ParquetFile(actions_path.as_posix()).schema.names
+    def has(col: str) -> bool:
+        return col in cols
+
+    date_candidates = [
+        "announcement_date",
+        "announce_date",
+        "action_date",
+        "event_time",
+        "effective_date",
+        "completion_date",
+        "event_date",
+    ]
+    available_dates = [c for c in date_candidates if has(c)]
+    if date_field != "auto":
+        date_expr = date_field
+    else:
+        if not available_dates:
+            raise RuntimeError("No date columns found for auto date selection.")
+        date_expr = "COALESCE(" + ",".join(available_dates) + ")"
+
+    def coalesce_expr(candidates: Iterable[str], cast_text: bool = False) -> str:
+        cols_local = [c for c in candidates if has(c)]
+        if not cols_local:
+            return "NULL"
+        if cast_text:
+            cols_local = [f"CAST({c} AS VARCHAR)" for c in cols_local]
+        return "COALESCE(" + ",".join(cols_local) + ")"
+
+    source_dataset_expr = coalesce_expr(["source_dataset", "source", "source_system"], cast_text=True)
+    source_id_expr = coalesce_expr(["source_id", "raw_payload_hash", "deal_id", "facilityid", "ISSUE_ID"], cast_text=True)
+    mapping_source_expr = coalesce_expr(["mapping_source"], cast_text=True)
+    ticker_expr = coalesce_expr(["ticker", "tic", "acquiror_ticker", "target_ticker"], cast_text=True)
+    action_subtype_expr = coalesce_expr(["action_subtype", "action_code", "source_action_subtype"], cast_text=True)
+    size_expr = coalesce_expr(
+        [
+            "size",
+            "amount",
+            "ratio",
+            "split_factor",
+            "facpr",
+            "divamt",
+            "deal_value",
+            "offering_amt_k",
+            "principal_amt",
+            "dealamount",
+        ],
+        cast_text=False,
+    )
+    if size_expr != "NULL":
+        size_expr = f"CAST({size_expr} AS DOUBLE)"
+    positive_split_size_expr = coalesce_expr(
+        [
+            "split_factor",
+            "facpr",
+            "ratio",
+            "size",
+            "amount",
+            "divamt",
+            "deal_value",
+            "offering_amt_k",
+            "principal_amt",
+            "dealamount",
+        ],
+        cast_text=False,
+    )
+    if positive_split_size_expr != "NULL":
+        split_candidates = [
+            "split_factor",
+            "facpr",
+            "ratio",
+            "size",
+            "amount",
+            "divamt",
+            "deal_value",
+            "offering_amt_k",
+            "principal_amt",
+            "dealamount",
+        ]
+        positive_parts = [
+            f"CASE WHEN CAST({col} AS DOUBLE) > 0 THEN CAST({col} AS DOUBLE) ELSE NULL END"
+            for col in split_candidates
+            if has(col)
+        ]
+        positive_split_size_expr = "COALESCE(" + ",".join(positive_parts) + ")" if positive_parts else "NULL"
+    if size_expr != "NULL" and positive_split_size_expr != "NULL":
+        size_expr = (
+            "CASE "
+            "WHEN lower(CAST(action_type AS VARCHAR)) IN ('split','stock_split','reverse_split') "
+            f"THEN COALESCE({positive_split_size_expr}, {size_expr}) "
+            f"ELSE {size_expr} END"
+        )
+
+    company_raw_expr = coalesce_expr(
+        [
+            "company_id",
+            "gvkey",
+            "acquiror_gvkey",
+            "target_gvkey",
+            "acquiror_permno",
+            "permno",
+        ],
+        cast_text=True,
+    )
+    if company_raw_expr == "NULL":
+        raise RuntimeError("No company identifier columns found in actions_path.")
+    company_id_expr = (
+        f"CASE WHEN {company_raw_expr} IS NULL THEN NULL "
+        f"ELSE lpad(regexp_extract(CAST({company_raw_expr} AS VARCHAR), '[0-9]+', 0), 6, '0') END"
+    )
+    action_filter = ""
+    if action_types:
+        action_filter = f"AND action_type IN ({_sql_in_list(action_types)})"
+
+    date_filter = ""
+    if start_date:
+        date_filter += f" AND {date_expr} >= DATE '{start_date}'"
+    if end_date:
+        date_filter += f" AND {date_expr} <= DATE '{end_date}'"
+
+    horizons = sorted(set(int(h) for h in horizons))
+    horizon_ctes = []
+    horizon_selects = []
+    base_pe_expr = "(base.price / base.eps_ttm)"
+    base_ev_expr = "((COALESCE(base.market_cap_raw, base.price * base.shares_out) + (base.debt - COALESCE(base.cash,0))) / base.ebitda_ttm)"
+    for h in horizons:
+        alias = f"h{h}"
+        horizon_ctes.append(
+            f"""{alias} AS (
+                SELECT d.action_id, f.*
+                FROM dates d
+                LEFT JOIN fund_snap f
+                  ON f.gvkey = d.company_id
+                 AND f.datadate <= d.action_date + INTERVAL '{h} months'
+                QUALIFY row_number() OVER (PARTITION BY d.action_id ORDER BY f.datadate DESC) = 1
+            )"""
+        )
+        horizon_selects.append(
+            f"""
+            CASE
+              WHEN base.price IS NOT NULL AND base.eps_ttm IS NOT NULL AND base.eps_ttm != 0
+                   AND {alias}.price IS NOT NULL AND {alias}.eps_ttm IS NOT NULL AND {alias}.eps_ttm != 0
+              THEN (({alias}.price / {alias}.eps_ttm) - {base_pe_expr}) / ABS({base_pe_expr})
+              ELSE NULL
+            END AS outcome_pe_{h}m,
+            CASE
+              WHEN COALESCE(base.market_cap_raw, base.price * base.shares_out) IS NOT NULL
+                   AND base.debt IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.ebitda_ttm != 0
+                   AND COALESCE({alias}.market_cap_raw, {alias}.price * {alias}.shares_out) IS NOT NULL
+                   AND {alias}.debt IS NOT NULL AND {alias}.ebitda_ttm IS NOT NULL AND {alias}.ebitda_ttm != 0
+              THEN ((
+                    (COALESCE({alias}.market_cap_raw, {alias}.price * {alias}.shares_out)
+                     + ({alias}.debt - COALESCE({alias}.cash,0))) / {alias}.ebitda_ttm
+                   ) - {base_ev_expr}) / ABS({base_ev_expr})
+              ELSE NULL
+            END AS outcome_ev_ebitda_{h}m
+            """
+        )
+
+    macro_selects = []
+    if include_macro:
+        for name, series_id in macro_series.items():
+            macro_selects.append(
+                f"arg_max(value, event_time) FILTER (WHERE entity_id = '{series_id}') AS macro_{name}"
+            )
+
+    macro_cte = ""
+    macro_join = ""
+    macro_cols = ""
+    if include_macro and macro_series:
+        macro_cte = f""",
+    macro AS (
+        SELECT
+            d.action_id,
+            {", ".join(macro_selects)}
+        FROM dates d
+        LEFT JOIN read_parquet('{(DATA_DIR / "warehouse" / "warehouse_macro.parquet").as_posix()}') m
+          ON m.entity_id IN ({_sql_in_list(macro_ids)})
+         AND CAST(m.event_time AS TIMESTAMP) <= d.action_date
+        GROUP BY d.action_id
+    )
+        """
+        macro_join = "LEFT JOIN macro ON macro.action_id = d.action_id"
+        macro_cols = ", " + ", ".join([f"macro.macro_{name}" for name in macro_series.keys()])
+
+    query = f"""
+    WITH actions AS (
+        SELECT
+            row_number() OVER () AS action_id,
+            {company_id_expr} AS company_id,
+            action_type,
+            {action_subtype_expr} AS action_subtype,
+            {size_expr} AS size,
+            {ticker_expr} AS ticker,
+            {mapping_source_expr} AS mapping_source,
+            {source_id_expr} AS source_id,
+            {source_dataset_expr} AS source_dataset,
+            CAST({date_expr} AS TIMESTAMP) AS action_date
+        FROM read_parquet('{actions_path.as_posix()}')
+        WHERE {company_id_expr} IS NOT NULL
+          AND {date_expr} IS NOT NULL
+          {action_filter}
+          {date_filter}
+    ),
+    actions_ids AS (
+        SELECT DISTINCT company_id FROM actions
+    ),
+    fund_snap AS (
+        SELECT
+            f.gvkey,
+            CAST(datadate AS TIMESTAMP) AS datadate,
+            -- TTM sums over last 4 quarters
+            SUM(revtq) OVER w AS revenue_ttm,
+            SUM(oibdpq) OVER w AS ebitda_ttm,
+            SUM(niq) OVER w AS net_income_ttm,
+            SUM(epspxq) OVER w AS eps_ttm,
+            cshoq AS shares_out,
+            cheq AS cash,
+            (COALESCE(dlttq,0) + COALESCE(dlcq,0)) AS debt,
+            atq AS total_assets,
+            oancfy AS oancfy,
+            capxy AS capxy,
+            prccq AS price,
+            mkvaltq AS market_cap_raw
+        FROM read_parquet('{Path(fundamentals_path).as_posix()}') f
+        JOIN actions_ids a
+          ON a.company_id = f.gvkey
+        WINDOW w AS (
+            PARTITION BY gvkey
+            ORDER BY datadate
+            ROWS BETWEEN 3 PRECEDING AND CURRENT ROW
+        )
+    ),
+    dates AS (
+        SELECT
+            action_id,
+            company_id,
+            action_type,
+            action_subtype,
+            action_date,
+            size,
+            ticker,
+            mapping_source,
+            source_id,
+            source_dataset
+        FROM actions
+    ),
+    base AS (
+        SELECT d.action_id, f.*
+        FROM dates d
+        LEFT JOIN fund_snap f
+          ON f.gvkey = d.company_id
+         AND f.datadate <= d.action_date
+        QUALIFY row_number() OVER (PARTITION BY d.action_id ORDER BY f.datadate DESC) = 1
+    ),
+    t1 AS (
+        SELECT d.action_id, f.*
+        FROM dates d
+        LEFT JOIN fund_snap f
+          ON f.gvkey = d.company_id
+         AND f.datadate <= d.action_date + INTERVAL '{t1_offset} months'
+        QUALIFY row_number() OVER (PARTITION BY d.action_id ORDER BY f.datadate DESC) = 1
+    ),
+    {", ".join(horizon_ctes)}
+    {macro_cte}
+    SELECT
+        d.company_id,
+        d.action_type,
+        d.action_subtype,
+        d.action_date,
+        d.size AS action_size,
+        d.ticker,
+        d.mapping_source,
+        d.source_id,
+        d.source_dataset,
+        -- base metrics
+        COALESCE(base.market_cap_raw, base.price * base.shares_out) AS base_market_cap,
+        base.cash AS base_cash,
+        base.debt AS base_total_debt,
+        base.cash AS base_available_liquidity,
+        CASE
+          WHEN base.revenue_ttm IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.revenue_ttm != 0
+          THEN base.ebitda_ttm / base.revenue_ttm
+          ELSE NULL
+        END AS base_margin,
+        CASE
+          WHEN base.debt IS NOT NULL THEN base.debt - COALESCE(base.cash,0)
+          ELSE NULL
+        END AS base_net_debt,
+        CASE
+          WHEN base.debt IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.ebitda_ttm != 0
+          THEN (base.debt - COALESCE(base.cash,0)) / base.ebitda_ttm
+          ELSE NULL
+        END AS base_leverage,
+        base.revenue_ttm AS base_revenue_ttm,
+        CASE
+          WHEN base.net_income_ttm IS NOT NULL AND base.total_assets IS NOT NULL AND base.total_assets != 0
+          THEN base.net_income_ttm / base.total_assets
+          ELSE NULL
+        END AS base_roic,
+        CASE
+          WHEN base.oancfy IS NOT NULL AND base.capxy IS NOT NULL AND base.revenue_ttm IS NOT NULL AND base.revenue_ttm != 0
+          THEN (base.oancfy - base.capxy) / base.revenue_ttm
+          ELSE NULL
+        END AS base_fcf_margin,
+        CASE
+          WHEN base.price IS NOT NULL AND base.eps_ttm IS NOT NULL AND base.eps_ttm != 0
+          THEN base.price / base.eps_ttm
+          ELSE NULL
+        END AS base_pe,
+        CASE
+          WHEN COALESCE(base.market_cap_raw, base.price * base.shares_out) IS NOT NULL
+               AND base.debt IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.ebitda_ttm != 0
+          THEN (COALESCE(base.market_cap_raw, base.price * base.shares_out) + (base.debt - COALESCE(base.cash,0))) / base.ebitda_ttm
+          ELSE NULL
+        END AS base_ev_ebitda,
+        -- deltas (t1 vs base)
+        CASE
+          WHEN base.revenue_ttm IS NOT NULL AND base.revenue_ttm != 0 AND t1.revenue_ttm IS NOT NULL
+          THEN (t1.revenue_ttm - base.revenue_ttm) / ABS(base.revenue_ttm)
+          ELSE NULL
+        END AS revenue_delta,
+        CASE
+          WHEN base.revenue_ttm IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.revenue_ttm != 0
+               AND t1.revenue_ttm IS NOT NULL AND t1.ebitda_ttm IS NOT NULL AND t1.revenue_ttm != 0
+          THEN (t1.ebitda_ttm / t1.revenue_ttm) - (base.ebitda_ttm / base.revenue_ttm)
+          ELSE NULL
+        END AS margin_delta,
+        CASE
+          WHEN base.debt IS NOT NULL AND base.ebitda_ttm IS NOT NULL AND base.ebitda_ttm != 0
+               AND t1.debt IS NOT NULL AND t1.ebitda_ttm IS NOT NULL AND t1.ebitda_ttm != 0
+          THEN ((t1.debt - COALESCE(t1.cash,0)) / t1.ebitda_ttm) - ((base.debt - COALESCE(base.cash,0)) / base.ebitda_ttm)
+          ELSE NULL
+        END AS leverage_delta,
+        CASE
+          WHEN base.eps_ttm IS NOT NULL AND base.eps_ttm != 0 AND t1.eps_ttm IS NOT NULL
+          THEN (t1.eps_ttm - base.eps_ttm) / ABS(base.eps_ttm)
+          ELSE NULL
+        END AS eps_delta,
+        CASE
+          WHEN base.net_income_ttm IS NOT NULL AND base.total_assets IS NOT NULL AND base.total_assets != 0
+               AND t1.net_income_ttm IS NOT NULL AND t1.total_assets IS NOT NULL AND t1.total_assets != 0
+          THEN (t1.net_income_ttm / t1.total_assets) - (base.net_income_ttm / base.total_assets)
+          ELSE NULL
+        END AS roic_delta,
+        CASE
+          WHEN base.oancfy IS NOT NULL AND base.capxy IS NOT NULL AND base.revenue_ttm IS NOT NULL AND base.revenue_ttm != 0
+               AND t1.oancfy IS NOT NULL AND t1.capxy IS NOT NULL AND t1.revenue_ttm IS NOT NULL AND t1.revenue_ttm != 0
+          THEN ((t1.oancfy - t1.capxy) / t1.revenue_ttm) - ((base.oancfy - base.capxy) / base.revenue_ttm)
+          ELSE NULL
+        END AS fcf_margin_delta,
+        {", ".join(horizon_selects)}
+        {macro_cols}
+    FROM dates d
+    LEFT JOIN base ON base.action_id = d.action_id
+    LEFT JOIN t1 ON t1.action_id = d.action_id
+    {macro_join}
+    {"" if not horizon_ctes else "LEFT JOIN " + " LEFT JOIN ".join([f"h{h} ON h{h}.action_id = d.action_id" for h in horizons])}
+    WHERE base.revenue_ttm IS NOT NULL OR (base.price IS NOT NULL AND base.eps_ttm IS NOT NULL AND base.eps_ttm != 0)
+    """
+
+    con = duckdb.connect()
+    if duckdb_memory:
+        con.execute(f"SET memory_limit='{duckdb_memory}'")
+    if duckdb_threads:
+        con.execute(f"SET threads={int(duckdb_threads)}")
+    if duckdb_preserve_order is not None:
+        flag = "true" if duckdb_preserve_order else "false"
+        con.execute(f"SET preserve_insertion_order={flag}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"COPY ({query}) TO '{out_path.as_posix()}' (FORMAT 'parquet');")
+    con.close()
+    df = pd.read_parquet(out_path)
+    if include_macro and macro_series:
+        df = _enrich_macro_columns_from_helper(df, macro_series=macro_series)
+    df = augment_action_outcomes_df(df)
+    df.to_parquet(out_path, index=False)
+    print(f"[build_action_outcomes_fast] wrote {out_path}", flush=True)
+

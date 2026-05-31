@@ -495,3 +495,81 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
 
 
+def _resolve_run_ids(
+    runs_roots: Sequence[Path],
+    run_ids: Optional[Sequence[str]],
+    limit: Optional[int],
+) -> List[Tuple[str, Path]]:
+    by_id: List[Tuple[str, Path]] = []
+    explicit = list(run_ids or [])
+    if explicit:
+        for run_id in explicit:
+            for runs_root in runs_roots:
+                run_path = runs_root / "runs" / f"run_id={run_id}.json"
+                if run_path.exists():
+                    by_id.append((run_id, runs_root))
+                    break
+            else:
+                raise FileNotFoundError(f"run_id={run_id} not found under any runs root")
+    else:
+        for runs_root in runs_roots:
+            for run_path in sorted((runs_root / "runs").glob("run_id=*.json")):
+                by_id.append((run_path.stem.replace("run_id=", "", 1), runs_root))
+    if limit is not None:
+        by_id = by_id[: max(0, int(limit))]
+    return by_id
+
+
+def _build_case_report(
+    *,
+    runs_root: Path,
+    snapshot_root: Path,
+    run_id: str,
+    registry: Any,
+    backtester: HistoricalParameterBacktester,
+) -> Dict[str, Any]:
+    run_payload = json.loads((runs_root / "runs" / f"run_id={run_id}.json").read_text())
+    recommendation_run = RecommendationRun.from_dict(run_payload)
+    artifacts_root = runs_root / "artifacts" / f"run_id={run_id}"
+    feasibility = json.loads((artifacts_root / "FeasibilityResults.json").read_text())
+    precedent = json.loads((artifacts_root / "PrecedentMatches.json").read_text())
+    feasible_candidates = [
+        row.get("action_candidate") or row.get("candidate") or {}
+        for row in list(feasibility.get("results", []) or [])
+        if row.get("feasible")
+    ]
+    plan_set = build_plan_set(
+        run=recommendation_run,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+        top_plans=5,
+    )
+    snapshot = _load_snapshot(snapshot_root=snapshot_root, company_id=str(recommendation_run.company_id), as_of_time=str(recommendation_run.as_of_time))
+    dossier = build_board_ready_dossier(
+        run=recommendation_run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+    )
+    top_steps = list(((plan_set.get("plans", []) or [{}])[0].get("steps", []) or []))
+    top_action = str((top_steps[0].get("action_id", "") if top_steps else ""))
+    historical = backtester.score_dossier(dossier=dossier, snapshot=snapshot)
+    return {
+        "run_id": run_id,
+        "runs_root": str(runs_root),
+        "company_id": recommendation_run.company_id,
+        "top_action": top_action,
+        "parameter_summary": str((dossier.get("parameter_optimization", {}) or {}).get("summary", "") or ""),
+        "historical": historical,
+        "dossier": {
+            "recommended_posture": ((dossier.get("status_quo_view", {}) or {}).get("recommended_posture")),
+            "parameter_optimization": dossier.get("parameter_optimization"),
+            "sizing_guidance": dossier.get("sizing_guidance"),
+            "executive_summary": dossier.get("executive_summary"),
+        },
+    }
+
+
