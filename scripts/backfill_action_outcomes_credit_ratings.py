@@ -418,3 +418,56 @@ def _run(
     con.close()
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Backfill action_outcomes with credit spread and rating migration columns.")
+    parser.add_argument("--in-path", default="data/curated/action_outcomes.parquet")
+    parser.add_argument(
+        "--out-path",
+        default="data/curated/action_outcomes_with_credit_ratings.parquet",
+        help="Output parquet path.",
+    )
+    parser.add_argument("--trace-daily-path", default="data/curated/trace_btds_daily_fisduniverse.parquet")
+    parser.add_argument("--fisd-issues-path", default="data/curated/bond_issuances_fisd.parquet")
+    parser.add_argument("--issuer-ratings-path", default="data/inputs_layer/issuer_rating_history.parquet")
+    parser.add_argument("--gvkey-to-cik-path", default="data/wrds/compustat/cik_gvkey.csv.gz")
+    parser.add_argument("--horizons", default="1,6,12,24")
+    parser.add_argument("--duckdb-memory", default="3GB")
+    parser.add_argument("--duckdb-threads", type=int, default=1)
+    parser.add_argument("--duckdb-temp-dir", default="/tmp/axiom_duckdb")
+    parser.add_argument("--duckdb-max-temp-dir-size", default="20GiB")
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=10000,
+        help="Rows per chunk for low-memory backfill. Set 0 to use one-shot COPY.",
+    )
+    args = parser.parse_args()
+
+    in_path = (ROOT / args.in_path).resolve()
+    out_path = (ROOT / args.out_path).resolve()
+    trace_daily_path = (ROOT / args.trace_daily_path).resolve()
+    fisd_issues_path = (ROOT / args.fisd_issues_path).resolve()
+    issuer_ratings_path = (ROOT / args.issuer_ratings_path).resolve()
+    gvkey_to_cik_path = (ROOT / args.gvkey_to_cik_path).resolve()
+    temp_dir = (ROOT / args.duckdb_temp_dir).resolve() if args.duckdb_temp_dir else None
+    if temp_dir:
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+    _run(
+        in_path=in_path,
+        out_path=out_path,
+        trace_daily_path=trace_daily_path,
+        fisd_issues_path=fisd_issues_path,
+        issuer_ratings_path=issuer_ratings_path,
+        gvkey_to_cik_path=gvkey_to_cik_path,
+        horizons=_parse_horizons(args.horizons),
+        duckdb_memory=args.duckdb_memory,
+        duckdb_threads=args.duckdb_threads,
+        duckdb_temp_dir=temp_dir,
+        duckdb_max_temp_dir_size=args.duckdb_max_temp_dir_size,
+        chunk_size=args.chunk_size,
+    )
+
+
+if __name__ == "__main__":
+    main()

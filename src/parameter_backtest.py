@@ -573,3 +573,47 @@ def _build_case_report(
     }
 
 
+def _load_snapshot(*, snapshot_root: Path, company_id: str, as_of_time: str) -> Dict[str, Any]:
+    as_of_date = as_of_time[:10]
+    path = snapshot_root / "keyed" / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
+    return json.loads(path.read_text())
+
+
+def _aggregate_cases(
+    *,
+    cases: Sequence[Dict[str, Any]],
+    missing_artifacts: Sequence[Dict[str, Any]],
+    cohort_priors: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not cases:
+        return {
+            "historical_coverage_rate": 0.0,
+            "mean_alignment_score": 0.0,
+            "bucket_match_rate": 0.0,
+            "strong_support_rate": 0.0,
+            "missing_artifact_rate": 1.0 if missing_artifacts else 0.0,
+            "flag_counts": {},
+            "cohort_priors": cohort_priors,
+        }
+    flags = Counter()
+    supported = [case for case in cases if (case.get("historical", {}) or {}).get("supported")]
+    for case in cases:
+        historical = dict(case.get("historical", {}) or {})
+        if not historical.get("supported"):
+            for reason in list(historical.get("reasons", []) or []):
+                flags[str(reason)] += 1
+        elif not historical.get("bucket_match"):
+            flags["bucket_mismatch"] += 1
+    count = float(len(cases))
+    supported_count = float(len(supported))
+    return {
+        "historical_coverage_rate": round(supported_count / count, 6),
+        "mean_alignment_score": round(sum(float((case.get("historical", {}) or {}).get("alignment_score", 0.0) or 0.0) for case in supported) / supported_count, 6) if supported else 0.0,
+        "bucket_match_rate": round(sum(1.0 for case in supported if (case.get("historical", {}) or {}).get("bucket_match")) / supported_count, 6) if supported else 0.0,
+        "strong_support_rate": round(sum(1.0 for case in supported if (case.get("historical", {}) or {}).get("strong_support")) / supported_count, 6) if supported else 0.0,
+        "missing_artifact_rate": round(len(missing_artifacts) / (len(cases) + len(missing_artifacts)), 6) if (cases or missing_artifacts) else 0.0,
+        "flag_counts": dict(flags),
+        "cohort_priors": cohort_priors,
+    }
+
+
