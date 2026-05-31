@@ -476,7 +476,7 @@ def _recommended_bucket(
 
 
 def _feature_float(snapshot: Dict[str, Any], key: str) -> Optional[float]:
-    features = dict(snapshot['features'] or {})
+    features = dict(snapshot.get("features", {}) or {})
     value = features.get(key)
     if isinstance(value, dict):
         value = value.get("value")

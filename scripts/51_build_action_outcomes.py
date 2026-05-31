@@ -538,7 +538,7 @@ class FmpFundamentalsProvider:
             "FreeCashFlow": "free_cash_flow",
         }
 
-        def ttm_sum(item: str) :
+        def ttm_sum(item: str) -> Optional[float]:
             if self._use_cache:
                 col = col_map.get(item)
                 series = df[col].dropna().head(4) if col and col in df.columns else pd.Series([], dtype=float)
