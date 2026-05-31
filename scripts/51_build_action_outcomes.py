@@ -1598,3 +1598,5 @@ def build_action_outcomes_fast(
     df.to_parquet(out_path, index=False)
     print(f"[build_action_outcomes_fast] wrote {out_path}", flush=True)
 
+if __name__ == "__main__":
+    main()

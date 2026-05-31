@@ -35,3 +35,5 @@ def main() :
     print(f"[augment_action_outcomes_normalized] wrote {out_path} rows={len(df):,}", flush=True)
 
 
+if __name__ == "__main__":
+    main()
