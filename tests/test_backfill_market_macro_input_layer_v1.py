@@ -108,3 +108,37 @@ def test_load_price_history_for_batch_groups_by_permno(tmp_path: Path):
     assert list(loaded["20002"]["close_price"]) == [99.0]
 
 
+def test_build_price_metrics_from_crsp_marks_daily_returns_exact():
+    dates = pd.bdate_range("2023-10-02", periods=340, tz="UTC")
+    returns = pd.Series([0.001] * len(dates), dtype=float)
+    prices = 100.0 * (1.0 + returns).cumprod()
+    history = pd.DataFrame(
+        {
+            "permno": "10001",
+            "trade_date": dates.normalize(),
+            "date_key": dates.normalize(),
+            "close_price": prices,
+            "price_proxy": prices,
+            "total_return": returns,
+            "price_return": returns,
+            "shares_outstanding": 1000.0,
+            "daily_cap": prices * 1000.0,
+            "delist_flag": False,
+        }
+    )
+
+    metrics = _build_price_metrics_from_crsp(
+        permno="10001",
+        price_history=history,
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-29T00:00:00+00:00",
+        provenance_source="/tmp/crsp",
+    )
+
+    assert metrics["market.price_spot"]["support_mode"] == "exact"
+    assert metrics["market.total_return_1m_standardized"]["support_mode"] == "exact"
+    assert metrics["market.total_return_3m_standardized"]["support_mode"] == "exact"
+    assert metrics["market.total_return_6m_standardized"]["support_mode"] == "exact"
+    assert metrics["market.total_return_12m_standardized"]["support_mode"] == "exact"
+
+

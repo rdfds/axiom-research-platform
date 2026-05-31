@@ -768,3 +768,28 @@ def _macro_feature(
     )
 
 
+@contextmanager
+def _company_processing_guard(timeout_seconds: float | None):
+    if (
+        timeout_seconds is None
+        or timeout_seconds <= 0
+        or not hasattr(signal, "SIGALRM")
+        or not hasattr(signal, "setitimer")
+    ):
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _handle_timeout(signum, frame):  # noqa: ARG001
+        raise _CompanyProcessingTimeout(f"company_processing_timeout_after_{timeout_seconds:g}s")
+
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
