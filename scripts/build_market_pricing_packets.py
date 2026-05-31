@@ -105,3 +105,23 @@ def _packet_row(row: Dict[str, Any], *, name: str | None) -> Dict[str, Any]:
     }
 
 
+def _top_longs(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    candidates = []
+    for row in rows:
+        overall = row.get("overall_score")
+        gap = row.get("valuation_gap_score")
+        quality = row.get("quality_score") or 0.0
+        if overall is None or gap is None:
+            continue
+        if gap <= 0:
+            continue
+        score = 0.45 * gap + 0.35 * overall + 0.20 * quality
+        candidates.append((score, row))
+    ranked = [row for _, row in sorted(candidates, key=lambda item: item[0], reverse=True)[:limit]]
+    for row in ranked:
+        row["packet_score"] = round(0.45 * row["valuation_gap_score"] + 0.35 * row["overall_score"] + 0.20 * (row["quality_score"] or 0.0), 4)
+        row["packet_label"] = "top_longs"
+        row["thesis"] = _thesis(row)
+    return ranked
+
+

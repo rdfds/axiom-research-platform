@@ -531,3 +531,240 @@ def _compound_trailing_return(price_history: pd.DataFrame, as_of_date: pd.Timest
     return compounded, components, None
 
 
+def _recent_enough_trade_date(observed_date: pd.Timestamp, anchor_date: pd.Timestamp) -> bool:
+    return 0 <= int((anchor_date - observed_date).days) <= MAX_DAILY_ANCHOR_GAP_DAYS
+
+
+def _compound_trailing_crsp_return(
+    price_history: pd.DataFrame,
+    as_of_date: pd.Timestamp,
+    months: int,
+) -> tuple[float | None, Dict[str, Any], str | None, str]:
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    if current_row is None:
+        return None, {"lookback_months": months}, "market_timeseries_unavailable", "unsupported"
+
+    current_trade_date = current_row["trade_date"]
+    if not _recent_enough_trade_date(current_trade_date, as_of_date):
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "formula": "compound_daily_total_return",
+        }, "market_timeseries_stale", "unsupported"
+
+    target_date = current_trade_date - pd.DateOffset(months=months)
+    start_row = _latest_row_on_or_before(price_history, target_date)
+    if start_row is None:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "formula": "compound_daily_total_return",
+        }, "market_timeseries_unavailable", "unsupported"
+
+    start_trade_date = start_row["trade_date"]
+    if not _recent_enough_trade_date(start_trade_date, target_date.normalize()):
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "anchor_trade_date": str(start_trade_date.date()),
+            "formula": "compound_daily_total_return",
+        }, "market_timeseries_sparse", "unsupported"
+
+    window = price_history[
+        (price_history["trade_date"] > start_trade_date) & (price_history["trade_date"] <= current_trade_date)
+    ].copy()
+    if window.empty:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "anchor_trade_date": str(start_trade_date.date()),
+            "formula": "compound_daily_total_return",
+        }, "market_timeseries_unavailable", "unsupported"
+
+    if window["total_return"].notna().all():
+        return_col = "total_return"
+        support_mode = "exact"
+    elif window["price_return"].notna().all():
+        return_col = "price_return"
+        support_mode = "proxy_missing_component"
+    else:
+        return None, {
+            "lookback_months": months,
+            "current_trade_date": str(current_trade_date.date()),
+            "target_trade_date": str(target_date.date()),
+            "anchor_trade_date": str(start_trade_date.date()),
+            "formula": "compound_daily_total_return",
+        }, "market_return_series_unavailable", "unsupported"
+
+    compounded = float((1.0 + window[return_col].astype(float)).prod() - 1.0)
+    components = {
+        "lookback_months": months,
+        "current_trade_date": str(current_trade_date.date()),
+        "target_trade_date": str(target_date.date()),
+        "anchor_trade_date": str(start_trade_date.date()),
+        "rows_used": int(len(window)),
+        "return_column": return_col,
+        "formula": f"compound_{return_col}_from_crsp_daily_window",
+    }
+    missing_reason = None if support_mode == "exact" else "total_return_component_unavailable"
+    return compounded, components, missing_reason, support_mode
+
+
+def _price_feature(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+    value: float | None,
+    components: Dict[str, Any],
+    missing_reason: str | None,
+    support_mode: str,
+    quality_flags: list[str] | None = None,
+) -> Dict[str, Any]:
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        provenance_artifact_type="MarketTimeseries",
+        primary_source_basis="market_timeseries",
+        support_mode=support_mode,
+        value=value,
+        unit=unit,
+        missing_reason=missing_reason,
+        component_breakdown=components,
+        quality_flags=quality_flags if value is not None else [missing_reason or "market_timeseries_unavailable"],
+    )
+
+
+def _build_price_metrics_from_crsp(
+    permno: str | None,
+    price_history: pd.DataFrame | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> Dict[str, Dict[str, Any]]:
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    metrics: Dict[str, Dict[str, Any]] = {}
+
+    if permno is None or price_history is None or price_history.empty:
+        for metric_name, spec in MARKET_METRICS.items():
+            metrics[metric_name] = _price_feature(
+                metric_name=metric_name,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                unit=spec["unit"],
+                value=None,
+                components={"permno": permno},
+                missing_reason="market_timeseries_unavailable",
+                support_mode="unsupported",
+            )
+        return metrics
+
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    current_trade_date = None if current_row is None else current_row["trade_date"]
+    close_price = None if current_row is None or pd.isna(current_row["close_price"]) else float(current_row["close_price"])
+    price_proxy = None if current_row is None or pd.isna(current_row["price_proxy"]) else float(current_row["price_proxy"])
+    if close_price is not None:
+        current_price = close_price
+        price_support_mode = "exact"
+        quality_flags = None
+        missing_reason = None
+        formula = "latest_crsp_close_on_or_before_asof"
+    elif price_proxy is not None:
+        current_price = price_proxy
+        price_support_mode = "proxy_missing_component"
+        quality_flags = ["used_abs_dlyprc_proxy"]
+        missing_reason = "close_component_unavailable"
+        formula = "latest_abs_crsp_price_on_or_before_asof"
+    else:
+        current_price = None
+        price_support_mode = "unsupported"
+        quality_flags = ["market_price_unavailable"]
+        missing_reason = "market_price_unavailable"
+        formula = "latest_crsp_price_on_or_before_asof"
+
+    if current_trade_date is not None and current_price is not None and not _recent_enough_trade_date(current_trade_date, as_of_date):
+        current_price = None
+        price_support_mode = "unsupported"
+        quality_flags = ["market_timeseries_stale"]
+        missing_reason = "market_timeseries_stale"
+
+    metrics["market.price_spot"] = _price_feature(
+        metric_name="market.price_spot",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd_per_share",
+        value=current_price,
+        components={
+            "permno": permno,
+            "current_trade_date": None if current_trade_date is None else str(current_trade_date.date()),
+            "formula": formula,
+        },
+        missing_reason=missing_reason,
+        support_mode=price_support_mode,
+        quality_flags=quality_flags,
+    )
+
+    for metric_name, spec in MARKET_METRICS.items():
+        if metric_name == "market.price_spot":
+            continue
+        value, return_components, missing_reason, support_mode = _compound_trailing_crsp_return(
+            price_history,
+            as_of_date,
+            spec["months"],
+        )
+        metrics[metric_name] = _price_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=value,
+            components={
+                "permno": permno,
+                "current_close": current_price,
+                **return_components,
+            },
+            missing_reason=missing_reason,
+            support_mode=support_mode,
+            quality_flags=None if support_mode == "exact" else ([missing_reason] if value is None else ["price_return_only"]),
+        )
+
+    return metrics
+
+
+def _macro_feature(
+    *,
+    metric_name: str,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    unit: str,
+    value: float | None,
+    components: Dict[str, Any],
+    missing_reason: str | None,
+) -> Dict[str, Any]:
+    return _feature_template(
+        metric_name=metric_name,
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        provenance_artifact_type="MacroTimeseries",
+        primary_source_basis="macro_timeseries",
+        support_mode="exact" if value is not None else "unsupported",
+        value=value,
+        unit=unit,
+        missing_reason=missing_reason,
+        component_breakdown=components,
+        quality_flags=None if value is not None else [missing_reason or "macro_series_unavailable"],
+    )
+
+
