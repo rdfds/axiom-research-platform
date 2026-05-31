@@ -429,3 +429,57 @@ def _cohort_spec_for_action(action_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+_SUPPORTED_COHORT_ACTIONS: Tuple[str, ...] = (
+    "capital_return.open_market_buyback",
+    "capital_return.dividend_increase",
+    "capital_return.dividend_cut",
+    "capital_return.dividend_initiate",
+    "capital_return.special_dividend",
+    "capital_structure.refinancing",
+    "capital_structure.new_debt_issuance",
+    "capital_structure.revolver_draw_or_resize",
+    "capital_structure.equity_issuance",
+    "capital_structure.convertible_issuance",
+    "capital_structure.preferred_issuance",
+    "mna.platform_acquisition",
+    "mna.tuck_in_acquisition",
+    "mna.go_private_lbo",
+    "portfolio.divestiture_partial",
+)
+
+
+def _select_backtest_parameter(parameter_optimization: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    parameters = dict(parameter_optimization.get("recommended_parameters", {}) or {})
+    for parameter_name in _SIZE_PARAM_PRIORITY:
+        payload = dict(parameters.get(parameter_name, {}) or {})
+        if payload:
+            return parameter_name, payload
+    return "", {}
+
+
+def _recommended_bucket(
+    *,
+    parameter_name: str,
+    parameter_payload: Dict[str, Any],
+    snapshot: Dict[str, Any],
+) -> Optional[str]:
+    market_cap = _feature_float(snapshot, "market.market_cap")
+    recommended_value = parameter_payload.get("recommended_value")
+    ratio: Optional[float] = None
+    if parameter_name in {"size_pct_market_cap", "target_size_pct_ev", "percent_divested"}:
+        ratio = _safe_float(recommended_value)
+    elif parameter_name in {"size_absolute_usd", "amount_refinanced_usd", "amount_usd", "draw_amount_usd", "resize_amount_usd", "estimated_ev_usd"}:
+        amount = _safe_float(recommended_value)
+        if amount is not None and market_cap not in (None, 0.0):
+            ratio = amount / market_cap
+    return _size_bucket(ratio)
+
+
+def _feature_float(snapshot: Dict[str, Any], key: str) -> Optional[float]:
+    features = dict(snapshot['features'] or {})
+    value = features.get(key)
+    if isinstance(value, dict):
+        value = value.get("value")
+    return _safe_float(value)
+
+
