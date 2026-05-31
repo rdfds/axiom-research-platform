@@ -464,3 +464,18 @@ def _enrich(
         print(f"[augment_richer_contract] coverage {col}={coverage:,}", flush=True)
 
 
+def main() -> None:
+    args = _parse_args()
+    _enrich(
+        in_path=Path(args.in_path).resolve(),
+        out_path=Path(args.out_path).resolve(),
+        fundamentals_path=Path(args.fundamentals_path).resolve(),
+        raw_timeseries_path=Path(args.raw_timeseries_path).resolve(),
+        config_path=Path(args.config).resolve(),
+        duckdb_memory=str(args.duckdb_memory),
+        duckdb_threads=int(args.duckdb_threads),
+    )
+
+
+if __name__ == "__main__":
+    main()
