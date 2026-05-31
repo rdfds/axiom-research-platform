@@ -94,7 +94,7 @@ def _sample_companies(limit_per_sector: int) -> List[Dict[str, Any]]:
 
 
 def _metric_view(snapshot: Dict[str, Any], key: str) -> Dict[str, Any]:
-    feat = (snapshot['features'] or {}).get(key) or {}
+    feat = (snapshot.get("features") or {}).get(key) or {}
     return {
         "value": feat.get("value"),
         "missing_reason": feat.get("missing_reason"),

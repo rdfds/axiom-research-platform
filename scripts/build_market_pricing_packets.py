@@ -125,3 +125,25 @@ def _top_longs(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
     return ranked
 
 
+def _fragile_shorts(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    candidates = []
+    for row in rows:
+        quality = row.get("quality_score")
+        balance = row['balance_sheet_score']
+        risk = row.get("risk_score")
+        if quality is None or risk is None:
+            continue
+        balance_term = balance if balance is not None else 35.0
+        fragility = 0.35 * (100.0 - quality) + 0.35 * (100.0 - balance_term) + 0.30 * (100.0 - risk)
+        candidates.append((fragility, row))
+    ranked = [row for _, row in sorted(candidates, key=lambda item: item[0], reverse=True)[:limit]]
+    for row in ranked:
+        quality = row["quality_score"] or 0.0
+        balance = row["balance_sheet_score"] if row["balance_sheet_score"] is not None else 35.0
+        risk = row["risk_score"] or 0.0
+        row["packet_score"] = round(0.35 * (100.0 - quality) + 0.35 * (100.0 - balance) + 0.30 * (100.0 - risk), 4)
+        row["packet_label"] = "fragile_shorts"
+        row["thesis"] = _thesis(row)
+    return ranked
+
+
