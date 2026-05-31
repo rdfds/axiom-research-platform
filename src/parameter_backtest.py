@@ -483,3 +483,15 @@ def _feature_float(snapshot: Dict[str, Any], key: str) -> Optional[float]:
     return _safe_float(value)
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        value = float(value)
+        if pd.isna(value):
+            return None
+        return value
+    except Exception:
+        return None
+
+

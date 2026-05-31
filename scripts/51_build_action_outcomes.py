@@ -861,7 +861,7 @@ def build_action_outcomes(
 
             record: Dict[str, Any] = {
                 "company_id": company_id,
-                "action_type": row['action_type'],
+                "action_type": row.get("action_type"),
                 "action_subtype": row.get("action_subtype"),
                 "action_date": t0,
                 "action_size": _resolved_action_size(row),
