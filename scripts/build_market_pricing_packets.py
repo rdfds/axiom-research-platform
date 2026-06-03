@@ -174,3 +174,16 @@ def _mispriced_quality(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str,
     return ranked
 
 
+def build_packets(rows: List[Dict[str, Any]], *, companyfacts_root: Path | None, limit: int) -> Dict[str, Any]:
+    packet_rows = []
+    for row in rows:
+        company_id = str(row.get("company_id") or "")
+        name = _load_company_name(companyfacts_root, company_id)
+        packet_rows.append(_packet_row(row, name=name))
+    return {
+        "top_longs": _top_longs([dict(row) for row in packet_rows], limit),
+        "fragile_shorts": _fragile_shorts([dict(row) for row in packet_rows], limit),
+        "mispriced_quality": _mispriced_quality([dict(row) for row in packet_rows], limit),
+    }
+
+

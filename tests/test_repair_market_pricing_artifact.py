@@ -84,3 +84,26 @@ def test_repair_ebitda_margin_uses_normalized_operating_earnings_when_provider_e
     assert repaired["support_mode"] == "exact"
 
 
+def test_repair_ebitda_margin_overwrites_stale_period_specific_value_with_ttm_inputs():
+    stale_target = _node("operating.ebitda_margin_ttm", 0.23, unit="ratio")
+    stale_target["component_breakdown"] = {
+        "revenue": 6411.0,
+        "ebitda": 1485.0,
+        "revenue_period": "2024-03-31 00:00:00+00:00",
+        "ebitda_period": "2024-03-31 00:00:00+00:00",
+        "period_match_type": "exact_period_match",
+    }
+    features = {
+        "operating.ebitda_margin_ttm": stale_target,
+        "operating.revenue_ttm_provider_direct": _node("operating.revenue_ttm_provider_direct", 26_130.0),
+        "operating.ebitda_ltm_provider_direct": _node("operating.ebitda_ltm_provider_direct", 3_988.0),
+        "operating.operating_earnings_normalized": _node("operating.operating_earnings_normalized", 3_988.0),
+    }
+
+    assert repair_ebitda_margin_ttm(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    repaired = features["operating.ebitda_margin_ttm"]
+    assert round(repaired["value"], 12) == round(3_988.0 / 26_130.0, 12)
+    assert repaired["fallback_used"] == "provider_direct_revenue_and_ebitda"
+    assert repaired["component_breakdown"]["revenue_source_metric"] == "operating.revenue_ttm_provider_direct"
+
+

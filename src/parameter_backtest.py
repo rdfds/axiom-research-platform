@@ -629,3 +629,22 @@ def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> 
     return ranked[: max(0, int(review_count))]
 
 
+def _render_case_markdown(case: Dict[str, Any], index: int) -> List[str]:
+    historical = dict(case.get("historical", {}) or {})
+    lines: List[str] = []
+    lines.append(f"### {index}. `{case.get('company_id')}` / `{case.get('top_action')}`")
+    lines.append("")
+    lines.append(f"- Run: `{case.get('run_id')}`")
+    lines.append(f"- Parameter summary: {case.get('parameter_summary') or 'missing'}")
+    lines.append(f"- Supported: `{historical.get('supported', False)}`")
+    if historical.get("supported"):
+        lines.append(f"- Cohort: `{historical.get('cohort_key')}`")
+        lines.append(f"- Parameter: `{historical.get('parameter_name')}`")
+        lines.append(f"- Recommended bucket: `{historical.get('recommended_bucket')}`")
+        lines.append(f"- Best historical bucket: `{historical.get('best_bucket')}`")
+        lines.append(f"- Alignment score: `{historical.get('alignment_score', 0.0):.3f}`")
+        lines.append(f"- Tuning suggestion: `{historical.get('tuning_suggestion')}`")
+    else:
+        lines.append(f"- Reasons: `{', '.join(historical.get('reasons', []) or ['unknown'])}`")
+    lines.append("")
+    return lines
