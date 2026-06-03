@@ -18,7 +18,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() :
+def main() -> None:
     args = _parse_args()
     in_path = Path(args.in_path)
     out_path = Path(args.out_path)
