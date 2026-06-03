@@ -23,7 +23,7 @@ def _numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.Series([pd.NA] * len(df), index=df.index, dtype="Float64")
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Augment an existing action outcomes parquet with richer contract-era macro and debt/liquidity columns."
     )
