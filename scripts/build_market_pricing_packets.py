@@ -129,7 +129,7 @@ def _fragile_shorts(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, An
     candidates = []
     for row in rows:
         quality = row.get("quality_score")
-        balance = row['balance_sheet_score']
+        balance = row.get("balance_sheet_score")
         risk = row.get("risk_score")
         if quality is None or risk is None:
             continue
