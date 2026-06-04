@@ -793,3 +793,49 @@ def _company_processing_guard(timeout_seconds: float | None):
         signal.signal(signal.SIGALRM, previous_handler)
 
 
+def _build_fail_open_market_metrics(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    error_type: str,
+    error_message: str,
+) -> Dict[str, Dict[str, Any]]:
+    error_text = str(error_message).strip()[:240]
+    missing_reason = "company_processing_timeout" if error_type == "company_processing_timeout" else "company_processing_failed"
+    breakdown = {
+        "error_type": error_type,
+        "error_message": error_text,
+    }
+    quality_flags = ["company_processing_fail_open", error_type]
+    metrics: Dict[str, Dict[str, Any]] = {}
+    for metric_name, spec in MARKET_METRICS.items():
+        metrics[metric_name] = _price_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=None,
+            components=breakdown,
+            missing_reason=missing_reason,
+            support_mode="unsupported",
+            quality_flags=quality_flags,
+        )
+    metrics["market.market_cap_provider_direct"] = _feature_template(
+        metric_name="market.market_cap_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        provenance_artifact_type="DerivedComputation",
+        primary_source_basis="market_processing_fail_open",
+        support_mode="unsupported",
+        value=None,
+        unit="usd",
+        missing_reason=missing_reason,
+        component_breakdown=breakdown,
+        quality_flags=quality_flags,
+    )
+    return metrics
+
+

@@ -142,3 +142,9 @@ def test_build_price_metrics_from_crsp_marks_daily_returns_exact():
     assert metrics["market.total_return_12m_standardized"]["support_mode"] == "exact"
 
 
+def test_company_processing_guard_times_out():
+    with pytest.raises(_CompanyProcessingTimeout):
+        with _company_processing_guard(0.05):
+            time.sleep(0.2)
+
+
