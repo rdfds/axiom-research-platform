@@ -187,3 +187,21 @@ def build_packets(rows: List[Dict[str, Any]], *, companyfacts_root: Path | None,
     }
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    companyfacts_root = Path(args.companyfacts_root) if args.companyfacts_root else None
+    packets = build_packets(list(iter_rows(artifact_path)), companyfacts_root=companyfacts_root, limit=args.limit)
+    payload = {
+        "generated_at": Path(args.artifact_path).stat().st_mtime,
+        "artifact_path": str(artifact_path),
+        "packets": packets,
+    }
+    out_path.write_text(json.dumps(payload, indent=2))
+    print(f"Built market-pricing packets -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()

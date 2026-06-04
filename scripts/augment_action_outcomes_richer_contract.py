@@ -83,7 +83,7 @@ def _enrich(
         raise FileNotFoundError(f"Missing raw timeseries parquet: {raw_timeseries_path}")
 
     config = load_config(str(config_path))
-    macro_series = dict(config['macro_series'] or {})
+    macro_series = dict(config.get("macro_series", {}) or {})
     macro_path = ROOT / "data" / "warehouse" / "warehouse_macro.parquet"
     if not macro_path.exists():
         raise FileNotFoundError(f"Missing macro warehouse parquet: {macro_path}")

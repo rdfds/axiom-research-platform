@@ -107,3 +107,24 @@ def test_repair_ebitda_margin_overwrites_stale_period_specific_value_with_ttm_in
     assert repaired["component_breakdown"]["revenue_source_metric"] == "operating.revenue_ttm_provider_direct"
 
 
+def test_repair_ev_ebitda_uses_repaired_enterprise_value():
+    features = {
+        "market.enterprise_value": _node("market.enterprise_value", None, support_mode="unsupported"),
+        "market.market_cap_provider_direct": _node("market.market_cap_provider_direct", 1000.0),
+        "capital_structure.total_debt_provider_direct": _node("capital_structure.total_debt_provider_direct", 250.0),
+        "liquidity.cash_and_equivalents_statement_direct": _node(
+            "liquidity.cash_and_equivalents_statement_direct",
+            125.0,
+        ),
+        "market.ev_ebitda": _node("market.ev_ebitda", None, unit="x"),
+        "operating.ebitda_ltm_provider_direct": _node("operating.ebitda_ltm_provider_direct", 100.0),
+        "operating.operating_earnings_normalized": _node("operating.operating_earnings_normalized", None),
+    }
+
+    assert repair_enterprise_value(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    assert repair_ev_ebitda(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    repaired = features["market.ev_ebitda"]
+    assert repaired["value"] == 11.25
+    assert repaired["fallback_used"] == "repaired_enterprise_value_plus_provider_ebitda"
+
+
