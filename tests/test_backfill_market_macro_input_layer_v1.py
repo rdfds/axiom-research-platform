@@ -148,3 +148,18 @@ def test_company_processing_guard_times_out():
             time.sleep(0.2)
 
 
+def test_fail_open_market_metrics_mark_market_stack_unsupported():
+    metrics = _build_fail_open_market_metrics(
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-30T00:00:00+00:00",
+        provenance_source="/tmp/companyfacts/CIK0000000001.json",
+        error_type="company_processing_timeout",
+        error_message="timed out",
+    )
+
+    assert metrics["market.price_spot"]["support_mode"] == "unsupported"
+    assert metrics["market.total_return_12m_standardized"]["missing_reason"] == "company_processing_timeout"
+    assert metrics["market.market_cap_provider_direct"]["support_mode"] == "unsupported"
+    assert metrics["market.market_cap_provider_direct"]["component_breakdown"]["error_type"] == "company_processing_timeout"
+
+
