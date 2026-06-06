@@ -109,3 +109,28 @@ def _infer_macro_timeseries_path(artifact_path: Path) -> Path | None:
     return None
 
 
+def _load_spread_histories(path: Path) -> Dict[str, pd.DataFrame]:
+    table = pq.read_table(
+        path,
+        columns=["instrument_id", "event_time", "available_time", "trade_date", "value"],
+    )
+    df = table.to_pandas()
+    df = df[df["instrument_id"].isin([IG_OAS_INSTRUMENT, HY_OAS_INSTRUMENT])].copy()
+    if df.empty:
+        return {}
+    df["time"] = pd.to_datetime(df["available_time"], utc=True, errors="coerce")
+    missing = df["time"].isna()
+    if missing.any():
+        df.loc[missing, "time"] = pd.to_datetime(df.loc[missing, "event_time"], utc=True, errors="coerce")
+    missing = df["time"].isna()
+    if missing.any():
+        df.loc[missing, "time"] = pd.to_datetime(df.loc[missing, "trade_date"], utc=True, errors="coerce")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna(subset=["instrument_id", "time", "value"]).copy()
+    df = df.sort_values(["instrument_id", "time"]).drop_duplicates(["instrument_id", "time"], keep="last")
+    out: Dict[str, pd.DataFrame] = {}
+    for instrument_id, group in df.groupby("instrument_id", sort=False):
+        out[str(instrument_id)] = group[["time", "value"]].reset_index(drop=True)
+    return out
+
+

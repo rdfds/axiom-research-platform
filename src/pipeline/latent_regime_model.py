@@ -90,3 +90,30 @@ def _latent_regime_design_matrix(
     return np.concatenate([centered, missing.astype(float)], axis=1)
 
 
+def _kmeans_pp_init(
+    X: np.ndarray,
+    *,
+    n_clusters: int,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(int(seed))
+    n_rows = X.shape[0]
+    if n_rows == 0:
+        raise ValueError("cannot initialize kmeans with empty matrix")
+    first_idx = int(rng.integers(0, n_rows))
+    centroids = [X[first_idx].copy()]
+    while len(centroids) < int(n_clusters):
+        dist_sq = np.min(
+            np.stack([np.sum((X - centroid.reshape(1, -1)) ** 2, axis=1) for centroid in centroids], axis=1),
+            axis=1,
+        )
+        total = float(np.sum(dist_sq))
+        if total <= 1e-12:
+            candidate_idx = int(rng.integers(0, n_rows))
+        else:
+            probs = dist_sq / total
+            candidate_idx = int(rng.choice(n_rows, p=probs))
+        centroids.append(X[candidate_idx].copy())
+    return np.stack(centroids, axis=0)
+
+

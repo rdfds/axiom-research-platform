@@ -1413,3 +1413,364 @@ def _build_market_cap_metric_from_companyfacts(
     )
 
 
+def _build_macro_metrics(
+    macro_history: pd.DataFrame,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> Dict[str, Dict[str, Any]]:
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    macro = macro_history.copy()
+    macro["date_key"] = macro["event_date"]
+    by_instrument = {
+        instrument_id: frame.sort_values("date_key").reset_index(drop=True)
+        for instrument_id, frame in macro.groupby("instrument_id")
+    }
+    metrics: Dict[str, Dict[str, Any]] = {}
+
+    def latest_series_value(instrument_id: str) -> float | None:
+        frame = by_instrument.get(instrument_id)
+        if frame is None or frame.empty:
+            return None
+        return _latest_value_on_or_before(frame, as_of_date, "value")
+
+    for metric_name, spec in MACRO_SERIES_SPECS.items():
+        value = latest_series_value(spec["instrument_id"])
+        metrics[metric_name] = _macro_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=value,
+            components={
+                "instrument_id": spec["instrument_id"],
+                "formula": "latest_value_on_or_before_asof",
+            },
+            missing_reason="macro_series_unavailable" if value is None else None,
+        )
+
+    sofr = latest_series_value("SOFR")
+    dff = latest_series_value("DFF")
+    policy_rate = sofr if sofr is not None else dff
+    policy_source = "SOFR" if sofr is not None else ("DFF" if dff is not None else None)
+    metrics["macro.sofr_or_fed_funds"] = _macro_feature(
+        metric_name="macro.sofr_or_fed_funds",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="pct",
+        value=policy_rate,
+        components={
+            "preferred_instrument": "SOFR",
+            "fallback_instrument": "DFF",
+            "selected_instrument": policy_source,
+            "formula": "latest_value_on_or_before_asof",
+        },
+        missing_reason="macro_series_unavailable" if policy_rate is None else None,
+    )
+
+    ust2 = metrics["macro.ust_2y_yield"]["value"]
+    ust10 = metrics["macro.ust_10y_yield"]["value"]
+    curve = None if ust2 is None or ust10 is None else float(ust10) - float(ust2)
+    metrics["macro.curve_2s10s"] = _macro_feature(
+        metric_name="macro.curve_2s10s",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="pct",
+        value=curve,
+        components={
+            "macro.ust_10y_yield": ust10,
+            "macro.ust_2y_yield": ust2,
+            "formula": "macro.ust_10y_yield - macro.ust_2y_yield",
+        },
+        missing_reason="component_unavailable" if curve is None else None,
+    )
+
+    for metric_name, spec in MACRO_YOY_SPECS.items():
+        instrument_id = spec["instrument_id"]
+        frame = by_instrument.get(instrument_id)
+        eligible = None if frame is None or frame.empty else frame[frame["date_key"] <= as_of_date].reset_index(drop=True)
+        current = None if eligible is None or eligible.empty else float(eligible.iloc[-1]["value"])
+        lag_observations = int(spec.get("lag_observations") or 0)
+        if lag_observations > 0:
+            prior = None if eligible is None or len(eligible) <= lag_observations else float(eligible.iloc[-1 - lag_observations]["value"])
+            formula = f"(current_value / value_{lag_observations}_observations_prior) - 1"
+            prior_component_key = f"value_{lag_observations}_observations_prior"
+        else:
+            prior_date = as_of_date - pd.DateOffset(months=12)
+            prior = None if frame is None or frame.empty else _latest_value_on_or_before(frame, prior_date, "value")
+            formula = "(current_value / value_12m_prior) - 1"
+            prior_component_key = "value_12m_prior"
+        if current is None or prior is None:
+            value = None
+            missing_reason = "macro_series_unavailable"
+        elif prior <= 0:
+            value = None
+            missing_reason = "non_positive_base_value"
+        else:
+            value = (current / prior) - 1.0
+            missing_reason = None
+        metrics[metric_name] = _macro_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=value,
+            components={
+                "instrument_id": instrument_id,
+                "current_value": current,
+                prior_component_key: prior,
+                "formula": formula,
+            },
+            missing_reason=missing_reason,
+        )
+
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    snapshot_path = Path(args.snapshot_path)
+    entity_identifier_path = Path(args.entity_identifier_path)
+    raw_timeseries_path = Path(args.raw_timeseries_path)
+    crsp_market_cache_path = Path(args.crsp_market_cache_path) if args.crsp_market_cache_path else None
+    crsp_daily_root = Path(args.crsp_daily_root) if args.crsp_daily_root else (
+        DEFAULT_LOCAL_CRSP_DAILY_ROOT if DEFAULT_LOCAL_CRSP_DAILY_ROOT.exists() else None
+    )
+    companyfacts_root = Path(args.companyfacts_root) if args.companyfacts_root else (
+        DEFAULT_LOCAL_COMPANYFACTS_ROOT if DEFAULT_LOCAL_COMPANYFACTS_ROOT.exists() else None
+    )
+    sec_filing_cache_root = Path(args.sec_filing_cache_root) if args.sec_filing_cache_root else None
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    permnos = _permno_map(entity_identifier_path)
+    permno_by_entity = permnos.set_index("entity_id")["permno"].to_dict()
+    computed_at = _now_iso()
+    snapshot_rows = iter_snapshot_rows(snapshot_path)
+
+    exact_market_price_source = crsp_market_cache_path or crsp_daily_root
+
+    if crsp_market_cache_path is not None:
+        market_provenance_source = str(crsp_market_cache_path)
+        market_builder = _build_price_metrics_from_crsp
+    elif crsp_daily_root is not None:
+        market_provenance_source = str(crsp_daily_root)
+        market_builder = _build_price_metrics_from_crsp
+    elif args.allow_monthly_market_proxy:
+        market_provenance_source = str(raw_timeseries_path)
+        market_builder = _build_price_metrics
+    else:
+        market_provenance_source = str(raw_timeseries_path)
+        market_builder = _build_price_metrics_from_crsp
+    macro_history: pd.DataFrame | None = None
+    macro_history_range: tuple[pd.Timestamp, pd.Timestamp] | None = None
+    macro_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    companyfacts_cache: Dict[str, dict | None] = {}
+    issuer_shares_cache: Dict[str, tuple[float | None, dict[str, Any] | None]] = {}
+    sec_session = _sec_session() if sec_filing_cache_root is not None and _sec_session is not None else None
+    counters: Counter[str] = Counter()
+    empty_price_history = pd.DataFrame()
+
+    # Line-buffered writes make progress visible on disk as rows complete.
+    with out_path.open("w", buffering=1) as out_handle:
+        for row_batch in _iter_row_batches(snapshot_rows, max(1, int(args.price_load_batch_size))):
+            batch_permnos = [permno_by_entity.get(row.get("company_id")) for row in row_batch]
+            batch_price_history = _load_price_history_for_batch(
+                permnos=[permno for permno in batch_permnos if permno],
+                as_of_times=[row["as_of_time"] for row in row_batch],
+                crsp_market_cache_path=crsp_market_cache_path,
+                crsp_daily_root=crsp_daily_root,
+                raw_timeseries_path=raw_timeseries_path,
+                allow_monthly_market_proxy=args.allow_monthly_market_proxy,
+            )
+            for row in row_batch:
+                as_of_time = row["as_of_time"]
+                entity_id = row.get("company_id")
+                permno = permno_by_entity.get(entity_id)
+                features = row.setdefault("features", {})
+
+                companyfacts_path = (companyfacts_root / f"CIK{entity_id}.json") if companyfacts_root is not None else None
+
+                try:
+                    with _company_processing_guard(args.company_processing_timeout_seconds):
+                        price_metrics = market_builder(
+                            permno=permno,
+                            price_history=batch_price_history.get(str(permno), empty_price_history),
+                            as_of_time=as_of_time,
+                            computed_at=computed_at,
+                            provenance_source=market_provenance_source,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    error_type = "company_processing_timeout" if isinstance(exc, _CompanyProcessingTimeout) else "company_processing_failed"
+                    counters[f"row:{error_type}"] += 1
+                    price_metrics = _build_fail_open_market_metrics(
+                        as_of_time=as_of_time,
+                        computed_at=computed_at,
+                        provenance_source=str(companyfacts_path or market_provenance_source),
+                        error_type=error_type,
+                        error_message=f"{type(exc).__name__}: {exc}",
+                    )
+                else:
+                    try:
+                        with _company_processing_guard(args.company_processing_timeout_seconds):
+                            market_cap_node = None
+                            if companyfacts_root is not None and entity_id not in companyfacts_cache:
+                                companyfacts_cache[entity_id] = _load_companyfacts(companyfacts_path)
+                            companyfacts = companyfacts_cache.get(entity_id)
+                            if entity_id not in issuer_shares_cache:
+                                issuer_shares = None
+                                issuer_shares_meta = None
+                                if companyfacts is not None:
+                                    issuer_shares, issuer_shares_meta = _latest_shares_outstanding(companyfacts, as_of_time[:10])
+                                    if issuer_shares_meta is not None:
+                                        support_mode, missing = _shares_support_mode(
+                                            reference_date=_parse_iso_date(issuer_shares_meta.get("end")),
+                                            as_of_date=date.fromisoformat(as_of_time[:10]),
+                                        )
+                                        issuer_shares_meta = {
+                                            **issuer_shares_meta,
+                                            "support_mode": support_mode,
+                                            "missing_reason": missing,
+                                            "source": "sec_companyfacts",
+                                        }
+                                if issuer_shares is None and sec_session is not None and sec_filing_cache_root is not None:
+                                    issuer_shares, issuer_shares_meta = _latest_issuer_shares_from_sec_filing(
+                                        cik=str(entity_id).zfill(10),
+                                        as_of_date=date.fromisoformat(as_of_time[:10]),
+                                        session=sec_session,
+                                        cache_dir=sec_filing_cache_root,
+                                    )
+                                    if issuer_shares_meta is not None:
+                                        issuer_shares_meta = {
+                                            **issuer_shares_meta,
+                                            "source": "sec_filing_cover_page",
+                                        }
+                                issuer_shares_cache[entity_id] = (issuer_shares, issuer_shares_meta)
+                            issuer_shares, issuer_shares_meta = issuer_shares_cache[entity_id]
+
+                            if market_builder is _build_price_metrics_from_crsp and exact_market_price_source is not None:
+                                market_cap_node = _build_market_cap_metric(
+                                    price_history=batch_price_history.get(str(permno), empty_price_history),
+                                    price_node=price_metrics["market.price_spot"],
+                                    issuer_shares_outstanding=issuer_shares,
+                                    issuer_shares_meta=issuer_shares_meta,
+                                    as_of_time=as_of_time,
+                                    computed_at=computed_at,
+                                    provenance_source=market_provenance_source,
+                                )
+
+                            if market_cap_node is None:
+                                market_cap_node = _build_market_cap_metric_from_companyfacts(
+                                    companyfacts=companyfacts,
+                                    price_node=price_metrics["market.price_spot"],
+                                    as_of_time=as_of_time,
+                                    computed_at=computed_at,
+                                    companyfacts_path=companyfacts_path,
+                                )
+                    except Exception as exc:  # noqa: BLE001
+                        error_type = "company_processing_timeout" if isinstance(exc, _CompanyProcessingTimeout) else "company_processing_failed"
+                        counters[f"market_cap:{error_type}"] += 1
+                        market_cap_node = _build_fail_open_market_cap_metric(
+                            as_of_time=as_of_time,
+                            computed_at=computed_at,
+                            provenance_source=str(companyfacts_path or market_provenance_source),
+                            error_type=error_type,
+                            error_message=f"{type(exc).__name__}: {exc}",
+                        )
+                    price_metrics["market.market_cap_provider_direct"] = market_cap_node
+
+                for metric_name, node in price_metrics.items():
+                    features[metric_name] = node
+                    counters[f"{metric_name}:{node['support_mode']}"] += 1
+
+                if as_of_time not in macro_cache:
+                    try:
+                        as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+                        if (
+                            macro_history is None
+                            or macro_history_range is None
+                            or as_of_date < macro_history_range[0]
+                            or as_of_date > macro_history_range[1]
+                        ):
+                            macro_history = _load_macro_history(
+                                raw_timeseries_path,
+                                min_asof_date=as_of_date,
+                                max_asof_date=as_of_date,
+                            )
+                            macro_history_range = (as_of_date, as_of_date)
+                        macro_cache[as_of_time] = _build_macro_metrics(
+                            macro_history=macro_history,
+                            as_of_time=as_of_time,
+                            computed_at=computed_at,
+                            provenance_source=str(raw_timeseries_path),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        counters["row:macro_build_failed"] += 1
+                        macro_cache[as_of_time] = _build_fail_open_macro_metrics(
+                            as_of_time=as_of_time,
+                            computed_at=computed_at,
+                            provenance_source=str(raw_timeseries_path),
+                            error_type="macro_build_failed",
+                            error_message=f"{type(exc).__name__}: {exc}",
+                        )
+                for metric_name, node in macro_cache[as_of_time].items():
+                    features[metric_name] = node
+                    counters[f"{metric_name}:{node['support_mode']}"] += 1
+
+                out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        summary_path = Path(args.summary_out)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary = {}
+        tracked_metrics = (
+            ["market.market_cap_provider_direct"]
+            + list(MARKET_METRICS)
+            + [
+                "macro.sofr_or_fed_funds",
+                *MACRO_SERIES_SPECS.keys(),
+                "macro.curve_2s10s",
+                *MACRO_YOY_SPECS.keys(),
+            ]
+        )
+        for metric_name in tracked_metrics:
+            summary[metric_name] = {
+                "exact": counters[f"{metric_name}:exact"],
+                "proxy_missing_component": counters[f"{metric_name}:proxy_missing_component"],
+                "unsupported": counters[f"{metric_name}:unsupported"],
+            }
+        if counters["row:company_processing_failed"] or counters["row:company_processing_timeout"] or counters["row:macro_build_failed"]:
+            summary["row_fail_open"] = {
+                "company_processing_failed": counters["row:company_processing_failed"],
+                "company_processing_timeout": counters["row:company_processing_timeout"],
+                "macro_build_failed": counters["row:macro_build_failed"],
+            }
+        if counters["market_cap:company_processing_failed"] or counters["market_cap:company_processing_timeout"]:
+            summary["market_cap_fail_open"] = {
+                "company_processing_failed": counters["market_cap:company_processing_failed"],
+                "company_processing_timeout": counters["market_cap:company_processing_timeout"],
+            }
+        summary_path.write_text(json.dumps(summary, indent=2))
+
+    print(f"Wrote market/macro input-layer snapshots -> {out_path}")
+    if counters["row:company_processing_failed"] or counters["row:company_processing_timeout"] or counters["row:macro_build_failed"]:
+        print(
+            "row_fail_open:"
+            f" company_processing_failed={counters['row:company_processing_failed']}"
+            f" company_processing_timeout={counters['row:company_processing_timeout']}"
+            f" macro_build_failed={counters['row:macro_build_failed']}"
+        )
+    if counters["market_cap:company_processing_failed"] or counters["market_cap:company_processing_timeout"]:
+        print(
+            "market_cap_fail_open:"
+            f" company_processing_failed={counters['market_cap:company_processing_failed']}"
+            f" company_processing_timeout={counters['market_cap:company_processing_timeout']}"
+        )
+
+
+if __name__ == "__main__":
+    main()
