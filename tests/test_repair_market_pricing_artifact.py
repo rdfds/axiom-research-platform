@@ -147,3 +147,21 @@ def test_repair_ev_ebitda_overwrites_reference_value_with_current_ttm_inputs():
     assert repaired["fallback_used"] == "repaired_enterprise_value_plus_provider_ebitda"
 
 
+def test_repair_pe_ratio_from_market_cap_and_net_income():
+    features = {
+        "market.pe_ratio": _node("market.pe_ratio", None, unit="x"),
+        "market.market_cap_provider_direct": _node("market.market_cap_provider_direct", 300.0),
+        "earnings.net_income_ttm_provider_direct": _node(
+            "earnings.net_income_ttm_provider_direct",
+            20.0,
+        ),
+        "market.price_spot": _node("market.price_spot", 15.0, unit="usd_per_share"),
+    }
+
+    assert repair_pe_ratio(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    repaired = features["market.pe_ratio"]
+    assert repaired["value"] == 15.0
+    assert repaired["fallback_used"] == "market_cap_plus_net_income_ttm"
+    assert repaired["support_mode"] == "exact"
+
+
