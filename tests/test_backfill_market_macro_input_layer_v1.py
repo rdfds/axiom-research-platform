@@ -163,3 +163,43 @@ def test_fail_open_market_metrics_mark_market_stack_unsupported():
     assert metrics["market.market_cap_provider_direct"]["component_breakdown"]["error_type"] == "company_processing_timeout"
 
 
+def test_market_cap_fail_open_preserves_exact_price_metrics():
+    dates = pd.bdate_range("2024-11-01", periods=45, tz="UTC")
+    returns = pd.Series([0.001] * len(dates), dtype=float)
+    prices = 100.0 * (1.0 + returns).cumprod()
+    history = pd.DataFrame(
+        {
+            "permno": "10001",
+            "trade_date": dates.normalize(),
+            "date_key": dates.normalize(),
+            "close_price": prices,
+            "price_proxy": prices,
+            "total_return": returns,
+            "price_return": returns,
+            "shares_outstanding": 1000.0,
+            "daily_cap": prices * 1000.0,
+            "delist_flag": False,
+        }
+    )
+
+    metrics = _build_price_metrics_from_crsp(
+        permno="10001",
+        price_history=history,
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-30T00:00:00+00:00",
+        provenance_source="/tmp/crsp",
+    )
+    metrics["market.market_cap_provider_direct"] = _build_fail_open_market_cap_metric(
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-30T00:00:00+00:00",
+        provenance_source="/tmp/companyfacts/CIK0000000001.json",
+        error_type="company_processing_timeout",
+        error_message="timed out",
+    )
+
+    assert metrics["market.price_spot"]["support_mode"] == "exact"
+    assert metrics["market.total_return_1m_standardized"]["support_mode"] == "exact"
+    assert metrics["market.market_cap_provider_direct"]["support_mode"] == "unsupported"
+    assert metrics["market.market_cap_provider_direct"]["missing_reason"] == "company_processing_timeout"
+
+

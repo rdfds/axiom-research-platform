@@ -870,3 +870,41 @@ def _build_fail_open_market_cap_metric(
     )
 
 
+def _build_fail_open_macro_metrics(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    error_type: str,
+    error_message: str,
+) -> Dict[str, Dict[str, Any]]:
+    error_text = str(error_message).strip()[:240]
+    missing_reason = "macro_build_failed"
+    breakdown = {
+        "error_type": error_type,
+        "error_message": error_text,
+    }
+    return {
+        metric_name: _macro_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=unit,
+            value=None,
+            components=breakdown,
+            missing_reason=missing_reason,
+        )
+        for metric_name, unit in MACRO_METRIC_UNITS.items()
+    }
+
+
+def _parse_iso_date(text: str | None) -> date | None:
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(str(text)[:10])
+    except ValueError:
+        return None
+
+
