@@ -332,3 +332,49 @@ class RegimeClassifier:
         return df[['month', 'regime', 'regime_score', 'vol_annualized', 'deal_count']]
 
 
+def demo():
+    """Demonstrate the data-driven regime classifier."""
+    print("="*70)
+    print("DATA-DRIVEN REGIME CLASSIFIER")
+    print("="*70)
+
+    classifier = RegimeClassifier()
+
+    # Test different dates
+    test_dates = [
+        '2010-06-01',
+        '2012-06-01',
+        '2015-06-01',
+        '2016-02-01',  # China scare
+        '2018-12-01',  # Q4 selloff
+        '2019-06-01',
+        '2020-03-15',  # COVID
+        '2020-09-01',  # Post-COVID
+    ]
+
+    print("\n" + "="*70)
+    print("REGIME CLASSIFICATIONS (DATA-DRIVEN)")
+    print("="*70)
+
+    for date in test_dates:
+        result = classifier.classify_regime(date)
+        print(f"\n{date}: {result['regime']}")
+        print(f"  Score: {result.get('regime_score', 'N/A')}")
+        print(f"  {result.get('description', '')}")
+        if result['indicators']:
+            ind = result['indicators']
+            print(f"  Vol: {ind.get('volatility_annualized', 'N/A')}% (pct: {ind.get('volatility_percentile', 'N/A')})")
+            print(f"  Deals: {ind.get('deal_count', 'N/A')}/month (pct: {ind.get('deal_percentile', 'N/A')})")
+
+    # Show transitions
+    print("\n" + "="*70)
+    print("REGIME TRANSITIONS")
+    print("="*70)
+
+    timeline = classifier.get_regime_timeline()
+    if len(timeline) > 0:
+        timeline['prev_regime'] = timeline['regime'].shift(1)
+        transitions = timeline[timeline['regime'] != timeline['prev_regime']].dropna()
+        print(transitions[['month', 'regime', 'regime_score']].head(20).to_string(index=False))
+
+
