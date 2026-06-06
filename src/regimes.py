@@ -378,3 +378,5 @@ def demo():
         print(transitions[['month', 'regime', 'regime_score']].head(20).to_string(index=False))
 
 
+if __name__ == "__main__":
+    demo()

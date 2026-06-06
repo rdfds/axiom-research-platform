@@ -117,3 +117,56 @@ def _kmeans_pp_init(
     return np.stack(centroids, axis=0)
 
 
+def fit_latent_regime_kmeans(
+    raw_matrix: np.ndarray,
+    *,
+    feature_names: Sequence[str],
+    n_clusters: int,
+    seed: int = 7,
+    max_iter: int = 100,
+) -> Dict[str, Any]:
+    if raw_matrix.ndim != 2 or raw_matrix.shape[0] == 0:
+        raise ValueError("raw_matrix must be non-empty 2D")
+    feature_list = [str(name) for name in feature_names]
+    n_clusters = max(1, min(int(n_clusters), int(raw_matrix.shape[0])))
+    medians, scales = _robust_center_scale(raw_matrix)
+    X = _latent_regime_design_matrix(raw_matrix, medians=medians, scales=scales)
+    centroids = _kmeans_pp_init(X, n_clusters=n_clusters, seed=int(seed))
+    assignments = np.zeros(X.shape[0], dtype=int)
+    for _ in range(max(1, int(max_iter))):
+        dist_sq = np.stack(
+            [np.sum((X - centroid.reshape(1, -1)) ** 2, axis=1) for centroid in centroids],
+            axis=1,
+        )
+        new_assignments = np.argmin(dist_sq, axis=1)
+        if np.array_equal(new_assignments, assignments):
+            break
+        assignments = new_assignments
+        new_centroids = centroids.copy()
+        for idx in range(n_clusters):
+            mask = assignments == idx
+            if not bool(np.any(mask)):
+                continue
+            new_centroids[idx] = np.mean(X[mask], axis=0)
+        centroids = new_centroids
+    final_dist_sq = np.stack(
+        [np.sum((X - centroid.reshape(1, -1)) ** 2, axis=1) for centroid in centroids],
+        axis=1,
+    )
+    nearest_dist_sq = np.min(final_dist_sq, axis=1)
+    temperature = float(np.median(nearest_dist_sq[np.isfinite(nearest_dist_sq)])) if np.isfinite(nearest_dist_sq).any() else 1.0
+    if (not np.isfinite(temperature)) or temperature <= 1e-9:
+        temperature = 1.0
+    return {
+        "version": _LATENT_REGIME_MODEL_VERSION,
+        "feature_names": feature_list,
+        "n_clusters": int(n_clusters),
+        "medians": [float(x) for x in medians.tolist()],
+        "scales": [float(x) for x in scales.tolist()],
+        "centroids": [[float(v) for v in row.tolist()] for row in centroids],
+        "temperature": float(temperature),
+        "seed": int(seed),
+        "max_iter": int(max_iter),
+    }
+
+
