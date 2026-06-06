@@ -129,3 +129,23 @@ def _selected_outcome_weights(scope_key: str, df: pd.DataFrame, min_non_null: in
     return usable
 
 
+def _robust_standardize_frame(df: pd.DataFrame, cols: Sequence[str]) -> pd.DataFrame:
+    out = pd.DataFrame(index=df.index)
+    for col in cols:
+        s = pd.to_numeric(df[col], errors="coerce")
+        valid = s.dropna()
+        if valid.empty:
+            out[col] = np.nan
+            continue
+        med = float(valid.median())
+        q25 = float(valid.quantile(0.25))
+        q75 = float(valid.quantile(0.75))
+        scale = (q75 - q25) / 1.349
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = float(valid.std())
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = 1.0
+        out[col] = (s - med) / scale
+    return out
+
+
