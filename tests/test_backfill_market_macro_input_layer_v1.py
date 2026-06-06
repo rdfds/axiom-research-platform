@@ -203,3 +203,95 @@ def test_market_cap_fail_open_preserves_exact_price_metrics():
     assert metrics["market.market_cap_provider_direct"]["missing_reason"] == "company_processing_timeout"
 
 
+def test_fail_open_macro_metrics_mark_macro_stack_unsupported():
+    metrics = _build_fail_open_macro_metrics(
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-03-30T00:00:00+00:00",
+        provenance_source="/tmp/raw_timeseries.parquet",
+        error_type="macro_build_failed",
+        error_message="bad macro row",
+    )
+
+    assert metrics["macro.sofr_or_fed_funds"]["support_mode"] == "unsupported"
+    assert metrics["macro.ust_10y_yield"]["missing_reason"] == "macro_build_failed"
+    assert metrics["macro.curve_2s10s"]["component_breakdown"]["error_type"] == "macro_build_failed"
+    assert metrics["macro.cpi_yoy"]["support_mode"] == "unsupported"
+
+
+def test_build_macro_metrics_emits_explicit_fed_funds_sofr_and_real_gdp_growth():
+    macro_history = pd.DataFrame(
+        {
+            "instrument_id": [
+                "SOFR",
+                "DFF",
+                "DGS2",
+                "DGS10",
+                "CPIAUCSL",
+                "CPIAUCSL",
+                "RSAFS",
+                "RSAFS",
+                "GDPC1",
+                "GDPC1",
+                "GDPC1",
+                "GDPC1",
+                "GDPC1",
+            ],
+            "event_date": pd.to_datetime(
+                [
+                    "2024-12-31",
+                    "2024-12-31",
+                    "2024-12-31",
+                    "2024-12-31",
+                    "2024-12-31",
+                    "2023-12-31",
+                    "2024-12-31",
+                    "2023-12-31",
+                    "2023-12-31",
+                    "2024-03-31",
+                    "2024-06-30",
+                    "2024-09-30",
+                    "2024-12-31",
+                ],
+                utc=True,
+            ).normalize(),
+            "value": [
+                4.6,
+                4.4,
+                4.2,
+                4.6,
+                300.0,
+                285.0,
+                200.0,
+                180.0,
+                100.0,
+                101.0,
+                102.0,
+                103.0,
+                104.0,
+            ],
+            "units": ["pct"] * 13,
+        }
+    )
+    macro_history["date_key"] = macro_history["event_date"]
+
+    metrics = _build_macro_metrics(
+        macro_history=macro_history,
+        as_of_time="2024-12-31T00:00:00+00:00",
+        computed_at="2026-04-01T00:00:00+00:00",
+        provenance_source="/tmp/raw_timeseries.parquet",
+    )
+
+    assert metrics["macro.fed_funds_effective"]["support_mode"] == "exact"
+    assert metrics["macro.fed_funds_effective"]["value"] == 4.4
+    assert metrics["macro.sofr"]["support_mode"] == "exact"
+    assert metrics["macro.sofr"]["value"] == 4.6
+    assert metrics["macro.sofr_or_fed_funds"]["value"] == 4.6
+    assert metrics["macro.sofr_or_fed_funds"]["component_breakdown"]["selected_instrument"] == "SOFR"
+    assert metrics["macro.real_gdp_growth_yoy"]["support_mode"] == "exact"
+    assert round(metrics["macro.real_gdp_growth_yoy"]["value"], 6) == 0.04
+    assert (
+        metrics["macro.real_gdp_growth_yoy"]["component_breakdown"]["formula"]
+        == "(current_value / value_4_observations_prior) - 1"
+    )
+
+
