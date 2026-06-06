@@ -128,3 +128,22 @@ def test_repair_ev_ebitda_uses_repaired_enterprise_value():
     assert repaired["fallback_used"] == "repaired_enterprise_value_plus_provider_ebitda"
 
 
+def test_repair_ev_ebitda_overwrites_reference_value_with_current_ttm_inputs():
+    features = {
+        "market.enterprise_value": _node("market.enterprise_value", 1_000.0),
+        "market.ev_ebitda": _node("market.ev_ebitda", 7.0, unit="x"),
+        "operating.ebitda_ltm_provider_direct": _node("operating.ebitda_ltm_provider_direct", 100.0),
+        "operating.operating_earnings_normalized": _node("operating.operating_earnings_normalized", 100.0),
+    }
+    features["market.ev_ebitda"]["component_breakdown"] = {
+        "enterprise_value": 1_000.0,
+        "ebitda_ttm": 142.857,
+        "reference_instrument": "TEST.OQ",
+    }
+
+    assert repair_ev_ebitda(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    repaired = features["market.ev_ebitda"]
+    assert repaired["value"] == 10.0
+    assert repaired["fallback_used"] == "repaired_enterprise_value_plus_provider_ebitda"
+
+
