@@ -215,3 +215,27 @@ def _pairwise_dataset(
     }
 
 
+def _ridge_to_prior(X: np.ndarray, y: np.ndarray, prior: np.ndarray, lam: float) -> np.ndarray:
+    n_features = int(X.shape[1])
+    xtx = X.T @ X
+    ridge = xtx + float(lam) * np.eye(n_features)
+    xty = X.T @ y
+    rhs = xty + float(lam) * prior
+    return np.linalg.solve(ridge, rhs)
+
+
+def _corr(a: np.ndarray, b: np.ndarray) -> Optional[float]:
+    if a.size < 5 or b.size < 5:
+        return None
+    aa = np.asarray(a, dtype=float)
+    bb = np.asarray(b, dtype=float)
+    ok = np.isfinite(aa) & np.isfinite(bb)
+    if int(np.count_nonzero(ok)) < 5:
+        return None
+    aa = aa[ok]
+    bb = bb[ok]
+    if float(np.nanstd(aa)) <= 1e-12 or float(np.nanstd(bb)) <= 1e-12:
+        return None
+    return float(np.corrcoef(aa, bb)[0, 1])
+
+

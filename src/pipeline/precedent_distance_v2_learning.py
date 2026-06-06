@@ -27,3 +27,16 @@ def load_precedent_distance_v2_objective(path: str | Path) -> Dict[str, Any]:
     return payload
 
 
+def _scope_multipliers(scope_key: str) -> Dict[str, float]:
+    scope = str(scope_key or "").strip().lower()
+    if scope.startswith("capital_return.dividend"):
+        return dict(_STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get("capital_return.dividend", {}))
+    if scope in {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.buyback",
+    }:
+        return dict(_STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get("capital_return.buyback", {}))
+    return dict(_STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get(scope, {}))
+
+
