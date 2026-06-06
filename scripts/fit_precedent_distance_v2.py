@@ -132,3 +132,19 @@ def _filter_cases_by_scope(cases: List[Dict[str, Any]], scope_key: str, case_cou
     return filtered
 
 
+@contextmanager
+def _temporary_env(overrides: Dict[str, str]):
+    old: Dict[str, Any] = {}
+    try:
+        for key, value in overrides.items():
+            old[key] = os.environ.get(key)
+            os.environ[key] = str(value)
+        yield
+    finally:
+        for key, previous in old.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
+
