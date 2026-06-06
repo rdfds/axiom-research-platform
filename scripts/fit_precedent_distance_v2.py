@@ -115,3 +115,20 @@ def _resolve_locked_inputs(config: Dict[str, Any], benchmark_key: str) -> Dict[s
     }
 
 
+def _filter_cases_by_scope(cases: List[Dict[str, Any]], scope_key: str, case_count: int | None) -> List[Dict[str, Any]]:
+    scope = str(scope_key or "").strip().lower()
+    filtered: List[Dict[str, Any]] = []
+    for case in cases:
+        anchor_action_id = str(case['anchor_action_id'] or "").strip().lower()
+        anchor_family = str(case.get("anchor_action_family") or "").strip().lower()
+        if "." in scope:
+            keep = anchor_action_id == scope
+        else:
+            keep = anchor_family == scope
+        if keep:
+            filtered.append(case)
+        if case_count is not None and len(filtered) >= int(case_count):
+            break
+    return filtered
+
+
