@@ -165,3 +165,18 @@ def test_repair_pe_ratio_from_market_cap_and_net_income():
     assert repaired["support_mode"] == "exact"
 
 
+def test_repair_pe_ratio_marks_non_positive_net_income_unsupported():
+    features = {
+        "market.pe_ratio": _node("market.pe_ratio", None, unit="x"),
+        "market.market_cap_provider_direct": _node("market.market_cap_provider_direct", 300.0),
+        "earnings.net_income_ttm_provider_direct": _node(
+            "earnings.net_income_ttm_provider_direct",
+            -5.0,
+        ),
+    }
+
+    assert repair_pe_ratio(features=features, computed_at="2026-03-23T00:00:00+00:00") is True
+    repaired = features["market.pe_ratio"]
+    assert repaired["value"] is None
+    assert repaired["support_mode"] == "unsupported"
+    assert repaired["missing_reason"] == "non_positive_net_income_ttm"
