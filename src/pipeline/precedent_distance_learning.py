@@ -73,3 +73,59 @@ def _state_feature_names() -> Tuple[str, ...]:
     return tuple(_STATE_VECTOR_MATCHING_COLS)
 
 
+def _prior_weight_vector(scope_key: str) -> np.ndarray:
+    scope = _clean_scope_key(scope_key)
+    weights = dict(_STATE_VECTOR_BASE_WEIGHTS)
+    if scope == "capital_return":
+        weights["state_vector_v1.net_obligation_burden"] *= 1.20
+        weights["state_vector_v1.liquidity_flexibility"] *= 1.20
+        weights["state_vector_v1.interest_coverage"] *= 1.15
+        weights["state_vector_v1.cash_generation"] *= 1.30
+        weights["state_vector_v1.valuation_multiple"] *= 1.10
+    elif scope == "capital_structure":
+        weights["state_vector_v1.gross_obligation_burden"] *= 1.30
+        weights["state_vector_v1.net_obligation_burden"] *= 1.20
+        weights["state_vector_v1.liquidity_flexibility"] *= 1.30
+        weights["state_vector_v1.interest_coverage"] *= 1.15
+        weights["state_vector_v1.market_access"] *= 1.30
+        weights["state_vector_v1.credit_spread"] *= 1.20
+        weights["state_vector_v1.valuation_multiple"] *= 0.85
+    elif scope == "mna":
+        weights["state_vector_v1.growth"] *= 1.10
+        weights["state_vector_v1.valuation_multiple"] *= 1.15
+        weights["state_vector_v1.market_access"] *= 1.10
+        weights["state_vector_v1.market_stress"] *= 1.10
+    elif scope == "portfolio":
+        weights["state_vector_v1.growth"] *= 1.10
+        weights["state_vector_v1.cash_generation"] *= 1.10
+        weights["state_vector_v1.valuation_multiple"] *= 1.05
+    arr = np.array([float(weights.get(col, 1.0)) for col in _state_feature_names()], dtype=float)
+    mean = float(np.nanmean(arr)) if arr.size else 1.0
+    if mean > 1e-12:
+        arr = arr / mean
+    return arr
+
+
+def _selected_outcome_weights(scope_key: str, df: pd.DataFrame, min_non_null: int) -> Dict[str, float]:
+    preferred = dict(_OUTCOME_SPECS.get(_clean_scope_key(scope_key), _OUTCOME_SPECS["ALL"]))
+    usable: Dict[str, float] = {}
+    for col, weight in preferred.items():
+        if col not in df.columns:
+            continue
+        non_null = int(pd.to_numeric(df[col], errors="coerce").notna().sum())
+        if non_null >= int(min_non_null):
+            usable[col] = float(weight)
+    if not usable:
+        fallback = dict(_OUTCOME_SPECS["ALL"])
+        for col, weight in fallback.items():
+            if col not in df.columns:
+                continue
+            non_null = int(pd.to_numeric(df[col], errors="coerce").notna().sum())
+            if non_null >= int(min_non_null):
+                usable[col] = float(weight)
+    total = float(sum(usable.values()))
+    if total > 1e-12:
+        usable = {k: float(v / total) for k, v in usable.items()}
+    return usable
+
+
