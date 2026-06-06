@@ -52,3 +52,27 @@ def raw_feature_matrix_from_compacts(
     return np.asarray(rows, dtype=float)
 
 
+def _robust_center_scale(raw_matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    if raw_matrix.ndim != 2:
+        raise ValueError("raw_matrix must be 2D")
+    n_features = raw_matrix.shape[1]
+    medians = np.zeros(n_features, dtype=float)
+    scales = np.ones(n_features, dtype=float)
+    for idx in range(n_features):
+        sample = raw_matrix[:, idx]
+        valid = sample[np.isfinite(sample)]
+        if valid.size == 0:
+            continue
+        med = float(np.median(valid))
+        q25 = float(np.quantile(valid, 0.25))
+        q75 = float(np.quantile(valid, 0.75))
+        scale = (q75 - q25) / 1.349
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = float(np.std(valid))
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = 1.0
+        medians[idx] = med
+        scales[idx] = scale
+    return medians, scales
+
+

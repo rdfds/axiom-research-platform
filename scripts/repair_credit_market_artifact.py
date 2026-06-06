@@ -93,3 +93,7 @@ def _base_repaired_node(node: Dict[str, Any], *, computed_at: str) -> Dict[str, 
     return repaired
 
 
+def _clip(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+

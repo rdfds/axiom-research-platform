@@ -1008,3 +1008,408 @@ def _context_date_and_segment(context_tag: Any) -> tuple[date | None, str]:
     return context_date, segment_text
 
 
+def _extract_issuer_shares_from_filing(
+    *,
+    filing: dict[str, Any],
+    html: str,
+    as_of_date: date,
+) -> tuple[float | None, dict[str, Any] | None]:
+    soup = BeautifulSoup(html, "html.parser")
+    contexts: dict[str, tuple[date | None, str]] = {}
+    for context_tag in soup.find_all(lambda t: t.name and t.name.lower().endswith("context")):
+        context_id = context_tag.get("id")
+        if not context_id:
+            continue
+        contexts[str(context_id)] = _context_date_and_segment(context_tag)
+
+    share_facts: dict[tuple[str, str], dict[str, Any]] = {}
+    for tag in soup.find_all(lambda t: t.name and t.name.lower().endswith("nonfraction")):
+        fact_name = str(tag.get("name") or "")
+        if not any(fact_name.endswith(concept_name) for _, concept_name in SHARES_OUT_CONCEPTS):
+            continue
+        context_ref = str(tag.get("contextref") or "")
+        if not context_ref or context_ref not in contexts:
+            continue
+        value = _parse_xbrl_numeric(tag)
+        if value is None or value <= 0:
+            continue
+        context_date, segment_text = contexts[context_ref]
+        if context_date is None or context_date > as_of_date:
+            continue
+        share_facts[(context_ref, fact_name)] = {
+            "value": float(value),
+            "context_ref": context_ref,
+            "date": context_date,
+            "segment_text": segment_text,
+            "fact_name": fact_name,
+        }
+
+    if not share_facts:
+        return None, None
+
+    latest_date = max(item["date"] for item in share_facts.values())
+    latest_facts = [item for item in share_facts.values() if item["date"] == latest_date]
+
+    class_facts: dict[str, dict[str, Any]] = {}
+    aggregate_facts: dict[str, dict[str, Any]] = {}
+    for item in latest_facts:
+        segment_key = " ".join(str(item["segment_text"]).split())
+        if segment_key and SHARE_CLASS_SEGMENT_RE.search(segment_key):
+            class_facts[segment_key] = item
+        else:
+            aggregate_facts[item["context_ref"]] = item
+
+    aggregate_value = max((item["value"] for item in aggregate_facts.values()), default=None)
+    class_value = None
+    if class_facts:
+        class_value = float(sum(item["value"] for item in class_facts.values()))
+
+    selected_value = None
+    selected_mode = None
+    if class_value is not None and aggregate_value is not None:
+        if abs(class_value - aggregate_value) / max(class_value, aggregate_value) <= 0.02:
+            selected_value = max(class_value, aggregate_value)
+            selected_mode = "class_sum_confirmed_by_aggregate"
+        elif class_value > aggregate_value * 1.02:
+            selected_value = class_value
+            selected_mode = "share_class_sum"
+        else:
+            selected_value = aggregate_value
+            selected_mode = "aggregate_total"
+    elif class_value is not None:
+        selected_value = class_value
+        selected_mode = "share_class_sum" if len(class_facts) > 1 else "single_share_class_context"
+    elif aggregate_value is not None:
+        selected_value = aggregate_value
+        selected_mode = "aggregate_total"
+
+    if selected_value is None:
+        return None, None
+
+    support_mode, missing_reason = _shares_support_mode(reference_date=latest_date, as_of_date=as_of_date)
+    return float(selected_value), {
+        "selected_filing": filing,
+        "share_reference_date": latest_date.isoformat(),
+        "selected_mode": selected_mode,
+        "share_class_count": int(len(class_facts)),
+        "aggregate_context_count": int(len(aggregate_facts)),
+        "share_class_contexts": [
+            {
+                "context_ref": item["context_ref"],
+                "segment_text": item["segment_text"],
+                "value": item["value"],
+            }
+            for item in class_facts.values()
+        ],
+        "aggregate_contexts": [
+            {
+                "context_ref": item["context_ref"],
+                "value": item["value"],
+            }
+            for item in aggregate_facts.values()
+        ],
+        "support_mode": support_mode,
+        "missing_reason": missing_reason,
+        "formula": "sum_latest_share_class_contexts_or_use_latest_aggregate_total",
+    }
+
+
+def _latest_issuer_shares_from_sec_filing(
+    *,
+    cik: str,
+    as_of_date: date,
+    session: Any,
+    cache_dir: Path | None,
+) -> tuple[float | None, dict[str, Any] | None]:
+    if cache_dir is not None and cache_dir.exists():
+        best_cached: tuple[date, float, dict[str, Any]] | None = None
+        for cached_html_path in sorted(cache_dir.glob(f"{cik}_*.htm*")):
+            try:
+                html = cached_html_path.read_text(errors="ignore")
+            except Exception:  # noqa: BLE001
+                continue
+            filing = {
+                "cik": cik,
+                "filing_date": None,
+                "form": None,
+                "accession_number": cached_html_path.name.split("_", 2)[1] if "_" in cached_html_path.name else None,
+                "primary_document": cached_html_path.name,
+                "cache_path": str(cached_html_path),
+            }
+            shares_out, shares_meta = _extract_issuer_shares_from_filing(filing=filing, html=html, as_of_date=as_of_date)
+            if shares_out is None or shares_meta is None:
+                continue
+            reference_date = _parse_iso_date(shares_meta.get("share_reference_date"))
+            if reference_date is None or reference_date > as_of_date:
+                continue
+            if best_cached is None or reference_date > best_cached[0] or (
+                reference_date == best_cached[0] and float(shares_out) > best_cached[1]
+            ):
+                best_cached = (reference_date, float(shares_out), shares_meta)
+        if best_cached is not None:
+            return best_cached[1], best_cached[2]
+    if _latest_sec_filing is None or _fetch_sec_primary_document is None or session is None:
+        return None, None
+    filing = _latest_sec_filing(cik=cik, as_of_date=as_of_date, session=session, cache_dir=cache_dir)
+    if filing is None:
+        return None, None
+    html = _fetch_sec_primary_document(filing, session=session, cache_dir=cache_dir)
+    if not html:
+        return None, None
+    return _extract_issuer_shares_from_filing(filing=filing, html=html, as_of_date=as_of_date)
+
+
+def _build_price_metrics(
+    permno: str | None,
+    price_history: pd.DataFrame | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> Dict[str, Dict[str, Any]]:
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    metrics: Dict[str, Dict[str, Any]] = {}
+
+    if permno is None or price_history is None or price_history.empty:
+        for metric_name, spec in MARKET_METRICS.items():
+            metrics[metric_name] = _price_feature(
+                metric_name=metric_name,
+                as_of_time=as_of_time,
+                computed_at=computed_at,
+                provenance_source=provenance_source,
+                unit=spec["unit"],
+                value=None,
+                components={"permno": permno},
+                missing_reason="market_timeseries_unavailable",
+                support_mode="unsupported",
+            )
+        return metrics
+
+    price_history = price_history.copy()
+    price_history["date_key"] = price_history["trade_date"]
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    current_price = None if current_row is None or pd.isna(current_row["close"]) else float(current_row["close"])
+    current_trade_date = None if current_row is None else str(current_row["date_key"].date())
+
+    metrics["market.price_spot"] = _price_feature(
+        metric_name="market.price_spot",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        unit="usd_per_share",
+        value=current_price,
+        components={
+            "permno": permno,
+            "current_trade_date": current_trade_date,
+            "formula": "latest_close_on_or_before_asof",
+        },
+        missing_reason="market_price_unavailable" if current_price is None else None,
+        support_mode="proxy_missing_component" if current_price is not None else "unsupported",
+        quality_flags=["monthly_timeseries_price_proxy"] if current_price is not None else None,
+    )
+
+    for metric_name, spec in MARKET_METRICS.items():
+        if metric_name == "market.price_spot":
+            continue
+        value, return_components, missing_reason = _compound_trailing_return(
+            price_history,
+            as_of_date,
+            spec["months"],
+        )
+        metrics[metric_name] = _price_feature(
+            metric_name=metric_name,
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            unit=spec["unit"],
+            value=value,
+            components={
+                "permno": permno,
+                "current_close": current_price,
+                **return_components,
+            },
+            missing_reason=missing_reason,
+            support_mode="exact" if value is not None else "unsupported",
+        )
+
+    return metrics
+
+
+def _build_market_cap_metric(
+    *,
+    price_history: pd.DataFrame | None,
+    price_node: Dict[str, Any],
+    issuer_shares_outstanding: float | None,
+    issuer_shares_meta: dict[str, Any] | None,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+) -> Dict[str, Any] | None:
+    as_of_date = pd.Timestamp(as_of_time).tz_convert("UTC").normalize()
+    if price_history is None or price_history.empty:
+        return None
+    current_row = _latest_row_on_or_before(price_history, as_of_date)
+    if current_row is None:
+        return None
+
+    close_price = None if pd.isna(current_row["close_price"]) else float(current_row["close_price"])
+    price_proxy = None if pd.isna(current_row["price_proxy"]) else float(current_row["price_proxy"])
+    crsp_shares = None if pd.isna(current_row["shares_outstanding"]) else float(current_row["shares_outstanding"]) * 1000.0
+    share_reference_support = (issuer_shares_meta or {}).get("support_mode") or "unsupported"
+    share_reference_missing = (issuer_shares_meta or {}).get("missing_reason")
+    share_reference_age = (issuer_shares_meta or {}).get("share_reference_date")
+
+    market_cap = None
+    formula = None
+    quality_flags: list[str] | None = None
+    missing_reason = None
+    support_mode = "unsupported"
+
+    issuer_override = (
+        issuer_shares_outstanding is not None
+        and issuer_shares_outstanding > 0
+        and crsp_shares is not None
+        and issuer_shares_outstanding > crsp_shares * ISSUER_SHARES_OVERRIDE_MIN_RATIO
+    )
+
+    if issuer_shares_outstanding is not None and close_price is not None and (issuer_override or crsp_shares is None):
+        market_cap = close_price * float(issuer_shares_outstanding)
+        formula = "close_price * issuer_level_shares_outstanding"
+        support_mode = "exact" if share_reference_support == "exact" else "proxy_missing_component"
+        missing_reason = share_reference_missing
+        quality_flags = ["issuer_level_shares_override"] if issuer_override else ["issuer_level_shares_fallback"]
+    elif issuer_shares_outstanding is not None and price_proxy is not None and (issuer_override or crsp_shares is None):
+        market_cap = price_proxy * float(issuer_shares_outstanding)
+        formula = "price_proxy * issuer_level_shares_outstanding"
+        support_mode = "proxy_missing_component"
+        missing_reason = share_reference_missing or "close_component_unavailable"
+        quality_flags = ["issuer_level_shares_override", "used_abs_dlyprc_proxy"] if issuer_override else ["issuer_level_shares_fallback", "used_abs_dlyprc_proxy"]
+    elif close_price is not None and pd.notna(current_row["shares_outstanding"]):
+        market_cap = close_price * float(current_row["shares_outstanding"]) * 1000.0
+        formula = "close_price * shares_outstanding_thousands * 1000"
+        support_mode = "exact"
+    elif price_proxy is not None and pd.notna(current_row["shares_outstanding"]):
+        market_cap = price_proxy * float(current_row["shares_outstanding"]) * 1000.0
+        formula = "price_proxy * shares_outstanding_thousands * 1000"
+        support_mode = "proxy_missing_component"
+        missing_reason = "close_component_unavailable"
+        quality_flags = ["used_abs_dlyprc_proxy"]
+    elif pd.notna(current_row["daily_cap"]):
+        market_cap = float(current_row["daily_cap"]) * 1000.0
+        formula = "crsp_daily_cap_thousands * 1000"
+        support_mode = "exact"
+    else:
+        return None
+
+    current_trade_date = current_row["trade_date"]
+    if not _recent_enough_trade_date(current_trade_date, as_of_date):
+        return _feature_template(
+            metric_name="market.market_cap_provider_direct",
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=provenance_source,
+            provenance_artifact_type="CRSPDailyStockFile",
+            primary_source_basis="crsp_daily_stock_file",
+            support_mode="unsupported",
+            value=None,
+            unit="usd",
+            missing_reason="market_timeseries_stale",
+            component_breakdown={
+                "current_trade_date": str(current_trade_date.date()),
+                "formula": formula,
+            },
+            quality_flags=["market_timeseries_stale"],
+        )
+
+    return _feature_template(
+        metric_name="market.market_cap_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        provenance_artifact_type="CRSPDailyStockFile",
+        primary_source_basis="crsp_daily_stock_file",
+        support_mode=support_mode,
+        value=market_cap,
+        unit="usd",
+        missing_reason=missing_reason,
+        component_breakdown={
+            "current_trade_date": str(current_trade_date.date()),
+            "close_price": close_price,
+            "price_proxy": price_proxy,
+            "shares_outstanding": None if pd.isna(current_row["shares_outstanding"]) else float(current_row["shares_outstanding"]),
+            "issuer_shares_outstanding": issuer_shares_outstanding,
+            "issuer_shares_reference_date": share_reference_age,
+            "issuer_shares_reference": issuer_shares_meta,
+            "daily_cap": None if pd.isna(current_row["daily_cap"]) else float(current_row["daily_cap"]),
+            "formula": formula,
+        },
+        quality_flags=quality_flags,
+    )
+
+
+def _build_market_cap_metric_from_companyfacts(
+    *,
+    companyfacts: dict | None,
+    price_node: Dict[str, Any],
+    as_of_time: str,
+    computed_at: str,
+    companyfacts_path: Path | None,
+) -> Dict[str, Any]:
+    price = price_node.get("value")
+    price_support = price_node.get("support_mode") or "missing_metric"
+    if companyfacts is None or companyfacts_path is None:
+        return _feature_template(
+            metric_name="market.market_cap_provider_direct",
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=str(companyfacts_path or "companyfacts_unavailable"),
+            provenance_artifact_type="SecCompanyFacts",
+            primary_source_basis="sec_companyfacts",
+            support_mode="unsupported",
+            value=None,
+            unit="usd",
+            missing_reason="companyfacts_unavailable",
+            component_breakdown=None,
+            quality_flags=["companyfacts_unavailable"],
+        )
+    shares_out, shares_meta = _latest_shares_outstanding(companyfacts, as_of_time[:10])
+    if price is None or shares_out is None:
+        return _feature_template(
+            metric_name="market.market_cap_provider_direct",
+            as_of_time=as_of_time,
+            computed_at=computed_at,
+            provenance_source=str(companyfacts_path),
+            provenance_artifact_type="SecCompanyFacts",
+            primary_source_basis="sec_companyfacts",
+            support_mode="unsupported",
+            value=None,
+            unit="usd",
+            missing_reason="component_unavailable",
+            component_breakdown={
+                "price_spot": price,
+                "shares_outstanding": shares_meta,
+                "formula": "price_spot * shares_outstanding",
+            },
+            quality_flags=["component_unavailable"],
+        )
+    support_mode = "exact" if price_support == "exact" else "proxy_missing_component"
+    quality_flags = None if support_mode == "exact" else ["price_component_not_exact"]
+    return _feature_template(
+        metric_name="market.market_cap_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=str(companyfacts_path),
+        provenance_artifact_type="SecCompanyFacts",
+        primary_source_basis="sec_companyfacts",
+        support_mode=support_mode,
+        value=float(price) * float(shares_out),
+        unit="usd",
+        missing_reason=None if support_mode == "exact" else "price_component_not_exact",
+        component_breakdown={
+            "price_spot": price,
+            "shares_outstanding": shares_meta,
+            "formula": "price_spot * shares_outstanding",
+        },
+        quality_flags=quality_flags,
+    )
+
+
