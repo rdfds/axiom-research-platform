@@ -69,3 +69,21 @@ def _resolve_candidate_path(values: Iterable[str | Path]) -> Path:
     return candidates[0]
 
 
+def _load_lock_config(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def _ensure_fit_precedent_config(path: Path = FIT_PRECEDENT_CONFIG_PATH) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "action_effects": {},
+        "macro_series": {},
+        "outcome": {
+            "horizons_months": [3, 6, 12],
+            "primary_metric": "pe",
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+

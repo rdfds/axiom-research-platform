@@ -1,0 +1,126 @@
+{
+  "version": "weighted_distance_v2_objective_2026_04_06",
+  "benchmark_source": {
+    "historical_eval_module": "./src/historical_recommendation_eval.py",
+    "aggregate_metrics_function": "_aggregate_historical_cases",
+    "alignment_scoring_function": "_score_ex_post_alignment"
+  },
+  "optimization_principle": "lexicographic_holdout_optimization",
+  "lexicographic_objective": [
+    {
+      "metric": "error_rate",
+      "direction": "minimize"
+    },
+    {
+      "metric": "coverage_skip_rate",
+      "direction": "minimize"
+    },
+    {
+      "metric": "anchor_primary_support_adjusted_rate",
+      "direction": "maximize"
+    },
+    {
+      "metric": "mean_alignment_score",
+      "direction": "maximize"
+    },
+    {
+      "metric": "future_any_support_adjusted_rate",
+      "direction": "maximize"
+    }
+  ],
+  "secondary_metrics": [
+    {
+      "metric": "anchor_primary_exact_rate",
+      "direction": "maximize"
+    },
+    {
+      "metric": "future_any_exact_rate",
+      "direction": "maximize"
+    },
+    {
+      "metric": "strong_alignment_rate",
+      "direction": "maximize"
+    }
+  ],
+  "data_splits": {
+    "time_holdout_years": [
+      2024,
+      2025
+    ],
+    "company_group_holdout": "by_company_id",
+    "sector_holdout_enabled": true
+  },
+  "gates": {
+    "action_family_match_required": true,
+    "minimum_weighted_feature_coverage": 0.75,
+    "minimum_critical_feature_coverage": 0.8,
+    "critical_features": [
+      "state_vector_v1.size_log_revenue",
+      "state_vector_v1.gross_obligation_burden",
+      "state_vector_v1.net_obligation_burden",
+      "state_vector_v1.interest_coverage",
+      "state_vector_v1.valuation_multiple"
+    ],
+    "hard_size_guardrail_log_revenue": 1.5
+  },
+  "penalties": {
+    "regime_mismatch": {
+      "features": [
+        "state_vector_v1.rates_level",
+        "state_vector_v1.credit_spread"
+      ],
+      "mode": "explicit_penalty"
+    },
+    "missingness": {
+      "mode": "confidence_and_rank_penalty",
+      "apply_to_critical_features_only": true
+    },
+    "sector_identity": {
+      "mode": "soft_penalty",
+      "use_sector_and_subsector": true
+    }
+  },
+  "search_space": {
+    "group_weights": {
+      "identity": [
+        0.25,
+        3.0
+      ],
+      "capital_structure": [
+        0.25,
+        3.5
+      ],
+      "liquidity": [
+        0.25,
+        3.5
+      ],
+      "valuation": [
+        0.25,
+        3.0
+      ],
+      "market": [
+        0.25,
+        2.5
+      ],
+      "macro_regime": [
+        0.0,
+        2.0
+      ]
+    },
+    "within_group_relative_weights": {
+      "min": 0.5,
+      "max": 2.0
+    }
+  },
+  "regularization": {
+    "group_shrinkage_strength": 0.8,
+    "feature_shrinkage_strength": 0.9,
+    "max_single_feature_share": 0.2,
+    "dense_matrix_learning_enabled": false
+  },
+  "search_strategy": {
+    "stage_1": "group_weight_search_against_benchmark",
+    "stage_2": "within_group_refinement",
+    "stage_3": "pairwise_surrogate_only_for_warm_start"
+  }
+}
