@@ -939,7 +939,7 @@ def _latest_shares_outstanding(companyfacts: dict, as_of_date: str) -> tuple[flo
             for entry in entries:
                 end_dt = _parse_iso_date(entry.get("end"))
                 filed_dt = _parse_iso_date(entry.get("filed"))
-                value = entry['val']
+                value = entry.get("val")
                 if end_dt is None or value is None or end_dt > as_of_dt:
                     continue
                 if filed_dt is not None and filed_dt > as_of_dt:

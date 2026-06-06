@@ -76,3 +76,17 @@ def _robust_center_scale(raw_matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray
     return medians, scales
 
 
+def _latent_regime_design_matrix(
+    raw_matrix: np.ndarray,
+    *,
+    medians: np.ndarray,
+    scales: np.ndarray,
+) -> np.ndarray:
+    if raw_matrix.ndim != 2:
+        raise ValueError("raw_matrix must be 2D")
+    centered = (raw_matrix - medians.reshape(1, -1)) / scales.reshape(1, -1)
+    missing = ~np.isfinite(centered)
+    centered = np.where(missing, 0.0, centered)
+    return np.concatenate([centered, missing.astype(float)], axis=1)
+
+

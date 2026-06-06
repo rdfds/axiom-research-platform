@@ -97,3 +97,15 @@ def _clip(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
+def _infer_macro_timeseries_path(artifact_path: Path) -> Path | None:
+    for row in iter_rows(artifact_path):
+        features = row.get("features") or {}
+        for metric in ("macro.ig_oas", "macro.hy_oas", "macro.us_ig_oas"):
+            node = features.get(metric) or {}
+            for prov in node.get("provenance") or []:
+                source = prov.get("source")
+                if source and str(source).endswith(".parquet"):
+                    return Path(str(source))
+    return None
+
+
