@@ -295,3 +295,33 @@ def test_build_macro_metrics_emits_explicit_fed_funds_sofr_and_real_gdp_growth()
     )
 
 
+def test_load_macro_history_keeps_enough_gdp_release_history_for_yoy(tmp_path: Path):
+    raw_path = tmp_path / "raw_timeseries.parquet"
+    pd.DataFrame(
+        {
+            "series_type": ["macro"] * 5,
+            "instrument_id": ["GDPC1"] * 5,
+            "event_time": pd.to_datetime(
+                [
+                    "2023-10-26",
+                    "2024-01-25",
+                    "2024-04-25",
+                    "2024-07-25",
+                    "2024-10-30",
+                ],
+                utc=True,
+            ),
+            "value": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "units": ["usd"] * 5,
+        }
+    ).to_parquet(raw_path, index=False)
+
+    loaded = _load_macro_history(
+        raw_path,
+        min_asof_date=pd.Timestamp("2024-12-31", tz="UTC"),
+        max_asof_date=pd.Timestamp("2024-12-31", tz="UTC"),
+    )
+
+    gdp = loaded[loaded["instrument_id"] == "GDPC1"].sort_values("event_date").reset_index(drop=True)
+    assert len(gdp) == 5
+    assert gdp.iloc[0]["event_date"] < pd.Timestamp("2023-11-01", tz="UTC")
