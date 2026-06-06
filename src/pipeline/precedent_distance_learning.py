@@ -69,3 +69,7 @@ def _clean_scope_key(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _state_feature_names() -> Tuple[str, ...]:
+    return tuple(_STATE_VECTOR_MATCHING_COLS)
+
+

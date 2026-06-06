@@ -87,3 +87,31 @@ def _ensure_fit_precedent_config(path: Path = FIT_PRECEDENT_CONFIG_PATH) -> Path
     return path
 
 
+def _resolve_locked_inputs(config: Dict[str, Any], benchmark_key: str) -> Dict[str, Any]:
+    benchmarks = dict(config.get("benchmarks", {}) or {})
+    defaults = dict(config.get("defaults", {}) or {})
+    artifacts = dict(config.get("artifacts", {}) or {})
+    benchmark = dict(benchmarks.get(benchmark_key, {}) or {})
+    if not benchmark:
+        raise KeyError(f"Unknown benchmark '{benchmark_key}'. Available: {sorted(benchmarks)}")
+    resolved_paths = {
+        "manifest": _resolve_path(benchmark["manifest"]),
+        "outcomes_path": _resolve_path(artifacts["outcomes_path"]),
+        "action_support_manifest": _resolve_path(artifacts["action_support_manifest"]),
+        "entity_graph_path": _resolve_path(artifacts["entity_graph_path"]),
+        "entity_identifier_path": _resolve_path(artifacts["entity_identifier_path"]),
+        "entity_table_path": _resolve_path(artifacts["entity_table_path"]),
+        "raw_timeseries_path": _resolve_path(artifacts["raw_timeseries_path"]),
+        "event_store_path": _resolve_path(artifacts["event_store_path"]),
+        "ownership_summary_path": _resolve_path(artifacts["ownership_summary_path"]),
+        "issuer_ratings_path": _resolve_path(artifacts["issuer_ratings_path"]),
+        "companyfacts_root": _resolve_path(artifacts["companyfacts_root"]),
+        "facts_path": _resolve_candidate_path(artifacts["facts_path_candidates"]),
+    }
+    return {
+        "defaults": defaults,
+        "benchmark": benchmark,
+        "resolved_paths": resolved_paths,
+    }
+
+
