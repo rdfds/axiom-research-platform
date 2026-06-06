@@ -839,3 +839,34 @@ def _build_fail_open_market_metrics(
     return metrics
 
 
+def _build_fail_open_market_cap_metric(
+    *,
+    as_of_time: str,
+    computed_at: str,
+    provenance_source: str,
+    error_type: str,
+    error_message: str,
+) -> Dict[str, Any]:
+    error_text = str(error_message).strip()[:240]
+    missing_reason = "company_processing_timeout" if error_type == "company_processing_timeout" else "company_processing_failed"
+    breakdown = {
+        "error_type": error_type,
+        "error_message": error_text,
+    }
+    quality_flags = ["market_cap_processing_fail_open", error_type]
+    return _feature_template(
+        metric_name="market.market_cap_provider_direct",
+        as_of_time=as_of_time,
+        computed_at=computed_at,
+        provenance_source=provenance_source,
+        provenance_artifact_type="DerivedComputation",
+        primary_source_basis="market_cap_processing_fail_open",
+        support_mode="unsupported",
+        value=None,
+        unit="usd",
+        missing_reason=missing_reason,
+        component_breakdown=breakdown,
+        quality_flags=quality_flags,
+    )
+
+
