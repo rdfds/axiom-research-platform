@@ -134,3 +134,15 @@ def _load_spread_histories(path: Path) -> Dict[str, pd.DataFrame]:
     return out
 
 
+def _monthly_percentile(history: pd.DataFrame | None, *, as_of: pd.Timestamp, years: int) -> float | None:
+    if history is None or history.empty:
+        return None
+    sub = history[history["time"] <= as_of].copy()
+    if sub.empty:
+        return None
+    monthly = sub.set_index("time")["value"].sort_index().resample("ME").last().dropna().tail(years * 12)
+    if len(monthly) < min(24, years * 6):
+        return None
+    return float(monthly.rank(pct=True).iloc[-1] * 100.0)
+
+
