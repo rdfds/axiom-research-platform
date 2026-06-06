@@ -1,0 +1,236 @@
+{
+  "manifest_generated_at": "2026-04-07T22:47:18.945726+00:00",
+  "label": "Capital Return Open Market Buyback Holdout 22",
+  "selection_method": "recent_exact_action_resolved_top22",
+  "selection_source_outcomes": "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet",
+  "selection_filters": {
+    "normalized_action_id": "capital_return.open_market_buyback",
+    "min_action_date": "2024-01-01T00:00:00+00:00",
+    "candidate_limit_before_resolution": 40,
+    "lookback_days": 120,
+    "case_count": 22
+  },
+  "case_count": 22,
+  "cases": [
+    {
+      "company_id": "0000001800",
+      "source_company_id": "001078",
+      "ticker": "ABT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000002488",
+      "source_company_id": "001161",
+      "ticker": "AMD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000007536",
+      "source_company_id": "001773",
+      "ticker": "ARW",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000008818",
+      "source_company_id": "001913",
+      "ticker": "AVY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000008858",
+      "source_company_id": "001919",
+      "ticker": "AVT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000009389",
+      "source_company_id": "001988",
+      "ticker": "BALL",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000010795",
+      "source_company_id": "002111",
+      "ticker": "BDX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000017843",
+      "source_company_id": "002787",
+      "ticker": "CRS",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000018230",
+      "source_company_id": "002817",
+      "ticker": "CAT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000021076",
+      "source_company_id": "003121",
+      "ticker": "CLX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000021344",
+      "source_company_id": "003144",
+      "ticker": "KO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000021665",
+      "source_company_id": "003170",
+      "ticker": "CL",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000024545",
+      "source_company_id": "003505",
+      "ticker": "TAP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000024741",
+      "source_company_id": "003532",
+      "ticker": "GLW",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000026324",
+      "source_company_id": "003662",
+      "ticker": "CW",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000030697",
+      "source_company_id": "003708",
+      "ticker": "WEN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000031791",
+      "source_company_id": "004145",
+      "ticker": "RVTY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000032604",
+      "source_company_id": "004321",
+      "ticker": "EMR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000034088",
+      "source_company_id": "004503",
+      "ticker": "XOM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000037996",
+      "source_company_id": "004839",
+      "ticker": "F",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000040533",
+      "source_company_id": "005046",
+      "ticker": "GD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000040545",
+      "source_company_id": "005047",
+      "ticker": "GE",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_id": "capital_return.open_market_buyback",
+      "anchor_action_family": "capital_return",
+      "anchor_action_date": "2024-12-31T00:00:00+00:00",
+      "as_of_time": "2024-09-02T00:00:00+00:00"
+    }
+  ]
+}

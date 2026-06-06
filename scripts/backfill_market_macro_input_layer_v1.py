@@ -908,3 +908,103 @@ def _parse_iso_date(text: str | None) -> date | None:
         return None
 
 
+def _load_companyfacts(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _candidate_units_map(companyfacts: dict, concept_name: str, taxonomy: str | None = None) -> dict | None:
+    taxonomies = [taxonomy] if taxonomy else ["dei", "us-gaap", "ifrs-full"]
+    for current_taxonomy in taxonomies:
+        facts = (companyfacts.get("facts") or {}).get(current_taxonomy) or {}
+        if concept_name in facts:
+            return facts[concept_name].get("units") or {}
+    return None
+
+
+def _latest_shares_outstanding(companyfacts: dict, as_of_date: str) -> tuple[float | None, dict[str, Any] | None]:
+    as_of_dt = date.fromisoformat(as_of_date)
+    for taxonomy, concept_name in SHARES_OUT_CONCEPTS:
+        units_map = _candidate_units_map(companyfacts, concept_name, taxonomy)
+        if not units_map:
+            continue
+        candidates = []
+        for unit, entries in units_map.items():
+            if unit.lower() != "shares":
+                continue
+            for entry in entries:
+                end_dt = _parse_iso_date(entry.get("end"))
+                filed_dt = _parse_iso_date(entry.get("filed"))
+                value = entry['val']
+                if end_dt is None or value is None or end_dt > as_of_dt:
+                    continue
+                if filed_dt is not None and filed_dt > as_of_dt:
+                    continue
+                if (as_of_dt - end_dt).days > MAX_SEC_FACT_AGE_DAYS:
+                    continue
+                candidates.append((end_dt, filed_dt or end_dt, entry, taxonomy, concept_name))
+        if not candidates:
+            continue
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        end_dt, filed_dt, chosen, chosen_taxonomy, chosen_concept = candidates[-1]
+        return float(chosen["val"]), {
+            "concept": chosen_concept,
+            "taxonomy": chosen_taxonomy,
+            "end": end_dt.isoformat(),
+            "filed": filed_dt.isoformat(),
+            "fy": chosen.get("fy"),
+            "fp": chosen.get("fp"),
+            "frame": chosen.get("frame"),
+            "form": chosen.get("form"),
+            "unit": "shares",
+            "formula": "latest_shares_outstanding_on_or_before_asof",
+        }
+    return None, None
+
+
+def _shares_support_mode(*, reference_date: date | None, as_of_date: date) -> tuple[str, str | None]:
+    if reference_date is None:
+        return "unsupported", "shares_outstanding_unavailable"
+    age_days = (as_of_date - reference_date).days
+    if age_days < 0:
+        return "unsupported", "shares_outstanding_unavailable"
+    if age_days <= MAX_ISSUER_SHARES_AGE_DAYS:
+        return "exact", None
+    return "proxy_missing_component", "issuer_shares_stale"
+
+
+def _parse_xbrl_numeric(tag: Any) -> float | None:
+    text = " ".join(tag.stripped_strings)
+    if not text:
+        return None
+    cleaned = text.replace(",", "").replace("$", "").replace("(", "").replace(")", "").strip()
+    if not cleaned:
+        return None
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return None
+    scale_text = tag.get("scale")
+    if scale_text not in (None, ""):
+        try:
+            value *= 10 ** int(scale_text)
+        except ValueError:
+            return None
+    if tag.get("sign") == "-" or ("(" in text and ")" in text):
+        value *= -1.0
+    return value
+
+
+def _context_date_and_segment(context_tag: Any) -> tuple[date | None, str]:
+    instant = context_tag.find(lambda t: t.name and t.name.lower().endswith("instant"))
+    end_date = context_tag.find(lambda t: t.name and t.name.lower().endswith("enddate"))
+    context_date = _parse_iso_date(instant.get_text(" ", strip=True) if instant else end_date.get_text(" ", strip=True) if end_date else None)
+    segment = context_tag.find(lambda t: t.name and t.name.lower().endswith("segment"))
+    segment_text = " ".join(segment.stripped_strings) if segment else ""
+    return context_date, segment_text
+
+
