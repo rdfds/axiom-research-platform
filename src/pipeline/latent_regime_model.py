@@ -170,3 +170,40 @@ def fit_latent_regime_kmeans(
     }
 
 
+def latent_regime_memberships(
+    raw_matrix: np.ndarray,
+    model: Dict[str, Any],
+) -> np.ndarray:
+    if raw_matrix.ndim != 2:
+        raise ValueError("raw_matrix must be 2D")
+    medians = np.asarray(model.get("medians") or [], dtype=float)
+    scales = np.asarray(model.get("scales") or [], dtype=float)
+    centroids = np.asarray(model.get("centroids") or [], dtype=float)
+    if medians.ndim != 1 or scales.ndim != 1 or centroids.ndim != 2:
+        raise ValueError("invalid latent regime model")
+    X = _latent_regime_design_matrix(raw_matrix, medians=medians, scales=scales)
+    dist_sq = np.stack(
+        [np.sum((X - centroid.reshape(1, -1)) ** 2, axis=1) for centroid in centroids],
+        axis=1,
+    )
+    temperature = float(model.get("temperature") or 1.0)
+    if (not np.isfinite(temperature)) or temperature <= 1e-9:
+        temperature = 1.0
+    logits = -dist_sq / temperature
+    logits = logits - np.max(logits, axis=1, keepdims=True)
+    probs = np.exp(logits)
+    denom = np.sum(probs, axis=1, keepdims=True)
+    denom = np.where(denom <= 1e-12, 1.0, denom)
+    return probs / denom
+
+
+def latent_regime_similarity(
+    left_raw_matrix: np.ndarray,
+    right_raw_matrix: np.ndarray,
+    model: Dict[str, Any],
+) -> np.ndarray:
+    left = latent_regime_memberships(left_raw_matrix, model)
+    right = latent_regime_memberships(right_raw_matrix, model)
+    if left.shape != right.shape:
+        raise ValueError("left/right membership shapes must match")
+    return np.sum(left * right, axis=1)

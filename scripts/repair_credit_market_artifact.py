@@ -146,3 +146,130 @@ def _monthly_percentile(history: pd.DataFrame | None, *, as_of: pd.Timestamp, ye
     return float(monthly.rank(pct=True).iloc[-1] * 100.0)
 
 
+def _blended_percentile_2y(
+    ig_history: pd.DataFrame | None,
+    hy_history: pd.DataFrame | None,
+    *,
+    as_of: pd.Timestamp,
+    risk_score: float,
+) -> float | None:
+    if ig_history is None or hy_history is None or ig_history.empty or hy_history.empty:
+        return None
+    cutoff = as_of - pd.Timedelta(days=365 * 2)
+    ig_sub = ig_history[(ig_history["time"] <= as_of) & (ig_history["time"] >= cutoff)].copy()
+    hy_sub = hy_history[(hy_history["time"] <= as_of) & (hy_history["time"] >= cutoff)].copy()
+    if ig_sub.empty or hy_sub.empty:
+        return None
+    merged = pd.merge(ig_sub, hy_sub, on="time", how="inner", suffixes=("_ig", "_hy"))
+    if len(merged) < 20:
+        return None
+    blended = (merged["value_ig"] + (risk_score * (merged["value_hy"] - merged["value_ig"]))) / 100.0
+    return float(blended.rank(pct=True).iloc[-1] * 100.0)
+
+
+def _company_risk_payload(features: Dict[str, Any]) -> Dict[str, Any] | None:
+    components: list[tuple[str, float, float, Dict[str, float]]] = []
+
+    gross_lev_node = features.get("capital_structure.gross_leverage_normalized")
+    net_lev_node = features.get("capital_structure.net_leverage_normalized")
+    gross_lev = _node_value(gross_lev_node)
+    net_lev = _node_value(net_lev_node)
+    leverage_value = gross_lev
+    leverage_source_metric = "capital_structure.gross_leverage_normalized"
+    if leverage_value is None and net_lev is not None:
+        leverage_value = max(net_lev, 0.0)
+        leverage_source_metric = "capital_structure.net_leverage_normalized"
+    if leverage_value is not None:
+        score = _clip((leverage_value - 1.5) / 5.0, 0.0, 1.0)
+        components.append(("leverage", 0.35, score, {
+            "value": leverage_value,
+            "source_metric": leverage_source_metric,
+            "formula": "clip((leverage - 1.5) / 5.0, 0, 1)",
+        }))
+
+    vol_node = features.get("market.volatility_30d")
+    vol_30 = _node_value(vol_node)
+    if vol_30 is not None:
+        score = _clip((vol_30 - 0.15) / 0.45, 0.0, 1.0)
+        components.append(("volatility_30d", 0.25, score, {
+            "value": vol_30,
+            "source_metric": "market.volatility_30d",
+            "formula": "clip((volatility_30d - 0.15) / 0.45, 0, 1)",
+        }))
+
+    dd_node = features.get("market.drawdown_90d")
+    drawdown_90 = _node_value(dd_node)
+    if drawdown_90 is not None:
+        score = _clip((abs(min(drawdown_90, 0.0)) - 0.10) / 0.40, 0.0, 1.0)
+        components.append(("drawdown_90d", 0.15, score, {
+            "value": drawdown_90,
+            "source_metric": "market.drawdown_90d",
+            "formula": "clip((abs(min(drawdown_90d, 0)) - 0.10) / 0.40, 0, 1)",
+        }))
+
+    liquidity_node = features.get("liquidity.available_liquidity_normalized")
+    debt_node = features.get("capital_structure.debt_like_obligations_normalized") or features.get("capital_structure.total_debt_provider_direct")
+    liquidity = _node_value(liquidity_node)
+    debt = _node_value(debt_node)
+    if liquidity is not None and debt not in (None, 0):
+        coverage = liquidity / debt
+        score = _clip(1.0 - coverage, 0.0, 1.0)
+        components.append(("liquidity_coverage", 0.15, score, {
+            "value": coverage,
+            "source_metric": f"{liquidity_node.get('name')} / {debt_node.get('name')}",
+            "formula": "clip(1 - (available_liquidity / debt_like), 0, 1)",
+        }))
+
+    fcf_conv_node = features.get("operating.fcf_conversion")
+    fcf_conv = _node_value(fcf_conv_node)
+    if fcf_conv is not None:
+        score = _clip((0.40 - fcf_conv) / 0.80, 0.0, 1.0)
+        components.append(("fcf_conversion", 0.10, score, {
+            "value": fcf_conv,
+            "source_metric": "operating.fcf_conversion",
+            "formula": "clip((0.40 - fcf_conversion) / 0.80, 0, 1)",
+        }))
+
+    if not components:
+        return None
+
+    total_weight = sum(weight for _, weight, _, _ in components)
+    risk_score = sum(weight * score for _, weight, score, _ in components) / total_weight
+    payload = {
+        "risk_score": float(risk_score),
+        "components": {name: {"weight": weight, "score": score, **detail} for name, weight, score, detail in components},
+        "supporting_nodes": [
+            gross_lev_node,
+            net_lev_node,
+            vol_node,
+            dd_node,
+            liquidity_node,
+            debt_node,
+            fcf_conv_node,
+        ],
+    }
+    return payload
+
+
+def repair_macro_us_ig_oas(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("macro.us_ig_oas")
+    if not target or target.get("value") is not None:
+        return False
+    source = features.get("macro.ig_oas")
+    value = _node_value(source)
+    if value is None:
+        return False
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = value
+    repaired["support_mode"] = _node_support(source)
+    repaired["fallback_used"] = "macro_ig_oas_alias"
+    repaired["provenance"] = _union_provenance(source)
+    repaired["component_breakdown"] = {
+        "source_metric": "macro.ig_oas",
+        "formula": "macro.us_ig_oas := macro.ig_oas",
+    }
+    repaired["quality_flags"] = None
+    features["macro.us_ig_oas"] = repaired
+    return True
+
+

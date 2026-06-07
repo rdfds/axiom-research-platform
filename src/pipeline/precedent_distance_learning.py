@@ -239,3 +239,172 @@ def _corr(a: np.ndarray, b: np.ndarray) -> Optional[float]:
     return float(np.corrcoef(aa, bb)[0, 1])
 
 
+def _normalize_weight_vector(beta: np.ndarray, prior: np.ndarray) -> np.ndarray:
+    out = np.array(beta, dtype=float, copy=True)
+    out = np.where(np.isfinite(out), out, 0.0)
+    out = np.clip(out, 0.0, None)
+    if float(out.sum()) <= 1e-12:
+        out = np.array(prior, dtype=float, copy=True)
+    positive = out[out > 0]
+    if positive.size:
+        out = out / float(np.mean(positive))
+    else:
+        out = np.array(prior, dtype=float, copy=True)
+    out = np.clip(out, 0.25, 4.0)
+    return out
+
+
+def learn_scope_weights(
+    df: pd.DataFrame,
+    *,
+    scope_key: str,
+    scope_col: str,
+    max_pairs: int = 25000,
+    min_rows: int = 1500,
+    min_state_coverage: float = 0.60,
+    min_outcome_coverage: float = 0.50,
+    min_outcome_non_null: int = 800,
+    ridge_lambda: float = 30.0,
+    holdout_frac: float = 0.20,
+    seed: int = 7,
+) -> Optional[Dict[str, Any]]:
+    subset = df.loc[df[scope_col].astype(str).str.lower().eq(_clean_scope_key(scope_key))].copy()
+    if int(len(subset)) < int(min_rows):
+        return None
+    feature_cols = list(_state_feature_names())
+    feature_df = _robust_standardize_frame(subset, feature_cols)
+    outcome_weights = _selected_outcome_weights(scope_key, subset, min_non_null=min_outcome_non_null)
+    if not outcome_weights:
+        return None
+    outcome_df = _robust_standardize_frame(subset, list(outcome_weights.keys()))
+    X, y, pair_meta = _pairwise_dataset(
+        feature_df,
+        outcome_df,
+        outcome_weights,
+        max_pairs=max_pairs,
+        min_state_coverage=min_state_coverage,
+        min_outcome_coverage=min_outcome_coverage,
+        seed=seed,
+    )
+    if X.shape[0] < 200:
+        return None
+
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(X.shape[0])
+    X = X[order]
+    y = y[order]
+    holdout_n = max(50, int(round(X.shape[0] * float(holdout_frac))))
+    holdout_n = min(holdout_n, max(0, X.shape[0] - 100))
+    train_n = X.shape[0] - holdout_n
+    if train_n < 100:
+        return None
+
+    X_train = X[:train_n]
+    y_train = y[:train_n]
+    X_holdout = X[train_n:] if holdout_n > 0 else np.empty((0, X.shape[1]))
+    y_holdout = y[train_n:] if holdout_n > 0 else np.empty(0)
+
+    prior = _prior_weight_vector(scope_key)
+    beta = _ridge_to_prior(X_train, y_train, prior, float(ridge_lambda))
+    weights = _normalize_weight_vector(beta, prior)
+    pred_train = X_train @ weights
+    pred_holdout = X_holdout @ weights if holdout_n > 0 else np.empty(0)
+    pred_holdout_prior = X_holdout @ prior if holdout_n > 0 else np.empty(0)
+    holdout_corr = _corr(pred_holdout, y_holdout)
+    holdout_prior_corr = _corr(pred_holdout_prior, y_holdout)
+    improvement = None
+    if holdout_corr is not None and holdout_prior_corr is not None:
+        improvement = float(holdout_corr - holdout_prior_corr)
+    use_in_runtime = bool(
+        holdout_corr is not None
+        and holdout_prior_corr is not None
+        and holdout_corr >= 0.05
+        and float(holdout_corr - holdout_prior_corr) >= 0.01
+    )
+
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "n_rows": int(len(subset)),
+        "n_pairs": int(X.shape[0]),
+        "n_pairs_train": int(train_n),
+        "n_pairs_holdout": int(holdout_n),
+        "feature_order": feature_cols,
+        "weights": {col: float(weights[idx]) for idx, col in enumerate(feature_cols)},
+        "prior_weights": {col: float(prior[idx]) for idx, col in enumerate(feature_cols)},
+        "outcome_weights": {k: float(v) for k, v in outcome_weights.items()},
+        "pairwise_meta": pair_meta,
+        "train_pair_correlation": _corr(pred_train, y_train),
+        "holdout_pair_correlation": holdout_corr,
+        "holdout_prior_pair_correlation": holdout_prior_corr,
+        "holdout_pair_correlation_improvement": improvement,
+        "use_in_runtime": use_in_runtime,
+        "ridge_lambda": float(ridge_lambda),
+        "min_state_coverage": float(min_state_coverage),
+        "min_outcome_coverage": float(min_outcome_coverage),
+        "min_outcome_non_null": int(min_outcome_non_null),
+        "max_pairs": int(max_pairs),
+    }
+
+
+def learn_precedent_distance_weights(
+    outcomes_path: Path,
+    *,
+    max_pairs: int = 25000,
+    min_rows: int = 1500,
+    min_state_coverage: float = 0.60,
+    min_outcome_coverage: float = 0.50,
+    min_outcome_non_null: int = 800,
+    ridge_lambda: float = 30.0,
+    holdout_frac: float = 0.20,
+    seed: int = 7,
+) -> Dict[str, Any]:
+    raw = pd.read_parquet(outcomes_path)
+    df = augment_precedent_state_vector_columns(raw)
+    scopes: Dict[str, Any] = {}
+    all_scope = learn_scope_weights(
+        df.assign(_all_scope="ALL"),
+        scope_key="ALL",
+        scope_col="_all_scope",
+        max_pairs=max_pairs,
+        min_rows=min_rows,
+        min_state_coverage=min_state_coverage,
+        min_outcome_coverage=min_outcome_coverage,
+        min_outcome_non_null=min_outcome_non_null,
+        ridge_lambda=ridge_lambda,
+        holdout_frac=holdout_frac,
+        seed=seed,
+    )
+    if all_scope:
+        scopes["ALL"] = all_scope
+
+    if "normalized_action_family" in df.columns:
+        families = sorted({_clean_scope_key(x) for x in df["normalized_action_family"].dropna().tolist() if _clean_scope_key(x)})
+        for family in families:
+            learned = learn_scope_weights(
+                df,
+                scope_key=family,
+                scope_col="normalized_action_family",
+                max_pairs=max_pairs,
+                min_rows=min_rows,
+                min_state_coverage=min_state_coverage,
+                min_outcome_coverage=min_outcome_coverage,
+                min_outcome_non_null=min_outcome_non_null,
+                ridge_lambda=ridge_lambda,
+                holdout_frac=holdout_frac,
+                seed=seed,
+            )
+            if learned:
+                scopes[family] = learned
+
+    return {
+        "version": "precedent_distance_weights_v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source_outcomes_path": str(outcomes_path),
+        "feature_order": list(_state_feature_names()),
+        "scopes": scopes,
+    }
+
+
+def write_precedent_distance_weights(payload: Dict[str, Any], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
