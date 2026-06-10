@@ -1,0 +1,88 @@
+{
+  "benchmark_source": {
+    "type": "historical_recommendation_eval",
+    "path": "./src/historical_recommendation_eval.py"
+  },
+  "optimization_principle": "lexicographic_probe_identity_feature_refinement",
+  "objective_order": [
+    {
+      "metric": "error_rate",
+      "direction": "minimize"
+    },
+    {
+      "metric": "coverage_skip_rate",
+      "direction": "minimize"
+    },
+    {
+      "metric": "anchor_support_adjusted_precedent_top1_rate",
+      "direction": "maximize"
+    },
+    {
+      "metric": "anchor_support_adjusted_precedent_mrr_mean",
+      "direction": "maximize"
+    },
+    {
+      "metric": "anchor_support_adjusted_precedent_margin_mean",
+      "direction": "maximize"
+    },
+    {
+      "metric": "anchor_primary_support_adjusted_rate",
+      "direction": "maximize"
+    },
+    {
+      "metric": "mean_alignment_score",
+      "direction": "maximize"
+    }
+  ],
+  "secondary_metrics": [
+    "anchor_action_precedent_top1_rate",
+    "anchor_action_precedent_mrr_mean",
+    "anchor_family_precedent_top1_rate",
+    "anchor_family_precedent_mrr_mean",
+    "future_any_support_adjusted_rate"
+  ],
+  "hard_gates": {
+    "action_family_match_required": true,
+    "min_weighted_feature_coverage": 0.75,
+    "min_critical_feature_coverage": 0.8,
+    "critical_features": [
+      "state_vector_v1.size_log_revenue",
+      "state_vector_v1.gross_obligation_burden",
+      "state_vector_v1.net_obligation_burden",
+      "state_vector_v1.interest_coverage",
+      "state_vector_v1.valuation_multiple"
+    ],
+    "hard_size_guardrail_log_revenue": 1.5
+  },
+  "penalty_policies": {
+    "regime_mismatch": "explicit_penalty",
+    "missingness": "confidence_and_rank_penalty",
+    "sector_identity": "soft_penalty"
+  },
+  "search_space": {
+    "optimize_group_weights": false,
+    "optimize_feature_relative_weights": true,
+    "feature_relative_weight_features": [
+      "state_vector_v1.size_log_revenue",
+      "state_vector_v1.profitability",
+      "state_vector_v1.growth"
+    ],
+    "within_group_relative_weights": {
+      "min": 0.8,
+      "max": 1.4
+    },
+    "optimize_gates": false,
+    "optimize_penalties": false,
+    "optimize_blend_weights": false
+  },
+  "regularization": {
+    "group_shrinkage": 0.85,
+    "feature_shrinkage": 0.95,
+    "max_single_feature_share": 0.2,
+    "allow_dense_matrix_learning": false
+  },
+  "search_strategy": {
+    "stage_1": "identity_feature_refinement_on_competitive_exact_probe",
+    "stage_2": "broaden_feature_refinement_if_signal_moves"
+  }
+}
