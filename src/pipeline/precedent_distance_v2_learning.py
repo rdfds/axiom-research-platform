@@ -40,3 +40,37 @@ def _scope_multipliers(scope_key: str) -> Dict[str, float]:
     return dict(_STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get(scope, {}))
 
 
+def default_scope_configuration(scope_key: str) -> Dict[str, Any]:
+    scope = str(scope_key or "").strip().lower()
+    group_weights = dict(_STATE_VECTOR_V2_DEFAULT_GROUP_WEIGHTS)
+    for group_name, multiplier in _scope_multipliers(scope).items():
+        group_weights[group_name] = float(group_weights.get(group_name, 1.0)) * float(multiplier)
+    feature_relative_weights = dict(_STATE_VECTOR_V2_DEFAULT_FEATURE_RELATIVE_WEIGHTS)
+    gates = dict(_STATE_VECTOR_V2_DEFAULT_GATES)
+    penalties = dict(_STATE_VECTOR_V2_DEFAULT_PENALTIES)
+    critical = set(_STATE_VECTOR_CORE_CRITICAL_FEATURES)
+    subtype_text = scope.split(".", 1)[1] if "." in scope else scope
+    if scope.startswith("capital_structure.") or "debt" in scope or "refinanc" in subtype_text:
+        gates["max_size_gap"] = 1.30
+        penalties["sector_penalty_weight"] = 0.22
+        critical.update({"state_vector_v1.market_access", "state_vector_v1.credit_spread"})
+    elif scope.startswith("capital_return.dividend") or subtype_text.startswith("dividend"):
+        gates["max_size_gap"] = 1.05
+        gates["soft_burden_gap"] = 1.10
+        critical.update({"state_vector_v1.cash_generation"})
+    elif "buyback" in scope or "repurchase" in scope or "buyback" in subtype_text:
+        feature_relative_weights["state_vector_v1.valuation_multiple"] = 1.35
+        feature_relative_weights["state_vector_v1.cash_generation"] = 1.20
+        gates["max_size_gap"] = 1.15
+    return {
+        "scope_key": scope,
+        "group_weights": group_weights,
+        "feature_relative_weights": feature_relative_weights,
+        "gates": gates,
+        "penalties": penalties,
+        "blend_weights": dict(_STATE_VECTOR_V2_DEFAULT_BLEND_WEIGHTS),
+        "critical_features": list(critical),
+        "use_in_runtime": True,
+    }
+
+

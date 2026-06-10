@@ -149,7 +149,7 @@ def _robust_standardize_frame(df: pd.DataFrame, cols: Sequence[str]) -> pd.DataF
     return out
 
 
-def _sample_pair_indices(n_rows: int, n_pairs: int, seed: int) :
+def _sample_pair_indices(n_rows: int, n_pairs: int, seed: int) -> Tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     i = rng.integers(0, n_rows, size=int(n_pairs), endpoint=False)
     j = rng.integers(0, n_rows, size=int(n_pairs), endpoint=False)
