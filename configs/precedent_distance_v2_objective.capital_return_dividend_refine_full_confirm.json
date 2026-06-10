@@ -1,0 +1,67 @@
+{
+  "benchmark_source": {
+    "type": "historical_recommendation_eval",
+    "path": "./src/historical_recommendation_eval.py"
+  },
+  "optimization_principle": "lexicographic_capital_return_dividend_refine_full_confirm",
+  "objective_order": [
+    {"metric": "error_rate", "direction": "minimize"},
+    {"metric": "coverage_skip_rate", "direction": "minimize"},
+    {"metric": "anchor_primary_support_adjusted_rate", "direction": "maximize"},
+    {"metric": "mean_alignment_score", "direction": "maximize"},
+    {"metric": "future_any_support_adjusted_rate", "direction": "maximize"},
+    {"metric": "anchor_support_adjusted_precedent_negative_margin_case_count", "direction": "minimize"},
+    {"metric": "anchor_support_adjusted_precedent_margin_min", "direction": "maximize"},
+    {"metric": "anchor_support_adjusted_precedent_margin_mean", "direction": "maximize"}
+  ],
+  "secondary_metrics": [
+    "anchor_action_precedent_top1_rate",
+    "anchor_action_precedent_mrr_mean",
+    "anchor_action_precedent_margin_min",
+    "anchor_action_precedent_margin_mean",
+    "anchor_primary_exact_rate",
+    "future_any_exact_rate"
+  ],
+  "hard_gates": {
+    "action_family_match_required": true,
+    "min_weighted_feature_coverage": 0.75,
+    "min_critical_feature_coverage": 0.8,
+    "critical_features": [
+      "state_vector_v1.size_log_revenue",
+      "state_vector_v1.net_obligation_burden",
+      "state_vector_v1.liquidity_flexibility",
+      "state_vector_v1.interest_coverage",
+      "state_vector_v1.cash_generation"
+    ],
+    "hard_size_guardrail_log_revenue": 1.25
+  },
+  "penalty_policies": {
+    "regime_mismatch": "explicit_penalty",
+    "missingness": "confidence_and_rank_penalty",
+    "sector_identity": "soft_penalty"
+  },
+  "search_space": {
+    "optimize_group_weights": false,
+    "optimize_feature_relative_weights": true,
+    "feature_relative_weight_features": [
+      "state_vector_v1.liquidity_flexibility",
+      "state_vector_v1.interest_coverage",
+      "state_vector_v1.cash_generation"
+    ],
+    "feature_relative_weight_grid_values": [0.8, 1.4],
+    "within_group_relative_weights": {"min": 0.8, "max": 1.4},
+    "optimize_gates": false,
+    "optimize_penalties": false,
+    "optimize_blend_weights": false
+  },
+  "regularization": {
+    "group_shrinkage": 0.85,
+    "feature_shrinkage": 0.95,
+    "max_single_feature_share": 0.2,
+    "allow_dense_matrix_learning": false
+  },
+  "search_strategy": {
+    "stage_1": "refine_cash_liquidity_coverage_interactions_on_full_dividend_holdout",
+    "stage_2": "promote_if_second_round_refinement_preserves_alignment_and_improves_precedent_margins"
+  }
+}
