@@ -273,3 +273,69 @@ def repair_macro_us_ig_oas(*, features: Dict[str, Any], computed_at: str) -> boo
     return True
 
 
+def repair_macro_us_ig_oas_percentile_history(
+    *,
+    features: Dict[str, Any],
+    ig_history: pd.DataFrame | None,
+    as_of: pd.Timestamp,
+    computed_at: str,
+) -> bool:
+    target = features.get("macro.us_ig_oas_percentile_history")
+    if not target or target.get("value") is not None:
+        return False
+    pct = _monthly_percentile(ig_history, as_of=as_of, years=10)
+    if pct is None:
+        return False
+    source = features.get("macro.us_ig_oas") or features.get("macro.ig_oas")
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = pct
+    repaired["support_mode"] = "exact"
+    repaired["fallback_used"] = "raw_timeseries_ig_oas_monthly_percentile_10y"
+    repaired["provenance"] = _union_provenance(source)
+    repaired["component_breakdown"] = {
+        "source_instrument_id": IG_OAS_INSTRUMENT,
+        "formula": "percentile_rank(current_us_ig_oas, monthly_us_ig_oas_history_10y)",
+        "history_frequency": "M",
+        "lookback_years": 10,
+    }
+    repaired["quality_flags"] = None
+    features["macro.us_ig_oas_percentile_history"] = repaired
+    return True
+
+
+def repair_credit_spread_level(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("market.credit_spread_level")
+    if not target or target.get("value") is not None:
+        return False
+
+    ig_node = features.get("macro.us_ig_oas") or features.get("macro.ig_oas")
+    hy_node = features.get("macro.hy_oas")
+    ig_pct = _node_value(ig_node)
+    hy_pct = _node_value(hy_node)
+    risk_payload = _company_risk_payload(features)
+    if ig_pct is None or hy_pct is None or risk_payload is None:
+        return False
+
+    risk_score = float(risk_payload["risk_score"])
+    implied_pct = ig_pct + (risk_score * (hy_pct - ig_pct))
+    implied_ratio = implied_pct / 100.0
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = implied_ratio
+    repaired["support_mode"] = "proxy_missing_component"
+    repaired["fallback_used"] = "macro_oas_plus_company_risk_heuristic"
+    repaired["provenance"] = _union_provenance(ig_node, hy_node, *risk_payload["supporting_nodes"])
+    repaired["component_breakdown"] = {
+        "macro_ig_oas_pct": ig_pct,
+        "macro_hy_oas_pct": hy_pct,
+        "company_risk_score": risk_score,
+        "risk_components": risk_payload["components"],
+        "implied_spread_pct": implied_pct,
+        "formula": "(macro_ig_oas_pct + company_risk_score * (macro_hy_oas_pct - macro_ig_oas_pct)) / 100",
+        "output_unit": "ratio",
+    }
+    repaired["quality_flags"] = ["heuristic_credit_spread_repair"]
+    features["market.credit_spread_level"] = repaired
+    return True
+
+
