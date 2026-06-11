@@ -10,3 +10,13 @@ def _load_json(path: Path) :
     return json.loads(path.read_text())
 
 
+def _load_existing_runtime_payload(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = _load_json(path)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
