@@ -86,7 +86,7 @@ def winsorize_by_group(
     group_col: str = "action_type",
     p: float = 0.01,
     min_group: int = 200,
-) :
+) -> pd.Series:
     """Winsorize column by action_type (fallback to global if group too small)."""
     series = pd.to_numeric(df[col], errors="coerce")
     global_lo = series.quantile(p)
