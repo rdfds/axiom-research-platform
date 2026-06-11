@@ -339,3 +339,103 @@ def repair_credit_spread_level(*, features: Dict[str, Any], computed_at: str) ->
     return True
 
 
+def repair_credit_spread_percentile_2y(
+    *,
+    features: Dict[str, Any],
+    ig_history: pd.DataFrame | None,
+    hy_history: pd.DataFrame | None,
+    as_of: pd.Timestamp,
+    computed_at: str,
+) -> bool:
+    target = features.get("market.credit_spread_percentile_2y")
+    if not target or target.get("value") is not None:
+        return False
+
+    risk_payload = _company_risk_payload(features)
+    credit_spread_node = features.get("market.credit_spread_level")
+    if risk_payload is None or _node_value(credit_spread_node) is None:
+        return False
+    pct = _blended_percentile_2y(
+        ig_history,
+        hy_history,
+        as_of=as_of,
+        risk_score=float(risk_payload["risk_score"]),
+    )
+    if pct is None:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = pct
+    repaired["support_mode"] = "proxy_missing_component"
+    repaired["fallback_used"] = "blended_macro_oas_history_2y"
+    repaired["provenance"] = _union_provenance(
+        features.get("macro.us_ig_oas") or features.get("macro.ig_oas"),
+        features.get("macro.hy_oas"),
+        credit_spread_node,
+        *risk_payload["supporting_nodes"],
+    )
+    repaired["component_breakdown"] = {
+        "source_instruments": [IG_OAS_INSTRUMENT, HY_OAS_INSTRUMENT],
+        "company_risk_score": float(risk_payload["risk_score"]),
+        "formula": "percentile_rank(blended_macro_oas_company_proxy, daily_history_2y)",
+        "lookback_years": 2,
+    }
+    repaired["quality_flags"] = ["heuristic_credit_spread_repair"]
+    features["market.credit_spread_percentile_2y"] = repaired
+    return True
+
+
+def repair_credit_window_proxy(*, features: Dict[str, Any], computed_at: str) -> bool:
+    target = features.get("market.credit_window_proxy")
+    if not target or target.get("value") is not None:
+        return False
+
+    spread_node = features['market.credit_spread_level']
+    vol_node = features.get("market.volatility_30d")
+    spread = _node_value(spread_node)
+    vol_30 = _node_value(vol_node)
+
+    components: list[tuple[str, float]] = []
+    if spread is not None:
+        components.append(("credit_spread_component", _clip(1.0 - (spread / 0.10), 0.0, 1.0)))
+    if vol_30 is not None:
+        components.append(("volatility_component", _clip(1.0 - (vol_30 / 1.0), 0.0, 1.0)))
+    if not components:
+        return False
+
+    repaired = _base_repaired_node(target, computed_at=computed_at)
+    repaired["value"] = float(sum(value for _, value in components) / len(components))
+    repaired["support_mode"] = "proxy_missing_component"
+    repaired["fallback_used"] = "credit_spread_plus_price_volatility_heuristic"
+    repaired["provenance"] = _union_provenance(spread_node, vol_node)
+    repaired["component_breakdown"] = {
+        "components": {name: value for name, value in components},
+        "credit_spread_level": spread,
+        "volatility_30d": vol_30,
+        "formula": "mean([clip(1 - credit_spread_level / 0.10, 0, 1), clip(1 - volatility_30d / 1.0, 0, 1)])",
+    }
+    repaired["quality_flags"] = ["heuristic_credit_window_repair"]
+    features["market.credit_window_proxy"] = repaired
+    return True
+
+
+def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
+    counters: Dict[str, Counter[str]] = {metric: Counter() for metric in REPAIR_METRICS}
+    for row in iter_rows(path):
+        features = row.get("features") or {}
+        for metric in REPAIR_METRICS:
+            node = features.get(metric) or {}
+            mode = str(node.get("support_mode") or "unsupported")
+            if node['value'] is None:
+                mode = "unsupported"
+            counters[metric][mode] += 1
+    return {
+        metric: {
+            "exact": counter["exact"],
+            "proxy_missing_component": counter["proxy_missing_component"],
+            "unsupported": counter["unsupported"],
+        }
+        for metric, counter in counters.items()
+    }
+
+
