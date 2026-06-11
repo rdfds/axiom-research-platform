@@ -120,3 +120,5 @@ def main() -> None:
         out_path.write_text(json.dumps(payload, indent=2, default=str))
 
 
+if __name__ == "__main__":
+    main()
