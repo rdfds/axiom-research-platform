@@ -102,3 +102,39 @@ def winsorize_by_group(
     return series.groupby(df[group_col]).transform(clip_group)
 
 
+def bucket_by_group(
+    df: pd.DataFrame,
+    col: str,
+    group_cols: Iterable[str],
+    q: int = 3,
+    min_group: int = 30,
+) -> pd.Series:
+    """Assign quantile buckets within groups; fallback to global edges."""
+    series = pd.to_numeric(df[col], errors="coerce").where(lambda s: np.isfinite(s), np.nan)
+    # Global edges
+    try:
+        global_edges = series.dropna().quantile(np.linspace(0, 1, q + 1)).values
+    except Exception:
+        global_edges = np.array([series.min(), series.max()])
+    global_edges = global_edges[np.isfinite(global_edges)]
+    global_edges = np.unique(global_edges)
+
+    def assign_bucket(x: pd.Series) -> pd.Series:
+        x = pd.to_numeric(x, errors="coerce").where(lambda s: np.isfinite(s), np.nan)
+        if x.notna().sum() < min_group:
+            edges = global_edges
+        else:
+            edges = x.dropna().quantile(np.linspace(0, 1, q + 1)).values
+            edges = edges[np.isfinite(edges)]
+            edges = np.unique(edges)
+            if len(edges) < q + 1 or not np.all(np.diff(edges) > 0):
+                edges = global_edges
+        if len(edges) < 2 or not np.all(np.diff(edges) > 0):
+            return pd.Series(index=x.index, data=np.nan)
+        return pd.cut(x, bins=edges, labels=False, include_lowest=True)
+
+    # Use list of group columns (not a DataFrame) for grouping
+    group_keys = [df[c] for c in group_cols]
+    return series.groupby(group_keys).transform(assign_bucket).astype("Int64")
+
+
