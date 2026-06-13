@@ -130,3 +130,57 @@ def _resolve_teacher_recipe(
     raise ValueError(f"Unsupported teacher_recipe: {teacher_recipe}")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build a pairwise precedent-quality supervision dataset.")
+    parser.add_argument("--manifest-path", required=True)
+    parser.add_argument("--out-path", required=True)
+    parser.add_argument("--summary-path", required=False, default="")
+    parser.add_argument("--snapshot-catalog-path", required=False, default="")
+    parser.add_argument("--snapshot-cache-root", required=False, default="")
+    parser.add_argument("--runs-root", required=False, default="")
+    parser.add_argument("--eval-prefix", required=False, default="")
+    parser.add_argument("--eval-id", required=False, default="001")
+    parser.add_argument("--top-k-per-candidate", type=int, default=5)
+    parser.add_argument("--outcomes-path", required=False, default="")
+    parser.add_argument("--positive-limit-per-source", type=int, default=0)
+    parser.add_argument("--negative-limit-per-competitor", type=int, default=0)
+    parser.add_argument("--same-family-negatives-only-if-available", action="store_true")
+    parser.add_argument("--always-include-actual-anchor-positive", action="store_true")
+    parser.add_argument("--include-within-action-hard-negatives", action="store_true")
+    parser.add_argument("--include-same-action-positive-ordering", action="store_true")
+    parser.add_argument(
+        "--teacher-recipe",
+        choices=(
+            "explicit_flags",
+            "same_action_best_analog",
+            "same_action_regime_best_analog",
+            "same_action_actual_anchor",
+        ),
+        default="explicit_flags",
+    )
+    parser.add_argument(
+        "--actual-anchor-within-action-negative-source",
+        choices=("retrieved_pool", "same_action_universe"),
+        default="retrieved_pool",
+    )
+    parser.add_argument(
+        "--positive-source-mode",
+        choices=(
+            "include_retrieved",
+            "actual_anchor_preferred",
+            "analog_consensus_same_action_universe",
+            "analog_regime_consensus_same_action_universe",
+        ),
+        default="include_retrieved",
+    )
+    parser.add_argument(
+        "--hard-negative-taxonomy-mode",
+        choices=("none", "prefer_same_sector", "prefer_same_subsector_then_sector"),
+        default="none",
+    )
+    parser.add_argument("--analog-regime-cluster-grid", default="2,3,4,5,6")
+    parser.add_argument("--analog-regime-seed", type=int, default=7)
+    parser.add_argument("--analog-regime-max-iter", type=int, default=100)
+    return parser.parse_args()
+
+
