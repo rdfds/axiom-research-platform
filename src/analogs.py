@@ -643,3 +643,29 @@ class AnalogRetriever:
         return "\n".join(report)
 
 
+def demo():
+    """Demonstrate the analog retrieval system."""
+    print("="*70)
+    print("DEMO: Analog Retrieval System")
+    print("="*70)
+
+    retriever = AnalogRetriever()
+
+    # Get a sample company
+    as_of = '2023-06-30'
+    universe = retriever.signals.snapshot.get_universe_snapshot(
+        as_of, min_assets=1000, min_revenue=200
+    )
+
+    if len(universe) > 0:
+        sample = universe.iloc[0]
+        gvkey = sample['gvkey']
+        name = sample['conm']
+
+        print(f"\nSearching analogs for {name} ({gvkey}) as of {as_of}")
+
+        # Generate report
+        report = retriever.generate_analog_report(gvkey, as_of, n_analogs=5)
+        print(report)
+
+

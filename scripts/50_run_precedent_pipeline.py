@@ -99,7 +99,7 @@ def main() -> None:
     if not args.quiet:
         print(json.dumps(payload, indent=2, default=str))
     else:
-        legacy_dists = payload['legacy_distributions']
+        legacy_dists = payload.get("legacy_distributions", [])
         if not isinstance(legacy_dists, list):
             legacy_dists = []
         dist_count = len(legacy_dists)
