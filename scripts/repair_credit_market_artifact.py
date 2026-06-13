@@ -439,3 +439,48 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
     }
 
 
+def main() -> None:
+    args = parse_args()
+    artifact_path = Path(args.artifact_path)
+    macro_timeseries_path = Path(args.macro_timeseries_path) if args.macro_timeseries_path else _infer_macro_timeseries_path(artifact_path)
+    if macro_timeseries_path is None:
+        raise SystemExit("Could not infer raw timeseries parquet path from artifact provenance.")
+
+    spread_histories = _load_spread_histories(macro_timeseries_path)
+    ig_history = spread_histories.get(IG_OAS_INSTRUMENT)
+    hy_history = spread_histories.get(HY_OAS_INSTRUMENT)
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    computed_at = _now_iso()
+
+    with out_path.open("w") as out_handle:
+        for row in iter_rows(artifact_path):
+            features = row.get("features") or {}
+            as_of = pd.to_datetime((next(iter(features.values()), {}) or {}).get("as_of_time"), utc=True, errors="coerce")
+            if pd.isna(as_of):
+                as_of = pd.Timestamp.now(tz="UTC")
+            repair_macro_us_ig_oas(features=features, computed_at=computed_at)
+            repair_macro_us_ig_oas_percentile_history(
+                features=features,
+                ig_history=ig_history,
+                as_of=as_of,
+                computed_at=computed_at,
+            )
+            repair_credit_spread_level(features=features, computed_at=computed_at)
+            repair_credit_spread_percentile_2y(
+                features=features,
+                ig_history=ig_history,
+                hy_history=hy_history,
+                as_of=as_of,
+                computed_at=computed_at,
+            )
+            repair_credit_window_proxy(features=features, computed_at=computed_at)
+            out_handle.write(json.dumps(row) + "\n")
+
+    if args.summary_out:
+        Path(args.summary_out).write_text(json.dumps(build_summary(out_path), indent=2))
+
+    print(f"Repaired credit-market metrics -> {out_path}")
+
+

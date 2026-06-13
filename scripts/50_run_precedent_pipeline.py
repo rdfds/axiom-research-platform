@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.pipeline.run import run_precedent
 
 
-def _default_precedent_outcomes_path() :
+def _default_precedent_outcomes_path() -> str:
     repo_root = Path(__file__).resolve().parent.parent
     return str(repo_root / "data" / "curated" / "action_outcomes_with_credit_ratings.normalized_full.parquet")
 
