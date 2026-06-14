@@ -220,3 +220,76 @@ def test_rank_hard_negative_matches_prefers_same_subsector_then_sector():
     ]
 
 
+def test_rank_hard_negative_matches_breaks_ties_with_safety_distance():
+    matches = [
+        {
+            "precedent_id": "farther",
+            "similarity_score": 0.95,
+            "key_state_features": {
+                "sector": "Industrials",
+                "subsector": "Machinery",
+                "state_vector_v1.net_obligation_burden": 2.0,
+                "state_vector_v1.liquidity_flexibility": 8.0,
+                "state_vector_v1.interest_coverage": 20.0,
+            },
+        },
+        {
+            "precedent_id": "closer",
+            "similarity_score": 0.70,
+            "key_state_features": {
+                "sector": "Industrials",
+                "subsector": "Machinery",
+                "state_vector_v1.net_obligation_burden": 0.45,
+                "state_vector_v1.liquidity_flexibility": 2.1,
+                "state_vector_v1.interest_coverage": 8.2,
+            },
+        },
+    ]
+
+    ranked = _rank_hard_negative_matches(
+        matches,
+        target_compact={
+            "state_vector_v1.net_obligation_burden": 0.4,
+            "state_vector_v1.liquidity_flexibility": 2.0,
+            "state_vector_v1.interest_coverage": 8.0,
+        },
+        target_sector="Industrials",
+        target_subsector="Machinery",
+        taxonomy_mode="prefer_same_subsector_then_sector",
+    )
+
+    assert [row["precedent_id"] for row in ranked] == ["closer", "farther"]
+
+
+def test_enrich_match_compact_backfills_missing_state_vector_fields_from_outcomes_lookup():
+    match = {
+        "company_id": "001078",
+        "action_id": "capital_return.open_market_buyback",
+        "decision_time": "2024-01-11 00:00:00",
+        "key_state_features": {
+            "state_vector_v1.growth": None,
+            "state_vector_v1.cash_generation": 0.05,
+            "sector": "Health Care",
+        },
+    }
+    lookup = {
+        (
+            "001078",
+            "capital_return.open_market_buyback",
+            "2024-01-11T00:00:00+00:00",
+        ): {
+            "state_vector_v1.growth": 0.12,
+            "state_vector_v1.cash_generation": 0.08,
+            "state_vector_v1.market_stress": 0.22,
+            "subsector": "Health Care Equipment & Supplies",
+        }
+    }
+
+    enriched = _enrich_match_compact(match, precedent_outcomes_lookup=lookup)
+
+    assert enriched["state_vector_v1.growth"] == 0.12
+    assert enriched["state_vector_v1.cash_generation"] == 0.05
+    assert enriched["state_vector_v1.market_stress"] == 0.22
+    assert enriched["subsector"] == "Health Care Equipment & Supplies"
+
+

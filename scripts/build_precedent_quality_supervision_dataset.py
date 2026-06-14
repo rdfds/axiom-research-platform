@@ -947,3 +947,350 @@ def _target_context_from_anchor_outcome(
     }
 
 
+def _target_context_from_same_action_universe(
+    case: Dict[str, Any],
+    *,
+    same_action_universe_lookup: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    if not action_id:
+        return None
+    payload = dict(same_action_universe_lookup.get(action_id) or {})
+    rows = list(payload.get("rows") or [])
+    if not rows:
+        return None
+
+    company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    ticker = str(case.get("ticker") or "").strip().upper()
+    exact_rows = [
+        row
+        for row in rows
+        if company_id and str(row.get("company_id") or "").strip() == company_id
+    ]
+    if not exact_rows and ticker:
+        exact_rows = [
+            row
+            for row in rows
+            if str(row.get("ticker") or "").strip().upper() == ticker
+        ]
+    if not exact_rows:
+        return None
+
+    anchor_dt = pd.to_datetime(case.get("anchor_action_date"), utc=True, errors="coerce")
+    ranked: List[tuple[float, Dict[str, Any]]] = []
+    for row in exact_rows:
+        action_dt = pd.to_datetime(row.get("action_date"), utc=True, errors="coerce")
+        delta = abs((action_dt - anchor_dt).total_seconds()) if pd.notna(anchor_dt) and pd.notna(action_dt) else float("inf")
+        ranked.append((float(delta), row))
+    ranked.sort(key=lambda item: item[0])
+    actual_row = dict(ranked[0][1]) if ranked else dict(exact_rows[0])
+
+    target_compact = {
+        feature: actual_row.get(feature)
+        for feature in _STATE_VECTOR_V1_FEATURES
+    }
+    target_taxonomy = _outcome_row_taxonomy(actual_row)
+    return {
+        "target_compact": target_compact,
+        "target_taxonomy": target_taxonomy,
+        "target_action_params": _outcome_row_action_params(actual_row),
+        "target_market_cap": _outcome_row_market_cap(actual_row),
+        "target_source": "same_action_universe_fallback",
+    }
+
+
+def _target_context_from_exact_outcomes_row(
+    case: Dict[str, Any],
+    *,
+    outcomes_path: Path,
+) -> Optional[Dict[str, Any]]:
+    company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    if not company_id or not action_id or not outcomes_path.exists():
+        return None
+
+    if _prefer_pandas_outcomes_reads():
+        frame = _cached_pandas_outcomes_frame(str(outcomes_path)).copy()
+        frame["company_id"] = frame["company_id"].astype(str)
+        frame["normalized_action_id"] = frame["normalized_action_id"].astype(str)
+        frame = frame[
+            (frame["company_id"] == company_id)
+            & (frame["normalized_action_id"] == action_id)
+        ].reset_index(drop=True)
+    else:
+        query = """
+            SELECT *
+            FROM read_parquet(?)
+            WHERE CAST(company_id AS VARCHAR) = ?
+              AND CAST(normalized_action_id AS VARCHAR) = ?
+        """
+        frame = duckdb.execute(query, [str(outcomes_path), company_id, action_id]).df()
+    if frame.empty:
+        ticker = str(case.get("ticker") or "").strip().upper()
+        if not ticker:
+            return None
+        if _prefer_pandas_outcomes_reads():
+            frame = _cached_pandas_outcomes_frame(str(outcomes_path)).copy()
+            frame["normalized_action_id"] = frame["normalized_action_id"].astype(str)
+            frame["ticker"] = frame.get("ticker", pd.Series("", index=frame.index)).astype(str).str.upper()
+            frame = frame[
+                (frame["ticker"] == ticker)
+                & (frame["normalized_action_id"] == action_id)
+            ].reset_index(drop=True)
+        else:
+            ticker_query = """
+                SELECT *
+                FROM read_parquet(?)
+                WHERE UPPER(CAST(ticker AS VARCHAR)) = ?
+                  AND CAST(normalized_action_id AS VARCHAR) = ?
+            """
+            frame = duckdb.execute(ticker_query, [str(outcomes_path), ticker, action_id]).df()
+        if frame.empty:
+            return None
+
+    frame = _maybe_backfill_historical_price_window_metrics(frame)
+    frame = _enrich_missing_historical_taxonomy(frame)
+    frame = augment_precedent_state_vector_columns(frame)
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    anchor_dt = pd.to_datetime(case.get("anchor_action_date"), utc=True, errors="coerce")
+    anchor_raw_subtype = _case_anchor_action_subtype(case).lower()
+    anchor_effective_subtype = _case_anchor_effective_action_subtype(case)
+    row_raw_subtypes = (
+        frame.get("raw_action_subtype", pd.Series("", index=frame.index))
+        .fillna(frame.get("action_subtype", pd.Series("", index=frame.index)))
+        .astype(str)
+        .str.strip()
+    )
+    if anchor_raw_subtype:
+        exact_rank = (row_raw_subtypes.str.lower() != anchor_raw_subtype).astype(int)
+    else:
+        exact_rank = pd.Series(0, index=frame.index, dtype=int)
+    if anchor_effective_subtype:
+        family_rank = pd.Series(
+            [
+                0
+                if _row_effective_action_subtype(action_id, dict(row)) == anchor_effective_subtype
+                else 1
+                for row in frame.to_dict(orient="records")
+            ],
+            index=frame.index,
+            dtype=int,
+        )
+    else:
+        family_rank = pd.Series(0, index=frame.index, dtype=int)
+    if pd.notna(anchor_dt):
+        delta_rank = (frame["action_date"] - anchor_dt).abs()
+    else:
+        delta_rank = pd.Series(pd.Timedelta(0), index=frame.index)
+    action_sizes = pd.to_numeric(frame.get("action_size", pd.Series(np.nan, index=frame.index)), errors="coerce")
+    frame = frame.assign(
+        _anchor_exact_rank=exact_rank,
+        _anchor_family_rank=family_rank,
+        _delta=delta_rank,
+        _size_rank=-action_sizes.fillna(0.0),
+    ).sort_values(
+        ["_anchor_exact_rank", "_anchor_family_rank", "_delta", "_size_rank"],
+        kind="stable",
+    )
+    actual_row = dict(frame.iloc[0].to_dict()) if not frame.empty else None
+    if not actual_row:
+        return None
+
+    target_compact = {
+        feature: actual_row.get(feature)
+        for feature in _STATE_VECTOR_V1_FEATURES
+    }
+    target_taxonomy = _outcome_row_taxonomy(actual_row)
+    return {
+        "target_compact": target_compact,
+        "target_taxonomy": target_taxonomy,
+        "target_action_params": _outcome_row_action_params(actual_row),
+        "target_market_cap": _outcome_row_market_cap(actual_row),
+        "target_source": "exact_outcome_row_fallback",
+    }
+
+
+def _artifact_paths_from_runs_root(
+    *,
+    runs_root: Path,
+    eval_prefix: str,
+    eval_id: str,
+    company_id: str,
+    as_of_time: str = "",
+) -> Optional[Dict[str, Path]]:
+    normalized_as_of_time = _normalize_as_of_time(as_of_time)
+    search_roots: List[Dict[str, Path]] = []
+    if eval_prefix:
+        eval_dir = runs_root / f"{eval_prefix}_eval_{int(eval_id):03d}"
+        search_roots.append({"runs_dir": eval_dir / "runs", "artifacts_dir": eval_dir / "artifacts"})
+    search_roots.append({"runs_dir": runs_root / "runs", "artifacts_dir": runs_root / "artifacts"})
+    for root in search_roots:
+        runs_dir = root["runs_dir"]
+        artifacts_dir = root["artifacts_dir"]
+        if not runs_dir.exists() or not artifacts_dir.exists():
+            continue
+        for run_json_path in runs_dir.glob("*.json"):
+            try:
+                payload = _load_json(run_json_path)
+            except Exception:
+                continue
+            if str(payload.get("company_id") or "") != company_id:
+                continue
+            payload_times = {
+                _normalize_as_of_time(str(payload.get("as_of_time") or "")),
+                _normalize_as_of_time(str(payload.get("decision_time") or "")),
+                _normalize_as_of_time(str(payload.get("snapshot_as_of") or "")),
+                _normalize_as_of_time(str(payload.get("target_as_of_time") or "")),
+            }
+            nonempty_times = {time_value for time_value in payload_times if time_value}
+            if normalized_as_of_time and nonempty_times and normalized_as_of_time not in nonempty_times:
+                continue
+            run_id = str(payload.get("run_id") or "")
+            if not run_id:
+                continue
+            artifact_root = artifacts_dir / f"run_id={run_id}"
+            precedent_index_path = artifact_root / "PrecedentIndex.json"
+            precedent_matches_path = artifact_root / "PrecedentMatches.json"
+            if precedent_index_path.exists() and precedent_matches_path.exists():
+                return {
+                    "precedent_index_path": precedent_index_path,
+                    "precedent_matches_path": precedent_matches_path,
+                }
+    return None
+
+
+def _candidate_rows_by_id(precedent_index: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in list(precedent_index.get("candidate_rows", []) or []):
+        candidate_id = str(row.get("candidate_id") or "").strip()
+        if candidate_id:
+            out[candidate_id] = dict(row)
+    return out
+
+
+def _candidate_rankings(precedent_index: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows = [dict(row) for row in list(precedent_index.get("candidate_rows", []) or [])]
+    rows.sort(key=lambda row: float(row.get("precedent_confidence") or 0.0), reverse=True)
+    return rows
+
+
+def _top_candidate_per_action(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        action_id = str(row.get("action_id") or "").strip()
+        if not action_id or action_id in seen:
+            continue
+        seen.add(action_id)
+        out.append(row)
+    return out
+
+
+def _result_by_candidate_id(precedent_matches: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in list(precedent_matches.get("results", []) or []):
+        candidate = dict(row.get("candidate") or {})
+        candidate_id = str(candidate.get("candidate_id") or "").strip()
+        if candidate_id:
+            out[candidate_id] = dict(row)
+    return out
+
+
+def _absdiff(a: Any, b: Any) -> Optional[float]:
+    try:
+        if a is None or b is None:
+            return None
+        a_value = float(a)
+        b_value = float(b)
+        if not np.isfinite(a_value) or not np.isfinite(b_value):
+            return None
+        return abs(a_value - b_value)
+    except Exception:
+        return None
+
+
+_HARD_NEGATIVE_SAFETY_FEATURES = (
+    "state_vector_v1.net_obligation_burden",
+    "state_vector_v1.liquidity_flexibility",
+    "state_vector_v1.interest_coverage",
+)
+
+_DEBT_ISSUANCE_BORROWER_FEATURE_WEIGHTS: Dict[str, float] = {
+    "state_vector_v1.profitability": 1.10,
+    "state_vector_v1.cash_generation": 1.20,
+    "state_vector_v1.gross_obligation_burden": 1.25,
+    "state_vector_v1.net_obligation_burden": 1.35,
+    "state_vector_v1.interest_coverage": 1.25,
+    "state_vector_v1.valuation_multiple": 0.90,
+    "state_vector_v1.market_access": 1.10,
+    "state_vector_v1.market_stress": 0.90,
+    "state_vector_v1.rates_level": 0.85,
+    "state_vector_v1.credit_spread": 0.95,
+}
+_DEBT_ISSUANCE_BORROWER_FEATURE_FALLBACK_SCALES: Dict[str, float] = {
+    "state_vector_v1.profitability": 0.08,
+    "state_vector_v1.cash_generation": 0.05,
+    "state_vector_v1.gross_obligation_burden": 1.25,
+    "state_vector_v1.net_obligation_burden": 1.00,
+    "state_vector_v1.interest_coverage": 4.0,
+    "state_vector_v1.valuation_multiple": 12.0,
+    "state_vector_v1.market_access": 0.18,
+    "state_vector_v1.market_stress": 0.12,
+    "state_vector_v1.rates_level": 1.00,
+    "state_vector_v1.credit_spread": 1.00,
+}
+_REVOLVER_SUPPORT_FEATURE_WEIGHTS: Dict[str, float] = {
+    "state_vector_v1.profitability": 1.00,
+    "state_vector_v1.cash_generation": 1.05,
+    "state_vector_v1.gross_obligation_burden": 1.10,
+    "state_vector_v1.net_obligation_burden": 1.20,
+    "state_vector_v1.liquidity_flexibility": 1.55,
+    "state_vector_v1.interest_coverage": 1.25,
+    "state_vector_v1.valuation_multiple": 0.45,
+    "state_vector_v1.market_access": 1.25,
+    "state_vector_v1.market_stress": 1.35,
+    "state_vector_v1.rates_level": 0.75,
+    "state_vector_v1.credit_spread": 1.15,
+}
+_REVOLVER_SUPPORT_FEATURE_FALLBACK_SCALES: Dict[str, float] = {
+    "state_vector_v1.profitability": 0.08,
+    "state_vector_v1.cash_generation": 0.05,
+    "state_vector_v1.gross_obligation_burden": 1.20,
+    "state_vector_v1.net_obligation_burden": 1.00,
+    "state_vector_v1.liquidity_flexibility": 1.20,
+    "state_vector_v1.interest_coverage": 4.00,
+    "state_vector_v1.valuation_multiple": 12.00,
+    "state_vector_v1.market_access": 0.16,
+    "state_vector_v1.market_stress": 0.10,
+    "state_vector_v1.rates_level": 0.90,
+    "state_vector_v1.credit_spread": 0.90,
+}
+_DEBT_ISSUANCE_ARCHETYPE_LABELS: tuple[str, ...] = (
+    "distressed_borrower",
+    "refinancing_pressure",
+    "opportunistic_issuer",
+)
+
+
+def _bounded_sigmoid(value: float) -> float:
+    clipped = max(-12.0, min(12.0, float(value)))
+    return float(1.0 / (1.0 + np.exp(-clipped)))
+
+
+def _numeric_feature_value(features: Dict[str, Any], feature_name: str) -> Optional[float]:
+    try:
+        value = features.get(feature_name)
+        if value is None:
+            return None
+        numeric = float(value)
+    except Exception:
+        return None
+    if not pd.notna(numeric):
+        return None
+    return float(numeric)
+
+
+def _is_revolver_draw_or_resize_action(action_id: str) -> bool:
+    return str(action_id or "").strip().lower() == "capital_structure.revolver_draw_or_resize"
+
+
