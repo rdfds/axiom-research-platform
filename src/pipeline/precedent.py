@@ -29,3 +29,21 @@ def _safe_numeric(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if np.isnan(out):
+        return None
+    return out
+
+
+def _safe_log10(value: Optional[float]) -> Optional[float]:
+    if value is None or value <= 0:
+        return None
+    return float(np.log10(value))
+
+

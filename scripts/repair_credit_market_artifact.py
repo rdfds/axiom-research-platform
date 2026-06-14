@@ -390,7 +390,7 @@ def repair_credit_window_proxy(*, features: Dict[str, Any], computed_at: str) ->
     if not target or target.get("value") is not None:
         return False
 
-    spread_node = features['market.credit_spread_level']
+    spread_node = features.get("market.credit_spread_level")
     vol_node = features.get("market.volatility_30d")
     spread = _node_value(spread_node)
     vol_30 = _node_value(vol_node)

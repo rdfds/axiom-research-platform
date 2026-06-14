@@ -34,3 +34,8 @@ This step consumes **CompanyState** and produces similarity matches + outcomes.
 6. **Validation**
    - `scripts/63_validate_similarity.py`
 
+## Notes
+
+- CompanyState provides the consistent, as‑of snapshot.
+- Similarity pipeline should reference CompanyState (not raw inputs).
+
