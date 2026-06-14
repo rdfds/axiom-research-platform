@@ -127,3 +127,15 @@ def _is_missing(value: Any) -> bool:
     return value is None or (isinstance(value, float) and not math.isfinite(value))
 
 
+def _fmt_value(value: Any) -> str:
+    if _is_missing(value):
+        return "`null`"
+    if isinstance(value, bool):
+        return f"`{str(value).lower()}`"
+    if isinstance(value, int):
+        return f"`{value}`"
+    if isinstance(value, float):
+        return f"`{value:.4f}`"
+    return f"`{value}`"
+
+

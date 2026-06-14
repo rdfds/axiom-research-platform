@@ -87,3 +87,43 @@ def _fmt_value(value: Any) -> str:
     return f"`{value}`"
 
 
+def _feature_table(bundle: dict[str, Any]) -> str:
+    values = bundle["state_vector_v1"]["values"]
+    lines = ["| Feature | Value |", "|---|---:|"]
+    for key in _STATE_VECTOR_V1_FEATURES:
+        lines.append(f"| `{key}` | {_fmt_value(values.get(key))} |")
+    return "\n".join(lines)
+
+
+def _support_lines(row: dict[str, Any], bundle: dict[str, Any], *, missing_label: str) -> str:
+    features = row.get("features") or {}
+    support = bundle["state_vector_v1"]["support"]
+    proxy = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") == "proxy_missing_component"]
+    missing = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") in {None, "unsupported"} and _is_missing(bundle["state_vector_v1"]["values"].get(key))]
+    sector = (features['taxonomy.sector'] or {}).get("value")
+    subsector = (features.get("taxonomy.subsector") or {}).get("value")
+    regime = (features.get("capital_structure.retirement_obligation_regime") or {}).get("value")
+    proxy_text = ", ".join(f"`{key}`" for key in proxy) if proxy else "`None`"
+    missing_text = ", ".join(f"`{key}`" for key in missing) if missing else "`None`"
+    return "\n".join(
+        [
+            f"- Sector: `{sector}`",
+            f"- Subsector: `{subsector}`",
+            f"- Retirement regime: `{regime}`",
+            f"- Proxy features: {proxy_text}",
+            f"- {missing_label}: {missing_text}",
+        ]
+    )
+
+
+def _raw_metric_table(row: dict[str, Any]) -> str:
+    features = row.get("features") or {}
+    lines = ["| Raw metric | Value | Support |", "|---|---:|---|"]
+    for metric in RAW_METRIC_ORDER:
+        record = features.get(metric) or {}
+        value = record.get("value")
+        support_mode = record.get("support_mode") or "unsupported"
+        lines.append(f"| `{metric}` | {_fmt_value(value)} | `{support_mode}` |")
+    return "\n".join(lines)
+
+

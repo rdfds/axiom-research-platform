@@ -47,3 +47,16 @@ def _safe_log10(value: Optional[float]) -> Optional[float]:
     return float(np.log10(value))
 
 
+def _weighted_average(parts: List[Tuple[Optional[float], float]]) -> Optional[float]:
+    numer = 0.0
+    denom = 0.0
+    for value, weight in parts:
+        if value is None:
+            continue
+        numer += float(weight) * float(value)
+        denom += float(weight)
+    if denom <= 0:
+        return None
+    return numer / denom
+
+
