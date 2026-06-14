@@ -81,3 +81,5 @@ def main() -> None:
     print(str(out_path))
 
 
+if __name__ == "__main__":
+    main()
