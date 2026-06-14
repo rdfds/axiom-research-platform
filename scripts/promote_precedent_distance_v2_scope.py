@@ -66,7 +66,7 @@ def main() -> None:
     runtime_payload = {
         "version": str(existing_payload.get("version") or payload.get("version") or "precedent_distance_weights_v2"),
         "state_distance_version": str(
-            existing_payload.get("state_distance_version") or payload['state_distance_version'] or "weighted_distance_v2"
+            existing_payload.get("state_distance_version") or payload.get("state_distance_version") or "weighted_distance_v2"
         ),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_artifact": str(source_path),

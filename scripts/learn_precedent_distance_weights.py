@@ -53,7 +53,7 @@ def main() -> None:
     )
     out_path = Path(args.out_path)
     write_precedent_distance_weights(payload, out_path)
-    scopes = payload['scopes'] or {}
+    scopes = payload.get("scopes") or {}
     summary = {
         "ok": True,
         "out_path": str(out_path),
