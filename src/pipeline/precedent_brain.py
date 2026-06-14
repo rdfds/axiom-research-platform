@@ -2060,3 +2060,37 @@ def _preferred_text_array(
     return out.to_numpy(dtype=object)
 
 
+def _first_text_series(df: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
+    out = pd.Series("", index=df.index, dtype="object")
+    for col in columns:
+        if col not in df.columns:
+            continue
+        series = _clean_text_series(df[col])
+        mask = (out == "") & (series != "")
+        out = out.where(~mask, series)
+    return out
+
+
+def _empty_numeric_series(df: pd.DataFrame) -> pd.Series:
+    return pd.Series(np.nan, index=df.index, dtype=float)
+
+
+def _first_numeric_series(df: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
+    out = _empty_numeric_series(df)
+    for col in columns:
+        if col not in df.columns:
+            continue
+        series = pd.to_numeric(df[col], errors="coerce")
+        out = out.where(out.notna(), series)
+    return out
+
+
+def _safe_log10_series(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    out = pd.Series(np.nan, index=numeric.index, dtype=float)
+    mask = numeric > 0
+    if bool(mask.any()):
+        out.loc[mask] = np.log10(numeric.loc[mask].astype(float))
+    return out
+
+

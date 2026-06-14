@@ -275,3 +275,39 @@ def _state_vector_hist_row(
     return row
 
 
+def test_similarity_retrieval_is_stable():
+    df = _hist_df(40)
+    pack1 = build_precedent_pack_v2(
+        candidate_id="cand-1",
+        run_id="run-1",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=df,
+        top_k=20,
+        min_k=10,
+    )
+    pack2 = build_precedent_pack_v2(
+        candidate_id="cand-1",
+        run_id="run-1",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=df,
+        top_k=20,
+        min_k=10,
+    )
+    ids1 = [c.precedent_id for c in pack1.retrieved_cohorts]
+    ids2 = [c.precedent_id for c in pack2.retrieved_cohorts]
+    assert ids1 == ids2
+    scores1 = [round(s.score, 6) for s in pack1.similarity_scores]
+    scores2 = [round(s.score, 6) for s in pack2.similarity_scores]
+    assert scores1 == scores2
+
+
