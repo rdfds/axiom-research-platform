@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-def _load_json(path: Path) :
+def _load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text())
 
 
