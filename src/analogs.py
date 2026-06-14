@@ -669,3 +669,5 @@ def demo():
         print(report)
 
 
+if __name__ == "__main__":
+    demo()
