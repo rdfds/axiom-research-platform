@@ -73,3 +73,10 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _parse_grid(value: str) -> Sequence[float]:
+    values = [float(item.strip()) for item in str(value or "").split(",") if item.strip()]
+    if not values:
+        raise ValueError("l2 grid must include at least one value")
+    return values
+
+

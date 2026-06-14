@@ -184,3 +184,30 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def _first(items: Iterable[Any], default: Any = None) -> Any:
+    for item in items:
+        if item is not None:
+            return item
+    return default
+
+
+def _snapshot_cache_root_for_manifest(manifest_path: Path) -> Path:
+    if "/configs/" in str(manifest_path):
+        return manifest_path.parent.parent / "reports" / "snapshot_cache" / "keyed"
+    raise ValueError(f"Could not infer snapshot cache root from {manifest_path}")
+
+
+def _normalize_as_of_time(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    stamp = pd.to_datetime(text, utc=True, errors="coerce")
+    if pd.isna(stamp):
+        return text
+    return stamp.isoformat()
+
+

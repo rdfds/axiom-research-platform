@@ -26,3 +26,58 @@ def test_pairwise_feature_gap_summary_tracks_all_compact_features():
     assert tuple(_PAIRWISE_FEATURE_GAP_SUMMARY_FEATURES) == tuple(_STATE_VECTOR_V1_FEATURES)
 
 
+def test_outcome_row_action_params_carries_refinancing_subtype_context():
+    params = _outcome_row_action_params(
+        {
+            "action_size": 250_000_000.0,
+            "raw_action_subtype": "Term Loan B",
+        }
+    )
+    assert params["amount_usd"] == 250_000_000.0
+    assert params["action_size"] == 250_000_000.0
+    assert params["source_action_subtype"] == "Term Loan B"
+
+
+def test_target_context_from_anchor_outcome_prefers_requested_refinancing_subtype():
+    case = {
+        "company_id": "1001",
+        "source_company_id": "1001",
+        "anchor_action_id": "capital_structure.refinancing",
+        "anchor_action_date": "2020-01-15T00:00:00Z",
+        "anchor_action_subtype": "Term Loan B",
+    }
+    anchor_outcomes_lookup = {
+        ("1001", "capital_structure.refinancing"): [
+            {
+                "company_id": "1001",
+                "action_date": "2020-01-15T00:00:00Z",
+                "raw_action_subtype": "Revolver/Line >= 1 Yr.",
+                "action_subtype": "Revolver/Line >= 1 Yr.",
+                "action_size": 600_000_000.0,
+                "state_vector_v1.size_log_revenue": 7.0,
+                "state_vector_v1.net_obligation_burden": 1.0,
+                "base_sector": "Industrials",
+                "base_industry": "Machinery",
+            },
+            {
+                "company_id": "1001",
+                "action_date": "2020-01-15T00:00:00Z",
+                "raw_action_subtype": "Term Loan B",
+                "action_subtype": "Term Loan B",
+                "action_size": 450_000_000.0,
+                "state_vector_v1.size_log_revenue": 9.5,
+                "state_vector_v1.net_obligation_burden": 2.5,
+                "base_sector": "Industrials",
+                "base_industry": "Machinery",
+            },
+        ]
+    }
+
+    context = _target_context_from_anchor_outcome(case, anchor_outcomes_lookup=anchor_outcomes_lookup)
+
+    assert context is not None
+    assert context["target_action_params"]["source_action_subtype"] == "Term Loan B"
+    assert context["target_compact"]["state_vector_v1.size_log_revenue"] == 9.5
+    assert context["target_compact"]["state_vector_v1.net_obligation_burden"] == 2.5
+
+
