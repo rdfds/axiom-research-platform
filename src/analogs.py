@@ -308,7 +308,7 @@ class AnalogRetriever:
         query_date: datetime,
         min_similarity: float,
         deal_types: Optional[List[str]] = None,
-    ) :
+    ) -> List[Dict]:
         """Find analogs using pre-computed deal profiles (fast)."""
         analogs = []
 
