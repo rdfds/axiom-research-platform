@@ -124,3 +124,99 @@ def test_resolve_teacher_recipe_same_action_regime_best_analog_standardizes_flag
     assert config["same_family_negatives_only_if_available"] is False
 
 
+def test_load_snapshot_row_supports_modern_snapshot_store_layout(tmp_path):
+    snapshot_root = tmp_path / "snapshot_cache" / "keyed"
+    modern_path = snapshot_root / "company_id=0000001800" / "snapshot_as_of=20240902T000000Z.json"
+    modern_path.parent.mkdir(parents=True)
+    payload = {"company_id": "0000001800", "as_of_time": "2024-09-02T00:00:00+00:00"}
+    modern_path.write_text(json.dumps(payload))
+
+    loaded = _load_snapshot_row(snapshot_root, company_id="0000001800", as_of_time="2024-09-02T00:00:00+00:00")
+    assert loaded == payload
+
+
+def test_load_snapshot_row_prefers_snapshot_catalog_when_available(tmp_path):
+    snapshot_root = tmp_path / "snapshot_cache" / "keyed"
+    legacy_path = snapshot_root / "as_of_date=2024-09-02" / "company_id=0000001800.json"
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_text(json.dumps({"company_id": "0000001800", "as_of_time": "2024-09-02T00:00:00+00:00", "source": "cache"}))
+
+    catalog_path = tmp_path / "snapshot_catalog.jsonl.gz"
+    catalog_payload = {
+        "company_id": "0000001800",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "source": "catalog",
+    }
+    import gzip
+
+    with gzip.open(catalog_path, "wt") as handle:
+        handle.write(json.dumps(catalog_payload) + "\n")
+
+    loaded = _load_snapshot_row(
+        snapshot_root,
+        company_id="0000001800",
+        as_of_time="2024-09-02T00:00:00Z",
+        snapshot_catalog_path=catalog_path,
+    )
+    assert loaded == catalog_payload
+    assert _normalize_as_of_time("2024-09-02T00:00:00Z") == _normalize_as_of_time(
+        "2024-09-02T00:00:00+00:00"
+    )
+
+
+def test_rank_hard_negative_matches_prefers_same_subsector_then_sector():
+    matches = [
+        {
+            "precedent_id": "other-sector",
+            "similarity_score": 0.95,
+            "key_state_features": {
+                "sector": "Consumer Discretionary",
+                "subsector": "Retail",
+                "state_vector_v1.net_obligation_burden": 0.5,
+                "state_vector_v1.liquidity_flexibility": 2.0,
+                "state_vector_v1.interest_coverage": 8.0,
+            },
+        },
+        {
+            "precedent_id": "same-sector",
+            "similarity_score": 0.80,
+            "key_state_features": {
+                "sector": "Industrials",
+                "subsector": "Electrical",
+                "state_vector_v1.net_obligation_burden": 0.5,
+                "state_vector_v1.liquidity_flexibility": 2.0,
+                "state_vector_v1.interest_coverage": 8.0,
+            },
+        },
+        {
+            "precedent_id": "same-subsector",
+            "similarity_score": 0.70,
+            "key_state_features": {
+                "sector": "Industrials",
+                "subsector": "Machinery",
+                "state_vector_v1.net_obligation_burden": 0.5,
+                "state_vector_v1.liquidity_flexibility": 2.0,
+                "state_vector_v1.interest_coverage": 8.0,
+            },
+        },
+    ]
+
+    ranked = _rank_hard_negative_matches(
+        matches,
+        target_compact={
+            "state_vector_v1.net_obligation_burden": 0.4,
+            "state_vector_v1.liquidity_flexibility": 1.9,
+            "state_vector_v1.interest_coverage": 7.5,
+        },
+        target_sector="Industrials",
+        target_subsector="Machinery",
+        taxonomy_mode="prefer_same_subsector_then_sector",
+    )
+
+    assert [row["precedent_id"] for row in ranked] == [
+        "same-subsector",
+        "same-sector",
+        "other-sector",
+    ]
+
+

@@ -847,3 +847,103 @@ def _snapshot_market_cap(snapshot_row: Dict[str, Any]) -> Optional[float]:
     return value
 
 
+def _outcome_row_action_params(row: Dict[str, Any]) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for key in (
+        "amount_usd",
+        "absolute_usd",
+        "draw_amount_usd",
+        "resize_amount_usd",
+        "transaction_size_pct_market_cap",
+        "transaction_size_pct_ev",
+        "action_size",
+    ):
+        value = row.get(key)
+        try:
+            numeric = float(value)
+        except Exception:
+            numeric = None
+        if numeric is None or pd.isna(numeric):
+            continue
+        params[key] = numeric
+    if "amount_usd" not in params and "action_size" in params:
+        params["amount_usd"] = params["action_size"]
+    if "action_size" not in params and "amount_usd" in params:
+        params["action_size"] = params["amount_usd"]
+    raw_subtype = str(row.get("raw_action_subtype") or row.get("action_subtype") or "").strip()
+    if raw_subtype:
+        params["source_action_subtype"] = raw_subtype
+    return params
+
+
+def _case_anchor_action_subtype(case: Dict[str, Any]) -> str:
+    return str(case.get("anchor_action_subtype") or case.get("source_action_subtype") or "").strip()
+
+
+def _case_anchor_effective_action_subtype(case: Dict[str, Any]) -> str:
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    raw_subtype = _case_anchor_action_subtype(case)
+    if not action_id or not raw_subtype:
+        return ""
+    params = {"source_action_subtype": raw_subtype}
+    return str(_effective_action_subtype(action_id, raw_subtype, params) or "").strip()
+
+
+def _row_effective_action_subtype(action_id: str, row: Dict[str, Any]) -> str:
+    raw_subtype = str(row.get("raw_action_subtype") or row.get("action_subtype") or "").strip()
+    if not action_id or not raw_subtype:
+        return ""
+    params = _outcome_row_action_params(row)
+    params.setdefault("source_action_subtype", raw_subtype)
+    return str(_effective_action_subtype(action_id, raw_subtype, params) or "").strip()
+
+
+def _outcome_row_market_cap(row: Dict[str, Any]) -> Optional[float]:
+    for key in ("base_market_cap", "market_cap"):
+        try:
+            value = float(row.get(key))
+        except Exception:
+            value = None
+        if value is None or pd.isna(value):
+            continue
+        return value
+    return None
+
+
+def _target_context_from_anchor_outcome(
+    case: Dict[str, Any],
+    *,
+    anchor_outcomes_lookup: Dict[tuple[str, str], List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    actual_row = _select_actual_anchor_outcome(case, anchor_outcomes_lookup=anchor_outcomes_lookup)
+    if actual_row is None:
+        return None
+
+    target_compact = {
+        feature: actual_row.get(feature)
+        for feature in _STATE_VECTOR_V1_FEATURES
+    }
+    target_taxonomy = {
+        "sector": str(
+            actual_row.get("taxonomy.sector")
+            or actual_row.get("sector")
+            or actual_row.get("base_sector")
+            or ""
+        ).strip(),
+        "subsector": str(
+            actual_row.get("taxonomy.subsector")
+            or actual_row.get("subsector")
+            or actual_row.get("industry")
+            or actual_row.get("base_industry")
+            or ""
+        ).strip(),
+    }
+    return {
+        "target_compact": target_compact,
+        "target_taxonomy": target_taxonomy,
+        "target_action_params": _outcome_row_action_params(actual_row),
+        "target_market_cap": _outcome_row_market_cap(actual_row),
+        "target_source": "anchor_outcome_fallback",
+    }
+
+
