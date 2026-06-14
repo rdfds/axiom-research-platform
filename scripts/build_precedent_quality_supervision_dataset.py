@@ -211,3 +211,113 @@ def _normalize_as_of_time(value: str) -> str:
     return stamp.isoformat()
 
 
+@lru_cache(maxsize=4)
+def _snapshot_catalog_index(snapshot_catalog_path: str) -> Dict[tuple[str, str], Dict[str, Any]]:
+    path = Path(snapshot_catalog_path)
+    index: Dict[tuple[str, str], Dict[str, Any]] = {}
+    open_fn = gzip.open if path.suffix == ".gz" else open
+    with open_fn(path, "rt") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            key = (
+                str(row.get("company_id") or "").strip(),
+                _normalize_as_of_time(str(row.get("as_of_time") or "")),
+            )
+            if key[0] and key[1]:
+                index[key] = row
+    return index
+
+
+def _load_snapshot_row(
+    snapshot_cache_root: Path,
+    company_id: str,
+    as_of_time: str,
+    *,
+    snapshot_catalog_path: Path | None = None,
+) -> Dict[str, Any]:
+    if snapshot_catalog_path is not None and snapshot_catalog_path.exists():
+        catalog_key = (str(company_id or "").strip(), _normalize_as_of_time(as_of_time))
+        catalog_row = _snapshot_catalog_index(str(snapshot_catalog_path)).get(catalog_key)
+        if catalog_row is not None:
+            return dict(catalog_row)
+
+    as_of_date = str(as_of_time).split("T", 1)[0]
+    legacy_snapshot_path = snapshot_cache_root / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
+    if legacy_snapshot_path.exists():
+        return _load_json(legacy_snapshot_path)
+
+    as_of_stamp = pd.Timestamp(as_of_time, tz="UTC")
+    modern_snapshot_path = (
+        snapshot_cache_root
+        / f"company_id={company_id}"
+        / f"snapshot_as_of={as_of_stamp.strftime('%Y%m%dT%H%M%SZ')}.json"
+    )
+    if modern_snapshot_path.exists():
+        return _load_json(modern_snapshot_path)
+
+    prefix = f"snapshot_as_of={as_of_stamp.strftime('%Y%m%dT%H%M%SZ')}"
+    candidates = sorted((snapshot_cache_root / f"company_id={company_id}").glob(f"{prefix}*.json"))
+    if candidates:
+        return _load_json(candidates[0])
+
+    return _load_json(legacy_snapshot_path)
+
+
+def _load_anchor_outcomes_lookup(
+    outcomes_path: Path,
+    *,
+    cases: List[Dict[str, Any]],
+) -> Dict[tuple[str, str], List[Dict[str, Any]]]:
+    company_ids = sorted(
+        {
+            str(case.get("source_company_id") or case.get("company_id") or "").strip()
+            for case in cases
+            if str(case.get("source_company_id") or case.get("company_id") or "").strip()
+        }
+    )
+    action_ids = sorted({str(case.get("anchor_action_id") or "").strip() for case in cases if str(case.get("anchor_action_id") or "").strip()})
+    if not company_ids or not action_ids:
+        return {}
+
+    def _sql_literal(value: str) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    company_sql = ", ".join(_sql_literal(value) for value in company_ids)
+    action_sql = ", ".join(_sql_literal(value) for value in action_ids)
+    if _prefer_pandas_outcomes_reads():
+        frame = _cached_pandas_outcomes_frame(str(outcomes_path)).copy()
+        frame["company_id"] = frame["company_id"].astype(str)
+        frame["normalized_action_id"] = frame["normalized_action_id"].astype(str)
+        frame = frame[
+            frame["company_id"].isin(company_ids)
+            & frame["normalized_action_id"].isin(action_ids)
+        ].reset_index(drop=True)
+    else:
+        query = f"""
+            SELECT *
+            FROM read_parquet(?)
+            WHERE CAST(company_id AS VARCHAR) IN ({company_sql})
+              AND CAST(normalized_action_id AS VARCHAR) IN ({action_sql})
+        """
+        frame = duckdb.execute(query, [str(outcomes_path)]).df()
+    if frame.empty:
+        return {}
+    frame = _maybe_backfill_historical_price_window_metrics(frame)
+    frame = _enrich_missing_historical_taxonomy(frame)
+    frame = augment_precedent_state_vector_columns(frame)
+    frame["company_id"] = frame["company_id"].astype(str)
+    frame["normalized_action_id"] = frame["normalized_action_id"].astype(str)
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    lookup: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    for row in frame.to_dict(orient="records"):
+        company_id = str(row.get("company_id") or "").strip()
+        action_id = str(row.get("normalized_action_id") or "").strip()
+        if not company_id or not action_id:
+            continue
+        lookup.setdefault((company_id, action_id), []).append(row)
+    return lookup
+
+
