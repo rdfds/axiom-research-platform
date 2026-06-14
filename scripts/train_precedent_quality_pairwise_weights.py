@@ -80,3 +80,10 @@ def _parse_grid(value: str) -> Sequence[float]:
     return values
 
 
+def _parse_int_grid(value: str) -> Sequence[int]:
+    values = [int(item.strip()) for item in str(value or "").split(",") if item.strip()]
+    if not values:
+        raise ValueError("integer grid must include at least one value")
+    return values
+
+

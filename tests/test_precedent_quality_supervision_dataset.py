@@ -103,3 +103,24 @@ def test_resolve_teacher_recipe_same_action_best_analog_standardizes_flags():
     assert config["hard_negative_taxonomy_mode"] == "prefer_same_subsector_then_sector"
 
 
+def test_resolve_teacher_recipe_same_action_regime_best_analog_standardizes_flags():
+    config = _resolve_teacher_recipe(
+        teacher_recipe="same_action_regime_best_analog",
+        positive_source_mode="include_retrieved",
+        include_within_action_hard_negatives=False,
+        include_same_action_positive_ordering=False,
+        actual_anchor_within_action_negative_source="retrieved_pool",
+        always_include_actual_anchor_positive=True,
+        same_family_negatives_only_if_available=True,
+        hard_negative_taxonomy_mode="none",
+    )
+
+    assert config["teacher_recipe"] == "same_action_regime_best_analog"
+    assert config["positive_source_mode"] == "analog_regime_consensus_same_action_universe"
+    assert config["include_within_action_hard_negatives"] is True
+    assert config["include_same_action_positive_ordering"] is True
+    assert config["actual_anchor_within_action_negative_source"] == "same_action_universe"
+    assert config["always_include_actual_anchor_positive"] is False
+    assert config["same_family_negatives_only_if_available"] is False
+
+
