@@ -172,3 +172,14 @@ def _target_context_lines(row: dict[str, Any], bundle: dict[str, Any]) -> list[s
     ]
 
 
+def _target_raw_table(row: dict[str, Any]) -> str:
+    features = row.get("features") or {}
+    lines = ["| Raw metric | Value | Support |", "|---|---:|---|"]
+    for metric in TARGET_RAW_METRIC_ORDER:
+        record = features.get(metric) or {}
+        lines.append(
+            f"| `{metric}` | {_fmt_value(record.get('value'))} | `{record['support_mode'] or 'unsupported'}` |"
+        )
+    return "\n".join(lines)
+
+
