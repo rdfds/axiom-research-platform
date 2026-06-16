@@ -2094,3 +2094,1441 @@ def _safe_log10_series(series: pd.Series) -> pd.Series:
     return out
 
 
+def _weighted_average_series(parts: Sequence[Tuple[pd.Series, float]]) -> pd.Series:
+    if not parts:
+        raise ValueError("parts must be non-empty")
+    index = parts[0][0].index
+    numer = np.zeros(len(index), dtype=float)
+    denom = np.zeros(len(index), dtype=float)
+    for series, weight in parts:
+        numeric = pd.to_numeric(series, errors="coerce")
+        values = numeric.to_numpy(dtype=float)
+        ok = np.isfinite(values)
+        numer[ok] += float(weight) * values[ok]
+        denom[ok] += float(weight)
+    out = np.full(len(index), np.nan, dtype=float)
+    valid = denom > 0
+    out[valid] = numer[valid] / denom[valid]
+    return pd.Series(out, index=index, dtype=float)
+
+
+def _weighted_distance_profile_v1(action_id: str, action_subtype: str) -> Dict[str, Any]:
+    action_text = str(action_id or "").strip().lower()
+    subtype_text = str(action_subtype or "").strip().lower()
+    weights = dict(_STATE_VECTOR_BASE_WEIGHTS)
+    critical = set(_STATE_VECTOR_CORE_CRITICAL_FEATURES)
+    profile: Dict[str, Any] = {
+        "version": _WEIGHTED_DISTANCE_V1_VERSION,
+        "weights": weights,
+        "critical_features": critical,
+        "min_weighted_coverage": 0.60,
+        "min_critical_coverage": 0.55,
+        "max_size_gap": 1.20,
+        "primary_burden_feature": "state_vector_v1.net_obligation_burden",
+        "soft_burden_gap": 1.50,
+        "distance_scale": 0.45,
+        "weight_scope": "prior_only",
+    }
+
+    if action_text.startswith("capital_return.dividend") or subtype_text.startswith("dividend"):
+        weights["state_vector_v1.net_obligation_burden"] *= 1.30
+        weights["state_vector_v1.liquidity_flexibility"] *= 1.35
+        weights["state_vector_v1.interest_coverage"] *= 1.25
+        weights["state_vector_v1.cash_generation"] *= 1.40
+        weights["state_vector_v1.valuation_multiple"] *= 0.90
+        weights["state_vector_v1.market_access"] *= 0.85
+        critical.update(
+            {
+                "state_vector_v1.net_obligation_burden",
+                "state_vector_v1.liquidity_flexibility",
+                "state_vector_v1.interest_coverage",
+                "state_vector_v1.cash_generation",
+            }
+        )
+        profile["min_weighted_coverage"] = 0.62
+        profile["min_critical_coverage"] = 0.60
+        profile["max_size_gap"] = 1.05
+        profile["soft_burden_gap"] = 1.25
+    elif (
+        action_text in {
+            "capital_return.open_market_buyback",
+            "capital_return.accelerated_share_repurchase",
+        }
+        or "buyback" in subtype_text
+        or "repurchase" in subtype_text
+    ):
+        weights["state_vector_v1.valuation_multiple"] *= 1.35
+        weights["state_vector_v1.cash_generation"] *= 1.25
+        weights["state_vector_v1.net_obligation_burden"] *= 1.20
+        weights["state_vector_v1.liquidity_flexibility"] *= 1.10
+        weights["state_vector_v1.market_access"] *= 0.90
+        critical.update(
+            {
+                "state_vector_v1.net_obligation_burden",
+                "state_vector_v1.liquidity_flexibility",
+                "state_vector_v1.valuation_multiple",
+                "state_vector_v1.cash_generation",
+            }
+        )
+        profile["max_size_gap"] = 1.15
+        profile["soft_burden_gap"] = 1.50
+    elif action_text.startswith("capital_structure.") or "debt" in action_text or "refinanc" in subtype_text:
+        weights["state_vector_v1.gross_obligation_burden"] *= 1.35
+        weights["state_vector_v1.liquidity_flexibility"] *= 1.40
+        weights["state_vector_v1.interest_coverage"] *= 1.25
+        weights["state_vector_v1.market_access"] *= 1.45
+        weights["state_vector_v1.credit_spread"] *= 1.35
+        weights["state_vector_v1.valuation_multiple"] *= 0.75
+        critical.update(
+            {
+                "state_vector_v1.gross_obligation_burden",
+                "state_vector_v1.liquidity_flexibility",
+                "state_vector_v1.interest_coverage",
+                "state_vector_v1.market_access",
+            }
+        )
+        profile["primary_burden_feature"] = "state_vector_v1.gross_obligation_burden"
+        profile["min_weighted_coverage"] = 0.62
+        profile["min_critical_coverage"] = 0.60
+        profile["max_size_gap"] = 1.30
+        profile["soft_burden_gap"] = 1.20
+
+    profile["critical_features"] = tuple(sorted(critical))
+    learned_scope, learned = _learned_weight_scope(action_text, subtype_text)
+    if learned:
+        learned_weights = learned.get("weights")
+        if isinstance(learned_weights, dict):
+            for feature_name, weight in learned_weights.items():
+                if feature_name not in weights:
+                    continue
+                weight_value = _to_float(weight, None)
+                if weight_value is None or weight_value <= 0.0:
+                    continue
+                weights[feature_name] = float(weight_value)
+        profile["weight_scope"] = str(learned_scope)
+        profile["learned_holdout_pair_correlation"] = _to_float(learned.get("holdout_pair_correlation"), None)
+        profile["learned_prior_holdout_pair_correlation"] = _to_float(
+            learned.get("holdout_prior_pair_correlation"), None
+        )
+        profile["learned_pair_count"] = int(_to_float(learned.get("n_pairs"), 0.0) or 0.0)
+    profile["weights"] = weights
+    return profile
+
+
+def _v2_scope_lookup(payload: Dict[str, Any], action_id: str, action_subtype: str) -> Optional[Dict[str, Any]]:
+    scopes = payload.get("scopes") if isinstance(payload, dict) else None
+    if not isinstance(scopes, dict) or not scopes:
+        return None
+    action_text = str(action_id or "").strip().lower()
+    family_key = action_text.split(".")[0] if "." in action_text else action_text
+    subtype_text = str(action_subtype or "").strip().lower()
+    for key in (action_text, subtype_text, family_key, "ALL"):
+        value = scopes.get(key)
+        if isinstance(value, dict) and bool(value.get("use_in_runtime", True)):
+            return value
+    return None
+
+
+def _weighted_distance_profile_v2(action_id: str, action_subtype: str) -> Dict[str, Any]:
+    action_text = str(action_id or "").strip().lower()
+    subtype_text = str(action_subtype or "").strip().lower()
+    family_key = action_text.split(".", 1)[0] if "." in action_text else action_text
+
+    group_weights = dict(_STATE_VECTOR_V2_DEFAULT_GROUP_WEIGHTS)
+    if action_text.startswith("capital_return.dividend") or subtype_text.startswith("dividend"):
+        multipliers = _STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get("capital_return.dividend", {})
+    elif (
+        action_text in {
+            "capital_return.open_market_buyback",
+            "capital_return.accelerated_share_repurchase",
+        }
+        or "buyback" in subtype_text
+        or "repurchase" in subtype_text
+    ):
+        multipliers = _STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get("capital_return.buyback", {})
+    else:
+        multipliers = _STATE_VECTOR_V2_DEFAULT_GROUP_MULTIPLIERS.get(family_key, {})
+    for group_name, multiplier in dict(multipliers or {}).items():
+        base_value = float(group_weights.get(group_name, 1.0))
+        group_weights[group_name] = base_value * float(multiplier)
+
+    feature_relative_weights = dict(_STATE_VECTOR_V2_DEFAULT_FEATURE_RELATIVE_WEIGHTS)
+    feature_transform_mode = _normalize_feature_transform_mode(None)
+    feature_transforms: Dict[str, Dict[str, float]] = _initialize_feature_transform_specs(feature_transform_mode)
+    interaction_terms: List[Dict[str, Any]] = []
+    gates: Dict[str, Any] = dict(_STATE_VECTOR_V2_DEFAULT_GATES)
+    penalties: Dict[str, Any] = dict(_STATE_VECTOR_V2_DEFAULT_PENALTIES)
+    blend_weights: Dict[str, float] = dict(_STATE_VECTOR_V2_DEFAULT_BLEND_WEIGHTS)
+    latent_regime_model: Dict[str, Any] = {}
+    latent_regime_penalty_weight = 0.0
+    target_regime_mixture: Dict[str, Any] = {}
+    second_stage_reranker: Dict[str, Any] = {}
+    outcome_aware_reranker: Dict[str, Any] = {}
+    max_matches_per_company = 0
+    critical = set(_STATE_VECTOR_CORE_CRITICAL_FEATURES)
+    primary_burden_feature = "state_vector_v1.net_obligation_burden"
+
+    if action_text.startswith("capital_structure.") or "debt" in action_text or "refinanc" in subtype_text:
+        primary_burden_feature = "state_vector_v1.gross_obligation_burden"
+        gates["max_size_gap"] = 1.30
+        penalties["sector_penalty_weight"] = 0.22
+        critical.update({"state_vector_v1.market_access", "state_vector_v1.credit_spread"})
+    elif action_text.startswith("capital_return.dividend") or subtype_text.startswith("dividend"):
+        gates["max_size_gap"] = 1.05
+        gates["soft_burden_gap"] = 1.10
+        critical.update({"state_vector_v1.cash_generation"})
+    elif "buyback" in action_text or "repurchase" in action_text or "buyback" in subtype_text:
+        feature_relative_weights["state_vector_v1.valuation_multiple"] = 1.35
+        feature_relative_weights["state_vector_v1.cash_generation"] = 1.20
+        gates["max_size_gap"] = 1.15
+
+    runtime_payload = _load_precedent_distance_v2_weights()
+    runtime_scope = _v2_scope_lookup(runtime_payload, action_text, subtype_text)
+    scope_source = "default_v2"
+    if runtime_scope:
+        scope_source = str(runtime_scope.get("scope_key") or runtime_scope.get("scope_name") or family_key or "runtime_v2")
+        feature_transform_mode = _normalize_feature_transform_mode(runtime_scope.get("feature_transform_mode"))
+        feature_transforms = _initialize_feature_transform_specs(feature_transform_mode)
+        for key, value in dict(runtime_scope.get("group_weights", {}) or {}).items():
+            weight_value = _to_float(value, None)
+            if weight_value is not None and weight_value > 0.0:
+                group_weights[str(key)] = float(weight_value)
+        for key, value in dict(runtime_scope.get("feature_relative_weights", {}) or {}).items():
+            weight_value = _to_float(value, None)
+            if weight_value is not None and weight_value > 0.0:
+                feature_relative_weights[str(key)] = float(weight_value)
+        for key, value in dict(runtime_scope.get("feature_transforms", {}) or {}).items():
+            normalized_spec = _normalize_matching_transform_spec(value)
+            if normalized_spec:
+                feature_transforms[str(key)] = normalized_spec
+        for item in list(runtime_scope.get("interaction_terms", []) or []):
+            if not isinstance(item, dict):
+                continue
+            features = list(item.get("features") or [])
+            if len(features) != 2:
+                continue
+            left = str(features[0] or "")
+            right = str(features[1] or "")
+            if left not in _STATE_VECTOR_MATCHING_COLS or right not in _STATE_VECTOR_MATCHING_COLS:
+                continue
+            weight_value = _to_float(item.get("weight"), None)
+            if weight_value is None or weight_value <= 0.0:
+                continue
+            interaction_terms.append(
+                {
+                    "features": (left, right),
+                    "weight": float(weight_value),
+                }
+            )
+        gates.update({str(key): value for key, value in dict(runtime_scope.get("gates", {}) or {}).items()})
+        penalties.update({str(key): value for key, value in dict(runtime_scope.get("penalties", {}) or {}).items()})
+        blend_weights.update({str(key): float(value) for key, value in dict(runtime_scope.get("blend_weights", {}) or {}).items() if _to_float(value, None) is not None})
+        critical.update({str(x) for x in list(runtime_scope.get("critical_features", []) or []) if str(x)})
+        if str(runtime_scope.get("primary_burden_feature") or ""):
+            primary_burden_feature = str(runtime_scope.get("primary_burden_feature"))
+        latent_weight_value = _to_float(runtime_scope.get("latent_regime_penalty_weight"), None)
+        if latent_weight_value is not None and latent_weight_value > 0.0:
+            latent_regime_penalty_weight = float(latent_weight_value)
+        latent_model_value = runtime_scope.get("latent_regime_model")
+        if isinstance(latent_model_value, dict):
+            latent_regime_model = dict(latent_model_value)
+        target_regime_value = runtime_scope.get("target_regime_mixture")
+        if isinstance(target_regime_value, dict) and isinstance(target_regime_value.get("model"), dict):
+            target_regime_mixture = {
+                "model": dict(target_regime_value.get("model") or {}),
+                "regimes": list(target_regime_value.get("regimes") or []),
+            }
+        reranker_value = runtime_scope.get("second_stage_reranker")
+        if isinstance(reranker_value, dict):
+            feature_weights: Dict[str, float] = {}
+            for key, value in dict(reranker_value.get("feature_weights", {}) or {}).items():
+                key_text = str(key)
+                numeric_value = _to_float(value, None)
+                if key_text not in _SECOND_STAGE_RERANKER_FEATURES or numeric_value is None or numeric_value <= 0.0:
+                    continue
+                feature_weights[key_text] = float(numeric_value)
+            if feature_weights:
+                second_stage_reranker = {
+                    "feature_weights": feature_weights,
+                    "bias": float(_to_float(reranker_value.get("bias"), 0.0) or 0.0),
+                    "shortlist_size": int(
+                        _to_float(reranker_value.get("shortlist_size"), max(80, 4 * len(_SECOND_STAGE_RERANKER_FEATURES)))
+                        or max(80, 4 * len(_SECOND_STAGE_RERANKER_FEATURES))
+                    ),
+                }
+        outcome_reranker_value = runtime_scope.get("outcome_aware_reranker")
+        if isinstance(outcome_reranker_value, dict):
+            feature_weights = {}
+            for key, value in dict(outcome_reranker_value.get("feature_weights", {}) or {}).items():
+                key_text = str(key)
+                numeric_value = _to_float(value, None)
+                if key_text not in _OUTCOME_AWARE_RERANKER_FEATURES or numeric_value is None or numeric_value <= 0.0:
+                    continue
+                feature_weights[key_text] = float(numeric_value)
+            if feature_weights:
+                outcome_aware_reranker = {
+                    "feature_weights": feature_weights,
+                    "bias": float(_to_float(outcome_reranker_value.get("bias"), 0.0) or 0.0),
+                    "shortlist_size": int(
+                        _to_float(
+                            outcome_reranker_value.get("shortlist_size"),
+                            max(40, 2 * len(_OUTCOME_AWARE_RERANKER_FEATURES)),
+                        )
+                        or max(40, 2 * len(_OUTCOME_AWARE_RERANKER_FEATURES))
+                    ),
+                }
+        max_matches_value = _to_float(runtime_scope.get("max_matches_per_company"), None)
+        if max_matches_value is not None and max_matches_value > 0.0:
+            max_matches_per_company = max(1, int(round(float(max_matches_value))))
+
+    if action_text.startswith("capital_structure.") or "debt" in action_text or "refinanc" in subtype_text:
+        penalties["regime_rate_gap_threshold"] = min(
+            float(_to_float(penalties.get("regime_rate_gap_threshold"), 0.75) or 0.75),
+            0.75,
+        )
+        penalties["regime_rate_penalty_weight"] = max(
+            float(_to_float(penalties.get("regime_rate_penalty_weight"), 0.90) or 0.90),
+            0.90,
+        )
+        penalties["regime_credit_gap_threshold"] = min(
+            float(_to_float(penalties.get("regime_credit_gap_threshold"), 0.90) or 0.90),
+            0.90,
+        )
+        penalties["regime_credit_penalty_weight"] = max(
+            float(_to_float(penalties.get("regime_credit_penalty_weight"), 1.00) or 1.00),
+            1.00,
+        )
+        blend_weights.update({"state": 0.48, "regime": 0.22, "param": 0.10, "sector": 0.12, "action": 0.08})
+        feature_relative_weights["state_vector_v1.liquidity_flexibility"] = (
+            float(feature_relative_weights.get("state_vector_v1.liquidity_flexibility", 1.0)) * 0.70
+        )
+        feature_relative_weights["state_vector_v1.rates_level"] = (
+            float(feature_relative_weights.get("state_vector_v1.rates_level", 1.0)) * 1.35
+        )
+        feature_relative_weights["state_vector_v1.credit_spread"] = (
+            float(feature_relative_weights.get("state_vector_v1.credit_spread", 1.0)) * 1.50
+        )
+        critical.update({"state_vector_v1.market_access", "state_vector_v1.credit_spread", "state_vector_v1.rates_level"})
+
+    normalized_group_weights = _normalize_weight_mapping(group_weights)
+    feature_weights: Dict[str, float] = {}
+    for feature_name in _STATE_VECTOR_MATCHING_COLS:
+        group_name = _STATE_VECTOR_FEATURE_GROUP.get(feature_name, "identity")
+        feature_weights[feature_name] = float(
+            normalized_group_weights.get(group_name, 1.0) * float(feature_relative_weights.get(feature_name, 1.0))
+        )
+    feature_weights = _normalize_weight_mapping(feature_weights)
+
+    return {
+        "version": _WEIGHTED_DISTANCE_V2_VERSION,
+        "weights": feature_weights,
+        "feature_relative_weights": dict(feature_relative_weights),
+        "feature_transform_mode": feature_transform_mode,
+        "feature_transforms": dict(feature_transforms),
+        "interaction_terms": list(interaction_terms),
+        "latent_regime_model": dict(latent_regime_model),
+        "latent_regime_penalty_weight": float(latent_regime_penalty_weight),
+        "target_regime_mixture": dict(target_regime_mixture),
+        "second_stage_reranker": dict(second_stage_reranker),
+        "outcome_aware_reranker": dict(outcome_aware_reranker),
+        "max_matches_per_company": int(max_matches_per_company),
+        "group_weights": dict(normalized_group_weights),
+        "critical_features": tuple(sorted(critical)),
+        "min_weighted_coverage": float(_to_float(gates.get("min_weighted_coverage"), 0.75) or 0.75),
+        "min_critical_coverage": float(_to_float(gates.get("min_critical_coverage"), 0.80) or 0.80),
+        "max_size_gap": float(_to_float(gates.get("max_size_gap"), 1.15) or 1.15),
+        "soft_size_gap": float(_to_float(gates.get("soft_size_gap"), 0.35) or 0.35),
+        "primary_burden_feature": primary_burden_feature,
+        "soft_burden_gap": float(_to_float(gates.get("soft_burden_gap"), 1.25) or 1.25),
+        "distance_scale": float(_to_float(penalties.get("distance_scale"), 0.55) or 0.55),
+        "missing_penalty_weight": float(_to_float(penalties.get("missing_penalty_weight"), 0.45) or 0.45),
+        "critical_missing_penalty_weight": float(_to_float(penalties.get("critical_missing_penalty_weight"), 0.90) or 0.90),
+        "size_penalty_weight": float(_to_float(penalties.get("size_penalty_weight"), 1.15) or 1.15),
+        "burden_penalty_weight": float(_to_float(penalties.get("burden_penalty_weight"), 0.40) or 0.40),
+        "sector_penalty_weight": float(_to_float(penalties.get("sector_penalty_weight"), 0.30) or 0.30),
+        "regime_rate_gap_threshold": float(_to_float(penalties.get("regime_rate_gap_threshold"), 1.00) or 1.00),
+        "regime_rate_penalty_weight": float(_to_float(penalties.get("regime_rate_penalty_weight"), 0.40) or 0.40),
+        "regime_credit_gap_threshold": float(_to_float(penalties.get("regime_credit_gap_threshold"), 1.25) or 1.25),
+        "regime_credit_penalty_weight": float(_to_float(penalties.get("regime_credit_penalty_weight"), 0.45) or 0.45),
+        "blend_weights": dict(blend_weights),
+        "weight_scope": scope_source,
+    }
+
+
+def _weighted_distance_profile(action_id: str, action_subtype: str) -> Dict[str, Any]:
+    if _precedent_distance_profile_version(action_id, action_subtype) == _WEIGHTED_DISTANCE_V2_VERSION:
+        return _weighted_distance_profile_v2(action_id, action_subtype)
+    return _weighted_distance_profile_v1(action_id, action_subtype)
+
+
+def _normalize_feature_transform_mode(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"identity", "none", "explicit_only"}:
+        return "identity"
+    return _STATE_VECTOR_V2_DEFAULT_FEATURE_TRANSFORM_MODE
+
+
+def _normalize_matching_transform_spec(spec: Any) -> Dict[str, Any]:
+    if not isinstance(spec, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    kind = str(spec.get("kind") or "").strip().lower()
+    if kind and kind not in {"identity", "none"}:
+        out["kind"] = kind
+    cap = _to_float(spec.get("cap"), None)
+    if cap is not None and np.isfinite(cap) and cap > 0.0:
+        out["cap"] = float(cap)
+    scale = _to_float(spec.get("scale"), None)
+    if scale is not None and np.isfinite(scale) and scale > 0.0:
+        out["scale"] = float(scale)
+    return out
+
+
+def _initialize_feature_transform_specs(mode: Any) -> Dict[str, Dict[str, float]]:
+    normalized_mode = _normalize_feature_transform_mode(mode)
+    if normalized_mode == "identity":
+        return {}
+    out: Dict[str, Dict[str, float]] = {}
+    for key, value in _STATE_VECTOR_V2_DEFAULT_FEATURE_TRANSFORMS.items():
+        normalized = _normalize_matching_transform_spec(value)
+        if normalized:
+            out[key] = normalized
+    return out
+
+
+def _transform_matching_values(values: np.ndarray, spec: Dict[str, Any]) -> np.ndarray:
+    arr = np.array(values, dtype=float, copy=True)
+    if arr.size == 0 or not isinstance(spec, dict):
+        return arr
+    kind = str(spec.get("kind") or "identity").strip().lower()
+    valid = np.isfinite(arr)
+    if not bool(np.any(valid)) or kind in {"", "identity", "none"}:
+        return arr
+
+    cap = _to_float(spec.get("cap"), None)
+    scale = _to_float(spec.get("scale"), None)
+    transformed = arr.copy()
+    current = transformed[valid]
+    if cap is not None and np.isfinite(cap):
+        current = np.clip(current, -float(cap), float(cap))
+
+    if kind == "signed_log1p_cap":
+        transformed[valid] = np.sign(current) * np.log1p(np.abs(current))
+    elif kind == "log1p_cap":
+        transformed[valid] = np.log1p(np.clip(current, 0.0, None))
+    elif kind == "signed_asinh":
+        denom = float(scale) if scale is not None and np.isfinite(scale) and abs(scale) > 1e-12 else 1.0
+        transformed[valid] = np.arcsinh(current / denom)
+    elif kind == "clip":
+        transformed[valid] = current
+    else:
+        transformed[valid] = current
+    return transformed
+
+
+def _apply_matching_feature_transforms(
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    profile: Dict[str, Any],
+) -> Tuple[np.ndarray, np.ndarray, Tuple[str, ...]]:
+    transformed_emb = np.array(emb_raw, dtype=float, copy=True)
+    transformed_candidate = np.array(candidate_vec_raw, dtype=float, copy=True)
+    transform_specs = profile.get("feature_transforms") if isinstance(profile, dict) else None
+    if not isinstance(transform_specs, dict) or not transform_specs:
+        return transformed_emb, transformed_candidate, tuple()
+
+    applied: List[str] = []
+    for idx, feature_name in enumerate(embedding_cols):
+        spec = transform_specs.get(feature_name)
+        if not isinstance(spec, dict):
+            continue
+        transformed_emb[:, idx] = _transform_matching_values(transformed_emb[:, idx], spec)
+        transformed_candidate[idx] = _transform_matching_values(
+            np.array([transformed_candidate[idx]], dtype=float),
+            spec,
+        )[0]
+        applied.append(str(feature_name))
+    return transformed_emb, transformed_candidate, tuple(applied)
+
+
+def _latent_regime_similarity_vector(
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    model: Dict[str, Any],
+) -> np.ndarray:
+    feature_names = [str(name) for name in list(model.get("feature_names") or []) if str(name)]
+    if not feature_names:
+        return np.full(emb_raw.shape[0], np.nan, dtype=float)
+    feature_index = {str(col): idx for idx, col in enumerate(embedding_cols)}
+    hist_matrix = np.full((emb_raw.shape[0], len(feature_names)), np.nan, dtype=float)
+    candidate_matrix = np.full((emb_raw.shape[0], len(feature_names)), np.nan, dtype=float)
+    for out_idx, feature_name in enumerate(feature_names):
+        raw_idx = feature_index.get(feature_name)
+        if raw_idx is None:
+            continue
+        hist_matrix[:, out_idx] = emb_raw[:, raw_idx]
+        candidate_matrix[:, out_idx] = candidate_vec_raw[raw_idx]
+    try:
+        return latent_regime_similarity(hist_matrix, candidate_matrix, model)
+    except Exception:
+        return np.full(emb_raw.shape[0], np.nan, dtype=float)
+
+
+def _target_regime_membership_vector(
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    model: Dict[str, Any],
+) -> np.ndarray:
+    feature_names = [str(name) for name in list(model.get("feature_names") or []) if str(name)]
+    if not feature_names:
+        return np.empty(0, dtype=float)
+    feature_index = {str(col): idx for idx, col in enumerate(embedding_cols)}
+    target_matrix = np.full((1, len(feature_names)), np.nan, dtype=float)
+    for out_idx, feature_name in enumerate(feature_names):
+        raw_idx = feature_index.get(feature_name)
+        if raw_idx is None:
+            continue
+        target_matrix[0, out_idx] = candidate_vec_raw[raw_idx]
+    try:
+        memberships = latent_regime_memberships(target_matrix, model)
+    except Exception:
+        return np.empty(0, dtype=float)
+    if memberships.ndim != 2 or memberships.shape[0] != 1:
+        return np.empty(0, dtype=float)
+    return np.asarray(memberships[0], dtype=float)
+
+
+def _weighted_state_similarity_v1(
+    *,
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    action_id: str,
+    action_subtype: str,
+    feature_weight_multipliers: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    profile = _weighted_distance_profile(action_id, action_subtype)
+    if emb_raw.size == 0:
+        empty = np.empty(0, dtype=float)
+        return {
+            "version": str(profile["version"]),
+            "profile": profile,
+            "state_similarity": empty,
+            "weighted_distance": empty,
+            "weighted_coverage": empty,
+            "critical_coverage": empty,
+            "coverage_gate_mask": np.empty(0, dtype=bool),
+            "size_gate_mask": np.empty(0, dtype=bool),
+            "size_gap": empty,
+            "primary_burden_gap": empty,
+        }
+
+    emb_norm, candidate_vec = _winsorized_robust_standardize(emb_raw, candidate_vec_raw)
+
+    weights = np.array([float(profile["weights"].get(col, 1.0)) for col in embedding_cols], dtype=float)
+    if feature_weight_multipliers:
+        weights = np.array(
+            [
+                float(weights[idx]) * float(_to_float(feature_weight_multipliers.get(col), 1.0) or 1.0)
+                for idx, col in enumerate(embedding_cols)
+            ],
+            dtype=float,
+        )
+    cand_present = np.isfinite(candidate_vec_raw)
+    row_present = np.isfinite(emb_raw)
+    pair_present = row_present & cand_present.reshape(1, -1)
+
+    total_weight = float(np.sum(weights[cand_present]))
+    overlap_weight = np.sum(pair_present * weights.reshape(1, -1), axis=1)
+    if total_weight > 1e-12:
+        weighted_coverage = overlap_weight / total_weight
+    else:
+        weighted_coverage = np.ones(emb_raw.shape[0], dtype=float)
+
+    critical_set = set(profile["critical_features"])
+    critical_mask = np.array([(col in critical_set) and cand_present[idx] for idx, col in enumerate(embedding_cols)], dtype=bool)
+    critical_total = float(np.sum(weights[critical_mask]))
+    critical_overlap = np.sum(pair_present * (weights * critical_mask.astype(float)).reshape(1, -1), axis=1)
+    if critical_total > 1e-12:
+        critical_coverage = critical_overlap / critical_total
+    else:
+        critical_coverage = weighted_coverage.copy()
+
+    diff_sq = np.square(emb_norm - candidate_vec.reshape(1, -1))
+    weighted_distance = np.divide(
+        np.sum(diff_sq * pair_present * weights.reshape(1, -1), axis=1),
+        np.maximum(overlap_weight, 1e-12),
+        out=np.full(emb_raw.shape[0], np.inf, dtype=float),
+        where=overlap_weight > 1e-12,
+    )
+
+    size_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    if "state_vector_v1.size_log_revenue" in embedding_cols:
+        idx = embedding_cols.index("state_vector_v1.size_log_revenue")
+        cand_size = candidate_vec_raw[idx]
+        row_size = emb_raw[:, idx]
+        if np.isfinite(cand_size):
+            size_gap = np.abs(row_size - cand_size)
+
+    primary_burden_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    primary_feature = str(profile.get("primary_burden_feature") or "")
+    if primary_feature in embedding_cols:
+        idx = embedding_cols.index(primary_feature)
+        cand_primary = candidate_vec_raw[idx]
+        row_primary = emb_raw[:, idx]
+        if np.isfinite(cand_primary):
+            primary_burden_gap = np.abs(row_primary - cand_primary)
+
+    base_similarity = np.exp(-float(profile["distance_scale"]) * np.clip(weighted_distance, 0.0, 25.0))
+    coverage_factor = np.clip(0.60 + 0.40 * weighted_coverage, 0.0, 1.0)
+    critical_factor = np.clip(0.55 + 0.45 * critical_coverage, 0.0, 1.0)
+    size_penalty = np.ones(emb_raw.shape[0], dtype=float)
+    size_penalty = np.where(
+        np.isfinite(size_gap),
+        np.exp(-0.90 * np.maximum(size_gap - 0.35, 0.0)),
+        size_penalty,
+    )
+    burden_penalty = np.ones(emb_raw.shape[0], dtype=float)
+    soft_burden_gap = float(profile.get("soft_burden_gap", 1.50) or 1.50)
+    burden_penalty = np.where(
+        np.isfinite(primary_burden_gap),
+        np.exp(-0.35 * np.maximum(primary_burden_gap - soft_burden_gap, 0.0)),
+        burden_penalty,
+    )
+    state_similarity = np.clip(base_similarity * coverage_factor * critical_factor * size_penalty * burden_penalty, 0.0, 1.0)
+
+    coverage_gate_mask = (weighted_coverage >= float(profile["min_weighted_coverage"])) & (
+        critical_coverage >= float(profile["min_critical_coverage"])
+    )
+    size_gate_mask = ~np.isfinite(size_gap) | (size_gap <= float(profile["max_size_gap"]))
+
+    return {
+        "version": str(profile["version"]),
+        "profile": profile,
+        "state_similarity": state_similarity,
+        "weighted_distance": weighted_distance,
+        "weighted_coverage": weighted_coverage,
+        "critical_coverage": critical_coverage,
+        "coverage_gate_mask": coverage_gate_mask,
+        "size_gate_mask": size_gate_mask,
+        "size_gap": size_gap,
+        "primary_burden_gap": primary_burden_gap,
+    }
+
+
+def _weighted_state_similarity_v2(
+    *,
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    action_id: str,
+    action_subtype: str,
+    feature_weight_multipliers: Optional[Dict[str, float]] = None,
+    target_action_scale: Optional[float] = None,
+) -> Dict[str, Any]:
+    profile = _weighted_distance_profile_v2(action_id, action_subtype)
+    if emb_raw.size == 0:
+        empty = np.empty(0, dtype=float)
+        return {
+            "version": str(profile["version"]),
+            "profile": profile,
+            "state_similarity": empty,
+            "weighted_distance": empty,
+            "weighted_coverage": empty,
+            "critical_coverage": empty,
+            "coverage_gate_mask": np.empty(0, dtype=bool),
+            "size_gate_mask": np.empty(0, dtype=bool),
+            "size_gap": empty,
+            "primary_burden_gap": empty,
+            "rate_gap": empty,
+            "credit_gap": empty,
+            "missing_penalty_factor": empty,
+            "regime_penalty_factor": empty,
+            "latent_regime_similarity": empty,
+            "latent_regime_penalty_factor": empty,
+            "target_regime_membership": empty,
+        }
+
+    transformed_emb_raw, transformed_candidate_vec_raw, transformed_features = _apply_matching_feature_transforms(
+        emb_raw,
+        candidate_vec_raw,
+        embedding_cols,
+        profile,
+    )
+    emb_norm, candidate_vec = _winsorized_robust_standardize(transformed_emb_raw, transformed_candidate_vec_raw)
+
+    effective_feature_relative_weights = dict(profile.get("feature_relative_weights") or {})
+    effective_interaction_terms = list(profile.get("interaction_terms") or [])
+    target_regime_membership = np.empty(0, dtype=float)
+    blended_latent_regime_penalty_weight = 0.0
+    blended_target_regime_model: Optional[Dict[str, Any]] = None
+    target_regime_mixture = profile.get("target_regime_mixture")
+    if isinstance(target_regime_mixture, dict) and isinstance(target_regime_mixture.get("model"), dict):
+        blended_target_regime_model = dict(target_regime_mixture.get("model") or {})
+        target_regime_membership = _target_regime_membership_vector(
+            candidate_vec_raw,
+            embedding_cols,
+            blended_target_regime_model,
+        )
+        regimes = list(target_regime_mixture.get("regimes") or [])
+        if target_regime_membership.size and regimes:
+            blended_feature_weights: Dict[str, float] = {}
+            blended_interaction_weights: Dict[Tuple[str, str], float] = {}
+            for cluster_idx, membership_value in enumerate(target_regime_membership.tolist()):
+                if cluster_idx >= len(regimes):
+                    break
+                membership_float = float(membership_value)
+                if membership_float <= 0.0:
+                    continue
+                regime_payload = dict(regimes[cluster_idx] or {})
+                for feature_name, weight_value in dict(regime_payload.get("feature_relative_weights") or {}).items():
+                    blended_feature_weights[str(feature_name)] = blended_feature_weights.get(str(feature_name), 0.0) + membership_float * float(weight_value)
+                for item in list(regime_payload.get("interaction_terms") or []):
+                    if not isinstance(item, dict):
+                        continue
+                    features = list(item.get("features") or [])
+                    if len(features) != 2:
+                        continue
+                    key = tuple(sorted((str(features[0] or ""), str(features[1] or ""))))
+                    if not key[0] or not key[1]:
+                        continue
+                    blended_interaction_weights[key] = blended_interaction_weights.get(key, 0.0) + membership_float * float(_to_float(item.get("weight"), 0.0) or 0.0)
+                blended_latent_regime_penalty_weight += membership_float * float(
+                    _to_float(regime_payload.get("latent_regime_penalty_weight"), 0.0) or 0.0
+                )
+            if blended_feature_weights:
+                effective_feature_relative_weights.update(blended_feature_weights)
+            if blended_interaction_weights:
+                effective_interaction_terms = [
+                    {"features": list(key), "weight": float(weight)}
+                    for key, weight in blended_interaction_weights.items()
+                    if float(weight) > 0.0
+                ]
+
+    action_text = str(action_id or "").strip().lower()
+    if _is_debt_support_action(action_text):
+        target_compact_features = {
+            str(col): float(candidate_vec_raw[idx])
+            for idx, col in enumerate(embedding_cols)
+            if col in _STATE_VECTOR_MATCHING_COLS and np.isfinite(candidate_vec_raw[idx])
+        }
+        target_debt_profile = _debt_issuance_runtime_archetype_profile(
+            target_compact_features,
+            action_id_text=action_text,
+            action_scale=target_action_scale,
+        )
+        for feature_name, multiplier in _debt_issuance_target_feature_multipliers(
+            target_debt_profile,
+            action_id_text=action_text,
+        ).items():
+            if feature_name not in effective_feature_relative_weights:
+                continue
+            effective_feature_relative_weights[feature_name] = float(
+                effective_feature_relative_weights.get(feature_name, 1.0) * float(multiplier)
+            )
+        profile["debt_target_archetype_label"] = str(target_debt_profile.get("label") or "")
+        profile["debt_target_archetype_scores"] = {
+            str(key): float(value)
+            for key, value in dict(target_debt_profile.get("scores") or {}).items()
+            if _to_float(value, None) is not None
+        }
+
+    for feature_name, multiplier in dict(feature_weight_multipliers or {}).items():
+        if feature_name not in effective_feature_relative_weights:
+            continue
+        numeric_multiplier = _to_float(multiplier, None)
+        if numeric_multiplier is None or numeric_multiplier <= 0.0:
+            continue
+        effective_feature_relative_weights[feature_name] = float(
+            effective_feature_relative_weights.get(feature_name, 1.0) * float(numeric_multiplier)
+        )
+
+    effective_feature_weights_map = _normalize_weight_mapping(
+        {
+            col: float(profile["group_weights"].get(_STATE_VECTOR_FEATURE_GROUP.get(col, "identity"), 1.0))
+            * float(effective_feature_relative_weights.get(col, 1.0))
+            for col in embedding_cols
+        }
+    )
+    feature_weights = np.array([float(effective_feature_weights_map.get(col, 1.0)) for col in embedding_cols], dtype=float)
+    feature_relative_weights = np.array(
+        [float(effective_feature_relative_weights.get(col, 1.0)) for col in embedding_cols],
+        dtype=float,
+    )
+    cand_present = np.isfinite(candidate_vec_raw)
+    row_present = np.isfinite(emb_raw)
+    pair_present = row_present & cand_present.reshape(1, -1)
+
+    total_weight = float(np.sum(feature_weights[cand_present]))
+    overlap_weight = np.sum(pair_present * feature_weights.reshape(1, -1), axis=1)
+    if total_weight > 1e-12:
+        weighted_coverage = overlap_weight / total_weight
+    else:
+        weighted_coverage = np.ones(emb_raw.shape[0], dtype=float)
+
+    critical_set = set(profile["critical_features"])
+    critical_mask = np.array([(col in critical_set) and cand_present[idx] for idx, col in enumerate(embedding_cols)], dtype=bool)
+    critical_total = float(np.sum(feature_weights[critical_mask]))
+    critical_overlap = np.sum(pair_present * (feature_weights * critical_mask.astype(float)).reshape(1, -1), axis=1)
+    if critical_total > 1e-12:
+        critical_coverage = critical_overlap / critical_total
+    else:
+        critical_coverage = weighted_coverage.copy()
+
+    diff_sq = np.square(emb_norm - candidate_vec.reshape(1, -1))
+    abs_diff = np.abs(emb_norm - candidate_vec.reshape(1, -1))
+    group_distance_terms: List[np.ndarray] = []
+    group_denoms: List[np.ndarray] = []
+    for group_name, feature_names in _STATE_VECTOR_GROUPS.items():
+        group_weight = float(profile["group_weights"].get(group_name, 1.0))
+        if group_weight <= 0.0:
+            continue
+        mask = np.array([(col in feature_names) for col in embedding_cols], dtype=bool)
+        if not bool(np.any(mask)):
+            continue
+        cand_group_mask = cand_present & mask
+        group_total = float(np.sum(feature_relative_weights[cand_group_mask]))
+        group_overlap = np.sum(
+            pair_present * (feature_relative_weights * mask.astype(float)).reshape(1, -1),
+            axis=1,
+        )
+        group_distance = np.divide(
+            np.sum(diff_sq * pair_present * (feature_relative_weights * mask.astype(float)).reshape(1, -1), axis=1),
+            np.maximum(group_overlap, 1e-12),
+            out=np.full(emb_raw.shape[0], np.nan, dtype=float),
+            where=group_overlap > 1e-12,
+        )
+        group_present = group_overlap > 1e-12
+        weighted_group_weight = np.where(group_present, group_weight, 0.0)
+        group_distance_terms.append(np.where(np.isfinite(group_distance), group_distance * weighted_group_weight, 0.0))
+        group_denoms.append(weighted_group_weight)
+        if group_total > 1e-12:
+            profile[f"{group_name}_coverage_mean"] = float(np.nanmean(group_overlap[group_present] / group_total)) if bool(np.any(group_present)) else 0.0
+
+    if group_distance_terms and group_denoms:
+        distance_numer = np.sum(np.vstack(group_distance_terms), axis=0)
+        distance_denom = np.sum(np.vstack(group_denoms), axis=0)
+        weighted_distance = np.divide(
+            distance_numer,
+            np.maximum(distance_denom, 1e-12),
+            out=np.full(emb_raw.shape[0], np.inf, dtype=float),
+            where=distance_denom > 1e-12,
+        )
+    else:
+        weighted_distance = np.full(emb_raw.shape[0], np.inf, dtype=float)
+
+    interaction_distance = np.zeros(emb_raw.shape[0], dtype=float)
+    interaction_denom = np.zeros(emb_raw.shape[0], dtype=float)
+    feature_index = {col: idx for idx, col in enumerate(embedding_cols)}
+    for item in list(effective_interaction_terms or []):
+        features = tuple(item.get("features") or ())
+        if len(features) != 2:
+            continue
+        left_idx = feature_index.get(str(features[0]))
+        right_idx = feature_index.get(str(features[1]))
+        if left_idx is None or right_idx is None:
+            continue
+        weight = float(_to_float(item.get("weight"), 0.0) or 0.0)
+        if weight <= 0.0:
+            continue
+        term_present = pair_present[:, left_idx] & pair_present[:, right_idx]
+        term_value = abs_diff[:, left_idx] * abs_diff[:, right_idx]
+        interaction_distance += np.where(term_present, term_value * weight, 0.0)
+        interaction_denom += np.where(term_present, weight, 0.0)
+    interaction_distance = np.divide(
+        interaction_distance,
+        np.maximum(interaction_denom, 1e-12),
+        out=np.zeros(emb_raw.shape[0], dtype=float),
+        where=interaction_denom > 1e-12,
+    )
+
+    size_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    if "state_vector_v1.size_log_revenue" in embedding_cols:
+        idx = embedding_cols.index("state_vector_v1.size_log_revenue")
+        cand_size = candidate_vec_raw[idx]
+        row_size = emb_raw[:, idx]
+        if np.isfinite(cand_size):
+            size_gap = np.abs(row_size - cand_size)
+
+    primary_burden_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    primary_feature = str(profile.get("primary_burden_feature") or "")
+    if primary_feature in embedding_cols:
+        idx = embedding_cols.index(primary_feature)
+        cand_primary = candidate_vec_raw[idx]
+        row_primary = emb_raw[:, idx]
+        if np.isfinite(cand_primary):
+            primary_burden_gap = np.abs(row_primary - cand_primary)
+
+    rate_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    if "state_vector_v1.rates_level" in embedding_cols:
+        idx = embedding_cols.index("state_vector_v1.rates_level")
+        cand_rate = candidate_vec_raw[idx]
+        row_rate = emb_raw[:, idx]
+        if np.isfinite(cand_rate):
+            rate_gap = np.abs(row_rate - cand_rate)
+
+    credit_gap = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    if "state_vector_v1.credit_spread" in embedding_cols:
+        idx = embedding_cols.index("state_vector_v1.credit_spread")
+        cand_credit = candidate_vec_raw[idx]
+        row_credit = emb_raw[:, idx]
+        if np.isfinite(cand_credit):
+            credit_gap = np.abs(row_credit - cand_credit)
+
+    base_similarity = np.exp(-float(profile["distance_scale"]) * np.clip(weighted_distance, 0.0, 40.0))
+    interaction_penalty_factor = np.where(
+        interaction_denom > 1e-12,
+        np.exp(-float(profile["distance_scale"]) * np.clip(interaction_distance, 0.0, 40.0)),
+        1.0,
+    )
+    missing_penalty_factor = np.exp(
+        -float(profile["missing_penalty_weight"]) * np.maximum(1.0 - weighted_coverage, 0.0)
+        -float(profile["critical_missing_penalty_weight"]) * np.maximum(1.0 - critical_coverage, 0.0)
+    )
+    soft_size_gap = float(profile.get("soft_size_gap", 0.35) or 0.35)
+    size_penalty = np.where(
+        np.isfinite(size_gap),
+        np.exp(-float(profile["size_penalty_weight"]) * np.maximum(size_gap - soft_size_gap, 0.0)),
+        1.0,
+    )
+    soft_burden_gap = float(profile.get("soft_burden_gap", 1.25) or 1.25)
+    burden_penalty = np.where(
+        np.isfinite(primary_burden_gap),
+        np.exp(-float(profile["burden_penalty_weight"]) * np.maximum(primary_burden_gap - soft_burden_gap, 0.0)),
+        1.0,
+    )
+    regime_penalty_factor = np.ones(emb_raw.shape[0], dtype=float)
+    rate_threshold = float(profile.get("regime_rate_gap_threshold", 1.0) or 1.0)
+    credit_threshold = float(profile.get("regime_credit_gap_threshold", 1.25) or 1.25)
+    regime_penalty_factor = np.where(
+        np.isfinite(rate_gap),
+        regime_penalty_factor
+        * np.exp(-float(profile["regime_rate_penalty_weight"]) * np.maximum(rate_gap - rate_threshold, 0.0)),
+        regime_penalty_factor,
+    )
+    regime_penalty_factor = np.where(
+        np.isfinite(credit_gap),
+        regime_penalty_factor
+        * np.exp(-float(profile["regime_credit_penalty_weight"]) * np.maximum(credit_gap - credit_threshold, 0.0)),
+        regime_penalty_factor,
+    )
+    borrower_quality_similarity = np.ones(emb_raw.shape[0], dtype=float)
+    financing_pressure_similarity = np.ones(emb_raw.shape[0], dtype=float)
+    market_regime_similarity = np.ones(emb_raw.shape[0], dtype=float)
+    stress_alignment_similarity = np.ones(emb_raw.shape[0], dtype=float)
+    compatibility_penalty_factor = np.ones(emb_raw.shape[0], dtype=float)
+    if _is_debt_support_action(action_text):
+        debt_compatibility = _debt_issuance_pairwise_compatibility(
+            emb_raw=emb_raw,
+            candidate_vec_raw=candidate_vec_raw,
+            embedding_cols=embedding_cols,
+            action_id_text=action_text,
+            feature_weight_multipliers=feature_weight_multipliers,
+        )
+        borrower_quality_similarity = np.asarray(
+            debt_compatibility.get("borrower_quality_similarity", borrower_quality_similarity),
+            dtype=float,
+        )
+        financing_pressure_similarity = np.asarray(
+            debt_compatibility.get("financing_pressure_similarity", financing_pressure_similarity),
+            dtype=float,
+        )
+        market_regime_similarity = np.asarray(
+            debt_compatibility.get("market_regime_similarity", market_regime_similarity),
+            dtype=float,
+        )
+        stress_alignment_similarity = np.asarray(
+            debt_compatibility.get("stress_alignment_similarity", stress_alignment_similarity),
+            dtype=float,
+        )
+        compatibility_penalty_factor = np.asarray(
+            debt_compatibility.get("compatibility_penalty_factor", compatibility_penalty_factor),
+            dtype=float,
+        )
+        regime_penalty_factor = regime_penalty_factor * compatibility_penalty_factor
+    latent_regime_similarity_values = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    latent_regime_penalty_factor = np.ones(emb_raw.shape[0], dtype=float)
+    latent_model = profile.get("latent_regime_model")
+    latent_weight = float(_to_float(profile.get("latent_regime_penalty_weight"), 0.0) or 0.0)
+    if blended_latent_regime_penalty_weight > 0.0 and isinstance(blended_target_regime_model, dict):
+        latent_model = dict(blended_target_regime_model)
+        latent_weight = float(latent_weight) + float(blended_latent_regime_penalty_weight)
+    if latent_weight > 0.0 and isinstance(latent_model, dict):
+        latent_regime_similarity_values = _latent_regime_similarity_vector(
+            emb_raw,
+            candidate_vec_raw,
+            embedding_cols,
+            latent_model,
+        )
+        latent_regime_penalty_factor = np.where(
+            np.isfinite(latent_regime_similarity_values),
+            np.exp(-latent_weight * np.maximum(1.0 - latent_regime_similarity_values, 0.0)),
+            1.0,
+        )
+
+    state_similarity = np.clip(
+        base_similarity
+        * interaction_penalty_factor
+        * missing_penalty_factor
+        * size_penalty
+        * burden_penalty
+        * regime_penalty_factor
+        * latent_regime_penalty_factor,
+        0.0,
+        1.0,
+    )
+    coverage_gate_mask = (weighted_coverage >= float(profile["min_weighted_coverage"])) & (
+        critical_coverage >= float(profile["min_critical_coverage"])
+    )
+    size_gate_mask = ~np.isfinite(size_gap) | (size_gap <= float(profile["max_size_gap"]))
+    profile["candidate_feature_weight_multipliers"] = {
+        str(key): float(value)
+        for key, value in dict(feature_weight_multipliers or {}).items()
+        if _to_float(value, None) is not None and float(value) != 1.0
+    }
+
+    return {
+        "version": str(profile["version"]),
+        "profile": profile,
+        "transformed_features": transformed_features,
+        "state_similarity": state_similarity,
+        "weighted_distance": weighted_distance,
+        "weighted_coverage": weighted_coverage,
+        "critical_coverage": critical_coverage,
+        "coverage_gate_mask": coverage_gate_mask,
+        "size_gate_mask": size_gate_mask,
+        "size_gap": size_gap,
+        "primary_burden_gap": primary_burden_gap,
+        "rate_gap": rate_gap,
+        "credit_gap": credit_gap,
+        "interaction_distance": interaction_distance,
+        "interaction_penalty_factor": interaction_penalty_factor,
+        "missing_penalty_factor": missing_penalty_factor,
+        "regime_penalty_factor": regime_penalty_factor,
+        "borrower_quality_similarity": borrower_quality_similarity,
+        "financing_pressure_similarity": financing_pressure_similarity,
+        "market_regime_similarity": market_regime_similarity,
+        "stress_alignment_similarity": stress_alignment_similarity,
+        "compatibility_penalty_factor": compatibility_penalty_factor,
+        "latent_regime_similarity": latent_regime_similarity_values,
+        "latent_regime_penalty_factor": latent_regime_penalty_factor,
+        "target_regime_membership": target_regime_membership,
+    }
+
+
+def _weighted_state_similarity(
+    *,
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    action_id: str,
+    action_subtype: str,
+    feature_weight_multipliers: Optional[Dict[str, float]] = None,
+    target_action_scale: Optional[float] = None,
+) -> Dict[str, Any]:
+    if _precedent_distance_profile_version() == _WEIGHTED_DISTANCE_V2_VERSION:
+        return _weighted_state_similarity_v2(
+            emb_raw=emb_raw,
+            candidate_vec_raw=candidate_vec_raw,
+            embedding_cols=embedding_cols,
+            action_id=action_id,
+            action_subtype=action_subtype,
+            feature_weight_multipliers=feature_weight_multipliers,
+            target_action_scale=target_action_scale,
+        )
+    return _weighted_state_similarity_v1(
+        emb_raw=emb_raw,
+        candidate_vec_raw=candidate_vec_raw,
+        embedding_cols=embedding_cols,
+        action_id=action_id,
+        action_subtype=action_subtype,
+        feature_weight_multipliers=feature_weight_multipliers,
+    )
+
+
+def augment_precedent_state_vector_columns(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if out.empty:
+        for col in _STATE_VECTOR_MATCHING_COLS:
+            out[col] = pd.Series(dtype=float)
+        return out
+
+    revenue = _first_numeric_series(
+        out,
+        (
+            "scale.revenue_ttm",
+            "operating.revenue_ttm_provider_direct",
+            "operating.revenue_ttm",
+            "base_revenue_ttm",
+            "revenue_ttm",
+        ),
+    )
+    direct_revenue = _first_numeric_series(
+        out,
+        (
+            "scale.revenue_ttm",
+            "operating.revenue_ttm_provider_direct",
+            "operating.revenue_ttm",
+            "revenue_ttm",
+        ),
+    )
+    historical_revenue = _first_numeric_series(out, ("base_revenue_ttm",))
+    revenue_for_size = revenue.copy()
+    historical_revenue_only = direct_revenue.isna() & historical_revenue.notna()
+    # Historical action-outcome baselines are stored in source units (generally USD millions),
+    # while live snapshots surface dollar values. Normalize the size feature onto a common dollar basis.
+    revenue_for_size = revenue_for_size.where(~historical_revenue_only, historical_revenue * 1_000_000.0)
+    size_log_revenue = _first_numeric_series(out, ("state_vector_v1.size_log_revenue",))
+    size_log_revenue = size_log_revenue.where(size_log_revenue.notna(), _safe_log10_series(revenue_for_size))
+
+    ebitda = _first_numeric_series(
+        out,
+        (
+            "scale.ebitda_ttm",
+            "base_ebitda_ttm",
+            "operating.ebitda_ltm_provider_direct",
+            "operating.operating_earnings_normalized",
+            "earnings.ebitda_ttm_provider_direct",
+            "ebitda_ttm",
+            "ebitda_ltm",
+            "ebitda",
+        ),
+    )
+    profitability = _first_numeric_series(out, ("state_vector_v1.profitability",))
+    derived_profitability = ebitda / revenue.where(revenue > 0)
+    profitability = profitability.where(profitability.notna(), derived_profitability)
+    profitability = profitability.where(
+        profitability.notna(),
+        _first_numeric_series(out, ("base_margin", "ebitda_margin")),
+    )
+
+    growth = _first_numeric_series(out, ("state_vector_v1.growth",))
+    revenue_lag = _first_numeric_series(
+        out,
+        (
+            "operating.revenue_ttm_lag_1y",
+            "base_revenue_ttm_lag_1y",
+            "operating.revenue_ttm_prior_year",
+            "operating.revenue_ttm_prev_year",
+            "revenue_ttm_lag_1y",
+        ),
+    )
+    derived_growth = (revenue / revenue_lag.where(revenue_lag > 0)) - 1.0
+    growth = growth.where(growth.notna(), derived_growth)
+    growth = growth.where(
+        growth.notna(),
+        _first_numeric_series(out, ("base_revenue_growth_yoy", "revenue_yoy_last_q", "revenue_yoy", "growth_revenue_yoy")),
+    )
+
+    gross_debt = _first_numeric_series(
+        out,
+        (
+            "capital.total_debt",
+            "base_total_debt",
+            "capital_structure.total_debt_provider_direct",
+            "capital_structure.total_debt_reported",
+            "capital_structure.total_debt",
+            "gross_debt",
+        ),
+    )
+    lease_liabilities = _first_numeric_series(
+        out,
+        (
+            "capital.lease_liabilities",
+            "capital_structure.lease_liabilities_sec_exact",
+            "lease_liabilities",
+        ),
+    )
+    retirement_liabilities = _first_numeric_series(
+        out,
+        (
+            "capital.combined_retirement_liability",
+            "capital_structure.combined_retirement_liability",
+            "combined_retirement_liability",
+            "capital.net_pension_liability",
+            "capital_structure.net_pension_liability",
+            "net_pension_liability",
+        ),
+    )
+    gross_obligation_burden = _first_numeric_series(out, ("state_vector_v1.gross_obligation_burden",))
+    derived_gross_obligation_burden = (
+        gross_debt.fillna(0.0)
+        + lease_liabilities.fillna(0.0)
+        + retirement_liabilities.fillna(0.0)
+    ) / ebitda.where(ebitda > 0)
+    gross_obligation_burden = gross_obligation_burden.where(
+        gross_obligation_burden.notna(),
+        derived_gross_obligation_burden,
+    )
+    gross_obligation_burden = gross_obligation_burden.where(
+        gross_obligation_burden.notna(),
+        _first_numeric_series(
+            out,
+            (
+                "capital.gross_leverage_including_retirement",
+                "capital_structure.gross_leverage_including_retirement",
+                "gross_leverage_including_retirement",
+            ),
+        ),
+    )
+
+    net_debt = _first_numeric_series(
+        out,
+        (
+            "capital.net_debt",
+            "capital_structure.net_debt_normalized",
+            "capital_structure.net_debt_standardized",
+            "capital_structure.net_debt",
+            "base_net_debt",
+            "net_debt",
+        ),
+    )
+    net_obligation_burden = _first_numeric_series(out, ("state_vector_v1.net_obligation_burden",))
+    derived_net_obligation_burden = (
+        net_debt.fillna(0.0)
+        + retirement_liabilities.fillna(0.0)
+    ) / ebitda.where(ebitda > 0)
+    net_obligation_burden = net_obligation_burden.where(
+        net_obligation_burden.notna(),
+        derived_net_obligation_burden,
+    )
+    net_obligation_burden = net_obligation_burden.where(
+        net_obligation_burden.notna(),
+        _first_numeric_series(
+            out,
+            (
+                "capital.net_leverage_including_retirement",
+                "capital_structure.net_leverage_including_retirement",
+                "net_leverage_including_retirement",
+                "base_leverage",
+                "leverage_net_debt_ebitda",
+            ),
+        ),
+    )
+
+    liquidity_ratio = _first_numeric_series(out, ("state_vector_v1.liquidity_flexibility",))
+    cash_liquidity = _first_numeric_series(
+        out,
+        (
+            "base_available_liquidity",
+            "base_cash",
+            "liquidity.cash_and_short_term_investments_provider_direct",
+            "cash_and_short_term_investments",
+            "liquidity.cash",
+            "cash",
+        ),
+    )
+    marketable_securities = _first_numeric_series(
+        out,
+        (
+            "liquidity.marketable_securities",
+            "liquidity.marketable_securities_sec_exact",
+            "marketable_securities",
+        ),
+    )
+    undrawn_revolver = _first_numeric_series(
+        out,
+        (
+            "liquidity.revolver_undrawn",
+            "revolver_undrawn",
+        ),
+    )
+    available_liquidity = _first_numeric_series(
+        out,
+        (
+            "liquidity.available_liquidity_normalized",
+            "available_liquidity_normalized",
+            "liquidity.available_for_actions",
+            "available_for_actions",
+        ),
+    )
+    near_term_debt = _first_numeric_series(
+        out,
+        (
+            "capital.debt_due_next_24m",
+            "debt_due_next_24m",
+            "capital.debt_due_0_12m",
+            "debt_due_0_12m",
+            "base_current_debt",
+            "capital.current_debt",
+            "capital_structure.current_debt_statement_direct",
+            "current_debt",
+        ),
+    )
+    derived_available_liquidity = (
+        cash_liquidity.fillna(0.0)
+        + marketable_securities.fillna(0.0)
+        + undrawn_revolver.fillna(0.0)
+    )
+    derived_available_liquidity = derived_available_liquidity.where(cash_liquidity.notna(), np.nan)
+    available_liquidity = available_liquidity.where(available_liquidity.notna(), derived_available_liquidity)
+    derived_liquidity_ratio = available_liquidity / near_term_debt.where(near_term_debt > 0)
+    liquidity_ratio = liquidity_ratio.where(liquidity_ratio.notna(), derived_liquidity_ratio)
+
+    interest_coverage = _first_numeric_series(out, ("state_vector_v1.interest_coverage", "capital.interest_coverage", "interest_coverage"))
+    interest_expense = _first_numeric_series(
+        out,
+        (
+            "base_interest_expense",
+            "capital.interest_expense",
+            "capital_structure.interest_expense_statement_direct",
+            "interest_expense",
+            "interest_expense_ttm",
+        ),
+    )
+    derived_interest_coverage = ebitda / interest_expense.where(interest_expense > 0)
+    interest_coverage = interest_coverage.where(interest_coverage.notna(), derived_interest_coverage)
+
+    valuation_multiple = _first_numeric_series(
+        out,
+        (
+            "state_vector_v1.valuation_multiple",
+            "market.ev_ebitda",
+            "ev_ebitda",
+            "base_ev_ebitda",
+        ),
+    )
+    market_cap = _first_numeric_series(
+        out,
+        (
+            "scale.market_cap",
+            "market.market_cap_provider_direct",
+            "market.market_cap",
+            "market_cap",
+        ),
+    )
+    historical_market_cap = _first_numeric_series(out, ("base_market_cap",))
+    market_cap = market_cap.where(
+        market_cap.notna(),
+        _normalize_market_cap_series_to_dollars(historical_market_cap, prefer_source_units=True),
+    )
+    cash_and_sti = cash_liquidity
+    derived_valuation_multiple = (
+        market_cap
+        + gross_debt
+        + lease_liabilities.fillna(0.0)
+        - cash_and_sti
+    ) / ebitda.where(ebitda > 0)
+    derived_valuation_multiple = derived_valuation_multiple.where(
+        market_cap.notna() & gross_debt.notna() & cash_and_sti.notna(),
+        np.nan,
+    )
+    valuation_multiple = valuation_multiple.where(valuation_multiple.notna(), derived_valuation_multiple)
+
+    cash_generation = _first_numeric_series(
+        out,
+        (
+            "state_vector_v1.cash_generation",
+            "base_fcf_yield",
+            "market.fcf_yield",
+            "fcf_yield",
+            "base_fcf_margin",
+            "fcf_margin",
+        ),
+    )
+    free_cash_flow = _first_numeric_series(
+        out,
+        (
+            "cash_flow.free_cash_flow_ttm",
+            "operating.free_cash_flow_ttm",
+            "free_cash_flow_ttm",
+        ),
+    )
+    derived_cash_generation = free_cash_flow / market_cap.where(market_cap > 0)
+    cash_generation = cash_generation.where(cash_generation.notna(), derived_cash_generation)
+
+    market_stress = _first_numeric_series(out, ("state_vector_v1.market_stress",))
+    vol_90d = _first_numeric_series(out, ("market.volatility_90d", "volatility_90d", "base_volatility_90d"))
+    drawdown_90d = _first_numeric_series(out, ("market.drawdown_90d", "drawdown_90d", "base_drawdown_90d"))
+    macro_vix = _first_numeric_series(out, ("macro_vix", "market.vix"))
+    derived_market_stress = _weighted_average_series(
+        (
+            (vol_90d, 0.6),
+            (drawdown_90d.abs(), 0.4),
+        )
+    )
+    market_stress = market_stress.where(market_stress.notna(), derived_market_stress)
+    market_stress = market_stress.where(
+        market_stress.notna(),
+        (macro_vix / 80.0).clip(lower=0.0, upper=1.0),
+    )
+
+    market_access = _first_numeric_series(out, ("state_vector_v1.market_access",))
+    vol_30d = _first_numeric_series(out, ("market.volatility_30d", "volatility_30d", "base_volatility_30d"))
+    momentum_60d = _first_numeric_series(out, ("market.momentum_60d", "momentum_60d", "base_momentum_60d"))
+    credit_window_proxy = _first_numeric_series(
+        out,
+        ("market.credit_window_proxy", "credit_window_proxy", "base_credit_window_proxy"),
+    )
+    equity_window_proxy = _first_numeric_series(
+        out,
+        ("market.equity_window_proxy", "equity_window_proxy", "base_equity_window_proxy"),
+    )
+    credit_spread_level = _first_numeric_series(
+        out,
+        ("market.credit_spread_level", "credit_spread_level", "base_credit_spread_level"),
+    )
+    derived_equity_window = _weighted_average_series(
+        (
+            ((1.0 - (vol_30d / 0.8)).clip(lower=0.0, upper=1.0), 1.0),
+            (((momentum_60d + 0.2) / 0.4).clip(lower=0.0, upper=1.0), 1.0),
+            ((valuation_multiple / 20.0).clip(lower=0.0, upper=1.0), 1.0),
+        )
+    )
+    equity_window_proxy = equity_window_proxy.where(equity_window_proxy.notna(), derived_equity_window)
+    spread_access = (1.0 - (credit_spread_level / 0.08)).clip(lower=0.0, upper=1.0)
+    derived_credit_window = _weighted_average_series(
+        (
+            ((1.0 - (credit_spread_level / 0.10)).clip(lower=0.0, upper=1.0), 1.0),
+            ((1.0 - (vol_30d / 1.0)).clip(lower=0.0, upper=1.0), 1.0),
+        )
+    )
+    credit_window_proxy = credit_window_proxy.where(credit_window_proxy.notna(), derived_credit_window)
+    derived_market_access = _weighted_average_series(
+        (
+            (credit_window_proxy, 0.4),
+            (equity_window_proxy, 0.4),
+            (spread_access, 0.2),
+        )
+    )
+    market_access = market_access.where(market_access.notna(), derived_market_access)
+
+    rates_level = _first_numeric_series(
+        out,
+        (
+            "state_vector_v1.rates_level",
+            "macro.fed_funds_effective",
+            "macro_fed_funds_effective",
+            "macro_rate_10y",
+            "macro_ust_10y",
+            "macro_10y_treasury",
+        ),
+    )
+    credit_spread = _first_numeric_series(
+        out,
+        (
+            "state_vector_v1.credit_spread",
+            "macro.hy_oas",
+            "macro_hy_oas",
+            "macro_credit_spread",
+        ),
+    )
+
+    out["state_vector_v1.size_log_revenue"] = size_log_revenue
+    out["state_vector_v1.profitability"] = profitability
+    out["state_vector_v1.growth"] = growth
+    out["state_vector_v1.gross_obligation_burden"] = gross_obligation_burden
+    out["state_vector_v1.net_obligation_burden"] = net_obligation_burden
+    out["state_vector_v1.liquidity_flexibility"] = liquidity_ratio
+    out["state_vector_v1.interest_coverage"] = interest_coverage
+    out["state_vector_v1.valuation_multiple"] = valuation_multiple
+    out["state_vector_v1.cash_generation"] = cash_generation
+    out["state_vector_v1.market_stress"] = market_stress
+    out["state_vector_v1.market_access"] = market_access
+    out["state_vector_v1.rates_level"] = rates_level
+    out["state_vector_v1.credit_spread"] = credit_spread
+    return out
+
+
