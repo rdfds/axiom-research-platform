@@ -1191,3 +1191,202 @@ def test_build_precedent_pack_v2_applies_outcome_aware_reranker(tmp_path):
     assert outcome_ids[0].startswith("000201::")
 
 
+def test_build_precedent_pack_v2_applies_company_diversity_cap(tmp_path):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000101",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=90,
+                ticker="DUPA",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.00,
+                    "state_vector_v1.valuation_multiple": 60.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000101",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=60,
+                ticker="DUPA",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.02,
+                    "state_vector_v1.valuation_multiple": 58.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000102",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=30,
+                ticker="PEER",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.05,
+                    "state_vector_v1.valuation_multiple": 54.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+            ),
+        ]
+    )
+    candidate_features = _state_vector_candidate_features(
+        sector="TECH",
+        **{
+            "state_vector_v1.size_log_revenue": 10.00,
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.cash_generation": 0.02,
+        },
+    )
+
+    payload_path = tmp_path / "precedent_distance_weights_v2.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "scopes": {
+                    "capital_return.open_market_buyback": {
+                        "scope_key": "capital_return.open_market_buyback",
+                        "use_in_runtime": True,
+                        "default_enabled": True,
+                        "max_matches_per_company": 1,
+                    }
+                }
+            }
+        )
+    )
+
+    previous_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+    try:
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = str(payload_path)
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack = build_precedent_pack_v2(
+            candidate_id="cand-diversity-live",
+            run_id="run-diversity-live",
+            company_id="000999",
+            action_id="capital_return.open_market_buyback",
+            action_subtype="open_market_buyback",
+            action_params={},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=2,
+            min_k=1,
+        )
+    finally:
+        if previous_path is None:
+            os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = previous_path
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    retrieved_company_ids = [case.company_id for case in pack.retrieved_cohorts[:2]]
+    assert retrieved_company_ids == ["000101", "000102"]
+    assert pack.profiling["max_matches_per_company"] == 1
+    assert pack.profiling["company_diversity_cap_applied"] is True
+    assert pack.profiling["company_diversity_cap_relaxed"] is False
+
+
+def test_mismatch_diagnostics_trigger_out_of_sample():
+    features = _candidate_features()
+    features["leverage_net_debt_ebitda"] = 8.0
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-4",
+        run_id="run-4",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.40, "funding_mix": {"cash": 1.0}},
+        candidate_features=features,
+        candidate_regime={"credit_regime": "tight", "risk_regime": "risk_off", "vol_regime": "high"},
+        historical_df=_hist_df(45),
+        top_k=20,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    feature_names = [m["feature_name"] for m in diag.get("feature_mismatches", [])]
+    assert "state_vector_v1.net_obligation_burden" in feature_names
+    assert len(feature_names) >= 1
+
+
+def test_step8_alias_fields_present_in_serialized_pack():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-5",
+        run_id="run-5",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=_hist_df(30),
+        top_k=20,
+        min_k=10,
+    )
+    payload = pack.to_dict()
+    assert "cohorts" in payload
+    assert "distributions" in payload
+    assert "tails" in payload
+    assert "precedent_confidence" in payload
+    assert "legacy_distributions" in payload
+    assert isinstance(payload["legacy_distributions"], list)
+
+
+def test_low_precedent_coverage_flag_when_below_minimum():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-6",
+        run_id="run-6",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=_hist_df(7),
+        top_k=30,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("low_precedent_coverage") is True
+
+
+def test_sector_similarity_influences_scoring():
+    hist = _hist_df(45)
+    base = _candidate_features()
+    match_pack = build_precedent_pack_v2(
+        candidate_id="cand-7a",
+        run_id="run-7",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=base,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    mismatch_features = dict(base)
+    mismatch_features["sector"] = "UTILITIES"
+    mismatch_pack = build_precedent_pack_v2(
+        candidate_id="cand-7b",
+        run_id="run-7",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=mismatch_features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    s_match = np.mean([s.sector_similarity for s in match_pack.similarity_scores])
+    s_mismatch = np.mean([s.sector_similarity for s in mismatch_pack.similarity_scores])
+    assert s_match > s_mismatch
+
+

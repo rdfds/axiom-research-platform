@@ -4687,3 +4687,142 @@ def _compute_calibration_confidence(
     }
 
 
+def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
+    if v is None:
+        return default
+    if isinstance(v, dict):
+        v = v.get("value")
+        if v is None:
+            return default
+    try:
+        out = float(v)
+    except Exception:
+        return default
+    if math.isnan(out) or math.isinf(out):
+        return default
+    return out
+
+
+def _dist(series: pd.Series) -> DistributionStats:
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if s.empty:
+        return DistributionStats(
+            mean=None,
+            median=None,
+            p10=None,
+            p25=None,
+            p75=None,
+            p90=None,
+            sample_size=0,
+        )
+    return DistributionStats(
+        mean=float(s.mean()),
+        median=float(s.median()),
+        p10=float(s.quantile(0.10)),
+        p25=float(s.quantile(0.25)),
+        p75=float(s.quantile(0.75)),
+        p90=float(s.quantile(0.90)),
+        sample_size=int(len(s)),
+    )
+
+
+def _combine_metric(df: pd.DataFrame, cols: Sequence[str]) -> pd.Series:
+    present = [c for c in cols if c in df.columns]
+    if not present:
+        return pd.Series(np.nan, index=df.index, dtype=float)
+    out = pd.DataFrame({c: pd.to_numeric(df[c], errors="coerce") for c in present})
+    return out.mean(axis=1, skipna=True)
+
+
+def _empty_metric_set() -> MetricDistributionSet:
+    e = DistributionStats(None, None, None, None, None, None, 0)
+    return MetricDistributionSet(
+        valuation_multiple_change=e,
+        equity_return_vs_sector=e,
+        credit_spread_change=e,
+        rating_migration=e,
+        leverage_change=e,
+        fcf_change=e,
+        volatility_change=e,
+    )
+
+
+def _metric_set_from_df(df: pd.DataFrame, horizon: str) -> MetricDistributionSet:
+    if df.empty:
+        return _empty_metric_set()
+
+    def _series(col: str) -> pd.Series:
+        if col not in df.columns:
+            return pd.Series(np.nan, index=df.index, dtype=float)
+        return pd.to_numeric(df[col], errors="coerce")
+
+    if horizon == "1m":
+        val = _combine_metric(df, ["outcome_pe_6m", "outcome_ev_ebitda_6m"]) / 6.0
+        eq = _series("outcome_pe_6m") / 6.0
+        credit = _series("credit_spread_change_1m")
+        rating = _series("rating_migration_1m")
+    elif horizon == "6m":
+        val = _combine_metric(df, ["outcome_pe_6m", "outcome_ev_ebitda_6m"])
+        eq = _series("outcome_pe_6m")
+        credit = _series("credit_spread_change_6m")
+        rating = _series("rating_migration_6m")
+    elif horizon == "12m":
+        val = _combine_metric(df, ["outcome_pe_12m", "outcome_ev_ebitda_12m"])
+        eq = _series("outcome_pe_12m")
+        credit = _series("credit_spread_change_12m")
+        rating = _series("rating_migration_12m")
+    else:  # 24m
+        val = _combine_metric(df, ["outcome_pe_12m", "outcome_ev_ebitda_12m"]) * 2.0
+        eq = _series("outcome_pe_12m") * 2.0
+        credit = _series("credit_spread_change_24m")
+        rating = _series("rating_migration_24m")
+
+    lev = _series("leverage_delta")
+    fcf = _series("fcf_margin_delta")
+
+    # Fallback proxies where direct series are unavailable in the historical table.
+    vol = val.abs()
+    if credit.dropna().empty:
+        credit = pd.Series(np.nan, index=df.index, dtype=float)
+    if rating.dropna().empty:
+        rating = pd.Series(np.nan, index=df.index, dtype=float)
+
+    return MetricDistributionSet(
+        valuation_multiple_change=_dist(val),
+        equity_return_vs_sector=_dist(eq),
+        credit_spread_change=_dist(credit),
+        rating_migration=_dist(rating),
+        leverage_change=_dist(lev),
+        fcf_change=_dist(fcf),
+        volatility_change=_dist(vol),
+    )
+
+
+def _build_outcome_distributions(df: pd.DataFrame) -> OutcomeDistributions:
+    return OutcomeDistributions(
+        horizon_1m=_metric_set_from_df(df, "1m"),
+        horizon_6m=_metric_set_from_df(df, "6m"),
+        horizon_12m=_metric_set_from_df(df, "12m"),
+        horizon_24m=_metric_set_from_df(df, "24m"),
+    )
+
+
+def _regime_thresholds(full_df: pd.DataFrame) -> Dict[str, float]:
+    hy = (
+        pd.to_numeric(full_df["macro_hy_oas"], errors="coerce")
+        if "macro_hy_oas" in full_df.columns
+        else pd.Series(np.nan, index=full_df.index, dtype=float)
+    )
+    vix = (
+        pd.to_numeric(full_df["macro_vix"], errors="coerce")
+        if "macro_vix" in full_df.columns
+        else pd.Series(np.nan, index=full_df.index, dtype=float)
+    )
+    return {
+        "hy_q25": float(hy.quantile(0.25)) if not hy.dropna().empty else 0.0,
+        "hy_q75": float(hy.quantile(0.75)) if not hy.dropna().empty else 0.0,
+        "vix_q25": float(vix.quantile(0.25)) if not vix.dropna().empty else 0.0,
+        "vix_q75": float(vix.quantile(0.75)) if not vix.dropna().empty else 0.0,
+    }
+
+

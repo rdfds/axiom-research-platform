@@ -163,3 +163,30 @@ def _first_present_column(df: pd.DataFrame, columns: List[str]) -> Optional[str]
     return None
 
 
+def learn_feature_weights(df: pd.DataFrame, feature_cols: List[str], target_col: str) -> pd.Series:
+    """
+    Learn feature weights using absolute correlation with the target outcome.
+    Falls back to uniform weights when correlations are undefined.
+    """
+    weights = {}
+    for col in feature_cols:
+        if col not in df.columns:
+            continue
+        x = _safe_numeric(df[col])
+        y = _safe_numeric(df[target_col]) if target_col in df.columns else None
+        if y is None or y.dropna().empty or x.dropna().empty:
+            weights[col] = 1.0
+            continue
+        corr = x.corr(y)
+        if corr is None or np.isnan(corr):
+            weights[col] = 1.0
+        else:
+            weights[col] = abs(corr)
+    if not weights:
+        return pd.Series(dtype=float)
+    w = pd.Series(weights)
+    if w.sum() == 0:
+        w[:] = 1.0
+    return w / w.sum()
+
+
