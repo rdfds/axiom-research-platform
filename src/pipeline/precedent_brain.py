@@ -5377,3 +5377,1855 @@ def _tail_candidates(
     return out
 
 
+def build_precedent_pack_v2(
+    *,
+    candidate_id: str,
+    run_id: str,
+    company_id: str,
+    action_id: str,
+    action_subtype: Optional[str],
+    action_params: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    candidate_regime: Dict[str, Any],
+    historical_df: Optional[pd.DataFrame] = None,
+    historical_event_store: Optional[HistoricalEventStore] = None,
+    historical_state_store: Optional[HistoricalCompanyStateSnapshotStore] = None,
+    historical_outcome_store: Optional[HistoricalOutcomeStore] = None,
+    regime_history: Optional[RegimeHistory] = None,
+    retrieval_index: Optional[PrecedentRetrievalIndex] = None,
+    top_k: int = 30,
+    min_k: int = 10,
+) -> PrecedentPack:
+    t_start = time.perf_counter()
+    profile: Dict[str, Any] = {}
+    debug_steps = str(os.environ.get("RECO_PRECEDENT_DEBUG", "")).strip().lower() in {"1", "true", "yes", "on"}
+    disable_narrative = str(os.environ.get("RECO_DISABLE_PRECEDENT_NARRATIVE", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _debug(stage: str, **extra: Any) -> None:
+        if not debug_steps:
+            return
+        payload = {
+            "ok": True,
+            "event": "precedent_debug",
+            "candidate_id": str(candidate_id),
+            "action_id": str(action_id),
+            "stage": stage,
+            "elapsed_seconds": round(time.perf_counter() - t_start, 6),
+        }
+        payload.update(extra)
+        print(json.dumps(payload), flush=True)
+
+    _debug("start")
+    if retrieval_index is None and historical_df is None:
+        if historical_event_store is None:
+            raise ValueError("historical_df or historical_event_store is required")
+        _debug("materialize_historical_frame:start")
+        historical_df = materialize_historical_frame(
+            historical_event_store=historical_event_store,
+            historical_state_store=historical_state_store,
+            historical_outcome_store=historical_outcome_store,
+            regime_history=regime_history,
+        )
+        _debug("materialize_historical_frame:done", rows=int(len(historical_df)))
+
+    if retrieval_index is None:
+        assert historical_df is not None
+        _debug("build_retrieval_index:start", rows=int(len(historical_df)))
+        retrieval_index = build_precedent_retrieval_index(historical_df)
+        _debug("build_retrieval_index:done", rows=int(retrieval_index.n_rows))
+    profile["retrieval_index_seconds"] = round(time.perf_counter() - t_start, 6)
+
+    if retrieval_index.n_rows == 0:
+        return PrecedentPack(
+            candidate_id=candidate_id,
+            run_id=run_id,
+            mismatch_diagnostics={"out_of_sample_flag": True, "reason": "no_historical_events"},
+            calibration_confidence=0.0,
+            profiling={**profile, "total_seconds": round(time.perf_counter() - t_start, 6)},
+        )
+
+    df = retrieval_index.df
+
+    # Hierarchical action-conditional retrieval:
+    # 1) exact action id / subtype matches
+    # 2) domain-specific action family matches
+    # 3) same action type family
+    # 4) global fallback (only if sparse)
+    action_id_text = str(action_id or "")
+    action_subtype_text = _effective_action_subtype(
+        action_id_text,
+        action_subtype,
+        action_params if isinstance(action_params, dict) else {},
+    )
+    action_leaf = action_id_text.split(".")[-1] if action_id_text else ""
+    action_domain = action_id_text.split(".")[0] if "." in action_id_text else ""
+    action_alias = action_id_to_outcomes_action_type(action_id_text, "")
+    outcomes_subtype_alias = action_subtype_to_outcomes_subtype(
+        action_id=action_id_text,
+        action_type=action_alias,
+        action_subtype=action_subtype_text,
+    )
+    action_family_scale_weights = _candidate_action_family_scale_weights(
+        action_id_text,
+        action_subtype_text,
+        action_params if isinstance(action_params, dict) else {},
+        candidate_features if isinstance(candidate_features, dict) else {},
+    )
+    action_family_weights = _candidate_action_family_weights(action_id_text, action_subtype_text)
+    family_scale_keys = tuple(k for k, _ in action_family_scale_weights if k)
+    family_keys = tuple(k for k, _ in action_family_weights if k)
+
+    exact_keys = _candidate_exact_action_keys(
+        action_id_text,
+        action_subtype_text,
+        action_leaf,
+        outcomes_subtype_alias,
+    )
+    exact_parts: List[np.ndarray] = []
+    for k in exact_keys:
+        if k in retrieval_index.action_id_lookup:
+            exact_parts.append(retrieval_index.action_id_lookup[k])
+        if k in retrieval_index.subtype_lookup:
+            exact_parts.append(retrieval_index.subtype_lookup[k])
+    exact_idx = np.unique(np.concatenate(exact_parts)) if exact_parts else np.empty(0, dtype=np.int64)
+
+    family_scale_option_parts: List[Tuple[str, np.ndarray]] = []
+    for k in family_scale_keys:
+        if k in retrieval_index.family_scale_lookup:
+            family_scale_option_parts.append((k, retrieval_index.family_scale_lookup[k]))
+    family_scale_idx = np.empty(0, dtype=np.int64)
+    selected_family_scale_keys: Tuple[str, ...] = ()
+
+    family_option_parts: List[Tuple[str, np.ndarray]] = []
+    for k in family_keys:
+        if k in retrieval_index.family_lookup:
+            family_option_parts.append((k, retrieval_index.family_lookup[k]))
+    family_idx = np.empty(0, dtype=np.int64)
+    selected_family_keys: Tuple[str, ...] = ()
+
+    type_keys = tuple(sorted({action_alias, action_domain}))
+    type_keys = tuple(k for k in type_keys if k)
+    type_parts: List[np.ndarray] = []
+    for k in type_keys:
+        if k in retrieval_index.type_lookup:
+            type_parts.append(retrieval_index.type_lookup[k])
+    type_idx = np.unique(np.concatenate(type_parts)) if type_parts else np.empty(0, dtype=np.int64)
+
+    exact_support_min = _minimum_exact_support(min_k=int(min_k), top_k=int(top_k))
+
+    retrieval_tier = "exact"
+    if exact_idx.shape[0] >= int(exact_support_min):
+        candidate_idx = exact_idx
+    else:
+        cumulative_family_scale_parts: List[np.ndarray] = []
+        cumulative_family_scale_keys: List[str] = []
+        for family_scale_key, family_scale_part in family_scale_option_parts:
+            cumulative_family_scale_parts.append(family_scale_part)
+            cumulative_family_scale_keys.append(family_scale_key)
+            candidate_family_scale_idx = np.unique(np.concatenate(cumulative_family_scale_parts))
+            if candidate_family_scale_idx.shape[0] >= int(exact_support_min):
+                family_scale_idx = candidate_family_scale_idx
+                selected_family_scale_keys = tuple(cumulative_family_scale_keys)
+                break
+
+        if family_scale_idx.shape[0] >= int(exact_support_min):
+            candidate_idx = np.unique(np.concatenate([x for x in (exact_idx, family_scale_idx) if x.size]))
+            retrieval_tier = "family"
+        else:
+            cumulative_family_parts: List[np.ndarray] = []
+            cumulative_family_keys: List[str] = []
+            for family_key, family_part in family_option_parts:
+                cumulative_family_parts.append(family_part)
+                cumulative_family_keys.append(family_key)
+                candidate_family_idx = np.unique(np.concatenate(cumulative_family_parts))
+                if candidate_family_idx.shape[0] >= int(exact_support_min):
+                    family_idx = candidate_family_idx
+                    selected_family_keys = tuple(cumulative_family_keys)
+                    break
+            if family_idx.shape[0] == 0 and family_option_parts:
+                family_idx = np.unique(np.concatenate([part for _, part in family_option_parts]))
+                selected_family_keys = tuple(k for k, _ in family_option_parts)
+
+            if family_idx.shape[0] >= int(exact_support_min):
+                candidate_idx = np.unique(np.concatenate([x for x in (exact_idx, family_idx) if x.size]))
+                retrieval_tier = "family"
+            elif family_scale_idx.size or family_idx.size or exact_idx.size or type_idx.size:
+                candidate_idx = np.unique(
+                    np.concatenate([x for x in (exact_idx, family_scale_idx, family_idx, type_idx) if x.size])
+                )
+                retrieval_tier = "family" if (family_scale_idx.size or family_idx.size) else "sibling_type"
+            else:
+                candidate_idx = np.empty(0, dtype=np.int64)
+                retrieval_tier = "global"
+
+    if candidate_idx.shape[0] < int(min_k):
+        candidate_idx = np.arange(retrieval_index.n_rows, dtype=np.int64)
+        retrieval_tier = "global"
+    _debug(
+        "candidate_pool:done",
+        retrieval_tier=str(retrieval_tier),
+        exact_match_count=int(exact_idx.shape[0]),
+        family_scale_match_count=int(family_scale_idx.shape[0]),
+        family_match_count=int(family_idx.shape[0]),
+        type_match_count=int(type_idx.shape[0]),
+        selected_family_scale_keys=list(selected_family_scale_keys),
+        selected_family_keys=list(selected_family_keys),
+        candidate_pool_size=int(candidate_idx.shape[0]),
+    )
+    profile["candidate_pool_seconds"] = round(time.perf_counter() - t_start - sum(float(profile.get(k, 0.0) or 0.0) for k in ("retrieval_index_seconds",)), 6)
+    profile["candidate_pool_size"] = int(candidate_idx.shape[0])
+    profile["exact_match_count"] = int(exact_idx.shape[0])
+    profile["family_scale_match_count"] = int(family_scale_idx.shape[0])
+    profile["family_match_count"] = int(family_idx.shape[0])
+    profile["type_match_count"] = int(type_idx.shape[0])
+    profile["selected_family_scale_keys"] = list(selected_family_scale_keys)
+    profile["selected_family_keys"] = list(selected_family_keys)
+    profile["retrieval_tier"] = str(retrieval_tier)
+
+    # Coverage reflects exact action-conditional depth, not fallback pool size.
+    low_precedent_coverage = int(exact_idx.shape[0]) < int(exact_support_min)
+
+    # Hard pre-filter on sector + market-cap bucket before similarity scoring.
+    # If this would make cohort too small, we explicitly relax and continue.
+    candidate_feature_values = _flatten_matching_feature_payload(candidate_features if isinstance(candidate_features, dict) else {})
+    cand_market_cap_value = _candidate_market_cap(candidate_feature_values)
+    if cand_market_cap_value is not None and _to_float(candidate_feature_values.get("market_cap"), None) is None:
+        candidate_feature_values["market_cap"] = cand_market_cap_value
+    cand_sector_pref = _sector_token_from_candidate(candidate_feature_values)
+    cand_subsector_pref = _subsector_token_from_candidate(candidate_feature_values)
+    cand_market_cap = _candidate_market_cap(candidate_feature_values)
+    target_action_scale = _estimate_action_scale(action_params, cand_market_cap)
+    cand_market_cap_bucket = _market_cap_bucket_from_value(
+        cand_market_cap,
+        retrieval_index.market_cap_bucket_quantiles,
+    )
+    hard_prefilter_applied = False
+    hard_prefilter_relaxed = False
+    market_cap_prefilter_applied = False
+    if candidate_idx.shape[0] >= int(min_k):
+        keep_hard = np.ones(candidate_idx.shape[0], dtype=bool)
+        has_hard_dims = False
+        if cand_sector_pref:
+            row_sectors_hard = retrieval_index.sector_token_arr[candidate_idx]
+            row_subsectors_hard = retrieval_index.subsector_token_arr[candidate_idx]
+            keep_hard &= np.fromiter(
+                (
+                    _sector_similarity(cand_sector_pref, str(x), cand_subsector_pref, str(row_subsectors_hard[i])) >= 0.75
+                    for i, x in enumerate(row_sectors_hard)
+                ),
+                dtype=bool,
+                count=candidate_idx.shape[0],
+            )
+            has_hard_dims = True
+        if cand_market_cap_bucket >= 0:
+            row_buckets_hard = retrieval_index.market_cap_bucket_arr[candidate_idx]
+            keep_hard &= (row_buckets_hard == int(cand_market_cap_bucket))
+            has_hard_dims = True
+            market_cap_prefilter_applied = True
+        if has_hard_dims:
+            keep_n = int(np.count_nonzero(keep_hard))
+            if keep_n >= int(min_k):
+                candidate_idx = candidate_idx[keep_hard]
+                hard_prefilter_applied = True
+            else:
+                hard_prefilter_relaxed = True
+                market_cap_prefilter_applied = False
+
+    # Optional pre-filters: tighten cohort to similar regimes/sectors when sufficiently deep.
+    cand_flags = _candidate_regime_flags(candidate_regime)
+    regime_prefilter_applied = False
+    if candidate_idx.shape[0] >= max(int(min_k) * 3, 40):
+        eq_total_pref = np.zeros(candidate_idx.shape[0], dtype=float)
+        for k, flag in cand_flags.items():
+            row_flag = retrieval_index.regime_flags.get(k)
+            if row_flag is None:
+                continue
+            eq_total_pref += (row_flag[candidate_idx] == bool(flag)).astype(float)
+        regime_similarity_pref = eq_total_pref / max(1, len(cand_flags))
+        keep_regime = regime_similarity_pref >= 0.67
+        if int(np.count_nonzero(keep_regime)) >= int(min_k):
+            candidate_idx = candidate_idx[keep_regime]
+            regime_prefilter_applied = True
+
+    sector_prefilter_applied = False
+    if cand_sector_pref and candidate_idx.shape[0] >= max(int(min_k) * 3, 40):
+        row_sectors_pref = retrieval_index.sector_token_arr[candidate_idx]
+        row_subsectors_pref = retrieval_index.subsector_token_arr[candidate_idx]
+        keep_sector = np.fromiter(
+            (
+                _sector_similarity(cand_sector_pref, str(x), cand_subsector_pref, str(row_subsectors_pref[i])) >= 0.75
+                for i, x in enumerate(row_sectors_pref)
+            ),
+            dtype=bool,
+            count=candidate_idx.shape[0],
+        )
+        if int(np.count_nonzero(keep_sector)) >= int(min_k):
+            candidate_idx = candidate_idx[keep_sector]
+            sector_prefilter_applied = True
+    profile["prefilter_seconds"] = round(
+        time.perf_counter() - t_start - sum(float(profile.get(k, 0.0) or 0.0) for k in ("retrieval_index_seconds", "candidate_pool_seconds")),
+        6,
+    )
+    profile["candidate_pool_size_after_prefilter"] = int(candidate_idx.shape[0])
+
+    # Embeddings (vectorized) on the compact state vector, with legacy-compatible fallbacks.
+    candidate_state_frame = augment_precedent_state_vector_columns(pd.DataFrame([candidate_feature_values]))
+    candidate_state_row = candidate_state_frame.iloc[0] if not candidate_state_frame.empty else pd.Series(dtype=object)
+    candidate_feature_weight_multipliers = _candidate_state_feature_weight_multipliers(
+        candidate_features if isinstance(candidate_features, dict) else {},
+        action_id=action_id_text,
+        action_subtype=action_subtype_text,
+    )
+    def _candidate_embedding_value(feature_name: str) -> float:
+        row_value = _to_float(candidate_state_row.get(feature_name), None) if feature_name in candidate_state_row.index else None
+        if row_value is not None:
+            return float(row_value)
+        feature_value = _to_float(candidate_feature_values.get(feature_name), None)
+        if feature_value is not None:
+            return float(feature_value)
+        return float("nan")
+    candidate_vec_raw = np.array(
+        [
+            _candidate_embedding_value(col)
+            for col in retrieval_index.embedding_cols
+        ],
+        dtype=float,
+    )
+    emb_raw = retrieval_index.embedding_values[candidate_idx]
+    weighted_state = _weighted_state_similarity(
+        emb_raw=emb_raw,
+        candidate_vec_raw=candidate_vec_raw,
+        embedding_cols=retrieval_index.embedding_cols,
+        action_id=action_id_text,
+        action_subtype=action_subtype_text,
+        feature_weight_multipliers=candidate_feature_weight_multipliers,
+        target_action_scale=target_action_scale,
+    )
+    coverage_gate_mask = np.asarray(weighted_state["coverage_gate_mask"], dtype=bool)
+    size_gate_mask = np.asarray(weighted_state["size_gate_mask"], dtype=bool)
+    weighted_distance = np.asarray(weighted_state["weighted_distance"], dtype=float)
+    weighted_feature_coverage = np.asarray(weighted_state["weighted_coverage"], dtype=float)
+    critical_feature_coverage = np.asarray(weighted_state["critical_coverage"], dtype=float)
+    size_gap = np.asarray(weighted_state["size_gap"], dtype=float)
+    primary_burden_gap = np.asarray(weighted_state["primary_burden_gap"], dtype=float)
+    rate_gap = np.asarray(weighted_state.get("rate_gap", np.full(candidate_idx.shape[0], np.nan)), dtype=float)
+    credit_gap = np.asarray(weighted_state.get("credit_gap", np.full(candidate_idx.shape[0], np.nan)), dtype=float)
+    missing_penalty_factor = np.asarray(
+        weighted_state.get("missing_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    regime_penalty_factor = np.asarray(
+        weighted_state.get("regime_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    borrower_quality_similarity = np.asarray(
+        weighted_state.get("borrower_quality_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    financing_pressure_similarity = np.asarray(
+        weighted_state.get("financing_pressure_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    market_regime_similarity = np.asarray(
+        weighted_state.get("market_regime_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    stress_alignment_similarity = np.asarray(
+        weighted_state.get("stress_alignment_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    compatibility_penalty_factor = np.asarray(
+        weighted_state.get("compatibility_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    borrower_quality_similarity = np.asarray(
+        weighted_state.get("borrower_quality_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    financing_pressure_similarity = np.asarray(
+        weighted_state.get("financing_pressure_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    market_regime_similarity = np.asarray(
+        weighted_state.get("market_regime_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    stress_alignment_similarity = np.asarray(
+        weighted_state.get("stress_alignment_similarity", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    compatibility_penalty_factor = np.asarray(
+        weighted_state.get("compatibility_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+
+    weighted_coverage_gate_applied = False
+    weighted_coverage_gate_relaxed = False
+    size_guardrail_applied = False
+    size_guardrail_relaxed = False
+    if candidate_idx.shape[0] >= int(min_k) and coverage_gate_mask.shape[0] == candidate_idx.shape[0]:
+        keep_n = int(np.count_nonzero(coverage_gate_mask))
+        if keep_n >= int(min_k):
+            candidate_idx = candidate_idx[coverage_gate_mask]
+            emb_raw = emb_raw[coverage_gate_mask]
+            weighted_distance = weighted_distance[coverage_gate_mask]
+            weighted_feature_coverage = weighted_feature_coverage[coverage_gate_mask]
+            critical_feature_coverage = critical_feature_coverage[coverage_gate_mask]
+            size_gap = size_gap[coverage_gate_mask]
+            primary_burden_gap = primary_burden_gap[coverage_gate_mask]
+            rate_gap = rate_gap[coverage_gate_mask]
+            credit_gap = credit_gap[coverage_gate_mask]
+            missing_penalty_factor = missing_penalty_factor[coverage_gate_mask]
+            regime_penalty_factor = regime_penalty_factor[coverage_gate_mask]
+            borrower_quality_similarity = borrower_quality_similarity[coverage_gate_mask]
+            financing_pressure_similarity = financing_pressure_similarity[coverage_gate_mask]
+            market_regime_similarity = market_regime_similarity[coverage_gate_mask]
+            stress_alignment_similarity = stress_alignment_similarity[coverage_gate_mask]
+            compatibility_penalty_factor = compatibility_penalty_factor[coverage_gate_mask]
+            weighted_coverage_gate_applied = True
+        else:
+            weighted_coverage_gate_relaxed = True
+    if candidate_idx.shape[0] >= int(min_k) and size_gate_mask.shape[0] != candidate_idx.shape[0]:
+        size_gate_mask = np.asarray(
+            _weighted_state_similarity(
+                emb_raw=emb_raw,
+                candidate_vec_raw=candidate_vec_raw,
+                embedding_cols=retrieval_index.embedding_cols,
+                action_id=action_id_text,
+                action_subtype=action_subtype_text,
+                feature_weight_multipliers=candidate_feature_weight_multipliers,
+                target_action_scale=target_action_scale,
+            )["size_gate_mask"],
+            dtype=bool,
+        )
+    if candidate_idx.shape[0] >= int(min_k) and size_gate_mask.shape[0] == candidate_idx.shape[0]:
+        keep_n = int(np.count_nonzero(size_gate_mask))
+        if keep_n >= int(min_k):
+            candidate_idx = candidate_idx[size_gate_mask]
+            emb_raw = emb_raw[size_gate_mask]
+            weighted_distance = weighted_distance[size_gate_mask]
+            weighted_feature_coverage = weighted_feature_coverage[size_gate_mask]
+            critical_feature_coverage = critical_feature_coverage[size_gate_mask]
+            size_gap = size_gap[size_gate_mask]
+            primary_burden_gap = primary_burden_gap[size_gate_mask]
+            rate_gap = rate_gap[size_gate_mask]
+            credit_gap = credit_gap[size_gate_mask]
+            missing_penalty_factor = missing_penalty_factor[size_gate_mask]
+            regime_penalty_factor = regime_penalty_factor[size_gate_mask]
+            borrower_quality_similarity = borrower_quality_similarity[size_gate_mask]
+            financing_pressure_similarity = financing_pressure_similarity[size_gate_mask]
+            market_regime_similarity = market_regime_similarity[size_gate_mask]
+            stress_alignment_similarity = stress_alignment_similarity[size_gate_mask]
+            compatibility_penalty_factor = compatibility_penalty_factor[size_gate_mask]
+            size_guardrail_applied = True
+        else:
+            size_guardrail_relaxed = True
+
+    weighted_state = _weighted_state_similarity(
+        emb_raw=emb_raw,
+        candidate_vec_raw=candidate_vec_raw,
+        embedding_cols=retrieval_index.embedding_cols,
+        action_id=action_id_text,
+        action_subtype=action_subtype_text,
+        feature_weight_multipliers=candidate_feature_weight_multipliers,
+        target_action_scale=target_action_scale,
+    )
+    state_similarity = np.asarray(weighted_state["state_similarity"], dtype=float)
+    weighted_distance = np.asarray(weighted_state["weighted_distance"], dtype=float)
+    weighted_feature_coverage = np.asarray(weighted_state["weighted_coverage"], dtype=float)
+    critical_feature_coverage = np.asarray(weighted_state["critical_coverage"], dtype=float)
+    size_gap = np.asarray(weighted_state["size_gap"], dtype=float)
+    primary_burden_gap = np.asarray(weighted_state["primary_burden_gap"], dtype=float)
+    rate_gap = np.asarray(weighted_state.get("rate_gap", np.full(candidate_idx.shape[0], np.nan)), dtype=float)
+    credit_gap = np.asarray(weighted_state.get("credit_gap", np.full(candidate_idx.shape[0], np.nan)), dtype=float)
+    missing_penalty_factor = np.asarray(
+        weighted_state.get("missing_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+    regime_penalty_factor = np.asarray(
+        weighted_state.get("regime_penalty_factor", np.ones(candidate_idx.shape[0])),
+        dtype=float,
+    )
+
+    # Regime similarity (vectorized over precomputed row flags).
+    cand_flags = _candidate_regime_flags(candidate_regime)
+    eq_total = np.zeros(candidate_idx.shape[0], dtype=float)
+    for k, flag in cand_flags.items():
+        row_flag = retrieval_index.regime_flags.get(k)
+        if row_flag is None:
+            continue
+        eq_total += (row_flag[candidate_idx] == bool(flag)).astype(float)
+    regime_similarity = eq_total / max(1, len(cand_flags))
+
+    # Parameter scale similarity.
+    cand_scale = _estimate_action_scale(action_params, _candidate_market_cap(candidate_feature_values))
+    hist_scale = retrieval_index.action_scale_arr[candidate_idx]
+    eps = 1e-6
+    param_similarity = np.exp(-np.abs(np.log((cand_scale + eps) / (hist_scale + eps))))
+
+    # Action match score (explicitly in retrieval blend).
+    subtype_vals = retrieval_index.action_subtype_arr[candidate_idx]
+    type_vals = retrieval_index.action_type_arr[candidate_idx]
+    action_id_vals = retrieval_index.action_id_arr[candidate_idx]
+    family_vals = retrieval_index.action_family_arr[candidate_idx]
+    family_scale_vals = retrieval_index.action_family_scale_arr[candidate_idx]
+    subtype_key_list = [k for k in (action_subtype_text, action_leaf) if k]
+    type_key_list = [k for k in (action_alias, action_domain) if k]
+    action_id_key_list = list(_candidate_action_id_keys(action_id_text, action_subtype_text))
+    subtype_match = np.isin(subtype_vals, subtype_key_list)
+    type_match = np.isin(type_vals, type_key_list)
+    action_id_match = np.isin(action_id_vals, action_id_key_list)
+    family_scale_match_score = np.zeros(candidate_idx.shape[0], dtype=float)
+    for family_scale_key, score in action_family_scale_weights:
+        family_scale_mask = np.isin(family_scale_vals, [family_scale_key])
+        family_scale_match_score[family_scale_mask] = np.maximum(
+            family_scale_match_score[family_scale_mask],
+            float(score),
+        )
+    family_match_score = np.zeros(candidate_idx.shape[0], dtype=float)
+    for family_key, score in action_family_weights:
+        family_mask = np.isin(family_vals, [family_key])
+        family_match_score[family_mask] = np.maximum(family_match_score[family_mask], float(score))
+    action_match_score = np.full(candidate_idx.shape[0], 0.45, dtype=float)
+    action_match_score[type_match] = np.maximum(action_match_score[type_match], 0.65)
+    action_match_score = np.maximum(action_match_score, family_scale_match_score)
+    action_match_score = np.maximum(action_match_score, family_match_score)
+    action_match_score[subtype_match] = np.maximum(action_match_score[subtype_match], 0.80)
+    action_match_score[action_id_match] = np.maximum(action_match_score[action_id_match], 0.92)
+    action_match_score = np.clip(action_match_score, 0.0, 1.0)
+
+    # Sector similarity.
+    cand_sector = _sector_token_from_candidate(candidate_feature_values)
+    cand_subsector = _subsector_token_from_candidate(candidate_feature_values)
+    row_sectors = retrieval_index.sector_token_arr[candidate_idx]
+    row_subsectors = retrieval_index.subsector_token_arr[candidate_idx]
+    sector_similarity = np.fromiter(
+        (
+            _sector_similarity(cand_sector, str(x), cand_subsector, str(row_subsectors[i]))
+            for i, x in enumerate(row_sectors)
+        ),
+        dtype=float,
+        count=candidate_idx.shape[0],
+    )
+    identity_prefilter_applied = False
+    identity_prefilter_mode = ""
+    if str(weighted_state.get("version") or "") == _WEIGHTED_DISTANCE_V2_VERSION and cand_sector and candidate_idx.shape[0] >= max(3, int(top_k)):
+        known_sector_mask = np.fromiter((bool(str(x or "").strip()) for x in row_sectors), dtype=bool, count=candidate_idx.shape[0])
+        same_subsector_mask = sector_similarity >= 0.999
+        same_sector_mask = sector_similarity >= 0.75
+        identity_keep_mask: Optional[np.ndarray] = None
+        min_same_subsector = max(2, min(int(top_k), 4))
+        min_same_sector = max(3, min(int(top_k), 6))
+        if int(np.count_nonzero(same_subsector_mask)) >= int(min_same_subsector):
+            identity_keep_mask = same_subsector_mask | (~known_sector_mask)
+            identity_prefilter_mode = "subsector"
+        elif int(np.count_nonzero(same_sector_mask)) >= int(min_same_sector):
+            identity_keep_mask = same_sector_mask | (~known_sector_mask)
+            identity_prefilter_mode = "sector"
+        if identity_keep_mask is not None:
+            keep_n = int(np.count_nonzero(identity_keep_mask))
+            if keep_n >= max(3, min(int(top_k), int(candidate_idx.shape[0]))):
+                candidate_idx = candidate_idx[identity_keep_mask]
+                emb_raw = emb_raw[identity_keep_mask]
+                state_similarity = state_similarity[identity_keep_mask]
+                weighted_distance = weighted_distance[identity_keep_mask]
+                weighted_feature_coverage = weighted_feature_coverage[identity_keep_mask]
+                critical_feature_coverage = critical_feature_coverage[identity_keep_mask]
+                size_gap = size_gap[identity_keep_mask]
+                primary_burden_gap = primary_burden_gap[identity_keep_mask]
+                rate_gap = rate_gap[identity_keep_mask]
+                credit_gap = credit_gap[identity_keep_mask]
+                missing_penalty_factor = missing_penalty_factor[identity_keep_mask]
+                regime_penalty_factor = regime_penalty_factor[identity_keep_mask]
+                borrower_quality_similarity = borrower_quality_similarity[identity_keep_mask]
+                financing_pressure_similarity = financing_pressure_similarity[identity_keep_mask]
+                market_regime_similarity = market_regime_similarity[identity_keep_mask]
+                stress_alignment_similarity = stress_alignment_similarity[identity_keep_mask]
+                compatibility_penalty_factor = compatibility_penalty_factor[identity_keep_mask]
+                regime_similarity = regime_similarity[identity_keep_mask]
+                hist_scale = hist_scale[identity_keep_mask]
+                param_similarity = param_similarity[identity_keep_mask]
+                action_match_score = action_match_score[identity_keep_mask]
+                row_sectors = row_sectors[identity_keep_mask]
+                row_subsectors = row_subsectors[identity_keep_mask]
+                sector_similarity = sector_similarity[identity_keep_mask]
+                identity_prefilter_applied = True
+
+    debt_target_archetype_label = ""
+    debt_row_archetype_labels = np.array([""] * candidate_idx.shape[0], dtype=object)
+    debt_archetype_similarity = np.ones(candidate_idx.shape[0], dtype=float)
+    debt_style_similarity = np.ones(candidate_idx.shape[0], dtype=float)
+    debt_archetype_gate = np.ones(candidate_idx.shape[0], dtype=float)
+    debt_archetype_prefilter_applied = False
+    debt_archetype_prefilter_mode = ""
+    if _is_debt_support_action(action_id_text) and candidate_idx.size:
+        score_keys = tuple(_DEBT_ISSUANCE_ARCHETYPE_LABELS)
+        is_revolver_action = action_id_text == "capital_structure.revolver_draw_or_resize"
+        target_compact_values = {
+            str(col): float(candidate_vec_raw[idx])
+            for idx, col in enumerate(retrieval_index.embedding_cols)
+            if col in _STATE_VECTOR_MATCHING_COLS and np.isfinite(candidate_vec_raw[idx])
+        }
+        target_debt_profile = _debt_issuance_runtime_archetype_profile(
+            target_compact_values,
+            action_id_text=action_id_text,
+            action_scale=target_action_scale,
+        )
+        debt_target_archetype_label = str(target_debt_profile.get("label") or "")
+        target_scores = {
+            key: float(value)
+            for key, value in dict(target_debt_profile.get("scores") or {}).items()
+            if key in score_keys and _to_float(value, None) is not None
+        }
+        feature_index = {str(col): idx for idx, col in enumerate(retrieval_index.embedding_cols)}
+        growth_idx = feature_index.get("state_vector_v1.growth")
+        valuation_idx = feature_index.get("state_vector_v1.valuation_multiple")
+        access_idx = feature_index.get("state_vector_v1.market_access")
+        stress_idx = feature_index.get("state_vector_v1.market_stress")
+        credit_spread_idx = feature_index.get("state_vector_v1.credit_spread")
+        net_burden_idx = feature_index.get("state_vector_v1.net_obligation_burden")
+        liquidity_idx = feature_index.get("state_vector_v1.liquidity_flexibility")
+        cash_generation_idx = feature_index.get("state_vector_v1.cash_generation")
+        target_growth = _to_float(candidate_vec_raw[growth_idx], None) if growth_idx is not None else None
+        target_valuation = _to_float(candidate_vec_raw[valuation_idx], None) if valuation_idx is not None else None
+        target_access = _to_float(candidate_vec_raw[access_idx], None) if access_idx is not None else None
+        target_market_stress = _to_float(candidate_vec_raw[stress_idx], None) if stress_idx is not None else None
+        target_credit_spread = (
+            _to_float(candidate_vec_raw[credit_spread_idx], None) if credit_spread_idx is not None else None
+        )
+        target_net_burden = _to_float(candidate_vec_raw[net_burden_idx], None) if net_burden_idx is not None else None
+        target_liquidity = _to_float(candidate_vec_raw[liquidity_idx], None) if liquidity_idx is not None else None
+        target_cash_generation = (
+            _to_float(candidate_vec_raw[cash_generation_idx], None) if cash_generation_idx is not None else None
+        )
+        cross_label_penalty = {
+            "distressed_borrower": {
+                "distressed_borrower": 1.0,
+                "refinancing_pressure": 0.72,
+                "opportunistic_issuer": 0.28,
+            },
+            "refinancing_pressure": {
+                "distressed_borrower": 0.68,
+                "refinancing_pressure": 1.0,
+                "opportunistic_issuer": 0.35,
+            },
+            "opportunistic_issuer": {
+                "distressed_borrower": 0.22,
+                "refinancing_pressure": 0.45,
+                "opportunistic_issuer": 1.0,
+            },
+        }
+        row_labels: List[str] = []
+        for row_idx in range(candidate_idx.shape[0]):
+            row_compact = {
+                str(col): float(emb_raw[row_idx, idx])
+                for idx, col in enumerate(retrieval_index.embedding_cols)
+                if col in _STATE_VECTOR_MATCHING_COLS and np.isfinite(emb_raw[row_idx, idx])
+            }
+            row_profile = _debt_issuance_runtime_archetype_profile(
+                row_compact,
+                action_id_text=action_id_text,
+                action_scale=_to_float(hist_scale[row_idx], None),
+            )
+            row_label = str(row_profile.get("label") or "")
+            row_labels.append(row_label)
+            row_scores = {
+                key: float(value)
+                for key, value in dict(row_profile.get("scores") or {}).items()
+                if key in score_keys and _to_float(value, None) is not None
+            }
+            shared_keys = [key for key in score_keys if key in target_scores and key in row_scores]
+            if shared_keys:
+                archetype_distance = float(
+                    np.mean([abs(float(target_scores[key]) - float(row_scores[key])) for key in shared_keys])
+                )
+                debt_archetype_similarity[row_idx] = float(np.exp(-2.60 * archetype_distance))
+            label_factor = float(
+                (cross_label_penalty.get(debt_target_archetype_label) or {}).get(row_label, 0.35)
+            )
+            debt_archetype_gate[row_idx] = float(
+                label_factor * np.exp(-2.40 * max(0.72 - debt_archetype_similarity[row_idx], 0.0))
+            )
+            if debt_target_archetype_label == "opportunistic_issuer":
+                style_components: List[float] = []
+                row_growth = _to_float(emb_raw[row_idx, growth_idx], None) if growth_idx is not None else None
+                row_valuation = _to_float(emb_raw[row_idx, valuation_idx], None) if valuation_idx is not None else None
+                row_access = _to_float(emb_raw[row_idx, access_idx], None) if access_idx is not None else None
+                row_net_burden = _to_float(emb_raw[row_idx, net_burden_idx], None) if net_burden_idx is not None else None
+                if is_revolver_action:
+                    row_stress = _to_float(emb_raw[row_idx, stress_idx], None) if stress_idx is not None else None
+                    row_credit = (
+                        _to_float(emb_raw[row_idx, credit_spread_idx], None) if credit_spread_idx is not None else None
+                    )
+                    row_liquidity = (
+                        _to_float(emb_raw[row_idx, liquidity_idx], None) if liquidity_idx is not None else None
+                    )
+                    if target_liquidity is not None and row_liquidity is not None:
+                        style_components.append(float(np.exp(-abs(float(row_liquidity) - float(target_liquidity)) / 0.85)))
+                    if target_access is not None and row_access is not None:
+                        style_components.append(float(np.exp(-abs(float(row_access) - float(target_access)) / 0.12)))
+                    if target_market_stress is not None and row_stress is not None:
+                        style_components.append(
+                            float(np.exp(-abs(float(row_stress) - float(target_market_stress)) / 0.08))
+                        )
+                    if target_credit_spread is not None and row_credit is not None:
+                        style_components.append(
+                            float(np.exp(-abs(float(row_credit) - float(target_credit_spread)) / 0.70))
+                        )
+                    if target_growth is not None and row_growth is not None:
+                        style_components.append(float(np.exp(-abs(float(row_growth) - float(target_growth)) / 0.20)))
+                else:
+                    if target_growth is not None and row_growth is not None:
+                        style_components.append(float(np.exp(-abs(float(row_growth) - float(target_growth)) / 0.16)))
+                    if target_valuation is not None and row_valuation is not None:
+                        style_components.append(
+                            float(
+                                np.exp(
+                                    -abs(float(row_valuation) - float(target_valuation))
+                                    / max(8.0, 0.22 * abs(float(target_valuation)) + 2.0)
+                                )
+                            )
+                        )
+                    if target_access is not None and row_access is not None:
+                        style_components.append(float(np.exp(-abs(float(row_access) - float(target_access)) / 0.14)))
+                if style_components:
+                    debt_style_similarity[row_idx] = float(np.exp(np.mean(np.log(np.clip(style_components, 1e-9, 1.0)))))
+                else:
+                    debt_style_similarity[row_idx] = debt_archetype_similarity[row_idx]
+                debt_archetype_gate[row_idx] *= float(
+                    np.exp(-2.60 * max(0.70 - debt_style_similarity[row_idx], 0.0))
+                    * np.exp(-2.00 * max(0.68 - market_regime_similarity[row_idx], 0.0))
+                )
+                if is_revolver_action:
+                    if target_access is not None and target_access >= 0.78 and row_access is not None:
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-2.25 * max((float(target_access) - 0.14) - float(row_access), 0.0))
+                        )
+                    if target_liquidity is not None and row_liquidity is not None:
+                        min_liquidity = max(0.90, float(target_liquidity) - 0.85)
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-1.10 * max(min_liquidity - float(row_liquidity), 0.0))
+                        )
+                else:
+                    if target_access is not None and target_access >= 0.85 and row_access is not None:
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-2.10 * max((float(target_access) - 0.18) - float(row_access), 0.0))
+                        )
+                    if target_valuation is not None and target_valuation >= 20.0 and row_valuation is not None:
+                        min_valuation = max(8.0, 0.40 * float(target_valuation))
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-0.16 * max(min_valuation - float(row_valuation), 0.0))
+                        )
+                    if target_net_burden is not None and target_net_burden <= -2.0 and row_net_burden is not None:
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-1.35 * max(float(row_net_burden) - 0.75, 0.0))
+                        )
+            elif debt_target_archetype_label == "distressed_borrower":
+                debt_style_similarity[row_idx] = float(borrower_quality_similarity[row_idx])
+                row_valuation = _to_float(emb_raw[row_idx, valuation_idx], None) if valuation_idx is not None else None
+                row_cash_generation = (
+                    _to_float(emb_raw[row_idx, cash_generation_idx], None) if cash_generation_idx is not None else None
+                )
+                row_liquidity = _to_float(emb_raw[row_idx, liquidity_idx], None) if liquidity_idx is not None else None
+                stress_factor = (
+                    1.0
+                    if float(stress_alignment_similarity[row_idx]) >= 0.999
+                    else (0.72 if float(stress_alignment_similarity[row_idx]) >= 0.70 else 0.38)
+                )
+                debt_archetype_gate[row_idx] *= float(
+                    stress_factor
+                    * np.exp(-2.30 * max(0.72 - float(borrower_quality_similarity[row_idx]), 0.0))
+                    * np.exp(-1.80 * max(0.62 - float(market_regime_similarity[row_idx]), 0.0))
+                )
+                if is_revolver_action:
+                    if target_liquidity is not None and row_liquidity is not None:
+                        max_liquidity = max(1.40, float(target_liquidity) + 0.75)
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-1.45 * max(float(row_liquidity) - max_liquidity, 0.0))
+                        )
+                    if target_cash_generation is not None and target_cash_generation < 0.0 and row_cash_generation is not None:
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-3.20 * max(float(row_cash_generation) - 0.03, 0.0))
+                        )
+                else:
+                    if target_valuation is not None and target_valuation <= 8.0 and row_valuation is not None:
+                        max_valuation = max(12.0, float(target_valuation) + 6.0)
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-0.22 * max(float(row_valuation) - max_valuation, 0.0))
+                        )
+                    if target_cash_generation is not None and target_cash_generation < 0.0 and row_cash_generation is not None:
+                        debt_archetype_gate[row_idx] *= float(
+                            np.exp(-3.50 * max(float(row_cash_generation) - 0.04, 0.0))
+                        )
+            else:
+                debt_style_similarity[row_idx] = float(financing_pressure_similarity[row_idx])
+                row_liquidity = _to_float(emb_raw[row_idx, liquidity_idx], None) if liquidity_idx is not None else None
+                debt_archetype_gate[row_idx] *= float(
+                    np.exp(-2.50 * max(0.74 - float(financing_pressure_similarity[row_idx]), 0.0))
+                    * np.exp(-2.10 * max(0.68 - float(market_regime_similarity[row_idx]), 0.0))
+                )
+                if target_liquidity is not None and target_liquidity <= 1.50 and row_liquidity is not None:
+                    max_liquidity = max(3.0, float(target_liquidity) + 2.5)
+                    debt_archetype_gate[row_idx] *= float(
+                        np.exp(-0.85 * max(float(row_liquidity) - max_liquidity, 0.0))
+                    )
+            rate_threshold = 1.50
+            credit_threshold = 1.35
+            if debt_target_archetype_label == "distressed_borrower":
+                rate_threshold = 1.65
+                credit_threshold = 1.45
+            elif debt_target_archetype_label == "opportunistic_issuer":
+                rate_threshold = 1.20
+                credit_threshold = 1.15
+            if np.isfinite(rate_gap[row_idx]):
+                debt_archetype_gate[row_idx] *= float(
+                    np.exp(-1.60 * max(float(rate_gap[row_idx]) - rate_threshold, 0.0))
+                )
+            if np.isfinite(credit_gap[row_idx]):
+                debt_archetype_gate[row_idx] *= float(
+                    np.exp(-1.90 * max(float(credit_gap[row_idx]) - credit_threshold, 0.0))
+                )
+
+        debt_row_archetype_labels = np.asarray(row_labels, dtype=object)
+        debt_archetype_gate = np.clip(debt_archetype_gate, 0.05, 1.0)
+        same_archetype_mask = debt_row_archetype_labels == debt_target_archetype_label
+        if debt_target_archetype_label == "opportunistic_issuer":
+            if is_revolver_action:
+                strict_mask = (
+                    (rate_gap <= 1.35)
+                    & (credit_gap <= 1.30)
+                    & (market_regime_similarity >= 0.62)
+                    & (debt_style_similarity >= 0.66)
+                )
+                relaxed_mask = (
+                    (rate_gap <= 1.90)
+                    & (credit_gap <= 1.75)
+                    & (market_regime_similarity >= 0.58)
+                    & (debt_style_similarity >= 0.58)
+                )
+                if target_access is not None and access_idx is not None:
+                    row_access_arr = np.asarray(emb_raw[:, access_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_access_arr),
+                        row_access_arr >= max(0.64, float(target_access) - 0.14),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_access_arr),
+                        row_access_arr >= max(0.56, float(target_access) - 0.24),
+                        False,
+                    )
+                if target_liquidity is not None and liquidity_idx is not None:
+                    row_liquidity_arr = np.asarray(emb_raw[:, liquidity_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_liquidity_arr),
+                        row_liquidity_arr >= max(0.90, float(target_liquidity) - 0.85),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_liquidity_arr),
+                        row_liquidity_arr >= max(0.60, float(target_liquidity) - 1.30),
+                        False,
+                    )
+            else:
+                strict_mask = (
+                    (rate_gap <= 1.20)
+                    & (credit_gap <= 1.15)
+                    & (market_regime_similarity >= 0.64)
+                    & (debt_style_similarity >= 0.68)
+                )
+                relaxed_mask = (
+                    (rate_gap <= 1.80)
+                    & (credit_gap <= 1.60)
+                    & (market_regime_similarity >= 0.58)
+                    & (debt_style_similarity >= 0.60)
+                )
+                if target_access is not None and target_access >= 0.85 and access_idx is not None:
+                    row_access_arr = np.asarray(emb_raw[:, access_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_access_arr),
+                        row_access_arr >= max(0.70, float(target_access) - 0.18),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_access_arr),
+                        row_access_arr >= max(0.60, float(target_access) - 0.28),
+                        False,
+                    )
+                if target_valuation is not None and target_valuation >= 20.0 and valuation_idx is not None:
+                    row_valuation_arr = np.asarray(emb_raw[:, valuation_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_valuation_arr),
+                        row_valuation_arr >= max(10.0, 0.40 * float(target_valuation)),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_valuation_arr),
+                        row_valuation_arr >= max(8.0, 0.28 * float(target_valuation)),
+                        False,
+                    )
+                if target_net_burden is not None and target_net_burden <= -2.0 and net_burden_idx is not None:
+                    row_net_burden_arr = np.asarray(emb_raw[:, net_burden_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_net_burden_arr),
+                        row_net_burden_arr <= 0.75,
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_net_burden_arr),
+                        row_net_burden_arr <= 2.0,
+                        False,
+                    )
+            preferred_mask = (
+                same_archetype_mask
+                & (debt_archetype_similarity >= 0.66)
+                & (debt_style_similarity >= (0.62 if is_revolver_action else 0.60))
+                & (market_regime_similarity >= (0.60 if is_revolver_action else 0.58))
+                & strict_mask
+            )
+            fallback_mask = (
+                (debt_archetype_gate >= (0.40 if is_revolver_action else 0.38))
+                & (debt_style_similarity >= (0.56 if is_revolver_action else 0.54))
+                & (market_regime_similarity >= (0.57 if is_revolver_action else 0.55))
+                & relaxed_mask
+            )
+        elif debt_target_archetype_label == "distressed_borrower":
+            if is_revolver_action:
+                strict_mask = (
+                    (rate_gap <= 1.55)
+                    & (credit_gap <= 1.45)
+                    & (borrower_quality_similarity >= 0.60)
+                    & (stress_alignment_similarity >= 0.72)
+                )
+                relaxed_mask = (
+                    (rate_gap <= 2.10)
+                    & (credit_gap <= 1.95)
+                    & (borrower_quality_similarity >= 0.56)
+                )
+                if target_liquidity is not None and liquidity_idx is not None:
+                    row_liquidity_arr = np.asarray(emb_raw[:, liquidity_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_liquidity_arr),
+                        row_liquidity_arr <= max(1.40, float(target_liquidity) + 0.75),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_liquidity_arr),
+                        row_liquidity_arr <= max(2.10, float(target_liquidity) + 1.35),
+                        False,
+                    )
+            else:
+                strict_mask = (
+                    (rate_gap <= 1.65)
+                    & (credit_gap <= 1.45)
+                    & (borrower_quality_similarity >= 0.58)
+                )
+                relaxed_mask = (
+                    (rate_gap <= 2.35)
+                    & (credit_gap <= 2.05)
+                    & (borrower_quality_similarity >= 0.54)
+                )
+                if target_valuation is not None and target_valuation <= 8.0 and valuation_idx is not None:
+                    row_valuation_arr = np.asarray(emb_raw[:, valuation_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_valuation_arr),
+                        row_valuation_arr <= max(12.0, float(target_valuation) + 6.0),
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_valuation_arr),
+                        row_valuation_arr <= max(18.0, float(target_valuation) + 10.0),
+                        False,
+                    )
+                if target_cash_generation is not None and target_cash_generation < 0.0 and cash_generation_idx is not None:
+                    row_cash_generation_arr = np.asarray(emb_raw[:, cash_generation_idx], dtype=float)
+                    strict_mask = strict_mask & np.where(
+                        np.isfinite(row_cash_generation_arr),
+                        row_cash_generation_arr <= 0.04,
+                        False,
+                    )
+                    relaxed_mask = relaxed_mask & np.where(
+                        np.isfinite(row_cash_generation_arr),
+                        row_cash_generation_arr <= 0.08,
+                        False,
+                    )
+            preferred_mask = (
+                same_archetype_mask
+                & (borrower_quality_similarity >= (0.64 if is_revolver_action else 0.62))
+                & (stress_alignment_similarity >= (0.74 if is_revolver_action else 0.70))
+                & (market_regime_similarity >= (0.56 if is_revolver_action else 0.54))
+                & strict_mask
+            )
+            fallback_mask = (
+                (debt_archetype_gate >= (0.42 if is_revolver_action else 0.40))
+                & (borrower_quality_similarity >= (0.61 if is_revolver_action else 0.60))
+                & (market_regime_similarity >= (0.54 if is_revolver_action else 0.52))
+                & relaxed_mask
+            )
+        else:
+            strict_mask = (
+                (rate_gap <= (1.35 if is_revolver_action else 1.50))
+                & (credit_gap <= (1.30 if is_revolver_action else 1.35))
+                & (financing_pressure_similarity >= (0.62 if is_revolver_action else 0.60))
+                & (market_regime_similarity >= (0.62 if is_revolver_action else 0.60))
+            )
+            relaxed_mask = (
+                (rate_gap <= (1.90 if is_revolver_action else 2.10))
+                & (credit_gap <= (1.75 if is_revolver_action else 1.85))
+                & (financing_pressure_similarity >= (0.56 if is_revolver_action else 0.54))
+                & (market_regime_similarity >= (0.58 if is_revolver_action else 0.56))
+            )
+            if target_liquidity is not None and target_liquidity <= 1.50 and liquidity_idx is not None:
+                row_liquidity_arr = np.asarray(emb_raw[:, liquidity_idx], dtype=float)
+                strict_mask = strict_mask & np.where(
+                    np.isfinite(row_liquidity_arr),
+                    row_liquidity_arr <= max(2.40 if is_revolver_action else 3.0, float(target_liquidity) + (1.80 if is_revolver_action else 2.5)),
+                    False,
+                )
+                relaxed_mask = relaxed_mask & np.where(
+                    np.isfinite(row_liquidity_arr),
+                    row_liquidity_arr <= max(3.80 if is_revolver_action else 5.0, float(target_liquidity) + (2.80 if is_revolver_action else 4.0)),
+                    False,
+                )
+            preferred_mask = (
+                same_archetype_mask
+                & (financing_pressure_similarity >= (0.64 if is_revolver_action else 0.62))
+                & (market_regime_similarity >= (0.58 if is_revolver_action else 0.56))
+                & strict_mask
+            )
+            fallback_mask = (
+                (debt_archetype_gate >= (0.44 if is_revolver_action else 0.42))
+                & (financing_pressure_similarity >= (0.60 if is_revolver_action else 0.58))
+                & (market_regime_similarity >= (0.56 if is_revolver_action else 0.54))
+                & relaxed_mask
+            )
+        min_prefilter_keep = max(3, min(int(top_k), 6))
+        debt_keep_mask: Optional[np.ndarray] = None
+        if int(np.count_nonzero(preferred_mask)) >= int(min_prefilter_keep):
+            debt_keep_mask = preferred_mask
+            debt_archetype_prefilter_mode = "preferred"
+        elif int(np.count_nonzero(fallback_mask)) >= int(min_prefilter_keep):
+            debt_keep_mask = fallback_mask
+            debt_archetype_prefilter_mode = "fallback"
+        if debt_keep_mask is not None:
+            candidate_idx = candidate_idx[debt_keep_mask]
+            state_similarity = state_similarity[debt_keep_mask]
+            weighted_distance = weighted_distance[debt_keep_mask]
+            weighted_feature_coverage = weighted_feature_coverage[debt_keep_mask]
+            critical_feature_coverage = critical_feature_coverage[debt_keep_mask]
+            size_gap = size_gap[debt_keep_mask]
+            primary_burden_gap = primary_burden_gap[debt_keep_mask]
+            rate_gap = rate_gap[debt_keep_mask]
+            credit_gap = credit_gap[debt_keep_mask]
+            missing_penalty_factor = missing_penalty_factor[debt_keep_mask]
+            regime_penalty_factor = regime_penalty_factor[debt_keep_mask]
+            borrower_quality_similarity = borrower_quality_similarity[debt_keep_mask]
+            financing_pressure_similarity = financing_pressure_similarity[debt_keep_mask]
+            market_regime_similarity = market_regime_similarity[debt_keep_mask]
+            stress_alignment_similarity = stress_alignment_similarity[debt_keep_mask]
+            compatibility_penalty_factor = compatibility_penalty_factor[debt_keep_mask]
+            regime_similarity = regime_similarity[debt_keep_mask]
+            hist_scale = hist_scale[debt_keep_mask]
+            param_similarity = param_similarity[debt_keep_mask]
+            action_match_score = action_match_score[debt_keep_mask]
+            row_sectors = row_sectors[debt_keep_mask]
+            row_subsectors = row_subsectors[debt_keep_mask]
+            sector_similarity = sector_similarity[debt_keep_mask]
+            debt_row_archetype_labels = debt_row_archetype_labels[debt_keep_mask]
+            debt_archetype_similarity = debt_archetype_similarity[debt_keep_mask]
+            debt_style_similarity = debt_style_similarity[debt_keep_mask]
+            debt_archetype_gate = debt_archetype_gate[debt_keep_mask]
+            debt_archetype_prefilter_applied = True
+
+    # Dynamic sector-aware weighting and action-match inclusion.
+    blend_weights = dict((weighted_state.get("profile", {}) or {}).get("blend_weights") or {})
+    if str(weighted_state.get("version") or "") == _WEIGHTED_DISTANCE_V2_VERSION and blend_weights:
+        w_state = float(_to_float(blend_weights.get("state"), 0.58) or 0.58)
+        w_regime = float(_to_float(blend_weights.get("regime"), 0.12) or 0.12)
+        w_param = float(_to_float(blend_weights.get("param"), 0.12) or 0.12)
+        w_sector = float(_to_float(blend_weights.get("sector"), 0.10) or 0.10)
+        w_action = float(_to_float(blend_weights.get("action"), 0.08) or 0.08)
+        weight_total = max(1e-12, w_state + w_regime + w_param + w_sector + w_action)
+        w_state, w_regime, w_param, w_sector, w_action = (
+            w_state / weight_total,
+            w_regime / weight_total,
+            w_param / weight_total,
+            w_sector / weight_total,
+            w_action / weight_total,
+        )
+    elif cand_sector:
+        w_state, w_regime, w_param, w_sector, w_action = 0.52, 0.16, 0.12, 0.12, 0.08
+    else:
+        w_state, w_regime, w_param, w_sector, w_action = 0.56, 0.18, 0.14, 0.04, 0.08
+    tier_penalty = 1.0 if retrieval_tier == "exact" else (0.96 if retrieval_tier == "sibling_type" else 0.88)
+    similarity_score = (
+        w_state * state_similarity
+        + w_regime * regime_similarity
+        + w_param * param_similarity
+        + w_sector * sector_similarity
+        + w_action * action_match_score
+    )
+    similarity_score = similarity_score * tier_penalty
+    if _is_debt_support_action(action_id_text):
+        debt_penalty = np.sqrt(np.clip(compatibility_penalty_factor * debt_archetype_gate, 0.0, 1.0))
+        similarity_score = similarity_score * debt_penalty
+    if str(weighted_state.get("version") or "") == _WEIGHTED_DISTANCE_V2_VERSION:
+        sector_penalty_weight = float(
+            _to_float((weighted_state.get("profile", {}) or {}).get("sector_penalty_weight"), 0.30) or 0.30
+        )
+        sector_penalty_factor = np.exp(-sector_penalty_weight * np.maximum(1.0 - sector_similarity, 0.0))
+        similarity_score = similarity_score * sector_penalty_factor
+    else:
+        sector_penalty_factor = np.ones(candidate_idx.shape[0], dtype=float)
+    profile["vector_similarity_seconds"] = round(
+        time.perf_counter() - t_start - sum(float(profile.get(k, 0.0) or 0.0) for k in ("retrieval_index_seconds", "candidate_pool_seconds", "prefilter_seconds")),
+        6,
+    )
+    profile["state_distance_version"] = str(weighted_state.get("version") or _WEIGHTED_DISTANCE_V1_VERSION)
+    profile["weight_scope"] = str((weighted_state.get("profile", {}) or {}).get("weight_scope") or "prior_only")
+    profile["weighted_coverage_gate_applied"] = bool(weighted_coverage_gate_applied)
+    profile["weighted_coverage_gate_relaxed"] = bool(weighted_coverage_gate_relaxed)
+    profile["size_guardrail_applied"] = bool(size_guardrail_applied)
+    profile["size_guardrail_relaxed"] = bool(size_guardrail_relaxed)
+    profile["identity_prefilter_applied"] = bool(identity_prefilter_applied)
+    profile["identity_prefilter_mode"] = str(identity_prefilter_mode or "")
+    profile["debt_target_archetype_label"] = str(debt_target_archetype_label or "")
+    profile["debt_archetype_prefilter_applied"] = bool(debt_archetype_prefilter_applied)
+    profile["debt_archetype_prefilter_mode"] = str(debt_archetype_prefilter_mode or "")
+    profile["second_stage_reranker_applied"] = False
+    profile["second_stage_reranker_shortlist_size"] = 0
+    profile["second_stage_reranker_features"] = list(
+        dict((weighted_state.get("profile", {}) or {}).get("second_stage_reranker", {}).get("feature_weights", {}) or {}).keys()
+    )
+    profile["outcome_aware_reranker_applied"] = False
+    profile["outcome_aware_reranker_shortlist_size"] = 0
+    profile["outcome_aware_reranker_features"] = list(
+        dict((weighted_state.get("profile", {}) or {}).get("outcome_aware_reranker", {}).get("feature_weights", {}) or {}).keys()
+    )
+    profile["max_matches_per_company"] = int(
+        _to_float((weighted_state.get("profile", {}) or {}).get("max_matches_per_company"), 0.0) or 0.0
+    )
+    profile["company_diversity_cap_applied"] = False
+    profile["company_diversity_cap_relaxed"] = False
+    _debug("vector_similarity:done", candidate_pool_size=int(candidate_idx.shape[0]))
+
+    # Deterministic ordering: similarity desc, action_date desc, company_id asc.
+    cohort = df.iloc[candidate_idx].copy()
+    cohort["state_similarity"] = state_similarity
+    cohort["state_distance"] = weighted_distance
+    cohort["weighted_feature_coverage"] = weighted_feature_coverage
+    cohort["critical_feature_coverage"] = critical_feature_coverage
+    cohort["size_gap"] = size_gap
+    cohort["primary_burden_gap"] = primary_burden_gap
+    cohort["rate_gap"] = rate_gap
+    cohort["credit_gap"] = credit_gap
+    cohort["missing_penalty_factor"] = missing_penalty_factor
+    cohort["regime_penalty_factor"] = regime_penalty_factor
+    cohort["borrower_quality_similarity"] = borrower_quality_similarity
+    cohort["financing_pressure_similarity"] = financing_pressure_similarity
+    cohort["market_regime_similarity"] = market_regime_similarity
+    cohort["stress_alignment_similarity"] = stress_alignment_similarity
+    cohort["compatibility_penalty_factor"] = compatibility_penalty_factor
+    cohort["regime_similarity"] = regime_similarity
+    cohort["parameter_similarity"] = param_similarity
+    cohort["action_match_score"] = action_match_score
+    cohort["sector_similarity"] = sector_similarity
+    cohort["sector_penalty_factor"] = sector_penalty_factor
+    cohort["debt_archetype_label"] = debt_row_archetype_labels
+    cohort["debt_archetype_similarity"] = debt_archetype_similarity
+    cohort["debt_style_similarity"] = debt_style_similarity
+    cohort["debt_archetype_gate"] = debt_archetype_gate
+    cohort["similarity_score"] = similarity_score
+    cohort["action_scale_ratio"] = hist_scale
+    cohort = cohort.sort_values(["similarity_score", "action_date", "company_id"], ascending=[False, False, True])
+
+    reranker_profile = dict((weighted_state.get("profile", {}) or {}).get("second_stage_reranker") or {})
+    second_stage_reranker_applied = False
+    second_stage_reranker_shortlist_size = 0
+    if reranker_profile and isinstance(reranker_profile.get("feature_weights"), dict) and not cohort.empty:
+        reranker_feature_names = _second_stage_reranker_feature_names()
+        reranker_weight_vector = np.array(
+            [
+                float(_to_float((reranker_profile.get("feature_weights") or {}).get(name), 0.0) or 0.0)
+                for name in reranker_feature_names
+            ],
+            dtype=float,
+        )
+        if bool(np.any(reranker_weight_vector > 0.0)):
+            shortlist_n = min(
+                int(len(cohort)),
+                max(
+                    int(top_k),
+                    int(_to_float(reranker_profile.get("shortlist_size"), max(80, int(top_k) * 4)) or max(80, int(top_k) * 4)),
+                ),
+            )
+            shortlist_n = max(shortlist_n, min(int(len(cohort)), int(top_k)))
+            shortlist = cohort.head(shortlist_n).copy()
+            shortlist_emb_raw = np.column_stack(
+                [
+                    pd.to_numeric(shortlist.get(col), errors="coerce").to_numpy(dtype=float)
+                    for col in retrieval_index.embedding_cols
+                ]
+            )
+            reranker_features = _second_stage_reranker_feature_matrix(
+                emb_raw=shortlist_emb_raw,
+                candidate_vec_raw=candidate_vec_raw,
+                embedding_cols=retrieval_index.embedding_cols,
+                action_id=action_id_text,
+                action_subtype=action_subtype_text,
+                feature_weight_multipliers=candidate_feature_weight_multipliers,
+                target_action_scale=target_action_scale,
+                row_action_scales=pd.to_numeric(shortlist.get("action_scale_ratio"), errors="coerce").to_numpy(dtype=float),
+                feature_overrides={
+                    "regime_similarity": pd.to_numeric(shortlist.get("regime_similarity"), errors="coerce").to_numpy(dtype=float),
+                    "parameter_similarity": pd.to_numeric(
+                        shortlist.get("parameter_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "sector_similarity": pd.to_numeric(shortlist.get("sector_similarity"), errors="coerce").to_numpy(dtype=float),
+                    "action_match_score": pd.to_numeric(
+                        shortlist.get("action_match_score"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "borrower_quality_similarity": pd.to_numeric(
+                        shortlist.get("borrower_quality_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "financing_pressure_similarity": pd.to_numeric(
+                        shortlist.get("financing_pressure_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "market_regime_similarity": pd.to_numeric(
+                        shortlist.get("market_regime_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "stress_alignment_similarity": pd.to_numeric(
+                        shortlist.get("stress_alignment_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "compatibility_penalty_factor": pd.to_numeric(
+                        shortlist.get("compatibility_penalty_factor"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "debt_archetype_similarity": pd.to_numeric(
+                        shortlist.get("debt_archetype_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "debt_style_similarity": pd.to_numeric(
+                        shortlist.get("debt_style_similarity"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                    "debt_archetype_gate": pd.to_numeric(
+                        shortlist.get("debt_archetype_gate"),
+                        errors="coerce",
+                    ).to_numpy(dtype=float),
+                },
+            )
+            reranker_matrix = np.asarray(reranker_features.get("matrix"), dtype=float)
+            if (
+                reranker_matrix.ndim == 2
+                and reranker_matrix.shape[0] == int(len(shortlist))
+                and reranker_matrix.shape[1] == int(len(reranker_feature_names))
+            ):
+                reranker_scores = _reranker_sigmoid(
+                    float(_to_float(reranker_profile.get("bias"), 0.0) or 0.0)
+                    + reranker_matrix @ reranker_weight_vector
+                )
+                shortlist["base_similarity_score"] = pd.to_numeric(
+                    shortlist.get("similarity_score"),
+                    errors="coerce",
+                ).to_numpy(dtype=float)
+                if _is_debt_support_action(action_id_text):
+                    reranker_scores = reranker_scores * pd.to_numeric(
+                        shortlist.get("compatibility_penalty_factor"),
+                        errors="coerce",
+                    ).fillna(1.0).to_numpy(dtype=float)
+                    reranker_scores = reranker_scores * pd.to_numeric(
+                        shortlist.get("debt_archetype_gate"),
+                        errors="coerce",
+                    ).fillna(1.0).to_numpy(dtype=float)
+                shortlist["second_stage_reranker_score"] = reranker_scores
+                shortlist["similarity_score"] = reranker_scores
+                shortlist = shortlist.sort_values(["similarity_score", "action_date", "company_id"], ascending=[False, False, True])
+                tail = cohort.iloc[shortlist_n:].copy()
+                tail["second_stage_reranker_score"] = np.nan
+                cohort = pd.concat([shortlist, tail], axis=0)
+                second_stage_reranker_applied = True
+                second_stage_reranker_shortlist_size = int(shortlist_n)
+    profile["second_stage_reranker_applied"] = bool(second_stage_reranker_applied)
+    profile["second_stage_reranker_shortlist_size"] = int(second_stage_reranker_shortlist_size)
+
+    outcome_reranker_profile = dict((weighted_state.get("profile", {}) or {}).get("outcome_aware_reranker") or {})
+    outcome_aware_reranker_applied = False
+    outcome_aware_reranker_shortlist_size = 0
+    if outcome_reranker_profile and isinstance(outcome_reranker_profile.get("feature_weights"), dict) and not cohort.empty:
+        outcome_feature_names = _outcome_aware_reranker_feature_names()
+        outcome_weight_vector = np.array(
+            [
+                float(_to_float((outcome_reranker_profile.get("feature_weights") or {}).get(name), 0.0) or 0.0)
+                for name in outcome_feature_names
+            ],
+            dtype=float,
+        )
+        if bool(np.any(outcome_weight_vector > 0.0)):
+            shortlist_n = min(
+                int(len(cohort)),
+                max(
+                    int(top_k),
+                    int(
+                        _to_float(
+                            outcome_reranker_profile.get("shortlist_size"),
+                            max(40, int(top_k) * 2),
+                        )
+                        or max(40, int(top_k) * 2)
+                    ),
+                ),
+            )
+            shortlist_n = max(shortlist_n, min(int(len(cohort)), int(top_k)))
+            feature_frame = _outcome_aware_reranker_feature_frame(cohort)
+            shortlist = cohort.head(shortlist_n).copy()
+            shortlist_features = feature_frame.loc[shortlist.index, list(outcome_feature_names)].to_numpy(dtype=float)
+            if (
+                shortlist_features.ndim == 2
+                and shortlist_features.shape[0] == int(len(shortlist))
+                and shortlist_features.shape[1] == int(len(outcome_feature_names))
+            ):
+                outcome_scores = _reranker_sigmoid(
+                    float(_to_float(outcome_reranker_profile.get("bias"), 0.0) or 0.0)
+                    + shortlist_features @ outcome_weight_vector
+                )
+                for feature_idx, feature_name in enumerate(outcome_feature_names):
+                    shortlist[feature_name] = shortlist_features[:, feature_idx]
+                shortlist["pre_outcome_aware_similarity_score"] = pd.to_numeric(
+                    shortlist.get("similarity_score"),
+                    errors="coerce",
+                ).to_numpy(dtype=float)
+                shortlist["outcome_aware_reranker_score"] = outcome_scores
+                shortlist["similarity_score"] = outcome_scores
+                shortlist = shortlist.sort_values(["similarity_score", "action_date", "company_id"], ascending=[False, False, True])
+                tail = cohort.iloc[shortlist_n:].copy()
+                tail["outcome_aware_reranker_score"] = np.nan
+                cohort = pd.concat([shortlist, tail], axis=0)
+                outcome_aware_reranker_applied = True
+                outcome_aware_reranker_shortlist_size = int(shortlist_n)
+    profile["outcome_aware_reranker_applied"] = bool(outcome_aware_reranker_applied)
+    profile["outcome_aware_reranker_shortlist_size"] = int(outcome_aware_reranker_shortlist_size)
+
+    # Narrative similarity on a bounded pool for cost control.
+    narrative_pool_n = max(int(top_k) * 4, int(min_k) * 2, 200)
+    narrative_pool = cohort.head(narrative_pool_n).copy()
+    t_narr = time.perf_counter()
+    _debug("narrative_similarity:start", narrative_pool_size=int(len(narrative_pool)), disabled=bool(disable_narrative))
+    if disable_narrative:
+        narr_sims = np.zeros(len(narrative_pool), dtype=float)
+        narrative_real_count = 0
+        narrative_top5_mean = 0.0
+    else:
+        narr_sims, narrative_real_count, narrative_top5_mean = _narrative_similarity(
+            narrative_pool,
+            action_id=str(action_id),
+            action_subtype=action_subtype,
+            action_params=action_params,
+            candidate_features=candidate_features if isinstance(candidate_features, dict) else {},
+            candidate_regime=candidate_regime if isinstance(candidate_regime, dict) else {},
+        )
+    cohort["narrative_similarity"] = 0.0
+    if len(narrative_pool) == len(narr_sims) and len(narrative_pool) > 0:
+        cohort.loc[narrative_pool.index, "narrative_similarity"] = narr_sims
+        # Small lexical refinement so real text match improves rank but does not dominate.
+        base_scores = pd.to_numeric(cohort.loc[narrative_pool.index, "similarity_score"], errors="coerce").fillna(0.0)
+        adjusted = 0.95 * base_scores.to_numpy(dtype=float) + 0.05 * narr_sims
+        cohort.loc[narrative_pool.index, "similarity_score"] = adjusted
+        cohort = cohort.sort_values(["similarity_score", "action_date", "company_id"], ascending=[False, False, True])
+    debt_support_routing_applied = False
+    debt_support_lane_counts: Dict[str, int] = {}
+    debt_primary_support_count = 0
+    debt_same_company_primary_count = 0
+    if _is_debt_support_action(action_id_text) and not cohort.empty:
+        cohort, routing_profile = _apply_debt_support_routing(
+            cohort,
+            target_company_id=str(company_id or ""),
+            target_label=str(debt_target_archetype_label or ""),
+        )
+        debt_support_routing_applied = bool(routing_profile.get("applied"))
+        debt_support_lane_counts = {
+            str(key): int(value)
+            for key, value in dict(routing_profile.get("lane_counts") or {}).items()
+        }
+        debt_primary_support_count = int(_to_float(routing_profile.get("primary_support_count"), 0.0) or 0.0)
+        debt_same_company_primary_count = int(
+            _to_float(routing_profile.get("same_company_primary_count"), 0.0) or 0.0
+        )
+    profile["debt_support_routing_applied"] = bool(debt_support_routing_applied)
+    profile["debt_support_lane_counts"] = dict(debt_support_lane_counts)
+    profile["debt_primary_support_count"] = int(debt_primary_support_count)
+    profile["debt_same_company_primary_count"] = int(debt_same_company_primary_count)
+    max_matches_per_company = int(
+        _to_float((weighted_state.get("profile", {}) or {}).get("max_matches_per_company"), 0.0) or 0.0
+    )
+    if max_matches_per_company <= 0 and str(action_id_text or "") == "capital_structure.revolver_draw_or_resize":
+        max_matches_per_company = 2
+    profile["max_matches_per_company"] = int(max_matches_per_company)
+    if max_matches_per_company > 0 and not cohort.empty:
+        required_n = min(int(len(cohort)), max(int(top_k), int(min_k)))
+        diversity_capped = _apply_company_diversity_cap(
+            cohort,
+            company_col="company_id",
+            cap=max_matches_per_company,
+        )
+        if len(diversity_capped) >= int(required_n):
+            cohort = diversity_capped
+            profile["company_diversity_cap_applied"] = True
+        else:
+            profile["company_diversity_cap_relaxed"] = True
+    cohort = cohort.head(max(int(top_k), int(min_k)))
+    profile["narrative_similarity_seconds"] = round(time.perf_counter() - t_narr, 6)
+    profile["narrative_pool_size"] = int(len(narrative_pool))
+    _debug(
+        "narrative_similarity:done",
+        narrative_pool_size=int(len(narrative_pool)),
+        narrative_real_count=int(narrative_real_count),
+        narrative_seconds=float(profile["narrative_similarity_seconds"]),
+    )
+    t_pack = time.perf_counter()
+    _debug("pack_finalize:start", cohort_size=int(len(cohort)))
+    cohort_idx = cohort.index.to_numpy(dtype=np.int64, copy=False)
+    cohort_company_ids = retrieval_index.company_id_arr[cohort_idx]
+    cohort_action_dates = retrieval_index.action_date_arr[cohort_idx]
+    cohort_action_keys = retrieval_index.preferred_action_key_arr[cohort_idx]
+    cohort_source_event_ids = retrieval_index.source_event_id_arr[cohort_idx]
+    cohort_sector_values = retrieval_index.feature_sector_arr[cohort_idx]
+    cohort_regime_flags = {
+        regime_label: regime_mask[cohort_idx]
+        for regime_label, regime_mask in retrieval_index.regime_flags.items()
+    }
+
+    def _cohort_numeric(column: str) -> np.ndarray:
+        if column not in cohort.columns:
+            return np.full(len(cohort), np.nan, dtype=float)
+        return pd.to_numeric(cohort[column], errors="coerce").to_numpy(dtype=float)
+
+    cohort_action_sizes = _cohort_numeric("action_size")
+    cohort_state_similarity = _cohort_numeric("state_similarity")
+    cohort_regime_similarity = _cohort_numeric("regime_similarity")
+    cohort_parameter_similarity = _cohort_numeric("parameter_similarity")
+    cohort_action_match_score = _cohort_numeric("action_match_score")
+    cohort_sector_similarity = _cohort_numeric("sector_similarity")
+    cohort_similarity_score = _cohort_numeric("similarity_score")
+    cohort_weighted_feature_coverage = _cohort_numeric("weighted_feature_coverage")
+    cohort_critical_feature_coverage = _cohort_numeric("critical_feature_coverage")
+    cohort_state_distance = _cohort_numeric("state_distance")
+    retrieved: List[PrecedentCase] = []
+    sim_scores: List[SimilarityScore] = []
+    for idx in range(len(cohort_idx)):
+        action_date = cohort_action_dates[idx]
+        precedent_id = f"{cohort_company_ids[idx]}::{action_date}::{idx}"
+        regime_row = {
+            regime_label: bool(regime_mask[idx])
+            for regime_label, regime_mask in cohort_regime_flags.items()
+        }
+        key_state_features = _feature_key_state(cohort.iloc[idx])
+        if not key_state_features.get("base_sector"):
+            key_state_features["base_sector"] = str(cohort_sector_values[idx] or "").strip()
+        retrieved.append(
+            PrecedentCase(
+                precedent_id=precedent_id,
+                company_id=str(cohort_company_ids[idx] or ""),
+                decision_time=str(pd.to_datetime(action_date, errors="coerce")),
+                action_id=str(cohort_action_keys[idx] or ""),
+                parameters={"action_size": float(cohort_action_sizes[idx]) if np.isfinite(cohort_action_sizes[idx]) else None},
+                regime=regime_row,
+                similarity_score=float(cohort_similarity_score[idx]) if np.isfinite(cohort_similarity_score[idx]) else 0.0,
+                key_state_features=key_state_features,
+                source_event_id=str(cohort_source_event_ids[idx] or precedent_id),
+            )
+        )
+        sim_scores.append(
+            SimilarityScore(
+                precedent_id=precedent_id,
+                score=float(cohort_similarity_score[idx]) if np.isfinite(cohort_similarity_score[idx]) else 0.0,
+                state_similarity=float(cohort_state_similarity[idx]) if np.isfinite(cohort_state_similarity[idx]) else 0.0,
+                regime_similarity=float(cohort_regime_similarity[idx]) if np.isfinite(cohort_regime_similarity[idx]) else 0.0,
+                parameter_similarity=float(cohort_parameter_similarity[idx]) if np.isfinite(cohort_parameter_similarity[idx]) else 0.0,
+                action_match_score=float(cohort_action_match_score[idx]) if np.isfinite(cohort_action_match_score[idx]) else 0.0,
+                sector_similarity=float(cohort_sector_similarity[idx]) if np.isfinite(cohort_sector_similarity[idx]) else 0.0,
+            )
+        )
+
+    out_dists = _build_outcome_distributions(cohort)
+
+    # Legacy distributions list for downstream blend compatibility.
+    legacy_distributions = [
+        ImpactDistribution(
+            metric="outcome_pe_6m",
+            horizon_months=6,
+            p25=out_dists.horizon_6m.valuation_multiple_change.p25,
+            p50=out_dists.horizon_6m.valuation_multiple_change.median,
+            p75=out_dists.horizon_6m.valuation_multiple_change.p75,
+            n=out_dists.horizon_6m.valuation_multiple_change.sample_size,
+        ),
+        ImpactDistribution(
+            metric="outcome_pe_12m",
+            horizon_months=12,
+            p25=out_dists.horizon_12m.valuation_multiple_change.p25,
+            p50=out_dists.horizon_12m.valuation_multiple_change.median,
+            p75=out_dists.horizon_12m.valuation_multiple_change.p75,
+            n=out_dists.horizon_12m.valuation_multiple_change.sample_size,
+        ),
+        ImpactDistribution(
+            metric="outcome_ev_ebitda_12m",
+            horizon_months=12,
+            p25=_dist(pd.to_numeric(cohort.get("outcome_ev_ebitda_12m"), errors="coerce")).p25,
+            p50=_dist(pd.to_numeric(cohort.get("outcome_ev_ebitda_12m"), errors="coerce")).median,
+            p75=_dist(pd.to_numeric(cohort.get("outcome_ev_ebitda_12m"), errors="coerce")).p75,
+            n=_dist(pd.to_numeric(cohort.get("outcome_ev_ebitda_12m"), errors="coerce")).sample_size,
+        ),
+    ]
+
+    # Tail events across core metrics/horizons.
+    tail_events: List[TailEvent] = []
+    tail_specs = [
+        ("outcome_pe_6m", "equity_return_vs_sector", "6m"),
+        ("outcome_pe_12m", "equity_return_vs_sector", "12m"),
+        ("outcome_ev_ebitda_6m", "valuation_multiple_change", "6m"),
+        ("outcome_ev_ebitda_12m", "valuation_multiple_change", "12m"),
+        ("credit_spread_change_1m", "credit_spread_change", "1m"),
+        ("credit_spread_change_6m", "credit_spread_change", "6m"),
+        ("credit_spread_change_12m", "credit_spread_change", "12m"),
+        ("credit_spread_change_24m", "credit_spread_change", "24m"),
+        ("rating_migration_1m", "rating_migration", "1m"),
+        ("rating_migration_6m", "rating_migration", "6m"),
+        ("rating_migration_12m", "rating_migration", "12m"),
+        ("rating_migration_24m", "rating_migration", "24m"),
+    ]
+    for col, metric, horizon in tail_specs:
+        tail_events.extend(_tail_candidates(cohort, column=col, metric=metric, horizon=horizon))
+
+    # Regime splits
+    regime_splits: List[RegimeDistribution] = []
+    for regime_label in ["credit_tight", "credit_loose", "risk_off", "risk_on", "high_vol", "low_vol"]:
+        mask_reg = cohort_regime_flags.get(regime_label)
+        if mask_reg is None:
+            continue
+        subset = cohort.iloc[np.flatnonzero(mask_reg)]
+        if subset.empty:
+            continue
+        regime_splits.append(
+            RegimeDistribution(
+                regime_label=regime_label,
+                outcome_distributions=_build_outcome_distributions(subset),
+                sample_size=int(len(subset)),
+            )
+        )
+
+    # Second-order outcomes
+    follow_on_rows: Dict[str, List[float]] = {}
+    window_days = np.timedelta64(730, "D")
+    for company_key, action_date in zip(cohort_company_ids, cohort_action_dates):
+        if pd.isna(action_date):
+            continue
+        follow_on_window = retrieval_index.company_follow_on_lookup.get(str(company_key or ""))
+        if follow_on_window is None:
+            continue
+        company_dates, company_action_keys = follow_on_window
+        left = int(np.searchsorted(company_dates, action_date, side="right"))
+        right = int(np.searchsorted(company_dates, action_date + window_days, side="right"))
+        if right <= left:
+            continue
+        action_keys_window = company_action_keys[left:right]
+        if action_keys_window.size == 0:
+            continue
+        day_offsets = ((company_dates[left:right] - action_date) / np.timedelta64(1, "D")).astype(float)
+        for aid, dt in zip(action_keys_window.tolist(), day_offsets.tolist()):
+            action_key = str(aid or "").strip()
+            if not action_key:
+                continue
+            follow_on_rows.setdefault(action_key, []).append(float(dt))
+
+    second_order: List[FollowOnOutcome] = []
+    denom = max(1, len(cohort))
+    for aid, times in sorted(follow_on_rows.items(), key=lambda x: (-len(x[1]), x[0])):
+        second_order.append(
+            FollowOnOutcome(
+                follow_on_action_id=aid,
+                frequency=float(len(times) / denom),
+                average_time_to_follow_on=float(np.mean(times)) if times else None,
+                median_time_to_follow_on=float(np.median(times)) if times else None,
+            )
+        )
+    second_order = second_order[:10]
+
+    # Mismatch diagnostics
+    mismatches: List[FeatureMismatch] = []
+    feature_map = {
+        feature_name: _to_float(candidate_state_row.get(feature_name))
+        for feature_name in retrieval_index.embedding_cols
+    }
+    for name, cand_v in feature_map.items():
+        if cand_v is None or name not in cohort.columns:
+            continue
+        s = pd.to_numeric(cohort[name], errors="coerce").dropna()
+        if s.empty:
+            continue
+        lo = float(s.quantile(0.05))
+        hi = float(s.quantile(0.95))
+        if cand_v < lo or cand_v > hi:
+            mismatches.append(
+                FeatureMismatch(
+                    feature_name=name,
+                    candidate_value=cand_v,
+                    cohort_range=f"[{lo:.4f}, {hi:.4f}]",
+                    explanation="Candidate feature lies outside the 5-95% precedent cohort range.",
+                )
+            )
+
+    avg_regime_similarity = float(cohort["regime_similarity"].mean()) if "regime_similarity" in cohort.columns else 0.0
+    regime_mismatch = avg_regime_similarity < 0.55
+
+    scale_series = pd.to_numeric(cohort.get("action_scale_ratio"), errors="coerce").dropna()
+    param_mismatch = False
+    if not scale_series.empty:
+        slo = float(scale_series.quantile(0.10))
+        shi = float(scale_series.quantile(0.90))
+        param_mismatch = cand_scale < slo or cand_scale > shi
+
+    # Base similarity is used both for confidence and out-of-sample diagnostics.
+    base_sim = float(cohort["similarity_score"].mean()) if "similarity_score" in cohort.columns else 0.0
+    top_support = cohort.head(min(len(cohort), max(5, min(int(top_k), 10))))
+    top_similarity_mean = (
+        float(pd.to_numeric(top_support.get("similarity_score"), errors="coerce").fillna(0.0).mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_similarity_p25 = (
+        float(pd.to_numeric(top_support.get("similarity_score"), errors="coerce").fillna(0.0).quantile(0.25))
+        if not top_support.empty
+        else 0.0
+    )
+    top_action_match_score = (
+        float(pd.to_numeric(top_support.get("action_match_score"), errors="coerce").fillna(0.0).mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_weighted_feature_coverage = (
+        float(pd.to_numeric(top_support.get("weighted_feature_coverage"), errors="coerce").fillna(0.0).mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_critical_feature_coverage = (
+        float(pd.to_numeric(top_support.get("critical_feature_coverage"), errors="coerce").fillna(0.0).mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_state_distance = (
+        float(pd.to_numeric(top_support.get("state_distance"), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna().mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_rate_gap = (
+        float(pd.to_numeric(top_support.get("rate_gap"), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna().mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_credit_gap = (
+        float(pd.to_numeric(top_support.get("credit_gap"), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna().mean())
+        if not top_support.empty
+        else 0.0
+    )
+    top_missing_penalty_factor = (
+        float(pd.to_numeric(top_support.get("missing_penalty_factor"), errors="coerce").fillna(1.0).mean())
+        if not top_support.empty
+        else 1.0
+    )
+    top_regime_penalty_factor = (
+        float(pd.to_numeric(top_support.get("regime_penalty_factor"), errors="coerce").fillna(1.0).mean())
+        if not top_support.empty
+        else 1.0
+    )
+    top_sector_penalty_factor = (
+        float(pd.to_numeric(top_support.get("sector_penalty_factor"), errors="coerce").fillna(1.0).mean())
+        if not top_support.empty
+        else 1.0
+    )
+    narrative_mismatch = bool(narrative_real_count >= 5 and narrative_top5_mean < 0.12)
+    very_low_similarity = max(base_sim, top_similarity_mean) < 0.42
+    has_divestiture_family_scale = any(
+        str(k).startswith("portfolio.divestiture.") for k in selected_family_scale_keys
+    )
+    has_mna_family_scale = any(str(k).startswith("mna.") for k in selected_family_scale_keys)
+    has_debt_family_scale = any(
+        str(k).startswith("capital_structure.debt_") or str(k).startswith("capital_structure.revolver.")
+        for k in selected_family_scale_keys
+    )
+    has_debt_bond_amount_family_scale = any(
+        str(k).startswith("capital_structure.debt_bond.amount_") for k in selected_family_scale_keys
+    )
+    strong_family_scale_match = (
+        retrieval_tier == "family"
+        and bool(selected_family_scale_keys)
+        and not regime_mismatch
+        and (
+            (
+                not param_mismatch
+                and top_action_match_score >= 0.90
+                and top_similarity_mean >= 0.65
+            )
+            or (
+                action_id_text == "mna.transformational_acquisition"
+                and has_mna_family_scale
+                and top_action_match_score >= 0.88
+                and top_similarity_mean >= 0.60
+            )
+            or (
+                action_id_text == "mna.go_private_lbo"
+                and any(str(k).startswith("mna.platform_lbo.") for k in selected_family_scale_keys)
+                and top_action_match_score >= 0.88
+                and top_similarity_mean >= 0.60
+            )
+            or (
+                has_divestiture_family_scale
+                and top_action_match_score >= 0.85
+                and top_similarity_mean >= 0.63
+            )
+            or (
+                has_debt_family_scale
+                and top_action_match_score >= 0.82
+                and top_similarity_mean >= 0.60
+            )
+            or (
+                action_id_text == "capital_structure.new_debt_issuance"
+                and has_debt_bond_amount_family_scale
+                and top_action_match_score >= 0.90
+                and top_similarity_mean >= 0.58
+            )
+        )
+    )
+    strong_exact_match = (
+        retrieval_tier == "exact"
+        and not regime_mismatch
+        and int(exact_idx.shape[0]) >= int(exact_support_min)
+        and top_action_match_score >= 0.80
+        and top_similarity_mean >= 0.72
+    )
+
+    mismatch = MismatchDiagnostics(
+        feature_mismatches=mismatches,
+        regime_mismatch=regime_mismatch,
+        parameter_scale_mismatch=param_mismatch,
+        narrative_mismatch=narrative_mismatch,
+        # Conservative but not over-triggered:
+        # - global retrieval with low exact coverage
+        # - regime mismatch
+        # - materially outlying feature profile (3+ mismatches), except for
+        #   strong family-scale matches where the action/scale neighborhood is
+        #   highly aligned and the mismatches are feature-level rather than
+        #   regime or parameter-scale failures.
+        # - very low similarity even after ranking
+        out_of_sample_flag=(
+            (low_precedent_coverage and retrieval_tier == "global")
+            or regime_mismatch
+            or (len(mismatches) >= 3 and not (strong_family_scale_match or strong_exact_match))
+            or very_low_similarity
+            or (retrieval_tier != "exact" and top_similarity_mean < 0.50 and top_action_match_score < 0.75)
+        ),
+    )
+
+    # Calibration confidence
+    confidence_meta = _compute_calibration_confidence(
+        retrieval_tier=retrieval_tier,
+        exact_match_count=int(exact_idx.shape[0]),
+        exact_support_min=int(exact_support_min),
+        cohort_size=int(len(cohort)),
+        base_similarity=float(base_sim),
+        top_similarity_mean=float(top_similarity_mean),
+        top_similarity_p25=float(top_similarity_p25),
+        top_action_match_score=float(top_action_match_score),
+        mismatch_count=int(len(mismatches)),
+        regime_mismatch=bool(regime_mismatch),
+        parameter_mismatch=bool(param_mismatch),
+        narrative_mismatch=bool(narrative_mismatch),
+    )
+    calibration_confidence = float(confidence_meta["calibration_confidence"])
+    profile["pack_finalize_seconds"] = round(time.perf_counter() - t_pack, 6)
+    profile["cohort_size"] = int(len(cohort))
+    profile["narrative_real_count"] = int(narrative_real_count)
+    profile["strong_family_scale_match"] = bool(strong_family_scale_match)
+    profile["strong_exact_match"] = bool(strong_exact_match)
+    profile["total_seconds"] = round(time.perf_counter() - t_start, 6)
+    _debug("pack_finalize:done", total_seconds=float(profile["total_seconds"]))
+
+    return PrecedentPack(
+        candidate_id=candidate_id,
+        run_id=run_id,
+        retrieved_cohorts=retrieved,
+        similarity_scores=sim_scores,
+        outcome_distributions=out_dists,
+        regime_splits=regime_splits,
+        tail_events=tail_events,
+        second_order_effects=second_order,
+        mismatch_diagnostics={
+            **mismatch.to_dict(),
+            "low_precedent_coverage": bool(low_precedent_coverage),
+            "exact_match_count": int(exact_idx.shape[0]),
+            "cohort_size": int(len(cohort)),
+            "minimum_cohort_size": int(min_k),
+            "minimum_exact_support": int(exact_support_min),
+            "retrieval_tier": str(retrieval_tier),
+            "exact_support_ratio": float(confidence_meta["exact_support_ratio"]),
+            "cohort_factor": float(confidence_meta["cohort_factor"]),
+            "cohort_support_factor": float(confidence_meta["support_factor"]),
+            "similarity_signal": float(confidence_meta["similarity_signal"]),
+            "tier_confidence_discount": float(confidence_meta["tier_conf_discount"]),
+            "confidence_pre_tier_discount": float(confidence_meta["confidence_pre_tier_discount"]),
+            "hard_prefilter_applied": bool(hard_prefilter_applied),
+            "hard_prefilter_relaxed": bool(hard_prefilter_relaxed),
+            "regime_prefilter_applied": bool(regime_prefilter_applied),
+            "sector_prefilter_applied": bool(sector_prefilter_applied),
+            "market_cap_prefilter_applied": bool(market_cap_prefilter_applied),
+            "candidate_market_cap_bucket": int(cand_market_cap_bucket),
+            "top_similarity_mean": float(top_similarity_mean),
+            "top_similarity_p25": float(top_similarity_p25),
+            "top_action_match_score": float(top_action_match_score),
+            "narrative_top5_similarity": float(narrative_top5_mean),
+            "narrative_real_text_rows": int(narrative_real_count),
+            "strong_family_scale_match": bool(strong_family_scale_match),
+            "strong_exact_match": bool(strong_exact_match),
+            "state_distance_version": str(weighted_state.get("version") or _WEIGHTED_DISTANCE_V1_VERSION),
+            "weighted_coverage_gate_applied": bool(weighted_coverage_gate_applied),
+            "weighted_coverage_gate_relaxed": bool(weighted_coverage_gate_relaxed),
+            "size_guardrail_applied": bool(size_guardrail_applied),
+            "size_guardrail_relaxed": bool(size_guardrail_relaxed),
+            "identity_prefilter_applied": bool(identity_prefilter_applied),
+            "identity_prefilter_mode": str(identity_prefilter_mode or ""),
+            "top_weighted_feature_coverage": float(top_weighted_feature_coverage),
+            "top_critical_feature_coverage": float(top_critical_feature_coverage),
+            "top_state_distance": float(top_state_distance),
+            "top_rate_gap": float(top_rate_gap),
+            "top_credit_gap": float(top_credit_gap),
+            "top_missing_penalty_factor": float(top_missing_penalty_factor),
+            "top_regime_penalty_factor": float(top_regime_penalty_factor),
+            "top_sector_penalty_factor": float(top_sector_penalty_factor),
+            "state_weight_scope": str(weighted_state.get("profile", {}).get("weight_scope") or "prior_only"),
+            "learned_holdout_pair_correlation": _to_float(
+                weighted_state.get("profile", {}).get("learned_holdout_pair_correlation"),
+                None,
+            ),
+            "learned_prior_holdout_pair_correlation": _to_float(
+                weighted_state.get("profile", {}).get("learned_prior_holdout_pair_correlation"),
+                None,
+            ),
+        },
+        calibration_confidence=calibration_confidence,
+        profiling=profile,
+        # legacy compatibility payloads
+        matches=[asdict(c) for c in retrieved],
+        distributions=legacy_distributions,
+    )
+
+
+__all__ = [
+    "PrecedentRetrievalIndex",
+    "augment_precedent_state_vector_columns",
+    "build_precedent_pack_v2",
+    "build_precedent_retrieval_index",
+]

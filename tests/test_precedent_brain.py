@@ -1758,3 +1758,92 @@ def test_explicit_state_vector_history_overrides_legacy_matching_fields():
     assert key_state["state_vector_v1.net_obligation_burden"] == 1.75
 
 
+def test_augment_precedent_state_vector_columns_prefers_raw_formula_inputs():
+    hist = pd.DataFrame(
+        [
+            {
+                "operating.revenue_ttm_provider_direct": 100.0,
+                "operating.revenue_ttm_lag_1y": 80.0,
+                "operating.ebitda_ltm_provider_direct": 20.0,
+                "capital_structure.total_debt_provider_direct": 50.0,
+                "capital_structure.net_debt_normalized": 30.0,
+                "capital_structure.lease_liabilities_sec_exact": 5.0,
+                "capital_structure.combined_retirement_liability": 10.0,
+                "liquidity.cash_and_short_term_investments_provider_direct": 25.0,
+                "capital_structure.current_debt_statement_direct": 10.0,
+                "capital_structure.interest_expense_statement_direct": 4.0,
+                "market.market_cap_provider_direct": 200.0,
+                "cash_flow.free_cash_flow_ttm": 12.0,
+                "market.volatility_90d": 0.30,
+                "market.drawdown_90d": -0.20,
+                "market.credit_window_proxy": 0.70,
+                "market.equity_window_proxy": 0.80,
+                "market.credit_spread_level": 0.02,
+                "macro.fed_funds_effective": 4.50,
+                "macro.hy_oas": 3.25,
+            }
+        ]
+    )
+
+    augmented = augment_precedent_state_vector_columns(hist)
+    row = augmented.iloc[0]
+
+    assert np.isclose(row["state_vector_v1.size_log_revenue"], np.log10(100.0))
+    assert np.isclose(row["state_vector_v1.profitability"], 0.20)
+    assert np.isclose(row["state_vector_v1.growth"], 0.25)
+    assert np.isclose(row["state_vector_v1.gross_obligation_burden"], 3.25)
+    assert np.isclose(row["state_vector_v1.net_obligation_burden"], 2.0)
+    assert np.isclose(row["state_vector_v1.liquidity_flexibility"], 2.5)
+    assert np.isclose(row["state_vector_v1.interest_coverage"], 5.0)
+    assert np.isclose(row["state_vector_v1.valuation_multiple"], 11.5)
+    assert np.isclose(row["state_vector_v1.cash_generation"], 0.06)
+    assert np.isclose(row["state_vector_v1.rates_level"], 4.50)
+    assert np.isclose(row["state_vector_v1.credit_spread"], 3.25)
+
+
+def test_augment_precedent_state_vector_columns_uses_richer_contract_baseline_fields():
+    hist = pd.DataFrame(
+        [
+            {
+                "base_revenue_ttm": 100.0,
+                "base_revenue_ttm_lag_1y": 80.0,
+                "base_ebitda_ttm": 20.0,
+                "base_margin": 0.20,
+                "base_total_debt": 50.0,
+                "base_net_debt": 30.0,
+                "base_available_liquidity": 25.0,
+                "base_current_debt": 10.0,
+                "base_interest_expense": 4.0,
+                "base_market_cap": 200.0,
+                "base_fcf_yield": 0.06,
+                "macro_fed_funds_effective": 4.50,
+                "macro_hy_oas": 3.25,
+            }
+        ]
+    )
+
+    augmented = augment_precedent_state_vector_columns(hist)
+    row = augmented.iloc[0]
+
+    assert np.isclose(row["state_vector_v1.size_log_revenue"], np.log10(100.0 * 1_000_000.0))
+    assert np.isclose(row["state_vector_v1.profitability"], 0.20)
+    assert np.isclose(row["state_vector_v1.growth"], 0.25)
+    assert np.isclose(row["state_vector_v1.gross_obligation_burden"], 2.5)
+    assert np.isclose(row["state_vector_v1.net_obligation_burden"], 1.5)
+    assert np.isclose(row["state_vector_v1.liquidity_flexibility"], 2.5)
+    assert np.isclose(row["state_vector_v1.interest_coverage"], 5.0)
+    assert np.isclose(row["state_vector_v1.valuation_multiple"], 11.25)
+    assert np.isclose(row["state_vector_v1.cash_generation"], 0.06)
+    assert np.isclose(row["state_vector_v1.rates_level"], 4.50)
+    assert np.isclose(row["state_vector_v1.credit_spread"], 3.25)
+
+
+def test_augment_precedent_state_vector_columns_scales_historical_revenue_to_dollars_for_size():
+    hist = pd.DataFrame([{"base_revenue_ttm": 86469.0}])
+
+    augmented = augment_precedent_state_vector_columns(hist)
+    row = augmented.iloc[0]
+
+    assert np.isclose(row["state_vector_v1.size_log_revenue"], np.log10(86469.0 * 1_000_000.0))
+
+
