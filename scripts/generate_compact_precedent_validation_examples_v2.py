@@ -183,3 +183,10 @@ def _target_raw_table(row: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _compact_table(values: dict[str, Any]) -> str:
+    lines = ["| Compact feature | Value |", "|---|---:|"]
+    for key in _STATE_VECTOR_V1_FEATURES:
+        lines.append(f"| `{key}` | {_fmt_value(values.get(key))} |")
+    return "\n".join(lines)
+
+

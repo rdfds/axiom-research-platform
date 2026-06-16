@@ -100,7 +100,7 @@ def _support_lines(row: dict[str, Any], bundle: dict[str, Any], *, missing_label
     support = bundle["state_vector_v1"]["support"]
     proxy = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") == "proxy_missing_component"]
     missing = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") in {None, "unsupported"} and _is_missing(bundle["state_vector_v1"]["values"].get(key))]
-    sector = (features['taxonomy.sector'] or {}).get("value")
+    sector = (features.get("taxonomy.sector") or {}).get("value")
     subsector = (features.get("taxonomy.subsector") or {}).get("value")
     regime = (features.get("capital_structure.retirement_obligation_regime") or {}).get("value")
     proxy_text = ", ".join(f"`{key}`" for key in proxy) if proxy else "`None`"
