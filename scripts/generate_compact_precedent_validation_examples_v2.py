@@ -139,3 +139,14 @@ def _fmt_value(value: Any) -> str:
     return f"`{value}`"
 
 
+def _load_snapshot_rows() -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    with gzip.open(SNAPSHOT_PATH, "rt") as handle:
+        for line in handle:
+            row = json.loads(line)
+            company_id = str(row.get("company_id") or "")
+            if company_id:
+                rows[company_id] = row
+    return rows
+
+

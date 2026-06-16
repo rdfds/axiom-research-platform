@@ -127,3 +127,14 @@ def _raw_metric_table(row: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _replace_block(section: str, start_heading: str, end_heading: str, body: str) -> str:
+    pattern = re.compile(
+        rf"({re.escape(start_heading)}\n\n)(.*?)(\n{re.escape(end_heading)})",
+        flags=re.S,
+    )
+    match = pattern.search(section)
+    if not match:
+        raise RuntimeError(f"Could not replace block between {start_heading!r} and {end_heading!r}")
+    return section[: match.start()] + match.group(1) + body + match.group(3) + section[match.end() :]
+
+
