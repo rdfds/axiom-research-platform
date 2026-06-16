@@ -5333,3 +5333,47 @@ def _apply_company_diversity_cap(
     return cohort.loc[np.asarray(keep_rows, dtype=bool)].copy()
 
 
+def _tail_candidates(
+    cohort: pd.DataFrame,
+    *,
+    column: str,
+    metric: str,
+    horizon: str,
+    min_points: int = 10,
+    max_each_side: int = 3,
+) -> List[TailEvent]:
+    out: List[TailEvent] = []
+    if column not in cohort.columns:
+        return out
+    s = pd.to_numeric(cohort[column], errors="coerce")
+    valid = s.dropna()
+    if valid.shape[0] < int(min_points):
+        return out
+
+    p10 = float(valid.quantile(0.10))
+    p90 = float(valid.quantile(0.90))
+    lows = cohort[s <= p10].head(max_each_side)
+    highs = cohort[s >= p90].head(max_each_side)
+    for _, row in lows.iterrows():
+        out.append(
+            TailEvent(
+                precedent_id=f"{row.get('company_id')}::{row.get('action_date')}",
+                outcome_metric=metric,
+                outcome_value=float(_to_float(row.get(column), 0.0) or 0.0),
+                horizon=horizon,
+                explanation="Bottom decile historical outcome.",
+            )
+        )
+    for _, row in highs.iterrows():
+        out.append(
+            TailEvent(
+                precedent_id=f"{row.get('company_id')}::{row.get('action_date')}",
+                outcome_metric=metric,
+                outcome_value=float(_to_float(row.get(column), 0.0) or 0.0),
+                horizon=horizon,
+                explanation="Top decile historical outcome.",
+            )
+        )
+    return out
+
+

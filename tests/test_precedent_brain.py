@@ -1425,3 +1425,46 @@ def test_retrieval_index_enriches_missing_historical_taxonomy_from_lookup(monkey
     assert str(enriched.get("taxonomy.subsector")) == "Household Products"
 
 
+def test_snapshot_taxonomy_lookup_falls_back_to_catalog(monkeypatch, tmp_path):
+    catalog_path = tmp_path / "catalog.jsonl.gz"
+    rows = [
+        {
+            "company_id": "000123",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "features": {
+                "taxonomy.sector": {"value": "Industrials", "support_mode": "heuristic", "confidence": 0.2},
+                "taxonomy.subsector": {"value": "", "support_mode": "heuristic", "confidence": 0.2},
+            },
+        },
+        {
+            "company_id": "000123",
+            "as_of_time": "2024-12-31T00:00:00+00:00",
+            "features": {
+                "taxonomy.sector": {"value": "Industrials", "support_mode": "exact", "confidence": 0.4},
+                "taxonomy.subsector": {"value": "Machinery", "support_mode": "exact", "confidence": 0.4},
+            },
+        },
+        {
+            "company_id": "000456",
+            "as_of_time": "2024-12-31T00:00:00+00:00",
+            "features": {
+                "taxonomy.sector": {"value": "Health Care", "support_mode": "exact", "confidence": 0.3},
+                "taxonomy.subsector": {"value": "Biotechnology", "support_mode": "exact", "confidence": 0.3},
+            },
+        },
+    ]
+    with gzip.open(catalog_path, "wt") as handle:
+        for row in rows:
+            handle.write(json.dumps(row) + "\n")
+
+    monkeypatch.setattr(precedent_brain, "_SNAPSHOT_TAXONOMY_LOOKUP_PATH", tmp_path / "missing.parquet")
+    monkeypatch.setattr(precedent_brain, "_SNAPSHOT_TAXONOMY_CATALOG_FALLBACK_PATH", catalog_path)
+    precedent_brain._load_snapshot_taxonomy_lookup.cache_clear()
+    try:
+        lookup = precedent_brain._load_snapshot_taxonomy_lookup()
+    finally:
+        precedent_brain._load_snapshot_taxonomy_lookup.cache_clear()
+    assert lookup["000123"] == ("Industrials", "Machinery")
+    assert lookup["000456"] == ("Health Care", "Biotechnology")
+
+

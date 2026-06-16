@@ -190,3 +190,24 @@ def learn_feature_weights(df: pd.DataFrame, feature_cols: List[str], target_col:
     return w / w.sum()
 
 
+def weighted_mahalanobis_distances(
+    X: np.ndarray,
+    x: np.ndarray,
+    weights: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute weighted Mahalanobis distances.
+    """
+    if X.size == 0:
+        return np.array([])
+    w = np.diag(weights)
+    cov = np.cov(X, rowvar=False)
+    if cov.ndim == 0:
+        cov = np.array([[cov]])
+    cov_w = w @ cov @ w
+    inv_cov = np.linalg.pinv(cov_w)
+    diff = X - x
+    d = np.einsum("ij,jk,ik->i", diff, inv_cov, diff)
+    return np.sqrt(np.maximum(d, 0))
+
+
