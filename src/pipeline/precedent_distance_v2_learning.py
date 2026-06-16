@@ -133,3 +133,67 @@ def is_better_report_aggregate(
     return False
 
 
+def _parameter_grid(objective_config: Dict[str, Any]) -> List[Tuple[Tuple[str, ...], List[float]]]:
+    def _dedupe(values: Sequence[float]) -> List[float]:
+        seen: List[float] = []
+        for value in values:
+            float_value = float(value)
+            if any(abs(float_value - existing) <= 1e-12 for existing in seen):
+                continue
+            seen.append(float_value)
+        return seen
+
+    search_space = dict(objective_config.get("search_space", {}) or {})
+    group_names = list(search_space.get("group_weights", []) or list(_STATE_VECTOR_GROUPS.keys()))
+    raw_group_grid = list(search_space.get("group_weight_grid_values", []) or [])
+    group_grid_values = _dedupe([float(value) for value in raw_group_grid]) if raw_group_grid else [0.60, 0.80, 1.00, 1.20, 1.40, 1.70]
+    grids: List[Tuple[Tuple[str, ...], List[float]]] = []
+    if bool(search_space.get("optimize_group_weights", True)):
+        for group_name in group_names:
+            grids.append((("group_weights", str(group_name)), list(group_grid_values)))
+    if bool(search_space.get("optimize_feature_relative_weights", True)):
+        within_group = dict(search_space.get("within_group_relative_weights", {}) or {})
+        rel_min = float(within_group.get("min", 0.50) or 0.50)
+        rel_max = float(within_group.get("max", 2.00) or 2.00)
+        raw_feature_grid = list(search_space.get("feature_relative_weight_grid_values", []) or [])
+        if raw_feature_grid:
+            rel_values = _dedupe([float(value) for value in raw_feature_grid if rel_min <= float(value) <= rel_max])
+        else:
+            rel_values = _dedupe([value for value in [rel_min, 0.80, 1.00, 1.20, 1.50, rel_max] if rel_min <= value <= rel_max])
+        requested_features = list(search_space.get("feature_relative_weight_features", []) or [])
+        candidate_features = requested_features if requested_features else list(_STATE_VECTOR_MATCHING_COLS)
+        seen_features: List[str] = []
+        for feature_name in candidate_features:
+            if feature_name in seen_features:
+                continue
+            seen_features.append(feature_name)
+            grids.append((("feature_relative_weights", feature_name), rel_values))
+    if bool(search_space.get("optimize_gates", True)):
+        grids.extend(
+            [
+                (("gates", "min_weighted_coverage"), [0.70, 0.75, 0.80, 0.85]),
+                (("gates", "min_critical_coverage"), [0.70, 0.80, 0.90]),
+                (("gates", "max_size_gap"), [1.00, 1.15, 1.30, 1.50]),
+            ]
+        )
+    if bool(search_space.get("optimize_penalties", True)):
+        grids.extend(
+            [
+                (("penalties", "missing_penalty_weight"), [0.20, 0.45, 0.70]),
+                (("penalties", "critical_missing_penalty_weight"), [0.40, 0.90, 1.40]),
+                (("penalties", "sector_penalty_weight"), [0.00, 0.15, 0.30, 0.45, 0.60]),
+                (("penalties", "regime_rate_penalty_weight"), [0.00, 0.20, 0.40, 0.60]),
+                (("penalties", "regime_credit_penalty_weight"), [0.00, 0.25, 0.45, 0.70]),
+            ]
+        )
+    if bool(search_space.get("optimize_blend_weights", True)):
+        grids.extend(
+            [
+                (("blend_weights", "state"), [0.48, 0.58, 0.68]),
+                (("blend_weights", "regime"), [0.06, 0.12, 0.18]),
+                (("blend_weights", "sector"), [0.06, 0.10, 0.14]),
+            ]
+        )
+    return grids
+
+
