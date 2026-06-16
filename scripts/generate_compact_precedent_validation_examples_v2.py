@@ -190,3 +190,17 @@ def _compact_table(values: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _compact_comparison_table(target_values: dict[str, Any], match_row: pd.Series) -> str:
+    lines = ["| Compact feature | Target | Match |", "|---|---:|---:|"]
+    for key in _STATE_VECTOR_V1_FEATURES:
+        lines.append(f"| `{key}` | {_fmt_value(target_values.get(key))} | {_fmt_value(match_row.get(key))} |")
+    return "\n".join(lines)
+
+
+def _historical_raw_table(match_row: pd.Series) -> str:
+    lines = ["| Historical raw field | Match value |", "|---|---:|"]
+    for field in HISTORICAL_RAW_FIELD_ORDER:
+        lines.append(f"| `{field}` | {_fmt_value(match_row.get(field))} |")
+    return "\n".join(lines)
+
+

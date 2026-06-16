@@ -138,3 +138,25 @@ def _replace_block(section: str, start_heading: str, end_heading: str, body: str
     return section[: match.start()] + match.group(1) + body + match.group(3) + section[match.end() :]
 
 
+def _refresh_target_rows(section: str, bundle: dict[str, Any]) :
+    values = bundle["state_vector_v1"]["values"]
+    out_lines: list[str] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or "`state_vector_v1." not in stripped:
+            out_lines.append(line)
+            continue
+        parts = line.split("|")
+        cells = parts[1:-1]
+        if len(cells) < 2:
+            out_lines.append(line)
+            continue
+        key = cells[0].strip().strip("`")
+        if key not in values:
+            out_lines.append(line)
+            continue
+        cells[1] = f" {_fmt_value(values.get(key))} "
+        out_lines.append("|" + "|".join(cells) + "|")
+    return "\n".join(out_lines)
+
+
