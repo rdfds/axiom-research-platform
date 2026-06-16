@@ -1847,3 +1847,105 @@ def test_augment_precedent_state_vector_columns_scales_historical_revenue_to_dol
     assert np.isclose(row["state_vector_v1.size_log_revenue"], np.log10(86469.0 * 1_000_000.0))
 
 
+def test_augment_precedent_state_vector_columns_uses_historical_market_stress_and_access_inputs():
+    hist = pd.DataFrame(
+        [
+            {
+                "base_volatility_30d": 0.24,
+                "base_volatility_90d": 0.30,
+                "base_drawdown_90d": -0.20,
+                "base_momentum_60d": 0.10,
+                "base_credit_spread_level": 0.025,
+                "base_ev_ebitda": 12.0,
+            }
+        ]
+    )
+
+    augmented = augment_precedent_state_vector_columns(hist)
+    row = augmented.iloc[0]
+
+    expected_market_stress = (0.30 * 0.6) + (0.20 * 0.4)
+    expected_equity_window = np.mean([1.0 - (0.24 / 0.8), (0.10 + 0.2) / 0.4, 12.0 / 20.0])
+    expected_credit_window = np.mean([1.0 - (0.025 / 0.10), 1.0 - (0.24 / 1.0)])
+    expected_spread_access = 1.0 - (0.025 / 0.08)
+    expected_market_access = np.average(
+        [expected_credit_window, expected_equity_window, expected_spread_access],
+        weights=[0.4, 0.4, 0.2],
+    )
+
+    assert np.isclose(row["state_vector_v1.market_stress"], expected_market_stress)
+    assert np.isclose(row["state_vector_v1.market_access"], expected_market_access)
+
+
+def test_augment_precedent_state_vector_columns_falls_back_to_macro_vix_for_market_stress():
+    hist = pd.DataFrame([{"macro_vix": 24.0}])
+
+    augmented = augment_precedent_state_vector_columns(hist)
+    row = augmented.iloc[0]
+
+    assert np.isclose(row["state_vector_v1.market_stress"], 24.0 / 80.0)
+
+
+def test_build_historical_stores_preserves_richer_contract_baseline_fields():
+    hist = _hist_df(5).copy()
+    hist["base_revenue_ttm_lag_1y"] = 400.0
+    hist["base_revenue_growth_yoy"] = 0.25
+    hist["base_ebitda_ttm"] = 100.0
+    hist["base_cash"] = 40.0
+    hist["base_total_debt"] = 80.0
+    hist["base_current_debt"] = 15.0
+    hist["base_available_liquidity"] = 40.0
+    hist["base_interest_expense"] = 5.0
+    hist["base_fcf_yield"] = 0.04
+    hist["macro_fed_funds_effective"] = 4.25
+    hist["macro_real_gdp_growth_yoy"] = 0.02
+
+    stores = build_historical_stores_from_outcomes(hist, dataset_version="test_rich_contract_v1")
+    snapshots = stores["historical_state_store"].snapshots
+
+    for col in (
+        "base_revenue_ttm_lag_1y",
+        "base_revenue_growth_yoy",
+        "base_ebitda_ttm",
+        "base_cash",
+        "base_total_debt",
+        "base_current_debt",
+        "base_available_liquidity",
+        "base_interest_expense",
+        "base_fcf_yield",
+        "macro_fed_funds_effective",
+        "macro_real_gdp_growth_yoy",
+    ):
+        assert col in snapshots.columns
+
+
+def test_retrieval_index_path_matches_direct_path():
+    hist = _hist_df(40)
+    idx = build_precedent_retrieval_index(hist)
+    kwargs = dict(
+        candidate_id="cand-9",
+        run_id="run-9",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        top_k=20,
+        min_k=10,
+    )
+    pack_direct = build_precedent_pack_v2(historical_df=hist, **kwargs)
+    pack_index = build_precedent_pack_v2(retrieval_index=idx, **kwargs)
+    ids_direct = [x.precedent_id for x in pack_direct.retrieved_cohorts]
+    ids_index = [x.precedent_id for x in pack_index.retrieved_cohorts]
+    assert ids_direct == ids_index
+    assert [x.regime_label for x in pack_direct.regime_splits] == [x.regime_label for x in pack_index.regime_splits]
+    assert [
+        (x.follow_on_action_id, round(float(x.frequency), 6), round(float(x.median_time_to_follow_on or 0.0), 6))
+        for x in pack_direct.second_order_effects
+    ] == [
+        (x.follow_on_action_id, round(float(x.frequency), 6), round(float(x.median_time_to_follow_on or 0.0), 6))
+        for x in pack_index.second_order_effects
+    ]
+
+
