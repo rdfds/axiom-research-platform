@@ -46,3 +46,22 @@ def _synthetic_scope_df(n: int = 400) -> pd.DataFrame:
     return df
 
 
+def test_learn_scope_weights_returns_nonempty_result():
+    df = _synthetic_scope_df()
+    learned = learn_scope_weights(
+        df,
+        scope_key="capital_return",
+        scope_col="normalized_action_family",
+        max_pairs=3000,
+        min_rows=100,
+        min_outcome_non_null=100,
+        ridge_lambda=10.0,
+        seed=7,
+    )
+    assert learned is not None
+    assert learned["n_rows"] == len(df)
+    assert learned["n_pairs"] > 0
+    weights = learned["weights"]
+    assert weights["state_vector_v1.valuation_multiple"] > weights["state_vector_v1.market_stress"]
+
+

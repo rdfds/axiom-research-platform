@@ -74,3 +74,21 @@ def default_scope_configuration(scope_key: str) -> Dict[str, Any]:
     }
 
 
+def build_precedent_distance_v2_payload(
+    *,
+    scopes: Dict[str, Dict[str, Any]],
+    objective_config: Optional[Dict[str, Any]] = None,
+    benchmark_key: str = "",
+    notes: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return {
+        "version": "precedent_distance_weights_v2",
+        "state_distance_version": _WEIGHTED_DISTANCE_V2_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "benchmark_key": str(benchmark_key or ""),
+        "objective": objective_config or {},
+        "notes": notes or {},
+        "scopes": scopes,
+    }
+
+
