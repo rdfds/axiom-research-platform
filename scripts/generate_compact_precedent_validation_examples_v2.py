@@ -150,3 +150,25 @@ def _load_snapshot_rows() -> dict[str, dict[str, Any]]:
     return rows
 
 
+def _target_context_lines(row: dict[str, Any], bundle: dict[str, Any]) -> list[str]:
+    features = row.get("features") or {}
+    support = bundle["state_vector_v1"]["support"]
+    proxy = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") == "proxy_missing_component"]
+    missing = [
+        key
+        for key in _STATE_VECTOR_V1_FEATURES
+        if (support.get(key) or {}).get("support_mode") in {None, "unsupported"}
+        and _is_missing(bundle["state_vector_v1"]["values"].get(key))
+    ]
+    sector = (features.get("taxonomy.sector") or {}).get("value")
+    subsector = (features.get("taxonomy.subsector") or {}).get("value")
+    regime = (features.get("capital_structure.retirement_obligation_regime") or {}).get("value")
+    return [
+        f"- Sector: `{sector}`",
+        f"- Subsector: `{subsector}`",
+        f"- Retirement regime: `{regime}`",
+        f"- Proxy compact features: {', '.join(f'`{key}`' for key in proxy) if proxy else '`None`'}",
+        f"- Missing compact features: {', '.join(f'`{key}`' for key in missing) if missing else '`None`'}",
+    ]
+
+
