@@ -98,3 +98,5 @@ def main() -> None:
     write_json(summary, args.out_summary_path)
 
 
+if __name__ == "__main__":
+    main()
