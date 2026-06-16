@@ -92,3 +92,11 @@ def build_precedent_distance_v2_payload(
     }
 
 
+def extract_report_aggregate(report: Dict[str, Any]) -> Dict[str, Any]:
+    aggregate = dict(report.get("aggregate", {}) or {})
+    aggregate["runs_analyzed"] = int(report.get("runs_analyzed", 0) or 0)
+    aggregate["supported_case_count"] = int(report.get("supported_case_count", 0) or 0)
+    aggregate["case_count_requested"] = int(report.get("case_count_requested", 0) or 0)
+    return aggregate
+
+
