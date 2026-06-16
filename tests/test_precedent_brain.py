@@ -1468,3 +1468,293 @@ def test_snapshot_taxonomy_lookup_falls_back_to_catalog(monkeypatch, tmp_path):
     assert lookup["000456"] == ("Health Care", "Biotechnology")
 
 
+def test_historical_taxonomy_for_ticker_uses_sec_submission_snapshot_mapping(monkeypatch):
+    monkeypatch.setattr(precedent_brain, "_load_refinitiv_taxonomy_lookup", lambda: {})
+    monkeypatch.setattr(precedent_brain, "_load_sec_ticker_cik_lookup", lambda: {})
+    monkeypatch.setattr(
+        precedent_brain,
+        "_load_sec_company_ticker_metadata_lookup",
+        lambda: {
+            "FCEL": {
+                "ticker": "FCEL",
+                "cik": "0000886128",
+                "title": "FUELCELL ENERGY INC",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        precedent_brain,
+        "_sec_submission_identity_for_cik",
+        lambda cik: {
+            "cik": "0000886128",
+            "primary_ticker": "FCEL",
+            "tickers": ["FCEL"],
+            "sic": "3620",
+            "sic_description": "Electrical Industrial Apparatus",
+            "name": "FUELCELL ENERGY INC",
+        }
+        if str(cik) == "0000886128"
+        else {},
+    )
+    monkeypatch.setattr(
+        precedent_brain,
+        "_snapshot_taxonomy_for_cik",
+        lambda cik: ("Industrials", "Electrical Equipment") if str(cik) == "0000886128" else ("", ""),
+    )
+    precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+    try:
+        assert precedent_brain._historical_taxonomy_for_ticker("FCEL", allow_sec_identity_heuristics=True) == {
+            "taxonomy.sector": "Industrials",
+            "taxonomy.subsector": "Electrical Equipment",
+        }
+    finally:
+        precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+
+
+def test_historical_taxonomy_for_ticker_uses_sec_submission_identity_text(monkeypatch):
+    monkeypatch.setattr(precedent_brain, "_load_refinitiv_taxonomy_lookup", lambda: {})
+    monkeypatch.setattr(precedent_brain, "_load_sec_ticker_cik_lookup", lambda: {})
+    monkeypatch.setattr(
+        precedent_brain,
+        "_load_sec_company_ticker_metadata_lookup",
+        lambda: {
+            "FCEL": {
+                "ticker": "FCEL",
+                "cik": "0000886128",
+                "title": "FUELCELL ENERGY INC",
+            },
+        },
+    )
+    monkeypatch.setattr(precedent_brain, "_snapshot_taxonomy_for_cik", lambda cik: ("", ""))
+    monkeypatch.setattr(
+        precedent_brain,
+        "_sec_submission_identity_for_cik",
+        lambda cik: {
+            "cik": "0000886128",
+            "primary_ticker": "FCEL",
+            "tickers": ["FCEL"],
+            "sic": "3620",
+            "sic_description": "Electrical Industrial Apparatus",
+            "name": "FUELCELL ENERGY INC",
+        }
+        if str(cik) == "0000886128"
+        else {},
+    )
+    precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+    try:
+        assert precedent_brain._historical_taxonomy_for_ticker("FCEL", allow_sec_identity_heuristics=True) == {
+            "taxonomy.sector": "Industrials",
+            "taxonomy.subsector": "Electrical Equipment",
+        }
+    finally:
+        precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+
+
+def test_historical_taxonomy_for_ticker_uses_sec_company_title_fallback(monkeypatch):
+    monkeypatch.setattr(precedent_brain, "_load_refinitiv_taxonomy_lookup", lambda: {})
+    monkeypatch.setattr(precedent_brain, "_load_sec_ticker_cik_lookup", lambda: {})
+    monkeypatch.setattr(
+        precedent_brain,
+        "_load_sec_company_ticker_metadata_lookup",
+        lambda: {
+            "ENGN": {
+                "ticker": "ENGN",
+                "cik": "0001980845",
+                "title": "enGene Holdings Inc.",
+            }
+        },
+    )
+    monkeypatch.setattr(precedent_brain, "_snapshot_taxonomy_for_cik", lambda cik: ("", ""))
+    monkeypatch.setattr(precedent_brain, "_sec_submission_identity_for_cik", lambda cik: {})
+    precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+    try:
+        assert precedent_brain._historical_taxonomy_for_ticker("ENGN", allow_sec_identity_heuristics=True) == {
+            "taxonomy.sector": "Health Care",
+            "taxonomy.subsector": "Biotechnology",
+        }
+    finally:
+        precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+
+
+def test_historical_taxonomy_for_ticker_skips_sec_identity_heuristics_by_default(monkeypatch):
+    monkeypatch.setattr(precedent_brain, "_load_refinitiv_taxonomy_lookup", lambda: {})
+    monkeypatch.setattr(precedent_brain, "_load_sec_ticker_cik_lookup", lambda: {})
+    monkeypatch.setattr(
+        precedent_brain,
+        "_load_sec_company_ticker_metadata_lookup",
+        lambda: {
+            "ENGN": {
+                "ticker": "ENGN",
+                "cik": "0001980845",
+                "title": "enGene Holdings Inc.",
+            }
+        },
+    )
+    monkeypatch.setattr(precedent_brain, "_snapshot_taxonomy_for_cik", lambda cik: ("", ""))
+    monkeypatch.setattr(precedent_brain, "_sec_submission_identity_for_cik", lambda cik: {})
+    precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+    try:
+        assert precedent_brain._historical_taxonomy_for_ticker("ENGN") == {}
+    finally:
+        precedent_brain._historical_taxonomy_for_ticker.cache_clear()
+
+
+def test_candidate_metric_dict_taxonomy_values_are_used_for_identity_matching():
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000211",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=0,
+                ticker="GOODIND",
+                **{
+                    "base_sector": "INDUSTRIALS",
+                    "subsector": "MACHINERY",
+                    "normalized_action_family": "capital_return",
+                    "normalized_action_subfamily": "dividend_increase",
+                    "normalized_action_id": "capital_return.dividend_increase",
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000212",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=1,
+                ticker="WRONGSEC",
+                **{
+                    "base_sector": "ENERGY",
+                    "subsector": "INTEGRATED_OIL_GAS",
+                    "normalized_action_family": "capital_return",
+                    "normalized_action_subfamily": "dividend_increase",
+                    "normalized_action_id": "capital_return.dividend_increase",
+                },
+            ),
+        ]
+    )
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.dividend_increase": {
+                "scope_key": "capital_return.dividend_increase",
+                "default_enabled": True,
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        try:
+            pack = build_precedent_pack_v2(
+                candidate_id="cand-taxonomy-dicts",
+                run_id="run-taxonomy-dicts",
+                company_id="001690",
+                action_id="capital_return.dividend_increase",
+                action_subtype="dividend_increase",
+                action_params={},
+                candidate_features=_state_vector_candidate_features(
+                    **{
+                        "taxonomy.sector": {"value": "Industrials"},
+                        "taxonomy.subsector": {"value": "Machinery"},
+                        "state_vector_v1.size_log_revenue": 10.0,
+                        "state_vector_v1.profitability": 0.20,
+                        "state_vector_v1.growth": 0.05,
+                        "state_vector_v1.gross_obligation_burden": 1.50,
+                        "state_vector_v1.net_obligation_burden": 1.00,
+                        "state_vector_v1.liquidity_flexibility": 2.00,
+                        "state_vector_v1.interest_coverage": 10.00,
+                        "state_vector_v1.valuation_multiple": 12.00,
+                        "state_vector_v1.cash_generation": 0.04,
+                        "state_vector_v1.market_stress": 0.20,
+                        "state_vector_v1.market_access": 0.80,
+                    }
+                ),
+                candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+                historical_df=hist,
+                top_k=2,
+                min_k=1,
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert pack.retrieved_cohorts[0].company_id == "000211"
+
+
+def test_precedent_brain_accepts_explicit_historical_stores():
+    stores = build_historical_stores_from_outcomes(_hist_df(36), dataset_version="test_v1")
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-8",
+        run_id="run-8",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_event_store=stores["historical_event_store"],
+        historical_state_store=stores["historical_state_store"],
+        historical_outcome_store=stores["historical_outcome_store"],
+        regime_history=stores["regime_history"],
+        top_k=20,
+        min_k=10,
+    )
+    assert len(pack.retrieved_cohorts) >= 10
+
+
+def test_key_state_features_surface_compact_state_vector_fields():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-8b",
+        run_id="run-8b",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=_hist_df(36),
+        top_k=20,
+        min_k=10,
+    )
+    key_state = pack.retrieved_cohorts[0].key_state_features
+    assert "state_vector_v1.size_log_revenue" in key_state
+    assert "state_vector_v1.profitability" in key_state
+    assert "state_vector_v1.net_obligation_burden" in key_state
+    assert "state_vector_v1.cash_generation" in key_state
+    assert "state_vector_v1.credit_spread" in key_state
+
+
+def test_explicit_state_vector_history_overrides_legacy_matching_fields():
+    hist = _hist_df(25).copy()
+    hist["state_vector_v1.profitability"] = 0.33
+    hist["state_vector_v1.net_obligation_burden"] = 1.75
+    hist["state_vector_v1.size_log_revenue"] = np.log10(hist["base_revenue_ttm"].astype(float))
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-8c",
+        run_id="run-8c",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    key_state = pack.retrieved_cohorts[0].key_state_features
+    assert key_state["state_vector_v1.profitability"] == 0.33
+    assert key_state["state_vector_v1.net_obligation_burden"] == 1.75
+
+

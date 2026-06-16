@@ -4523,7 +4523,7 @@ def _row_narrative_text(row: pd.Series) -> Tuple[str, bool]:
         f"margin {row.get('base_margin')}",
         f"fcf {row.get('base_fcf_margin')}",
         f"hy_oas {row.get('macro_hy_oas')}",
-        f"vix {row['macro_vix']}",
+        f"vix {row.get('macro_vix')}",
     ]
     return " ".join([p for p in parts if str(p).strip()]), False
 
