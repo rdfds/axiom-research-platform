@@ -1949,3 +1949,101 @@ def test_retrieval_index_path_matches_direct_path():
     ]
 
 
+def test_retrieval_index_path_handles_utc_action_dates():
+    hist = _hist_df(40)
+    hist["action_date"] = pd.to_datetime(hist["action_date"], utc=True)
+    idx = build_precedent_retrieval_index(hist)
+    pack = build_precedent_pack_v2(
+        retrieval_index=idx,
+        candidate_id="cand-utc",
+        run_id="run-utc",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        top_k=20,
+        min_k=10,
+    )
+    assert pack.retrieved_cohorts
+
+
+def test_weighted_coverage_gate_downranks_null_heavy_matches():
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(company_id="000101", action_type="dividend_increase", action_subtype="dividend_increase", offset_days=0, ticker="GOOD1"),
+            _state_vector_hist_row(
+                company_id="000102",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=1,
+                ticker="THIN",
+                **{
+                    "state_vector_v1.size_log_revenue": np.nan,
+                    "state_vector_v1.profitability": np.nan,
+                    "state_vector_v1.growth": np.nan,
+                    "state_vector_v1.liquidity_flexibility": np.nan,
+                    "state_vector_v1.interest_coverage": np.nan,
+                    "state_vector_v1.valuation_multiple": np.nan,
+                    "state_vector_v1.cash_generation": np.nan,
+                    "state_vector_v1.net_obligation_burden": np.nan,
+                    "state_vector_v1.market_access": np.nan,
+                },
+            ),
+            _state_vector_hist_row(company_id="000103", action_type="dividend_increase", action_subtype="dividend_increase", offset_days=2, ticker="GOOD2"),
+        ]
+    )
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-weighted-coverage",
+        run_id="run-weighted-coverage",
+        company_id="001690",
+        action_id="capital_return.dividend_increase",
+        action_subtype="dividend_increase",
+        action_params={},
+        candidate_features=_state_vector_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=3,
+        min_k=2,
+    )
+    company_ids = [case.company_id for case in pack.retrieved_cohorts]
+    diag = pack.mismatch_diagnostics
+    assert "000102" not in company_ids
+    assert diag.get("weighted_coverage_gate_applied") is True
+
+
+def test_size_guardrail_filters_absurd_size_mismatches():
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(company_id="000201", action_type="buyback", action_subtype="buyback", offset_days=0, ticker="GOOD1"),
+            _state_vector_hist_row(
+                company_id="000202",
+                action_type="buyback",
+                action_subtype="buyback",
+                offset_days=1,
+                ticker="HUGE",
+                **{"state_vector_v1.size_log_revenue": 12.8},
+            ),
+            _state_vector_hist_row(company_id="000203", action_type="buyback", action_subtype="buyback", offset_days=2, ticker="GOOD2", **{"state_vector_v1.size_log_revenue": 10.2}),
+        ]
+    )
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-size-guardrail",
+        run_id="run-size-guardrail",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={},
+        candidate_features=_state_vector_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=3,
+        min_k=2,
+    )
+    company_ids = [case.company_id for case in pack.retrieved_cohorts]
+    diag = pack.mismatch_diagnostics
+    assert "000202" not in company_ids
+    assert diag.get("size_guardrail_applied") is True
+
+
