@@ -1390,3 +1390,38 @@ def test_sector_similarity_influences_scoring():
     assert s_match > s_mismatch
 
 
+def test_retrieval_index_enriches_missing_historical_taxonomy_from_lookup(monkeypatch):
+    monkeypatch.setattr(
+        precedent_brain,
+        "_historical_taxonomy_for_ticker",
+        lambda ticker: (
+            {
+                "taxonomy.sector": "Consumer Staples",
+                "taxonomy.subsector": "Household Products",
+            }
+            if str(ticker).upper() == "PG"
+            else {}
+        ),
+    )
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000111",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=0,
+                ticker="PG",
+                base_sector="",
+                sector="",
+                gics_sector="",
+            )
+        ]
+    )
+    idx = build_precedent_retrieval_index(hist)
+    assert idx.sector_token_arr.tolist() == ["CONSUMER STAPLES"]
+    assert idx.subsector_token_arr.tolist() == ["HOUSEHOLD PRODUCTS"]
+    enriched = idx.df.iloc[0]
+    assert str(enriched.get("taxonomy.sector")) == "Consumer Staples"
+    assert str(enriched.get("taxonomy.subsector")) == "Household Products"
+
+

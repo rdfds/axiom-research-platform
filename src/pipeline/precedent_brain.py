@@ -4826,3 +4826,510 @@ def _regime_thresholds(full_df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
+def _label_regime_row(row: pd.Series, t: Dict[str, float]) -> Dict[str, bool]:
+    hy = _to_float(row.get("macro_hy_oas"))
+    vix = _to_float(row.get("macro_vix"))
+    credit_tight = hy is not None and hy >= t["hy_q75"]
+    credit_loose = hy is not None and hy <= t["hy_q25"]
+    high_vol = vix is not None and vix >= t["vix_q75"]
+    low_vol = vix is not None and vix <= t["vix_q25"]
+    risk_off = bool(credit_tight or high_vol)
+    risk_on = bool(credit_loose and low_vol)
+    return {
+        "credit_tight": credit_tight,
+        "credit_loose": credit_loose,
+        "high_vol": high_vol,
+        "low_vol": low_vol,
+        "risk_off": risk_off,
+        "risk_on": risk_on,
+    }
+
+
+def _candidate_regime_flags(regime: Dict[str, Any]) -> Dict[str, bool]:
+    credit = str(regime.get("credit_regime", "neutral"))
+    risk = str(regime.get("risk_regime", "neutral"))
+    vol = str(regime.get("vol_regime", "normal"))
+    return {
+        "credit_tight": credit == "tight",
+        "credit_loose": credit == "loose",
+        "high_vol": vol == "high",
+        "low_vol": vol == "low",
+        "risk_off": risk == "risk_off",
+        "risk_on": risk == "risk_on",
+    }
+
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    na = float(np.linalg.norm(a))
+    nb = float(np.linalg.norm(b))
+    if na <= 1e-12 or nb <= 1e-12:
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))
+
+
+def _estimate_action_scale(params: Dict[str, Any], market_cap: Optional[float]) -> float:
+    pct_keys = (
+        "size_pct_market_cap",
+        "target_size_pct_market_cap",
+        "target_size_pct_mc",
+        "target_size_pct_ev",
+        "deal_size_pct_ev",
+        "transaction_size_pct_ev",
+        "target_ev_pct",
+        "percent_divested",
+        "percent_sold",
+        "stake_pct",
+    )
+    for key in pct_keys:
+        size_pct = _to_float(params.get(key))
+        if size_pct is not None:
+            return max(0.0, float(size_pct))
+
+    abs_keys = (
+        "action_size",
+        "estimated_proceeds_usd",
+        "draw_amount_usd",
+        "resize_amount_usd",
+        "size_absolute_usd",
+        "amount",
+        "amount_usd",
+        "amount_refinanced_usd",
+        "purchase_price_usd",
+        "transaction_value_usd",
+        "deal_value_usd",
+        "target_enterprise_value_usd",
+    )
+    if market_cap and market_cap > 0:
+        for key in abs_keys:
+            size_abs = _to_float(params.get(key))
+            if size_abs is not None:
+                return max(0.0, float(size_abs) / float(market_cap))
+
+    target_size = params.get("target_size")
+    if isinstance(target_size, dict):
+        if market_cap and market_cap > 0:
+            for key in ("usd", "absolute_usd", "amount_usd", "enterprise_value_usd"):
+                size_abs = _to_float(target_size.get(key))
+                if size_abs is not None:
+                    return max(0.0, float(size_abs) / float(market_cap))
+        for key in ("pct_market_cap", "pct_ev", "pct_mc", "size_pct_ev"):
+            size_pct = _to_float(target_size.get(key))
+            if size_pct is not None:
+                return max(0.0, float(size_pct))
+    return 0.0
+
+
+def _safe_action_date(s: pd.Series) -> pd.Timestamp:
+    return pd.to_datetime(s.get("action_date"), errors="coerce")
+
+
+def _feature_key_state(row: pd.Series) -> Dict[str, Any]:
+    out = {}
+    for c in [
+        "base_leverage",
+        "base_margin",
+        "base_market_cap",
+        "base_revenue_ttm",
+        "base_roic",
+        "base_fcf_margin",
+    ]:
+        out[c] = _to_float(row.get(c))
+    for c in _STATE_VECTOR_MATCHING_COLS:
+        out[c] = _to_float(row.get(c))
+    out["base_sector"] = _first_str(
+        [
+            row.get("base_sector"),
+            row.get("taxonomy.sector"),
+            row.get("sector"),
+            row.get("gics_sector"),
+            row.get("sic"),
+        ]
+    )
+    out["sector"] = _first_str([row.get("taxonomy.sector"), row.get("sector"), row.get("base_sector"), row.get("gics_sector")])
+    out["subsector"] = _first_str([row.get("taxonomy.subsector"), row.get("subsector"), row.get("industry")])
+    out["retirement_regime"] = _first_str(
+        [
+            row.get("state_vector_v1.meta.retirement_regime"),
+            row.get("retirement_regime"),
+            row.get("capital_structure.retirement_obligation_regime"),
+        ]
+    )
+    return out
+
+
+def _first_str(values: Sequence[Any]) -> str:
+    for v in values:
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s and s.lower() not in {"none", "nan"}:
+            return s
+    return ""
+
+
+def _sector_token_from_candidate(candidate_features: Dict[str, Any]) -> str:
+    return _first_str(
+        [
+            _extract_metric_value(candidate_features.get("taxonomy.sector")),
+            _extract_metric_value(candidate_features.get("state_vector_v1.meta.sector")),
+            _extract_metric_value(candidate_features.get("sector")),
+            _extract_metric_value(candidate_features.get("gics_sector")),
+            _extract_metric_value(candidate_features.get("sector_name")),
+            _extract_metric_value(candidate_features.get("sic")),
+        ]
+    ).upper()
+
+
+def _subsector_token_from_candidate(candidate_features: Dict[str, Any]) -> str:
+    return _first_str(
+        [
+            _extract_metric_value(candidate_features.get("taxonomy.subsector")),
+            _extract_metric_value(candidate_features.get("state_vector_v1.meta.subsector")),
+            _extract_metric_value(candidate_features.get("subsector")),
+            _extract_metric_value(candidate_features.get("industry")),
+        ]
+    ).upper()
+
+
+def _sector_token_from_row(row: pd.Series) -> str:
+    return _first_str(
+        [
+            row.get("taxonomy.sector"),
+            row.get("base_sector"),
+            row.get("sector"),
+            row.get("gics_sector"),
+            row.get("sector_name"),
+            row.get("sic"),
+            row.get("base_sic"),
+        ]
+    ).upper()
+
+
+def _subsector_token_from_row(row: pd.Series) -> str:
+    return _first_str(
+        [
+            row.get("taxonomy.subsector"),
+            row.get("subsector"),
+            row.get("industry"),
+            row.get("base_industry"),
+        ]
+    ).upper()
+
+
+def _sector_similarity(cand_sector: str, row_sector: str, cand_subsector: str = "", row_subsector: str = "") -> float:
+    if cand_subsector and row_subsector and cand_subsector == row_subsector:
+        return 1.0
+    if not cand_sector or not row_sector:
+        return 0.5
+    if cand_sector == row_sector:
+        return 0.80
+    if cand_sector[:2] and row_sector[:2] and cand_sector[:2] == row_sector[:2]:
+        return 0.40
+    return 0.0
+
+
+def _market_cap_bucket_quantiles(series: pd.Series) -> Tuple[float, float, float, float]:
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if s.empty:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (
+        float(s.quantile(0.20)),
+        float(s.quantile(0.40)),
+        float(s.quantile(0.60)),
+        float(s.quantile(0.80)),
+    )
+
+
+def _market_cap_bucket_from_value(value: Optional[float], quantiles: Tuple[float, float, float, float]) -> int:
+    if value is None or not np.isfinite(float(value)):
+        return -1
+    try:
+        return int(np.digitize([float(value)], quantiles)[0])
+    except Exception:
+        return -1
+
+
+def _market_cap_bucket_array(values: np.ndarray, quantiles: Tuple[float, float, float, float]) -> np.ndarray:
+    out = np.full(values.shape[0], -1, dtype=np.int8)
+    if values.size == 0:
+        return out
+    ok = np.isfinite(values)
+    if int(np.count_nonzero(ok)) == 0:
+        return out
+    out[ok] = np.digitize(values[ok], quantiles).astype(np.int8)
+    return out
+
+
+def _winsorized_robust_standardize(
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Winsorized robust z-score by feature (median + IQR scale)."""
+    if emb_raw.size == 0:
+        return np.empty_like(emb_raw), np.zeros_like(candidate_vec_raw, dtype=float)
+    emb = np.array(emb_raw, dtype=float, copy=True)
+    cand = np.array(candidate_vec_raw, dtype=float, copy=True)
+    n_cols = int(emb.shape[1])
+    out = np.zeros_like(emb, dtype=float)
+    cand_out = np.zeros(n_cols, dtype=float)
+    for j in range(n_cols):
+        col = emb[:, j]
+        ok = np.isfinite(col)
+        if int(np.count_nonzero(ok)) == 0:
+            continue
+        valid = col[ok]
+        lo = float(np.nanquantile(valid, 0.05))
+        hi = float(np.nanquantile(valid, 0.95))
+        if not np.isfinite(lo) or not np.isfinite(hi):
+            lo = float(np.nanmin(valid))
+            hi = float(np.nanmax(valid))
+        if lo > hi:
+            lo, hi = hi, lo
+        clipped_valid = np.clip(valid, lo, hi)
+        med = float(np.nanmedian(clipped_valid))
+        q25 = float(np.nanquantile(clipped_valid, 0.25))
+        q75 = float(np.nanquantile(clipped_valid, 0.75))
+        scale = (q75 - q25) / 1.349
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = float(np.nanstd(clipped_valid))
+        if (not np.isfinite(scale)) or scale <= 1e-9:
+            scale = 1.0
+        col_filled = np.where(ok, np.clip(col, lo, hi), med)
+        out[:, j] = (col_filled - med) / scale
+        cval = cand[j]
+        if np.isfinite(cval):
+            cand_out[j] = (float(np.clip(cval, lo, hi)) - med) / scale
+        else:
+            cand_out[j] = 0.0
+    return out, cand_out
+
+
+def _reranker_sigmoid(values: np.ndarray) -> np.ndarray:
+    clipped = np.clip(np.asarray(values, dtype=float), -30.0, 30.0)
+    return 1.0 / (1.0 + np.exp(-clipped))
+
+
+def _second_stage_reranker_feature_names() -> Tuple[str, ...]:
+    return _SECOND_STAGE_RERANKER_FEATURES
+
+
+def _second_stage_reranker_feature_matrix(
+    *,
+    emb_raw: np.ndarray,
+    candidate_vec_raw: np.ndarray,
+    embedding_cols: Sequence[str],
+    action_id: str,
+    action_subtype: str,
+    feature_weight_multipliers: Optional[Dict[str, float]] = None,
+    feature_overrides: Optional[Dict[str, Sequence[float] | np.ndarray]] = None,
+    profile_version: Optional[str] = None,
+    target_action_scale: Optional[float] = None,
+    row_action_scales: Optional[Sequence[float] | np.ndarray] = None,
+) -> Dict[str, Any]:
+    normalized_profile_version = str(profile_version or "").strip().lower()
+    if normalized_profile_version == _WEIGHTED_DISTANCE_V2_VERSION:
+        weighted_state = _weighted_state_similarity_v2(
+            emb_raw=emb_raw,
+            candidate_vec_raw=candidate_vec_raw,
+            embedding_cols=embedding_cols,
+            action_id=action_id,
+            action_subtype=action_subtype,
+            feature_weight_multipliers=feature_weight_multipliers,
+        )
+    else:
+        weighted_state = _weighted_state_similarity(
+            emb_raw=emb_raw,
+            candidate_vec_raw=candidate_vec_raw,
+            embedding_cols=embedding_cols,
+            action_id=action_id,
+            action_subtype=action_subtype,
+            feature_weight_multipliers=feature_weight_multipliers,
+        )
+    profile = dict(weighted_state.get("profile") or {})
+    transformed_emb_raw, transformed_candidate_vec_raw, _ = _apply_matching_feature_transforms(
+        emb_raw,
+        candidate_vec_raw,
+        embedding_cols,
+        profile,
+    )
+    emb_norm, candidate_vec = _winsorized_robust_standardize(
+        transformed_emb_raw,
+        transformed_candidate_vec_raw,
+    )
+    pair_present = np.isfinite(transformed_emb_raw) & np.isfinite(transformed_candidate_vec_raw.reshape(1, -1))
+    abs_diff = np.abs(emb_norm - candidate_vec.reshape(1, -1))
+    present_counts = np.sum(pair_present, axis=1).astype(float)
+    unweighted_distance = np.full(emb_raw.shape[0], np.nan, dtype=float)
+    valid_rows = present_counts > 0.0
+    if bool(np.any(valid_rows)):
+        unweighted_distance[valid_rows] = (
+            np.sum(np.where(pair_present[valid_rows], abs_diff[valid_rows], 0.0), axis=1)
+            / present_counts[valid_rows]
+        )
+    unweighted_similarity = np.where(
+        np.isfinite(unweighted_distance),
+        1.0 / (1.0 + unweighted_distance),
+        0.0,
+    )
+    size_gap = np.asarray(weighted_state.get("size_gap", np.full(emb_raw.shape[0], np.nan)), dtype=float)
+    primary_burden_gap = np.asarray(
+        weighted_state.get("primary_burden_gap", np.full(emb_raw.shape[0], np.nan)),
+        dtype=float,
+    )
+    soft_size_gap = float(_to_float(profile.get("soft_size_gap"), 0.35) or 0.35)
+    soft_burden_gap = float(_to_float(profile.get("soft_burden_gap"), 1.25) or 1.25)
+    size_guardrail_similarity = np.exp(
+        -np.maximum(np.where(np.isfinite(size_gap), size_gap, soft_size_gap) - soft_size_gap, 0.0)
+    )
+    burden_guardrail_similarity = np.exp(
+        -np.maximum(
+            np.where(np.isfinite(primary_burden_gap), primary_burden_gap, soft_burden_gap) - soft_burden_gap,
+            0.0,
+        )
+    )
+    feature_matrix = np.column_stack(
+        [
+            np.asarray(weighted_state.get("state_similarity", np.zeros(emb_raw.shape[0])), dtype=float),
+            unweighted_similarity,
+            np.asarray(weighted_state.get("weighted_coverage", np.zeros(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("critical_coverage", np.zeros(emb_raw.shape[0])), dtype=float),
+            size_guardrail_similarity,
+            burden_guardrail_similarity,
+            np.asarray(weighted_state.get("regime_similarity", np.zeros(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("parameter_similarity", np.zeros(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("sector_similarity", np.zeros(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("action_match_score", np.zeros(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("borrower_quality_similarity", np.ones(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("financing_pressure_similarity", np.ones(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("market_regime_similarity", np.ones(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("stress_alignment_similarity", np.ones(emb_raw.shape[0])), dtype=float),
+            np.asarray(weighted_state.get("compatibility_penalty_factor", np.ones(emb_raw.shape[0])), dtype=float),
+            np.ones(emb_raw.shape[0], dtype=float),
+            np.ones(emb_raw.shape[0], dtype=float),
+            np.ones(emb_raw.shape[0], dtype=float),
+        ]
+    ).astype(float)
+    action_id_text = str(action_id or "").strip().lower()
+    if _is_debt_support_action(action_id_text):
+        debt_features = _debt_issuance_runtime_archetype_features(
+            emb_raw=emb_raw,
+            candidate_vec_raw=candidate_vec_raw,
+            embedding_cols=embedding_cols,
+            action_id_text=action_id_text,
+            target_action_scale=target_action_scale,
+            row_action_scales=row_action_scales,
+            borrower_quality_similarity=np.asarray(
+                weighted_state.get("borrower_quality_similarity", np.ones(emb_raw.shape[0])),
+                dtype=float,
+            ),
+            financing_pressure_similarity=np.asarray(
+                weighted_state.get("financing_pressure_similarity", np.ones(emb_raw.shape[0])),
+                dtype=float,
+            ),
+            market_regime_similarity=np.asarray(
+                weighted_state.get("market_regime_similarity", np.ones(emb_raw.shape[0])),
+                dtype=float,
+            ),
+            stress_alignment_similarity=np.asarray(
+                weighted_state.get("stress_alignment_similarity", np.ones(emb_raw.shape[0])),
+                dtype=float,
+            ),
+        )
+        feature_names = _second_stage_reranker_feature_names()
+        debt_feature_map = {
+            "debt_archetype_similarity": np.asarray(debt_features.get("archetype_similarity"), dtype=float),
+            "debt_style_similarity": np.asarray(debt_features.get("style_similarity"), dtype=float),
+            "debt_archetype_gate": np.asarray(debt_features.get("gate"), dtype=float),
+        }
+        for feature_name, values in debt_feature_map.items():
+            feature_idx = feature_names.index(feature_name)
+            if values.shape == (emb_raw.shape[0],):
+                feature_matrix[:, feature_idx] = values
+    feature_idx = {name: idx for idx, name in enumerate(_second_stage_reranker_feature_names())}
+    for feature_name, override_values in dict(feature_overrides or {}).items():
+        idx = feature_idx.get(str(feature_name))
+        if idx is None:
+            continue
+        override_arr = np.asarray(override_values, dtype=float)
+        if override_arr.ndim == 0:
+            override_arr = np.full(emb_raw.shape[0], float(override_arr), dtype=float)
+        if override_arr.shape != (emb_raw.shape[0],):
+            continue
+        feature_matrix[:, idx] = override_arr
+    return {
+        "feature_names": _second_stage_reranker_feature_names(),
+        "matrix": feature_matrix,
+        "weighted_state": weighted_state,
+    }
+
+
+def _outcome_aware_reranker_feature_names() -> Tuple[str, ...]:
+    return _OUTCOME_AWARE_RERANKER_FEATURES
+
+
+def _favorable_percentile_series(series: pd.Series, *, higher_is_better: bool) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.dropna().empty:
+        return pd.Series(np.nan, index=numeric.index, dtype=float)
+    ranked = numeric.rank(method="average", pct=True, ascending=not bool(higher_is_better))
+    return ranked.astype(float).clip(0.0, 1.0)
+
+
+def _outcome_aware_reranker_feature_frame(
+    cohort: pd.DataFrame,
+    *,
+    similarity_col: str = "similarity_score",
+) -> pd.DataFrame:
+    out = pd.DataFrame(index=cohort.index.copy())
+    similarity_series = cohort[similarity_col] if similarity_col in cohort.columns else pd.Series(np.nan, index=cohort.index, dtype=float)
+    out["current_similarity_score"] = pd.to_numeric(similarity_series, errors="coerce").fillna(0.0).clip(0.0, 1.0)
+
+    metric_coverages: List[pd.Series] = []
+    for feature_name, metric_specs in _OUTCOME_AWARE_RERANKER_GROUPS.items():
+        score_parts: List[pd.Series] = []
+        for metric_name, higher_is_better in metric_specs:
+            if metric_name not in cohort.columns:
+                continue
+            favorable = _favorable_percentile_series(cohort[metric_name], higher_is_better=higher_is_better)
+            score_parts.append(favorable.rename(metric_name))
+        if score_parts:
+            score_frame = pd.concat(score_parts, axis=1)
+            out[feature_name] = score_frame.mean(axis=1, skipna=True).fillna(0.5).clip(0.0, 1.0)
+            metric_coverages.append(score_frame.notna().mean(axis=1).astype(float))
+        else:
+            out[feature_name] = 0.5
+            metric_coverages.append(pd.Series(0.0, index=cohort.index, dtype=float))
+
+    if metric_coverages:
+        coverage_frame = pd.concat(metric_coverages, axis=1)
+        out["outcome_support_score"] = coverage_frame.mean(axis=1, skipna=True).fillna(0.0).clip(0.0, 1.0)
+    else:
+        out["outcome_support_score"] = 0.0
+
+    out = out.reindex(columns=list(_outcome_aware_reranker_feature_names())).astype(float)
+    return out
+
+
+def _apply_company_diversity_cap(
+    cohort: pd.DataFrame,
+    *,
+    company_col: str = "company_id",
+    cap: int,
+) -> pd.DataFrame:
+    if cohort.empty or cap <= 0 or company_col not in cohort.columns:
+        return cohort
+    company_ids = cohort[company_col].fillna("").astype(str)
+    keep_rows: List[bool] = []
+    counts: Dict[str, int] = {}
+    for company_id in company_ids.tolist():
+        seen = int(counts.get(company_id, 0))
+        if seen >= int(cap):
+            keep_rows.append(False)
+            continue
+        counts[company_id] = seen + 1
+        keep_rows.append(True)
+    if all(keep_rows):
+        return cohort
+    return cohort.loc[np.asarray(keep_rows, dtype=bool)].copy()
+
+
