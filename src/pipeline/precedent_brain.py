@@ -3980,3 +3980,137 @@ def _candidate_action_id_keys(action_id: Any, action_subtype: Any) -> Tuple[str,
     return (action_text,)
 
 
+def _historical_action_family(*, action_type: Any, action_subtype: Any) -> str:
+    at = _canonical_token(action_type)
+    st = _canonical_token(action_subtype)
+    if at == "loan_refinancing":
+        refi_subfamily = _normalized_refinancing_action_subtype(action_subtype)
+        if refi_subfamily and refi_subfamily != "refinancing":
+            return f"capital_structure.{refi_subfamily}"
+        return "capital_structure.refinancing"
+    if at == "bond_issuance":
+        return "capital_structure.debt_bond"
+    if at == "loan_issuance":
+        if any(
+            token in st
+            for token in (
+                "revolver",
+                "line",
+                "facility",
+                "letter_of_credit",
+                "bridge_loan",
+            )
+        ):
+            return "capital_structure.revolver"
+        return "capital_structure.debt_loan"
+    if at == "equity_offering_public_proxy":
+        return "capital_structure.equity_like"
+    if at == "buyback":
+        return "capital_return.buyback"
+    if at == "acquisition":
+        if st == "disclosed_dollar_value_deal":
+            return "mna.platform_disclosed"
+        if st == "undisclosed_dollar_value_deal":
+            return "mna.platform_undisclosed"
+        if st == "acquisition_merger":
+            return "mna.platform_merger"
+        if st == "acquisition_lbo":
+            return "mna.platform_lbo"
+        if st in {"stake_purchases_deal", "repurchases_deal"}:
+            return "mna.tuck_in_incremental"
+        if st in {"acquisition_tender", "acquisition_exchange", "acquisition_reverse"}:
+            return "mna.acquisition_structured"
+        return "mna.acquisition"
+    if at == "divestiture":
+        return "portfolio.divestiture"
+    if at in {"dividend_cut", "dividend_increase", "dividend_special", "dividend_initiate", "dividend_regular"}:
+        return f"capital_return.{at}"
+    return at
+
+
+def _acquisition_scale_bucket(value: Optional[float]) -> str:
+    if value is None:
+        return ""
+    try:
+        v = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(v) or v <= 0.0:
+        return ""
+    if v <= 0.03:
+        return "micro"
+    if v <= 0.10:
+        return "small"
+    if v <= 0.25:
+        return "medium"
+    return "large"
+
+
+def _divestiture_scale_bucket(value: Optional[float]) -> str:
+    if value is None:
+        return ""
+    try:
+        v = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(v) or v <= 0.0:
+        return ""
+    if v <= 0.10:
+        return "small"
+    if v <= 0.30:
+        return "medium"
+    return "large"
+
+
+def _equity_scale_bucket(value: Optional[float]) -> str:
+    if value is None:
+        return ""
+    try:
+        v = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(v) or v <= 0.0:
+        return ""
+    if v < 0.05:
+        return "small"
+    if v < 0.25:
+        return "medium"
+    return "large"
+
+
+def _debt_scale_bucket(value: Optional[float]) -> str:
+    if value is None:
+        return ""
+    try:
+        v = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(v) or v <= 0.0:
+        return ""
+    if v <= 0.03:
+        return "micro"
+    if v <= 0.10:
+        return "small"
+    if v <= 0.25:
+        return "medium"
+    return "large"
+
+
+def _debt_amount_bucket(value: Optional[float]) -> str:
+    if value is None:
+        return ""
+    try:
+        v = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(v) or v <= 0.0:
+        return ""
+    if v <= 1.0e7:
+        return "micro"
+    if v <= 5.0e7:
+        return "small"
+    if v <= 2.5e8:
+        return "medium"
+    return "large"
+
+
