@@ -197,3 +197,12 @@ def _parameter_grid(objective_config: Dict[str, Any]) -> List[Tuple[Tuple[str, .
     return grids
 
 
+def _get_nested(config: Dict[str, Any], path: Tuple[str, ...]) -> Any:
+    value: Any = config
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
