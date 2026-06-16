@@ -311,3 +311,883 @@ def test_similarity_retrieval_is_stable():
     assert scores1 == scores2
 
 
+def test_outcome_distributions_and_regime_splits_present():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-2",
+        run_id="run-2",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "tight", "risk_regime": "risk_off", "vol_regime": "high"},
+        historical_df=_hist_df(50),
+        top_k=25,
+        min_k=10,
+    )
+    h12 = pack.outcome_distributions.horizon_12m.valuation_multiple_change
+    assert h12.sample_size > 0
+    assert h12.p10 <= h12.p25 <= h12.median <= h12.p75 <= h12.p90
+    assert pack.outcome_distributions.horizon_12m.credit_spread_change.sample_size > 0
+    assert pack.outcome_distributions.horizon_12m.rating_migration.sample_size > 0
+    assert len(pack.regime_splits) >= 1
+
+
+def test_tail_detection_finds_extremes():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-3",
+        run_id="run-3",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=_hist_df(60),
+        top_k=30,
+        min_k=10,
+    )
+    assert len(pack.tail_events) > 0
+    explanations = [t.explanation for t in pack.tail_events]
+    assert any("Bottom decile" in e for e in explanations)
+    assert any("Top decile" in e for e in explanations)
+
+
+def test_build_precedent_pack_v2_applies_second_stage_reranker(tmp_path):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000101",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=30,
+                ticker="VALA",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.90,
+                    "state_vector_v1.valuation_multiple": 58.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000102",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=60,
+                ticker="SIZE",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.00,
+                    "state_vector_v1.valuation_multiple": 20.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+            ),
+        ]
+    )
+    candidate_features = _state_vector_candidate_features(
+        sector="TECH",
+        **{
+            "state_vector_v1.size_log_revenue": 10.00,
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.cash_generation": 0.02,
+        },
+    )
+
+    pack_base = build_precedent_pack_v2(
+        candidate_id="cand-rerank-base",
+        run_id="run-rerank-base",
+        company_id="000999",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={},
+        candidate_features=candidate_features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=2,
+        min_k=1,
+    )
+    base_scores = [score.score for score in pack_base.similarity_scores]
+
+    payload_path = tmp_path / "precedent_distance_weights_v2.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "scopes": {
+                    "capital_return.open_market_buyback": {
+                        "scope_key": "capital_return.open_market_buyback",
+                        "use_in_runtime": True,
+                        "default_enabled": True,
+                        "second_stage_reranker": {
+                            "feature_weights": {
+                                "size_guardrail_similarity": 4.0,
+                            },
+                            "bias": 0.0,
+                            "shortlist_size": 2,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    previous_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+    try:
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = str(payload_path)
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack_reranked = build_precedent_pack_v2(
+            candidate_id="cand-rerank-live",
+            run_id="run-rerank-live",
+            company_id="000999",
+            action_id="capital_return.open_market_buyback",
+            action_subtype="open_market_buyback",
+            action_params={},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=2,
+            min_k=1,
+        )
+    finally:
+        if previous_path is None:
+            os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = previous_path
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    reranked_scores = [score.score for score in pack_reranked.similarity_scores]
+    assert pack_reranked.profiling["second_stage_reranker_applied"] is True
+    assert reranked_scores != base_scores
+
+
+def test_second_stage_reranker_feature_matrix_exposes_debt_compatibility_features():
+    feature_names = list(precedent_brain._STATE_VECTOR_MATCHING_COLS)
+    target_compact = {
+        "state_vector_v1.size_log_revenue": 9.58,
+        "state_vector_v1.profitability": 0.1188,
+        "state_vector_v1.growth": 0.0633,
+        "state_vector_v1.gross_obligation_burden": 2.4367,
+        "state_vector_v1.net_obligation_burden": 1.6712,
+        "state_vector_v1.liquidity_flexibility": 1.20,
+        "state_vector_v1.interest_coverage": 2.7537,
+        "state_vector_v1.valuation_multiple": 5.3863,
+        "state_vector_v1.cash_generation": -0.0353,
+        "state_vector_v1.market_stress": 0.1698,
+        "state_vector_v1.market_access": 0.6293,
+        "state_vector_v1.rates_level": 4.58,
+        "state_vector_v1.credit_spread": 2.64,
+    }
+    good_match = dict(target_compact)
+    good_match.update(
+        {
+            "state_vector_v1.profitability": 0.11,
+            "state_vector_v1.cash_generation": -0.02,
+            "state_vector_v1.market_access": 0.60,
+            "state_vector_v1.market_stress": 0.19,
+            "state_vector_v1.rates_level": 4.70,
+            "state_vector_v1.credit_spread": 2.90,
+        }
+    )
+    bad_match = dict(target_compact)
+    bad_match.update(
+        {
+            "state_vector_v1.profitability": 0.22,
+            "state_vector_v1.cash_generation": 0.05,
+            "state_vector_v1.market_access": 0.88,
+            "state_vector_v1.market_stress": 0.08,
+            "state_vector_v1.rates_level": 0.13,
+            "state_vector_v1.credit_spread": 5.96,
+        }
+    )
+    candidate_vec = np.array([target_compact.get(name, np.nan) for name in feature_names], dtype=float)
+    emb_raw = np.vstack(
+        [
+            np.array([good_match.get(name, np.nan) for name in feature_names], dtype=float),
+            np.array([bad_match.get(name, np.nan) for name in feature_names], dtype=float),
+        ]
+    )
+
+    payload = precedent_brain._second_stage_reranker_feature_matrix(
+        emb_raw=emb_raw,
+        candidate_vec_raw=candidate_vec,
+        embedding_cols=feature_names,
+        action_id="capital_structure.new_debt_issuance",
+        action_subtype="new_debt_issuance",
+        profile_version="weighted_distance_v2",
+    )
+    idx = {name: i for i, name in enumerate(payload["feature_names"])}
+    matrix = np.asarray(payload["matrix"], dtype=float)
+
+    assert matrix.shape[0] == 2
+    assert matrix[0, idx["market_regime_similarity"]] > matrix[1, idx["market_regime_similarity"]]
+    assert matrix[0, idx["borrower_quality_similarity"]] > matrix[1, idx["borrower_quality_similarity"]]
+    assert matrix[0, idx["compatibility_penalty_factor"]] > matrix[1, idx["compatibility_penalty_factor"]]
+    assert matrix[0, idx["debt_archetype_similarity"]] > matrix[1, idx["debt_archetype_similarity"]]
+    assert matrix[0, idx["debt_archetype_gate"]] > matrix[1, idx["debt_archetype_gate"]]
+
+
+def test_second_stage_reranker_feature_matrix_exposes_revolver_compatibility_features():
+    feature_names = list(precedent_brain._STATE_VECTOR_MATCHING_COLS)
+    target_compact = {
+        "state_vector_v1.size_log_revenue": 9.58,
+        "state_vector_v1.profitability": 0.09,
+        "state_vector_v1.growth": 0.01,
+        "state_vector_v1.gross_obligation_burden": 2.70,
+        "state_vector_v1.net_obligation_burden": 1.95,
+        "state_vector_v1.liquidity_flexibility": 0.52,
+        "state_vector_v1.interest_coverage": 2.40,
+        "state_vector_v1.valuation_multiple": 6.00,
+        "state_vector_v1.cash_generation": -0.02,
+        "state_vector_v1.market_stress": 0.27,
+        "state_vector_v1.market_access": 0.58,
+        "state_vector_v1.rates_level": 1.60,
+        "state_vector_v1.credit_spread": 4.90,
+    }
+    stress_match = dict(target_compact)
+    stress_match.update(
+        {
+            "state_vector_v1.profitability": 0.08,
+            "state_vector_v1.cash_generation": -0.03,
+            "state_vector_v1.liquidity_flexibility": 0.48,
+            "state_vector_v1.market_stress": 0.28,
+            "state_vector_v1.market_access": 0.56,
+            "state_vector_v1.credit_spread": 5.05,
+        }
+    )
+    routine_match = dict(target_compact)
+    routine_match.update(
+        {
+            "state_vector_v1.profitability": 0.22,
+            "state_vector_v1.cash_generation": 0.08,
+            "state_vector_v1.gross_obligation_burden": 1.10,
+            "state_vector_v1.net_obligation_burden": 0.60,
+            "state_vector_v1.liquidity_flexibility": 3.10,
+            "state_vector_v1.interest_coverage": 10.0,
+            "state_vector_v1.market_stress": 0.16,
+            "state_vector_v1.market_access": 0.84,
+            "state_vector_v1.credit_spread": 2.70,
+        }
+    )
+    candidate_vec = np.array([target_compact.get(name, np.nan) for name in feature_names], dtype=float)
+    emb_raw = np.vstack(
+        [
+            np.array([stress_match.get(name, np.nan) for name in feature_names], dtype=float),
+            np.array([routine_match.get(name, np.nan) for name in feature_names], dtype=float),
+        ]
+    )
+
+    payload = precedent_brain._second_stage_reranker_feature_matrix(
+        emb_raw=emb_raw,
+        candidate_vec_raw=candidate_vec,
+        embedding_cols=feature_names,
+        action_id="capital_structure.revolver_draw_or_resize",
+        action_subtype="revolver_draw_or_resize",
+        profile_version="weighted_distance_v2",
+    )
+    idx = {name: i for i, name in enumerate(payload["feature_names"])}
+    matrix = np.asarray(payload["matrix"], dtype=float)
+
+    assert matrix.shape[0] == 2
+    assert matrix[0, idx["stress_alignment_similarity"]] > matrix[1, idx["stress_alignment_similarity"]]
+    assert matrix[0, idx["financing_pressure_similarity"]] > matrix[1, idx["financing_pressure_similarity"]]
+    assert matrix[0, idx["compatibility_penalty_factor"]] > matrix[1, idx["compatibility_penalty_factor"]]
+    assert matrix[0, idx["debt_archetype_similarity"]] > matrix[1, idx["debt_archetype_similarity"]]
+    assert matrix[0, idx["debt_archetype_gate"]] > matrix[1, idx["debt_archetype_gate"]]
+
+
+def test_build_precedent_pack_v2_preserves_debt_archetype_gate_through_reranking(tmp_path, monkeypatch):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000701",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=0,
+                ticker="HEALTHY",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.58,
+                    "state_vector_v1.profitability": 0.25,
+                    "state_vector_v1.growth": 0.07,
+                    "state_vector_v1.gross_obligation_burden": 1.0,
+                    "state_vector_v1.net_obligation_burden": 0.5,
+                    "state_vector_v1.liquidity_flexibility": 2.8,
+                    "state_vector_v1.interest_coverage": 10.5,
+                    "state_vector_v1.valuation_multiple": 14.0,
+                    "state_vector_v1.cash_generation": 0.08,
+                    "state_vector_v1.market_stress": 0.18,
+                    "state_vector_v1.market_access": 0.86,
+                    "state_vector_v1.rates_level": 4.58,
+                    "state_vector_v1.credit_spread": 2.64,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000702",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=1,
+                ticker="STRESSED",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 10.25,
+                    "state_vector_v1.profitability": 0.10,
+                    "state_vector_v1.growth": 0.03,
+                    "state_vector_v1.gross_obligation_burden": 2.7,
+                    "state_vector_v1.net_obligation_burden": 1.9,
+                    "state_vector_v1.liquidity_flexibility": 1.6,
+                    "state_vector_v1.interest_coverage": 2.4,
+                    "state_vector_v1.valuation_multiple": 6.2,
+                    "state_vector_v1.cash_generation": -0.03,
+                    "state_vector_v1.market_stress": 0.18,
+                    "state_vector_v1.market_access": 0.61,
+                    "state_vector_v1.rates_level": 4.58,
+                    "state_vector_v1.credit_spread": 2.64,
+                },
+            ),
+        ]
+    )
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(345_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.8793),
+        "market.equity_window_proxy": _raw_feature_record(0.2693),
+        "market.credit_spread_level": _raw_feature_record(0.0121),
+        "macro.fed_funds_effective": _raw_feature_record(4.58),
+        "macro.hy_oas": _raw_feature_record(2.64),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    payload_path = tmp_path / "precedent_distance_weights_v2.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "scopes": {
+                    "capital_structure.new_debt_issuance": {
+                        "scope_key": "capital_structure.new_debt_issuance",
+                        "use_in_runtime": True,
+                        "default_enabled": True,
+                        "second_stage_reranker": {
+                            "feature_weights": {
+                                "size_guardrail_similarity": 8.0,
+                            },
+                            "bias": 0.0,
+                            "shortlist_size": 2,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    previous_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+    previous_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+    try:
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = str(payload_path)
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack = build_precedent_pack_v2(
+            candidate_id="cand-debt-gate-reranker",
+            run_id="run-debt-gate-reranker",
+            company_id="001692",
+            action_id="capital_structure.new_debt_issuance",
+            action_subtype="new_debt_issuance",
+            action_params={"amount_usd": 200_000_000.0},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=2,
+            min_k=1,
+        )
+    finally:
+        if previous_path is None:
+            os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = previous_path
+        if previous_version is None:
+            os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = previous_version
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    assert pack.profiling["second_stage_reranker_applied"] is True
+    assert pack.retrieved_cohorts[0].company_id == "000702"
+
+
+def test_build_precedent_pack_v2_routes_debt_support_lanes_before_healthy_context(tmp_path):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000701",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=0,
+                ticker="HEALTHY",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.62,
+                    "state_vector_v1.profitability": 0.22,
+                    "state_vector_v1.growth": 0.07,
+                    "state_vector_v1.gross_obligation_burden": 1.10,
+                    "state_vector_v1.net_obligation_burden": 0.60,
+                    "state_vector_v1.liquidity_flexibility": 3.10,
+                    "state_vector_v1.interest_coverage": 10.0,
+                    "state_vector_v1.valuation_multiple": 13.5,
+                    "state_vector_v1.cash_generation": 0.08,
+                    "state_vector_v1.market_stress": 0.16,
+                    "state_vector_v1.market_access": 0.84,
+                    "state_vector_v1.rates_level": 4.62,
+                    "state_vector_v1.credit_spread": 2.70,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000702",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=1,
+                ticker="PEERSTRESS",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.80,
+                    "state_vector_v1.profitability": 0.10,
+                    "state_vector_v1.growth": 0.02,
+                    "state_vector_v1.gross_obligation_burden": 2.70,
+                    "state_vector_v1.net_obligation_burden": 1.95,
+                    "state_vector_v1.liquidity_flexibility": 1.50,
+                    "state_vector_v1.interest_coverage": 2.40,
+                    "state_vector_v1.valuation_multiple": 6.00,
+                    "state_vector_v1.cash_generation": -0.02,
+                    "state_vector_v1.market_stress": 0.18,
+                    "state_vector_v1.market_access": 0.62,
+                    "state_vector_v1.rates_level": 4.70,
+                    "state_vector_v1.credit_spread": 2.90,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="001692",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=2,
+                ticker="SELFHIST",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.55,
+                    "state_vector_v1.profitability": 0.09,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 2.80,
+                    "state_vector_v1.net_obligation_burden": 2.05,
+                    "state_vector_v1.liquidity_flexibility": 1.30,
+                    "state_vector_v1.interest_coverage": 2.20,
+                    "state_vector_v1.valuation_multiple": 5.80,
+                    "state_vector_v1.cash_generation": -0.03,
+                    "state_vector_v1.market_stress": 0.19,
+                    "state_vector_v1.market_access": 0.60,
+                    "state_vector_v1.rates_level": 5.05,
+                    "state_vector_v1.credit_spread": 3.05,
+                },
+            ),
+        ]
+    )
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(345_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.8793),
+        "market.equity_window_proxy": _raw_feature_record(0.2693),
+        "market.credit_spread_level": _raw_feature_record(0.0121),
+        "macro.fed_funds_effective": _raw_feature_record(4.58),
+        "macro.hy_oas": _raw_feature_record(2.64),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    payload_path = tmp_path / "precedent_distance_weights_v2.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "scopes": {
+                    "capital_structure.new_debt_issuance": {
+                        "scope_key": "capital_structure.new_debt_issuance",
+                        "use_in_runtime": True,
+                        "default_enabled": True,
+                        "second_stage_reranker": {
+                            "feature_weights": {
+                                "size_guardrail_similarity": 7.0,
+                                "base_state_similarity": 0.5,
+                            },
+                            "bias": 0.0,
+                            "shortlist_size": 3,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    previous_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+    previous_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+    try:
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = str(payload_path)
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack = build_precedent_pack_v2(
+            candidate_id="cand-debt-routing",
+            run_id="run-debt-routing",
+            company_id="001692",
+            action_id="capital_structure.new_debt_issuance",
+            action_subtype="new_debt_issuance",
+            action_params={"amount_usd": 200_000_000.0},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=3,
+            min_k=1,
+        )
+    finally:
+        if previous_path is None:
+            os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = previous_path
+        if previous_version is None:
+            os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = previous_version
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    ordered_company_ids = [case.company_id for case in pack.retrieved_cohorts]
+    assert pack.profiling["debt_support_routing_applied"] is True
+    assert ordered_company_ids[0] == "000702"
+    assert ordered_company_ids[1] == "001692"
+    assert "000701" not in ordered_company_ids[:2]
+
+
+def test_build_precedent_pack_v2_routes_revolver_support_lanes_and_caps_company_repeats(tmp_path):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000701",
+                action_type="revolver_draw_or_resize",
+                action_subtype="revolver_draw_or_resize",
+                offset_days=0,
+                ticker="ROUTINE",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "revolver_draw_or_resize",
+                    "normalized_action_id": "capital_structure.revolver_draw_or_resize",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.62,
+                    "state_vector_v1.profitability": 0.22,
+                    "state_vector_v1.growth": 0.07,
+                    "state_vector_v1.gross_obligation_burden": 1.10,
+                    "state_vector_v1.net_obligation_burden": 0.60,
+                    "state_vector_v1.liquidity_flexibility": 3.10,
+                    "state_vector_v1.interest_coverage": 10.0,
+                    "state_vector_v1.valuation_multiple": 13.5,
+                    "state_vector_v1.cash_generation": 0.08,
+                    "state_vector_v1.market_stress": 0.16,
+                    "state_vector_v1.market_access": 0.84,
+                    "state_vector_v1.rates_level": 1.60,
+                    "state_vector_v1.credit_spread": 2.70,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000702",
+                action_type="revolver_draw_or_resize",
+                action_subtype="revolver_draw_or_resize",
+                offset_days=1,
+                ticker="PEERDRAW",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "revolver_draw_or_resize",
+                    "normalized_action_id": "capital_structure.revolver_draw_or_resize",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.80,
+                    "state_vector_v1.profitability": 0.08,
+                    "state_vector_v1.growth": 0.02,
+                    "state_vector_v1.gross_obligation_burden": 2.70,
+                    "state_vector_v1.net_obligation_burden": 1.95,
+                    "state_vector_v1.liquidity_flexibility": 0.55,
+                    "state_vector_v1.interest_coverage": 2.40,
+                    "state_vector_v1.valuation_multiple": 6.00,
+                    "state_vector_v1.cash_generation": -0.02,
+                    "state_vector_v1.market_stress": 0.26,
+                    "state_vector_v1.market_access": 0.58,
+                    "state_vector_v1.rates_level": 1.55,
+                    "state_vector_v1.credit_spread": 4.90,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="001692",
+                action_type="revolver_draw_or_resize",
+                action_subtype="revolver_draw_or_resize",
+                offset_days=2,
+                ticker="SELFDRAW1",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "revolver_draw_or_resize",
+                    "normalized_action_id": "capital_structure.revolver_draw_or_resize",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.55,
+                    "state_vector_v1.profitability": 0.09,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 2.80,
+                    "state_vector_v1.net_obligation_burden": 2.05,
+                    "state_vector_v1.liquidity_flexibility": 0.48,
+                    "state_vector_v1.interest_coverage": 2.20,
+                    "state_vector_v1.valuation_multiple": 5.80,
+                    "state_vector_v1.cash_generation": -0.03,
+                    "state_vector_v1.market_stress": 0.28,
+                    "state_vector_v1.market_access": 0.56,
+                    "state_vector_v1.rates_level": 1.70,
+                    "state_vector_v1.credit_spread": 5.10,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="001692",
+                action_type="revolver_draw_or_resize",
+                action_subtype="revolver_draw_or_resize",
+                offset_days=3,
+                ticker="SELFDRAW2",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "revolver_draw_or_resize",
+                    "normalized_action_id": "capital_structure.revolver_draw_or_resize",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.size_log_revenue": 9.58,
+                    "state_vector_v1.profitability": 0.10,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 2.75,
+                    "state_vector_v1.net_obligation_burden": 2.00,
+                    "state_vector_v1.liquidity_flexibility": 0.52,
+                    "state_vector_v1.interest_coverage": 2.30,
+                    "state_vector_v1.valuation_multiple": 5.90,
+                    "state_vector_v1.cash_generation": -0.02,
+                    "state_vector_v1.market_stress": 0.27,
+                    "state_vector_v1.market_access": 0.57,
+                    "state_vector_v1.rates_level": 1.68,
+                    "state_vector_v1.credit_spread": 4.95,
+                },
+            ),
+        ]
+    )
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(145_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.55),
+        "market.equity_window_proxy": _raw_feature_record(0.18),
+        "market.credit_spread_level": _raw_feature_record(0.049),
+        "macro.fed_funds_effective": _raw_feature_record(1.60),
+        "macro.hy_oas": _raw_feature_record(4.85),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    previous_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+    try:
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack = build_precedent_pack_v2(
+            candidate_id="cand-revolver-routing",
+            run_id="run-revolver-routing",
+            company_id="001692",
+            action_id="capital_structure.revolver_draw_or_resize",
+            action_subtype="revolver_draw_or_resize",
+            action_params={"draw_amount_usd": 200_000_000.0},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=3,
+            min_k=1,
+        )
+    finally:
+        if previous_version is None:
+            os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = previous_version
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    ordered_company_ids = [case.company_id for case in pack.retrieved_cohorts]
+    assert pack.profiling["debt_support_routing_applied"] is True
+    assert pack.profiling["max_matches_per_company"] == 2
+    assert ordered_company_ids[0] == "000702"
+    assert ordered_company_ids.count("001692") <= 2
+
+
+def test_build_precedent_pack_v2_applies_outcome_aware_reranker(tmp_path):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000201",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=30,
+                ticker="GOOD",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.35,
+                    "state_vector_v1.valuation_multiple": 48.0,
+                    "state_vector_v1.cash_generation": 0.03,
+                    "outcome_pe_6m": 0.45,
+                    "outcome_pe_12m": 0.60,
+                    "outcome_ev_ebitda_6m": 0.35,
+                    "outcome_ev_ebitda_12m": 0.50,
+                    "credit_spread_change_6m": -20.0,
+                    "credit_spread_change_12m": -35.0,
+                    "rating_migration_12m": 1.0,
+                    "leverage_delta": -0.20,
+                    "fcf_margin_delta": 0.03,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000202",
+                action_type="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+                offset_days=60,
+                ticker="NEAR",
+                **{
+                    "sector": "TECH",
+                    "state_vector_v1.size_log_revenue": 10.05,
+                    "state_vector_v1.valuation_multiple": 50.0,
+                    "state_vector_v1.cash_generation": 0.03,
+                    "outcome_pe_6m": -0.10,
+                    "outcome_pe_12m": -0.15,
+                    "outcome_ev_ebitda_6m": -0.08,
+                    "outcome_ev_ebitda_12m": -0.12,
+                    "credit_spread_change_6m": 10.0,
+                    "credit_spread_change_12m": 15.0,
+                    "rating_migration_12m": -1.0,
+                    "leverage_delta": 0.12,
+                    "fcf_margin_delta": -0.01,
+                },
+            ),
+        ]
+    )
+    candidate_features = _state_vector_candidate_features(
+        sector="TECH",
+        **{
+            "state_vector_v1.size_log_revenue": 10.00,
+            "state_vector_v1.valuation_multiple": 50.0,
+            "state_vector_v1.cash_generation": 0.03,
+        },
+    )
+
+    pack_base = build_precedent_pack_v2(
+        candidate_id="cand-outcome-base",
+        run_id="run-outcome-base",
+        company_id="000999",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={},
+        candidate_features=candidate_features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=2,
+        min_k=1,
+    )
+    base_ids = [score.precedent_id for score in pack_base.similarity_scores]
+
+    payload_path = tmp_path / "precedent_distance_weights_v2.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "scopes": {
+                    "capital_return.open_market_buyback": {
+                        "scope_key": "capital_return.open_market_buyback",
+                        "use_in_runtime": True,
+                        "default_enabled": True,
+                        "outcome_aware_reranker": {
+                            "feature_weights": {
+                                "current_similarity_score": 0.5,
+                                "outcome_equity_score": 2.5,
+                                "outcome_valuation_score": 2.0,
+                                "outcome_credit_score": 1.5,
+                                "outcome_balance_sheet_score": 1.5,
+                            },
+                            "bias": 0.0,
+                            "shortlist_size": 2,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    previous_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+    try:
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = str(payload_path)
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+        pack_outcome = build_precedent_pack_v2(
+            candidate_id="cand-outcome-live",
+            run_id="run-outcome-live",
+            company_id="000999",
+            action_id="capital_return.open_market_buyback",
+            action_subtype="open_market_buyback",
+            action_params={},
+            candidate_features=candidate_features,
+            candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+            historical_df=hist,
+            top_k=2,
+            min_k=1,
+        )
+    finally:
+        if previous_path is None:
+            os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = previous_path
+        precedent_brain._PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+
+    outcome_ids = [score.precedent_id for score in pack_outcome.similarity_scores]
+    assert pack_outcome.profiling["outcome_aware_reranker_applied"] is True
+    assert outcome_ids != base_ids
+    assert outcome_ids[0].startswith("000201::")
+
+

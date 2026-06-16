@@ -4251,3 +4251,439 @@ def _candidate_action_family_weights(action_id: str, action_subtype: str) -> Tup
     return ()
 
 
+def _candidate_action_family_scale_weights(
+    action_id: str,
+    action_subtype: str,
+    action_params: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+) -> Tuple[Tuple[str, float], ...]:
+    aid = str(action_id or "")
+    leaf = aid.split(".", 1)[1] if "." in aid else str(action_subtype or "")
+    leaf = _canonical_token(leaf)
+    subtype_text = _canonical_token(action_subtype)
+    market_cap = _candidate_market_cap(candidate_features if isinstance(candidate_features, dict) else {})
+    scale = _estimate_action_scale(action_params or {}, market_cap)
+    debt_bucket = _debt_scale_bucket(scale)
+    debt_amount_bucket = _debt_amount_bucket(_candidate_debt_amount(action_params or {}))
+    equity_bucket = _equity_scale_bucket(scale)
+    if aid.startswith("mna."):
+        bucket = _acquisition_scale_bucket(scale)
+        if not bucket:
+            return ()
+        if leaf == "platform_acquisition":
+            return (
+                (f"mna.platform_disclosed.scale_{bucket}", 0.93),
+                (f"mna.platform_undisclosed.scale_{bucket}", 0.91),
+                (f"mna.platform_merger.scale_{bucket}", 0.89),
+                (f"mna.platform_lbo.scale_{bucket}", 0.87),
+            )
+        if leaf == "tuck_in_acquisition":
+            return (
+                (f"mna.tuck_in_incremental.scale_{bucket}", 0.93),
+                (f"mna.acquisition_structured.scale_{bucket}", 0.83),
+            )
+        if leaf == "transformational_acquisition":
+            return (
+                (f"mna.platform_merger.scale_{bucket}", 0.95),
+                (f"mna.platform_lbo.scale_{bucket}", 0.93),
+                (f"mna.platform_disclosed.scale_{bucket}", 0.90),
+                (f"mna.platform_undisclosed.scale_{bucket}", 0.86),
+            )
+        if leaf == "go_private_lbo":
+            return (
+                (f"mna.platform_lbo.scale_{bucket}", 0.96),
+                (f"mna.platform_merger.scale_{bucket}", 0.88),
+                (f"mna.platform_disclosed.scale_{bucket}", 0.84),
+            )
+    if aid.startswith("capital_structure.") and debt_bucket:
+        instrument_type = _canonical_token((action_params or {}).get("instrument_type"))
+        secured_flag = bool((action_params or {}).get("secured_flag"))
+        rate_structure = _canonical_token((action_params or {}).get("rate_structure"))
+        fixed_vs_floating = _canonical_token((action_params or {}).get("fixed_vs_floating"))
+        if leaf == "new_debt_issuance":
+            if instrument_type in {"bond", "note", "debenture"}:
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.debt_bond.amount_{debt_amount_bucket}", 0.94))
+                weights.extend(
+                    [
+                        (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.92),
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.82),
+                    ]
+                )
+                return tuple(weights)
+            if instrument_type in {"loan", "term_loan", "credit_facility"}:
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.debt_loan.amount_{debt_amount_bucket}", 0.94))
+                weights.extend(
+                    [
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.92),
+                        (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.82),
+                    ]
+                )
+                return tuple(weights)
+            weights = []
+            if debt_amount_bucket:
+                weights.append((f"capital_structure.debt_bond.amount_{debt_amount_bucket}", 0.90))
+            weights.extend(
+                [
+                    (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.88),
+                    (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.84),
+                ]
+            )
+            return tuple(weights)
+        if leaf == "refinancing":
+            if subtype_text == "refinancing_revolver_family":
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.revolver.amount_{debt_amount_bucket}", 0.94))
+                weights.extend(
+                    [
+                        (f"capital_structure.revolver.scale_{debt_bucket}", 0.92),
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.82),
+                    ]
+                )
+                return tuple(weights)
+            if subtype_text == "refinancing_term_loan_family":
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.debt_loan.amount_{debt_amount_bucket}", 0.94))
+                weights.extend(
+                    [
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.92),
+                        (f"capital_structure.revolver.scale_{debt_bucket}", 0.82),
+                    ]
+                )
+                return tuple(weights)
+            if subtype_text == "refinancing_bond_family":
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.debt_bond.amount_{debt_amount_bucket}", 0.94))
+                weights.extend(
+                    [
+                        (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.92),
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.82),
+                    ]
+                )
+                return tuple(weights)
+            bond_like = (fixed_vs_floating == "fixed") or (rate_structure == "fixed" and not secured_flag)
+            if bond_like:
+                weights = []
+                if debt_amount_bucket:
+                    weights.append((f"capital_structure.debt_bond.amount_{debt_amount_bucket}", 0.92))
+                weights.extend(
+                    [
+                        (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.90),
+                        (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.84),
+                    ]
+                )
+                return tuple(weights)
+            weights = []
+            if debt_amount_bucket:
+                weights.append((f"capital_structure.debt_loan.amount_{debt_amount_bucket}", 0.92))
+            weights.extend(
+                [
+                    (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.90),
+                    (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.82),
+                ]
+            )
+            return tuple(weights)
+        if leaf in {"tender_offer_debt", "exchange_offer", "liability_management_exercise"}:
+            return (
+                (f"capital_structure.debt_bond.scale_{debt_bucket}", 0.86),
+                (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.82),
+            )
+        if leaf == "revolver_draw_or_resize":
+            weights = []
+            if debt_amount_bucket:
+                weights.append((f"capital_structure.revolver.amount_{debt_amount_bucket}", 0.94))
+            weights.extend(
+                [
+                    (f"capital_structure.revolver.scale_{debt_bucket}", 0.92),
+                    (f"capital_structure.debt_loan.scale_{debt_bucket}", 0.80),
+                ]
+            )
+            return tuple(weights)
+    if aid.startswith("capital_structure.") and leaf in {"convertible_issuance", "preferred_issuance", "equity_issuance"}:
+        if not equity_bucket:
+            return ()
+        return ((f"capital_structure.equity_issuance.scale_{equity_bucket}", 0.84),)
+    if aid in {"portfolio.divestiture_full", "portfolio.divestiture_partial", "portfolio.asset_sale"}:
+        div_bucket = _divestiture_scale_bucket(scale)
+        if not div_bucket:
+            return ()
+        return ((f"portfolio.divestiture.scale_{div_bucket}", 0.88),)
+    return ()
+
+
+_NARRATIVE_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "into",
+    "over",
+    "under",
+    "will",
+    "have",
+    "has",
+    "had",
+    "was",
+    "were",
+    "are",
+    "is",
+    "of",
+    "to",
+    "in",
+    "on",
+    "at",
+    "by",
+    "as",
+    "an",
+    "or",
+    "be",
+    "it",
+    "its",
+    "our",
+    "their",
+}
+
+_NARRATIVE_TEXT_COLS = ("narrative_text", "headline", "text", "title", "description", "summary")
+
+
+def _tokenize(text: str) -> List[str]:
+    if not text:
+        return []
+    toks = re.findall(r"[a-z0-9]+", text.lower())
+    return [t for t in toks if len(t) >= 3 and t not in _NARRATIVE_STOPWORDS]
+
+
+def _candidate_narrative_text(
+    action_id: str,
+    action_subtype: Optional[str],
+    action_params: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    candidate_regime: Dict[str, Any],
+) -> str:
+    explicit = _first_str(
+        [
+            candidate_features.get("narrative_text") if isinstance(candidate_features, dict) else None,
+            candidate_features.get("headline") if isinstance(candidate_features, dict) else None,
+            candidate_features.get("summary") if isinstance(candidate_features, dict) else None,
+        ]
+    )
+    if explicit:
+        return explicit
+    parts = [
+        str(action_id or ""),
+        str(action_subtype or ""),
+    ]
+    if isinstance(candidate_regime, dict):
+        parts.extend(
+            [
+                str(candidate_regime.get("credit_regime", "")),
+                str(candidate_regime.get("risk_regime", "")),
+                str(candidate_regime.get("vol_regime", "")),
+            ]
+        )
+    if isinstance(action_params, dict):
+        for k in sorted(action_params.keys()):
+            v = action_params.get(k)
+            if isinstance(v, (dict, list)):
+                continue
+            parts.append(f"{k} {v}")
+    if isinstance(candidate_features, dict):
+        for k in ("sector", "gics_sector", "leverage_net_debt_ebitda", "ebitda_margin", "fcf_margin"):
+            v = candidate_features.get(k)
+            if v is not None:
+                parts.append(f"{k} {v}")
+    return " ".join([p for p in parts if str(p).strip()])
+
+
+def _row_narrative_text(row: pd.Series) -> Tuple[str, bool]:
+    real_parts: List[str] = []
+    for c in _NARRATIVE_TEXT_COLS:
+        if c in row.index:
+            s = _first_str([row.get(c)])
+            if s:
+                real_parts.append(s)
+    if real_parts:
+        return " ".join(real_parts), True
+
+    # Fallback structured narrative (deterministic, low-fidelity).
+    parts = [
+        _preferred_row_action_fields(row)[0],
+        _preferred_row_action_fields(row)[1],
+        _preferred_row_action_fields(row)[2],
+        f"leverage {row.get('base_leverage')}",
+        f"margin {row.get('base_margin')}",
+        f"fcf {row.get('base_fcf_margin')}",
+        f"hy_oas {row.get('macro_hy_oas')}",
+        f"vix {row['macro_vix']}",
+    ]
+    return " ".join([p for p in parts if str(p).strip()]), False
+
+
+def _tfidf_vector(tokens: List[str], idf: Dict[str, float]) -> Dict[str, float]:
+    if not tokens:
+        return {}
+    tf = Counter(tokens)
+    vec: Dict[str, float] = {}
+    for t, c in tf.items():
+        w = float(c) * float(idf.get(t, 1.0))
+        if w > 0:
+            vec[t] = w
+    norm = math.sqrt(sum(v * v for v in vec.values()))
+    if norm <= 1e-12:
+        return {}
+    return {k: v / norm for k, v in vec.items()}
+
+
+def _sparse_cosine(a: Dict[str, float], b: Dict[str, float]) -> float:
+    if not a or not b:
+        return 0.0
+    if len(a) > len(b):
+        a, b = b, a
+    return float(sum(v * b.get(k, 0.0) for k, v in a.items()))
+
+
+def _narrative_similarity(
+    cohort: pd.DataFrame,
+    *,
+    action_id: str,
+    action_subtype: Optional[str],
+    action_params: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    candidate_regime: Dict[str, Any],
+) -> Tuple[np.ndarray, int, float]:
+    """Return per-row narrative similarity, number of rows with real text, and top-5 mean similarity."""
+    if cohort.empty:
+        return np.array([], dtype=float), 0, 0.0
+
+    candidate_text = _candidate_narrative_text(
+        action_id=action_id,
+        action_subtype=action_subtype,
+        action_params=action_params,
+        candidate_features=candidate_features,
+        candidate_regime=candidate_regime,
+    )
+    cand_tokens = _tokenize(candidate_text)
+    if not cand_tokens:
+        return np.full(len(cohort), 0.0, dtype=float), 0, 0.0
+
+    docs: List[List[str]] = []
+    real_count = 0
+    doc_freq: Counter = Counter()
+    for _, row in cohort.iterrows():
+        txt, is_real = _row_narrative_text(row)
+        if is_real:
+            real_count += 1
+        toks = _tokenize(txt)
+        docs.append(toks)
+        doc_freq.update(set(toks))
+
+    n_docs = max(1, len(docs))
+    idf = {t: math.log((1.0 + n_docs) / (1.0 + float(df))) + 1.0 for t, df in doc_freq.items()}
+    cand_vec = _tfidf_vector(cand_tokens, idf)
+    if not cand_vec:
+        return np.full(len(cohort), 0.0, dtype=float), real_count, 0.0
+
+    sims = np.array([_sparse_cosine(cand_vec, _tfidf_vector(toks, idf)) for toks in docs], dtype=float)
+    top = np.sort(sims)[-5:] if sims.size else np.array([], dtype=float)
+    top_mean = float(np.mean(top)) if top.size else 0.0
+    return sims, real_count, top_mean
+
+
+def _minimum_exact_support(min_k: int, top_k: int) -> int:
+    min_k = max(1, int(min_k))
+    top_k = max(1, int(top_k))
+    return max(4, min(min_k, max(6, int(math.ceil(top_k * 0.25)))))
+
+
+def _support_ratio(count: int, threshold: int) -> float:
+    return max(0.0, min(1.0, float(max(0, int(count))) / float(max(1, int(threshold)))))
+
+
+def _cohort_support_factor(similarity_scores: Sequence[float]) -> float:
+    if not similarity_scores:
+        return 0.0
+    arr = np.clip(np.asarray(similarity_scores, dtype=float), 0.0, 1.0)
+    effective = float(np.clip((arr - 0.35) / 0.45, 0.0, 1.0).sum())
+    return max(0.0, min(1.0, effective / 8.0))
+
+
+def _compute_calibration_confidence(
+    *,
+    retrieval_tier: str,
+    exact_match_count: int,
+    exact_support_min: int,
+    cohort_size: int,
+    base_similarity: float,
+    top_similarity_mean: float,
+    top_similarity_p25: float,
+    top_action_match_score: float,
+    mismatch_count: int,
+    regime_mismatch: bool,
+    parameter_mismatch: bool,
+    narrative_mismatch: bool,
+) -> Dict[str, float]:
+    exact_support_ratio = _support_ratio(exact_match_count, exact_support_min)
+    cohort_factor = min(1.0, float(max(0, int(cohort_size))) / 20.0)
+    support_factor = _cohort_support_factor(
+        [
+            max(0.0, min(1.0, float(base_similarity))),
+            max(0.0, min(1.0, float(top_similarity_mean))),
+            max(0.0, min(1.0, float(top_similarity_p25))),
+        ]
+    )
+    similarity_signal = (
+        0.50 * max(0.0, min(1.0, float(top_similarity_mean)))
+        + 0.20 * max(0.0, min(1.0, float(top_similarity_p25)))
+        + 0.20 * max(0.0, min(1.0, float(base_similarity)))
+        + 0.10 * max(0.0, min(1.0, float(top_action_match_score)))
+    )
+    mismatch_penalty = min(
+        0.65,
+        0.08 * max(0, int(mismatch_count))
+        + (0.14 if regime_mismatch else 0.0)
+        + (0.14 if parameter_mismatch else 0.0)
+        + (0.08 if narrative_mismatch else 0.0),
+    )
+    confidence_pre_tier_discount = max(
+        0.0,
+        min(
+            1.0,
+            similarity_signal * (0.45 + 0.30 * cohort_factor + 0.25 * support_factor) * (1.0 - mismatch_penalty),
+        ),
+    )
+    if retrieval_tier == "exact":
+        tier_conf_discount = 0.96 + 0.04 * exact_support_ratio
+    elif retrieval_tier == "family":
+        tier_conf_discount = 0.86 + 0.08 * exact_support_ratio + 0.06 * max(
+            0.0, min(1.0, float(top_action_match_score))
+        )
+    elif retrieval_tier == "sibling_type":
+        tier_conf_discount = 0.80 + 0.12 * exact_support_ratio + 0.08 * max(
+            0.0, min(1.0, float(top_action_match_score))
+        )
+    else:
+        tier_conf_discount = 0.62 + 0.12 * max(0.0, min(1.0, float(top_action_match_score))) + 0.10 * max(
+            0.0, min(1.0, float(top_similarity_mean))
+        )
+    calibration_confidence = max(0.0, min(1.0, confidence_pre_tier_discount * tier_conf_discount))
+    return {
+        "exact_support_ratio": float(exact_support_ratio),
+        "cohort_factor": float(cohort_factor),
+        "support_factor": float(support_factor),
+        "similarity_signal": float(similarity_signal),
+        "mismatch_penalty": float(mismatch_penalty),
+        "confidence_pre_tier_discount": float(confidence_pre_tier_discount),
+        "tier_conf_discount": float(tier_conf_discount),
+        "calibration_confidence": float(calibration_confidence),
+    }
+
+
