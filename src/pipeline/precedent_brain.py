@@ -3532,3 +3532,451 @@ def augment_precedent_state_vector_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _combined_family_key(family: str, subfamily: str) -> str:
+    fam = str(family or "").strip()
+    sub = str(subfamily or "").strip()
+    if fam and sub:
+        return f"{fam}.{sub}"
+    return fam or sub
+
+
+def _historical_exact_action_id(action_type: Any, action_subtype: Any) -> str:
+    at = _canonical_token(action_type)
+    st = _canonical_token(action_subtype)
+    if at == "dividend_initiate" and st == "dividend_initiate":
+        return "capital_return.dividend_initiate"
+    if at == "acquisition" and st == "acquisition_lbo":
+        return "mna.go_private_lbo"
+    return ""
+
+
+def _resolved_normalized_subfamily(
+    normalized_family: Any,
+    normalized_subfamily: Any,
+    raw_action_type: Any,
+    raw_action_subtype: Any,
+) -> str:
+    family = str(normalized_family or "").strip()
+    subfamily = str(normalized_subfamily or "").strip()
+    raw_at = _canonical_token(raw_action_type)
+    raw_st = _canonical_token(raw_action_subtype)
+    if family == "capital_structure" and subfamily == "refinancing" and raw_at == "loan_refinancing":
+        return _normalized_refinancing_action_subtype(raw_action_subtype)
+    if family == "mna" and subfamily == "platform_control":
+        if raw_at == "acquisition" and raw_st == "acquisition_lbo":
+            return "platform_lbo"
+        if raw_at == "acquisition" and raw_st == "acquisition_merger":
+            return "platform_merger"
+    return subfamily
+
+
+def _preferred_row_action_fields(row: pd.Series) -> Tuple[str, str, str]:
+    action_id = str(
+        row.get("normalized_action_id")
+        or row.get("action_id")
+        or _historical_exact_action_id(
+            row.get("raw_action_type") or row.get("action_type"),
+            row.get("raw_action_subtype") or row.get("action_subtype"),
+        )
+        or ""
+    ).strip()
+    action_subfamily = str(
+        _resolved_normalized_subfamily(
+            row.get("normalized_action_family"),
+            row.get("normalized_action_subfamily"),
+            row.get("raw_action_type") or row.get("action_type"),
+            row.get("raw_action_subtype") or row.get("action_subtype"),
+        )
+        or row.get("raw_action_subtype")
+        or row.get("action_subtype")
+        or ""
+    ).strip()
+    action_family = str(
+        row.get("normalized_action_family")
+        or row.get("raw_action_type")
+        or row.get("action_type")
+        or ""
+    ).strip()
+    return action_id, action_subfamily, action_family
+
+
+class PrecedentRetrievalIndex:
+    """Read-mostly retrieval index to speed repeated precedent lookups."""
+
+    def __init__(self, historical_df: pd.DataFrame) -> None:
+        df = historical_df.copy()
+        if "action_date" in df.columns:
+            df["action_date"] = pd.to_datetime(df["action_date"], utc=True, errors="coerce")
+        df = df.reset_index(drop=True)
+        df = _enrich_missing_historical_taxonomy(df)
+        df = augment_precedent_state_vector_columns(df)
+        self.df = df
+        self.n_rows = int(len(df))
+        compact_cols = [
+            col
+            for col in _STATE_VECTOR_MATCHING_COLS
+            if col in df.columns and int(pd.to_numeric(df.get(col), errors="coerce").notna().sum()) >= 1
+        ]
+        self.embedding_cols = tuple(compact_cols or _LEGACY_EMBEDDING_COLS)
+        self.embedding_values = np.column_stack(
+            [pd.to_numeric(df.get(c), errors="coerce").to_numpy(dtype=float) for c in self.embedding_cols]
+        ) if self.n_rows else np.empty((0, len(self.embedding_cols)), dtype=float)
+        self.raw_action_subtype_arr = _preferred_text_array(df, ("raw_action_subtype", "action_subtype"))
+        self.raw_action_type_arr = _preferred_text_array(df, ("raw_action_type", "action_type"))
+        self.normalized_action_subfamily_arr = _preferred_text_array(df, ("normalized_action_subfamily",))
+        self.normalized_action_family_arr = _preferred_text_array(df, ("normalized_action_family",))
+        self.normalized_action_id_arr = _preferred_text_array(df, ("normalized_action_id", "action_id"))
+        self.action_subtype_arr = np.array(
+            [
+                _resolved_normalized_subfamily(
+                    self.normalized_action_family_arr[i],
+                    self.normalized_action_subfamily_arr[i],
+                    self.raw_action_type_arr[i],
+                    self.raw_action_subtype_arr[i],
+                )
+                or str(self.raw_action_subtype_arr[i] or "")
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        self.action_type_arr = np.array(
+            [
+                str(self.normalized_action_family_arr[i] or self.raw_action_type_arr[i] or "")
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        self.action_id_arr = np.array(
+            [
+                str(
+                    self.normalized_action_id_arr[i]
+                    or _historical_exact_action_id(self.raw_action_type_arr[i], self.raw_action_subtype_arr[i])
+                    or ""
+                )
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        self.preferred_action_key_arr = np.array(
+            [
+                str(self.action_id_arr[i] or self.action_subtype_arr[i] or self.action_type_arr[i] or "")
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        self.action_family_arr = np.array(
+            [
+                _combined_family_key(self.action_type_arr[i], self.action_subtype_arr[i])
+                or _historical_action_family(
+                    action_type=self.raw_action_type_arr[i],
+                    action_subtype=self.raw_action_subtype_arr[i],
+                )
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        self.company_id_arr = df.get("company_id", pd.Series("", index=df.index)).astype(str).to_numpy()
+        self.action_date_arr = pd.to_datetime(
+            df.get("action_date"),
+            utc=True,
+            errors="coerce",
+        ).to_numpy(dtype="datetime64[ns]")
+        self.source_event_id_arr = _preferred_text_array(df, ("source_event_id", "source_id"))
+        self.feature_sector_arr = _preferred_text_array(
+            df,
+            ("taxonomy.sector", "base_sector", "sector", "gics_sector", "sic"),
+        )
+
+        action_size = (
+            pd.to_numeric(df["action_size"], errors="coerce").to_numpy(dtype=float)
+            if "action_size" in df.columns
+            else np.full(self.n_rows, np.nan, dtype=float)
+        )
+        base_market_cap_series = df.get("base_market_cap", pd.Series(np.nan, index=df.index))
+        base_mc = _normalize_market_cap_series_to_dollars(
+            pd.Series(base_market_cap_series, copy=False),
+            prefer_source_units=True,
+        ).to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            scale = action_size / base_mc
+        self.action_scale_arr = np.where(np.isfinite(scale), np.clip(scale, a_min=0.0, a_max=None), 0.0)
+        family_scale_bucket_arr = (
+            df.get("family_scale_bucket", pd.Series("", index=df.index)).fillna("").astype(str).to_numpy(dtype=object)
+        )
+        self.action_family_scale_arr = np.array(
+            [
+                (
+                    _historical_debt_amount_key(
+                        family=str(self.action_family_arr[i]),
+                        action_size=_to_float(action_size[i], None),
+                    )
+                    or (
+                        f"{self.action_family_arr[i]}.scale_{_canonical_token(family_scale_bucket_arr[i])}"
+                        if str(family_scale_bucket_arr[i] or "").strip() and str(self.action_family_arr[i])
+                        else _historical_family_scale_key(
+                            family=str(self.action_family_arr[i]),
+                            action_scale=float(self.action_scale_arr[i]),
+                        )
+                    )
+                )
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+
+        # Precompute sector tokens and regime flags once.
+        sector_sources = [
+            df.get(col, pd.Series("", index=df.index)).fillna("").astype(str).to_numpy(dtype=object)
+            for col in (
+                "taxonomy.sector",
+                "base_sector",
+                "sector",
+                "gics_sector",
+                "sector_name",
+                "sic",
+                "base_sic",
+            )
+        ]
+        self.sector_token_arr = np.array(
+            [
+                next((str(values[i]).strip().upper() for values in sector_sources if str(values[i]).strip()), "")
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        subsector_sources = [
+            df.get(col, pd.Series("", index=df.index)).fillna("").astype(str).to_numpy(dtype=object)
+            for col in (
+                "taxonomy.subsector",
+                "subsector",
+                "industry",
+                "base_industry",
+            )
+        ]
+        self.subsector_token_arr = np.array(
+            [
+                next((str(values[i]).strip().upper() for values in subsector_sources if str(values[i]).strip()), "")
+                for i in range(self.n_rows)
+            ],
+            dtype=object,
+        )
+        mc_series = _normalize_market_cap_series_to_dollars(
+            pd.Series(base_market_cap_series, copy=False),
+            prefer_source_units=True,
+        )
+        self.market_cap_bucket_quantiles = _market_cap_bucket_quantiles(mc_series)
+        self.market_cap_bucket_arr = _market_cap_bucket_array(
+            mc_series.to_numpy(dtype=float),
+            self.market_cap_bucket_quantiles,
+        )
+        self.thresholds = _regime_thresholds(df)
+        self.regime_flags = self._build_regime_flags()
+
+        # Fast action-key lookup maps.
+        self.subtype_lookup = self._build_lookup_multi(self.action_subtype_arr, self.raw_action_subtype_arr)
+        self.type_lookup = self._build_lookup_multi(self.action_type_arr, self.raw_action_type_arr)
+        self.action_id_lookup = self._build_lookup(self.action_id_arr)
+        self.family_lookup = self._build_lookup(self.action_family_arr)
+        self.family_scale_lookup = self._build_lookup(self.action_family_scale_arr)
+        self.company_follow_on_lookup = self._build_company_follow_on_lookup()
+
+    @staticmethod
+    def _build_lookup(values: np.ndarray) -> Dict[str, np.ndarray]:
+        out: Dict[str, List[int]] = {}
+        for i, v in enumerate(values):
+            out.setdefault(str(v), []).append(i)
+        return {k: np.asarray(v, dtype=np.int64) for k, v in out.items() if k}
+
+    @staticmethod
+    def _build_lookup_multi(*values_arrs: np.ndarray) -> Dict[str, np.ndarray]:
+        out: Dict[str, List[int]] = {}
+        if not values_arrs:
+            return out
+        n_rows = len(values_arrs[0])
+        for arr in values_arrs[1:]:
+            if len(arr) != n_rows:
+                raise ValueError("lookup arrays must have identical lengths")
+        for i in range(n_rows):
+            seen: set[str] = set()
+            for arr in values_arrs:
+                value = str(arr[i] or "")
+                if not value or value in seen:
+                    continue
+                out.setdefault(value, []).append(i)
+                seen.add(value)
+        return {k: np.asarray(v, dtype=np.int64) for k, v in out.items() if k}
+
+    def _build_regime_flags(self) -> Dict[str, np.ndarray]:
+        hy = (
+            pd.to_numeric(self.df["macro_hy_oas"], errors="coerce").to_numpy(dtype=float)
+            if "macro_hy_oas" in self.df.columns
+            else np.full(len(self.df), np.nan, dtype=float)
+        )
+        vix = (
+            pd.to_numeric(self.df["macro_vix"], errors="coerce").to_numpy(dtype=float)
+            if "macro_vix" in self.df.columns
+            else np.full(len(self.df), np.nan, dtype=float)
+        )
+        hy_q25 = float(self.thresholds.get("hy_q25", 0.0))
+        hy_q75 = float(self.thresholds.get("hy_q75", 0.0))
+        vix_q25 = float(self.thresholds.get("vix_q25", 0.0))
+        vix_q75 = float(self.thresholds.get("vix_q75", 0.0))
+        hy_ok = np.isfinite(hy)
+        vix_ok = np.isfinite(vix)
+        credit_tight = hy_ok & (hy >= hy_q75)
+        credit_loose = hy_ok & (hy <= hy_q25)
+        high_vol = vix_ok & (vix >= vix_q75)
+        low_vol = vix_ok & (vix <= vix_q25)
+        risk_off = credit_tight | high_vol
+        risk_on = credit_loose & low_vol
+        return {
+            "credit_tight": credit_tight,
+            "credit_loose": credit_loose,
+            "high_vol": high_vol,
+            "low_vol": low_vol,
+            "risk_off": risk_off,
+            "risk_on": risk_on,
+        }
+
+    def candidate_indices_for_action(self, action_keys: Sequence[str]) -> np.ndarray:
+        idx_parts: List[np.ndarray] = []
+        for k in action_keys:
+            if k in self.subtype_lookup:
+                idx_parts.append(self.subtype_lookup[k])
+            if k in self.type_lookup:
+                idx_parts.append(self.type_lookup[k])
+        if not idx_parts:
+            return np.empty(0, dtype=np.int64)
+        return np.unique(np.concatenate(idx_parts))
+
+    def _build_company_follow_on_lookup(self) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+        if self.n_rows == 0:
+            return {}
+        valid_mask = (~pd.isna(self.action_date_arr)) & (self.company_id_arr != "")
+        valid_idx = np.flatnonzero(valid_mask)
+        if valid_idx.size == 0:
+            return {}
+
+        grouped: Dict[str, List[int]] = {}
+        for idx in valid_idx.tolist():
+            grouped.setdefault(str(self.company_id_arr[idx]), []).append(int(idx))
+
+        out: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+        for company_id, idxs in grouped.items():
+            idx_arr = np.asarray(idxs, dtype=np.int64)
+            order = np.argsort(self.action_date_arr[idx_arr], kind="mergesort")
+            sorted_idx = idx_arr[order]
+            out[company_id] = (
+                self.action_date_arr[sorted_idx],
+                self.preferred_action_key_arr[sorted_idx],
+            )
+        return out
+
+
+def build_precedent_retrieval_index(historical_df: pd.DataFrame) -> PrecedentRetrievalIndex:
+    return PrecedentRetrievalIndex(historical_df)
+
+
+def _canonical_token(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return re.sub(r"_+", "_", text).strip("_")
+
+
+def _normalized_refinancing_action_subtype(
+    action_subtype: Any,
+    action_params: Optional[Dict[str, Any]] = None,
+) -> str:
+    subtype_text = str(action_subtype or "").strip()
+    normalized = str(_refinancing_subfamily(subtype_text or "") or "").strip()
+    if normalized and normalized != "refinancing":
+        return normalized
+    params = dict(action_params or {})
+    for key in ("instrument_type", "facility_type", "source_action_subtype", "action_subtype"):
+        candidate = str(params.get(key) or "").strip()
+        normalized = str(_refinancing_subfamily(candidate) or "").strip()
+        if normalized and normalized != "refinancing":
+            return normalized
+    instrument_type = _canonical_token(params.get("instrument_type"))
+    facility_type = _canonical_token(params.get("facility_type"))
+    rate_structure = _canonical_token(params.get("rate_structure"))
+    fixed_vs_floating = _canonical_token(params.get("fixed_vs_floating"))
+    if instrument_type in {"revolver", "line", "credit_facility"} or facility_type in {
+        "revolver",
+        "line",
+        "credit_facility",
+        "364_day_facility",
+    }:
+        return "refinancing_revolver_family"
+    if instrument_type in {"loan", "term_loan", "bridge_loan"} or facility_type in {
+        "term_loan",
+        "term_loan_a",
+        "term_loan_b",
+        "delay_draw_term_loan",
+        "bridge_loan",
+    }:
+        return "refinancing_term_loan_family"
+    if instrument_type in {"bond", "note", "debenture"}:
+        return "refinancing_bond_family"
+    secured_flag = params.get("secured_flag")
+    if fixed_vs_floating == "fixed" or (rate_structure == "fixed" and secured_flag is False):
+        return "refinancing_bond_family"
+    return str(normalized or "refinancing")
+
+
+def _effective_action_subtype(
+    action_id: Any,
+    action_subtype: Any,
+    action_params: Optional[Dict[str, Any]] = None,
+) -> str:
+    action_text = str(action_id or "").strip().lower()
+    if action_text == "capital_structure.refinancing":
+        return _normalized_refinancing_action_subtype(action_subtype, action_params)
+    return str(action_subtype or "").strip()
+
+
+def _uses_refinancing_family_exact_matching(action_id: Any, action_subtype: Any) -> bool:
+    action_text = _canonical_token(action_id)
+    subtype_text = _canonical_token(action_subtype)
+    return action_text == "capital_structure_refinancing" and subtype_text in {
+        "refinancing_term_loan_family",
+        "refinancing_revolver_family",
+        "refinancing_bond_family",
+    }
+
+
+def _candidate_exact_action_keys(
+    action_id: Any,
+    action_subtype: Any,
+    action_leaf: Any,
+    outcomes_subtype_alias: Any,
+) -> Tuple[str, ...]:
+    if _uses_refinancing_family_exact_matching(action_id, action_subtype):
+        keys: List[str] = []
+        for key in (action_subtype, outcomes_subtype_alias):
+            key_text = str(key or "").strip()
+            if not key_text:
+                continue
+            if _canonical_token(key_text) == "refinancing":
+                continue
+            if key_text not in keys:
+                keys.append(key_text)
+        return tuple(keys)
+    return tuple(
+        k
+        for k in sorted({str(action_id or ""), str(action_subtype or ""), str(action_leaf or ""), str(outcomes_subtype_alias or "")})
+        if k
+    )
+
+
+def _candidate_action_id_keys(action_id: Any, action_subtype: Any) -> Tuple[str, ...]:
+    action_text = str(action_id or "").strip()
+    if not action_text:
+        return ()
+    if _uses_refinancing_family_exact_matching(action_id, action_subtype):
+        return ()
+    return (action_text,)
+
+
