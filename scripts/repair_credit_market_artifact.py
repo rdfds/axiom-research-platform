@@ -484,3 +484,5 @@ def main() -> None:
     print(f"Repaired credit-market metrics -> {out_path}")
 
 
+if __name__ == "__main__":
+    main()
