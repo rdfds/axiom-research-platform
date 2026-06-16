@@ -4114,3 +4114,140 @@ def _debt_amount_bucket(value: Optional[float]) -> str:
     return "large"
 
 
+def _historical_family_scale_key(*, family: str, action_scale: float) -> str:
+    fam = str(family or "")
+    if fam.startswith("mna.") and fam != "mna.acquisition":
+        bucket = _acquisition_scale_bucket(action_scale)
+        if not bucket:
+            return ""
+        return f"{fam}.scale_{bucket}"
+    if fam == "capital_structure.equity_issuance":
+        bucket = _equity_scale_bucket(action_scale)
+        if not bucket:
+            return ""
+        return f"{fam}.scale_{bucket}"
+    if fam in {"capital_structure.debt_bond", "capital_structure.debt_loan", "capital_structure.revolver"}:
+        bucket = _debt_scale_bucket(action_scale)
+        if not bucket:
+            return ""
+        return f"{fam}.scale_{bucket}"
+    if fam == "portfolio.divestiture":
+        bucket = _divestiture_scale_bucket(action_scale)
+        if not bucket:
+            return ""
+        return f"{fam}.scale_{bucket}"
+    return ""
+
+
+def _historical_debt_amount_key(*, family: str, action_size: Optional[float]) -> str:
+    fam = str(family or "")
+    if fam not in {"capital_structure.debt_bond", "capital_structure.debt_loan", "capital_structure.revolver"}:
+        return ""
+    bucket = _debt_amount_bucket(action_size)
+    if not bucket:
+        return ""
+    return f"{fam}.amount_{bucket}"
+
+
+def _candidate_debt_amount(action_params: Dict[str, Any]) -> Optional[float]:
+    params = action_params or {}
+    for key in (
+        "draw_amount_usd",
+        "resize_amount_usd",
+        "amount_refinanced_usd",
+        "amount_usd",
+        "size_absolute_usd",
+        "amount",
+    ):
+        value = _to_float(params.get(key), None)
+        if value is not None and value > 0:
+            return float(value)
+    return None
+
+
+def _candidate_action_family_weights(action_id: str, action_subtype: str) -> Tuple[Tuple[str, float], ...]:
+    aid = str(action_id or "")
+    leaf = aid.split(".", 1)[1] if "." in aid else str(action_subtype or "")
+    leaf = _canonical_token(leaf)
+    subtype_text = _canonical_token(action_subtype)
+    if aid.startswith("capital_structure."):
+        if leaf in {"new_debt_issuance", "refinancing"}:
+            if subtype_text == "refinancing_term_loan_family":
+                return (
+                    ("capital_structure.refinancing_term_loan_family", 0.94),
+                    ("capital_structure.debt_loan", 0.86),
+                    ("capital_structure.debt_core", 0.78),
+                )
+            if subtype_text == "refinancing_revolver_family":
+                return (
+                    ("capital_structure.refinancing_revolver_family", 0.94),
+                    ("capital_structure.revolver", 0.86),
+                    ("capital_structure.debt_loan", 0.74),
+                    ("capital_structure.debt_core", 0.70),
+                )
+            if subtype_text == "refinancing_bond_family":
+                return (
+                    ("capital_structure.refinancing_bond_family", 0.94),
+                    ("capital_structure.debt_bond", 0.86),
+                    ("capital_structure.debt_core", 0.78),
+                )
+            return (
+                ("capital_structure.debt_bond", 0.84),
+                ("capital_structure.debt_loan", 0.80),
+                ("capital_structure.debt_core", 0.76),
+            )
+        if leaf == "revolver_draw_or_resize":
+            return (
+                ("capital_structure.revolver", 0.84),
+                ("capital_structure.debt_loan", 0.74),
+                ("capital_structure.debt_core", 0.70),
+            )
+        if leaf in {"tender_offer_debt", "exchange_offer", "liability_management_exercise"}:
+            return (
+                ("capital_structure.debt_bond", 0.74),
+                ("capital_structure.debt_loan", 0.72),
+                ("capital_structure.debt_core", 0.68),
+            )
+        if leaf in {"convertible_issuance", "preferred_issuance", "equity_issuance"}:
+            return (("capital_structure.equity_issuance", 0.80),)
+    if aid.startswith("capital_return."):
+        if leaf in {"open_market_buyback", "accelerated_share_repurchase", "tender_offer_buyback"}:
+            return (("capital_return.buyback", 0.80),)
+        if leaf in {"dividend_cut", "dividend_increase", "dividend_initiate", "special_dividend"}:
+            return ((f"capital_return.{leaf}", 0.86),)
+    if aid.startswith("mna."):
+        if leaf == "platform_acquisition":
+            return (
+                ("mna.platform_disclosed", 0.88),
+                ("mna.platform_undisclosed", 0.86),
+                ("mna.platform_merger", 0.84),
+                ("mna.platform_lbo", 0.82),
+                ("mna.acquisition", 0.76),
+            )
+        if leaf == "tuck_in_acquisition":
+            return (
+                ("mna.tuck_in_incremental", 0.88),
+                ("mna.acquisition_structured", 0.76),
+                ("mna.acquisition", 0.72),
+            )
+        if leaf == "transformational_acquisition":
+            return (
+                ("mna.platform_merger", 0.92),
+                ("mna.platform_lbo", 0.90),
+                ("mna.platform_disclosed", 0.88),
+                ("mna.platform_undisclosed", 0.84),
+                ("mna.acquisition", 0.78),
+            )
+        if leaf == "go_private_lbo":
+            return (
+                ("mna.platform_lbo", 0.94),
+                ("mna.platform_merger", 0.84),
+                ("mna.platform_disclosed", 0.80),
+                ("mna.acquisition", 0.76),
+            )
+        return (("mna.acquisition", 0.76),)
+    if aid in {"portfolio.divestiture_full", "portfolio.divestiture_partial", "portfolio.asset_sale"}:
+        return (("portfolio.divestiture", 0.76),)
+    return ()
+
+
