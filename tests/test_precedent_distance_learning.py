@@ -65,3 +65,21 @@ def test_learn_scope_weights_returns_nonempty_result():
     assert weights["state_vector_v1.valuation_multiple"] > weights["state_vector_v1.market_stress"]
 
 
+def test_learn_precedent_distance_weights_writes_family_scope():
+    df = _synthetic_scope_df()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "synthetic.parquet"
+        df.to_parquet(path, index=False)
+        payload = learn_precedent_distance_weights(
+            path,
+            max_pairs=3000,
+            min_rows=100,
+            min_outcome_non_null=100,
+            ridge_lambda=10.0,
+            seed=7,
+        )
+    assert payload["version"] == "precedent_distance_weights_v1"
+    assert "capital_return" in payload["scopes"]
+    weights = payload["scopes"]["capital_return"]["weights"]
+    assert weights["state_vector_v1.valuation_multiple"] > weights["state_vector_v1.market_stress"]
+    json.dumps(payload)

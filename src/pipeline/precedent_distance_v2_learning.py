@@ -100,3 +100,36 @@ def extract_report_aggregate(report: Dict[str, Any]) -> Dict[str, Any]:
     return aggregate
 
 
+def is_better_report_aggregate(
+    candidate: Dict[str, Any],
+    incumbent: Optional[Dict[str, Any]],
+    objective_config: Dict[str, Any],
+    *,
+    tolerance: float = 1e-9,
+) -> bool:
+    if not incumbent:
+        return True
+    objective_order = list(objective_config.get("objective_order", []) or [])
+    for spec in objective_order:
+        metric = str(spec.get("metric") or "").strip()
+        direction = str(spec.get("direction") or "").strip().lower()
+        if not metric or direction not in {"minimize", "maximize"}:
+            continue
+        cand_value = candidate.get(metric)
+        inc_value = incumbent.get(metric)
+        if cand_value is None and inc_value is None:
+            continue
+        if cand_value is None:
+            return False
+        if inc_value is None:
+            return True
+        cand_value = float(cand_value)
+        inc_value = float(inc_value)
+        if abs(cand_value - inc_value) <= float(tolerance):
+            continue
+        if direction == "minimize":
+            return cand_value < inc_value
+        return cand_value > inc_value
+    return False
+
+
