@@ -426,7 +426,7 @@ def build_summary(path: Path) -> Dict[str, Dict[str, int]]:
         for metric in REPAIR_METRICS:
             node = features.get(metric) or {}
             mode = str(node.get("support_mode") or "unsupported")
-            if node['value'] is None:
+            if node.get("value") is None:
                 mode = "unsupported"
             counters[metric][mode] += 1
     return {
