@@ -160,3 +160,14 @@ def _refresh_target_rows(section: str, bundle: dict[str, Any]) :
     return "\n".join(out_lines)
 
 
+def _replace_company_section(doc_text: str, heading_line: str, transform) -> str:
+    start = doc_text.find(heading_line)
+    if start == -1:
+        raise RuntimeError(f"Could not find heading {heading_line!r}")
+    next_section = doc_text.find("\n## ", start + len(heading_line))
+    end = len(doc_text) if next_section == -1 else next_section + 1
+    section = doc_text[start:end]
+    updated = transform(section)
+    return doc_text[:start] + updated + doc_text[end:]
+
+
