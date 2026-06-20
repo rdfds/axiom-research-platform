@@ -138,7 +138,7 @@ def _replace_block(section: str, start_heading: str, end_heading: str, body: str
     return section[: match.start()] + match.group(1) + body + match.group(3) + section[match.end() :]
 
 
-def _refresh_target_rows(section: str, bundle: dict[str, Any]) :
+def _refresh_target_rows(section: str, bundle: dict[str, Any]) -> str:
     values = bundle["state_vector_v1"]["values"]
     out_lines: list[str] = []
     for line in section.splitlines():

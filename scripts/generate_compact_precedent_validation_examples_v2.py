@@ -178,7 +178,7 @@ def _target_raw_table(row: dict[str, Any]) -> str:
     for metric in TARGET_RAW_METRIC_ORDER:
         record = features.get(metric) or {}
         lines.append(
-            f"| `{metric}` | {_fmt_value(record.get('value'))} | `{record['support_mode'] or 'unsupported'}` |"
+            f"| `{metric}` | {_fmt_value(record.get('value'))} | `{record.get('support_mode') or 'unsupported'}` |"
         )
     return "\n".join(lines)
 
