@@ -114,3 +114,34 @@ def quantile_bins(series: pd.Series, q: int) :
     return pd.cut(s, bins=edges, labels=False, include_lowest=True)
 
 
+def build_mask(
+    dfa: pd.DataFrame,
+    query: pd.Series,
+    use_sector: bool,
+    use_hard: bool,
+    q_regime: Tuple[str, str, str] | None,
+) -> np.ndarray:
+    mask = np.ones(len(dfa), dtype=bool)
+    if use_sector and "sic2" in dfa.columns:
+        sec_mask = (dfa["sic2"] == query.get("sic2")).fillna(False).to_numpy(dtype=bool)
+        mask &= sec_mask
+    if use_hard and q_regime is not None:
+        mask &= (dfa["_risk"] == q_regime[0]).to_numpy(dtype=bool)
+        mask &= (dfa["_credit"] == q_regime[1]).to_numpy(dtype=bool)
+        mask &= (dfa["_rate"] == q_regime[2]).to_numpy(dtype=bool)
+    mask[query.name] = False
+    return mask
+
+
+def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]:
+    vix = row['z_macro_vix']
+    ig = row.get("z_macro_ig_oas")
+    hy = row.get("z_macro_hy_oas")
+    r10 = row.get("z_macro_rate_10y")
+
+    risk = "risk_off" if pd.notna(vix) and vix >= thresh else "risk_on"
+    credit = "credit_tight" if pd.notna(ig) and pd.notna(hy) and max(ig, hy) >= thresh else "credit_loose"
+    rate = "rate_high" if pd.notna(r10) and r10 >= thresh else "rate_low"
+    return risk, credit, rate
+
+
