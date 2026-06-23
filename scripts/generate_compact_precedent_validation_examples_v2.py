@@ -292,3 +292,67 @@ def _render_summary_doc(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _render_detail_doc(
+    target_rows: dict[str, dict[str, Any]],
+    bundles: dict[str, dict[str, Any]],
+    match_payloads: dict[str, list[dict[str, Any]]],
+    historical_path: Path,
+) -> str:
+    lines = [
+        "# Compact Precedent Raw And Compact Validation",
+        "",
+        f"As of `2026-04-06`. This rerun uses the richer historical outcomes artifact:",
+        f"- `{historical_path}`",
+        "",
+        "This note is meant for manual sanity-checking. It shows both the target compact state vector and the raw inputs behind it, then compares those with the top historical precedent rows currently retrieved by the compact precedent path.",
+        "",
+        "Important caveat: historical `state_vector_v1.market_stress` now falls back to a macro-VIX proxy when company-level 90-day price windows are unavailable, so the compact feature is denser than the raw `base_volatility_90d` / `base_drawdown_90d` inputs.",
+        "Historical raw baseline fields are shown in their source units, which are generally USD millions.",
+        "",
+    ]
+    for target in TARGETS:
+        company_id = target["company_id"]
+        lines.extend(
+            [
+                f"## {target['name']} (`{company_id}`)",
+                "",
+                f"- Candidate action reviewed: `{target['action_id']}`",
+                "",
+                "### Target Compact State Vector",
+                "",
+                _compact_table(bundles[company_id]["state_vector_v1"]["values"]),
+                "",
+                "### Target Raw Inputs Behind The Compact Features",
+                "",
+                _target_raw_table(target_rows[company_id]),
+                "",
+                *_target_context_lines(target_rows[company_id], bundles[company_id]),
+                "",
+                "### Top Historical Precedents",
+                "",
+            ]
+        )
+        for idx, payload in enumerate(match_payloads[company_id], start=1):
+            lines.extend(
+                [
+                    f"#### Match {idx}",
+                    "",
+                    f"- Precedent id: `{payload['precedent_id']}`",
+                    f"- Ticker: `{payload['ticker']}`",
+                    f"- Action: `{payload['action_id']}`",
+                    f"- Decision time: `{payload['decision_time']}`",
+                    f"- Similarity score: `{payload['similarity_score']:.4f}`",
+                    f"- Non-null compact features on match row: `{payload['nonnull_compact_features']}/{len(_STATE_VECTOR_V1_FEATURES)}`",
+                    "",
+                    _compact_comparison_table(
+                        bundles[company_id]["state_vector_v1"]["values"],
+                        payload["historical_row"],
+                    ),
+                    "",
+                    _historical_raw_table(payload["historical_row"]),
+                    "",
+                ]
+            )
+    return "\n".join(lines).rstrip() + "\n"
+
+
