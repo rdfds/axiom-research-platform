@@ -171,3 +171,43 @@ def _replace_company_section(doc_text: str, heading_line: str, transform) -> str
     return doc_text[:start] + updated + doc_text[end:]
 
 
+def _refresh_validation_examples(doc_text: str, company_id: str, bundle: dict[str, Any], row: dict[str, Any]) -> str:
+    heading = f"## {COMPANY_IDS[company_id]} (`{company_id}`)"
+
+    def transform(section: str) -> str:
+        section = _replace_block(section, "### Target Compact State Vector", "### Support Context", _feature_table(bundle) + "\n")
+        section = _replace_block(section, "### Support Context", "### Top 3 Retrieved Precedents", _support_lines(row, bundle, missing_label="Missing features") + "\n")
+        section = _refresh_target_rows(section, bundle)
+        return section
+
+    return _replace_company_section(doc_text, heading, transform)
+
+
+def _refresh_raw_validation(doc_text: str, company_id: str, bundle: dict[str, Any], row: dict[str, Any]) -> str:
+    heading = f"## {COMPANY_IDS[company_id]} (`{company_id}`)"
+
+    def transform(section: str) -> str:
+        section = _replace_block(section, "### Target Compact State Vector", "### Target Raw Inputs Behind The Compact Features", _feature_table(bundle) + "\n")
+        raw_plus_support = _raw_metric_table(row) + "\n\n" + _support_lines(row, bundle, missing_label="Missing compact features")
+        section = _replace_block(section, "### Target Raw Inputs Behind The Compact Features", "### Top Historical Precedents", raw_plus_support + "\n")
+        section = _refresh_target_rows(section, bundle)
+        return section
+
+    return _replace_company_section(doc_text, heading, transform)
+
+
+def _refresh_followup_note(note_text: str) -> str:
+    marker = "## Remaining Caveat"
+    insert = (
+        "## Validation Packs Refreshed\n"
+        "- Refreshed `./out/metric_explainers/Compact_precedent_validation_examples_2026_04_05.md` to read target-side compact values from `full_inputs_v3`.\n"
+        "- Refreshed `./out/metric_explainers/Compact_precedent_raw_and_compact_validation_2026_04_05.md` so the target raw-input tables now show the lagged revenue metric and the raw liquidity/current-debt components that feed `state_vector_v1.liquidity_flexibility`.\n\n"
+    )
+    if insert.strip() in note_text:
+        return note_text
+    index = note_text.find(marker)
+    if index == -1:
+        return note_text.rstrip() + "\n\n" + insert
+    return note_text[:index] + insert + note_text[index:]
+
+

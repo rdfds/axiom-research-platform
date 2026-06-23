@@ -211,3 +211,13 @@ def weighted_mahalanobis_distances(
     return np.sqrt(np.maximum(d, 0))
 
 
+def bucket_filter(series: pd.Series, value: float, window: int = 1) -> pd.Series:
+    if series.dropna().empty or value is None or np.isnan(value):
+        return pd.Series([True] * len(series), index=series.index)
+    quantiles = series.quantile([0.2, 0.4, 0.6, 0.8]).values
+    bucket = np.digitize([value], quantiles)[0]
+    low = max(0, bucket - window)
+    high = min(4, bucket + window)
+    return series.apply(lambda v: low <= np.digitize([v], quantiles)[0] <= high if pd.notna(v) else False)
+
+

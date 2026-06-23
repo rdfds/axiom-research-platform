@@ -2047,3 +2047,197 @@ def test_size_guardrail_filters_absurd_size_mismatches():
     assert diag.get("size_guardrail_applied") is True
 
 
+def test_dividend_matching_no_longer_lets_liquidity_tails_overpower_valuation():
+    dividend_hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000301",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=0,
+                ticker="LIQ",
+                **{
+                    "state_vector_v1.net_obligation_burden": 1.10,
+                    "state_vector_v1.liquidity_flexibility": 2.10,
+                    "state_vector_v1.interest_coverage": 11.0,
+                    "state_vector_v1.valuation_multiple": 24.0,
+                    "state_vector_v1.cash_generation": 0.045,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000302",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=1,
+                ticker="VAL",
+                **{
+                    "state_vector_v1.net_obligation_burden": 1.05,
+                    "state_vector_v1.liquidity_flexibility": 0.80,
+                    "state_vector_v1.interest_coverage": 8.0,
+                    "state_vector_v1.valuation_multiple": 12.05,
+                    "state_vector_v1.cash_generation": 0.01,
+                },
+            ),
+        ]
+    )
+    buyback_hist = dividend_hist.copy()
+    buyback_hist["action_type"] = "buyback"
+    buyback_hist["action_subtype"] = "buyback"
+
+    dividend_pack = build_precedent_pack_v2(
+        candidate_id="cand-dividend-weights",
+        run_id="run-dividend-weights",
+        company_id="001690",
+        action_id="capital_return.dividend_increase",
+        action_subtype="dividend_increase",
+        action_params={},
+        candidate_features=_state_vector_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=dividend_hist,
+        top_k=2,
+        min_k=1,
+    )
+    buyback_pack = build_precedent_pack_v2(
+        candidate_id="cand-buyback-weights",
+        run_id="run-buyback-weights",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={},
+        candidate_features=_state_vector_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=buyback_hist,
+        top_k=2,
+        min_k=1,
+    )
+
+    assert dividend_pack.retrieved_cohorts[0].company_id == "000302"
+    assert buyback_pack.retrieved_cohorts[0].company_id == "000302"
+
+
+def test_weighted_distance_profile_uses_learned_scope_override():
+    payload = {
+        "version": "precedent_distance_weights_v1",
+        "scopes": {
+            "capital_return": {
+                "weights": {
+                    "state_vector_v1.valuation_multiple": 2.75,
+                    "state_vector_v1.cash_generation": 1.80,
+                },
+                "use_in_runtime": True,
+                "holdout_pair_correlation": 0.42,
+                "holdout_prior_pair_correlation": 0.31,
+                "n_pairs": 1234,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v1.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old = os.environ.get("PRECEDENT_DISTANCE_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v1"
+        try:
+            profile = _weighted_distance_profile("capital_return.open_market_buyback", "open_market_buyback")
+        finally:
+            if old is None:
+                os.environ.pop("PRECEDENT_DISTANCE_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_WEIGHTS_PATH"] = old
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert profile["weight_scope"] == "capital_return"
+    assert np.isclose(profile["weights"]["state_vector_v1.valuation_multiple"], 2.75)
+    assert np.isclose(profile["weights"]["state_vector_v1.cash_generation"], 1.80)
+    assert np.isclose(profile["learned_holdout_pair_correlation"], 0.42)
+
+
+def test_weighted_distance_profile_v2_uses_runtime_scope_override():
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_structure": {
+                "scope_key": "capital_structure",
+                "group_weights": {
+                    "capital_structure": 1.8,
+                    "valuation": 0.7,
+                },
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.5,
+                },
+                "penalties": {
+                    "regime_rate_penalty_weight": 0.7,
+                },
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        try:
+            profile = _weighted_distance_profile("capital_structure.new_debt_issuance", "new_debt_issuance")
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert profile["version"] == "weighted_distance_v2"
+    assert profile["weight_scope"] == "capital_structure"
+    assert profile["group_weights"]["capital_structure"] > profile["group_weights"]["valuation"]
+    assert profile["regime_rate_penalty_weight"] == 0.7
+
+
+def test_weighted_distance_profile_v2_identity_transform_mode_skips_default_transforms():
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "scope_key": "capital_return.open_market_buyback",
+                "feature_transform_mode": "identity",
+                "feature_transforms": {
+                    "state_vector_v1.cash_generation": {"kind": "signed_asinh", "scale": 0.05},
+                },
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        try:
+            profile = _weighted_distance_profile("capital_return.open_market_buyback", "open_market_buyback")
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert profile["feature_transform_mode"] == "identity"
+    assert profile["feature_transforms"] == {
+        "state_vector_v1.cash_generation": {"kind": "signed_asinh", "scale": 0.05}
+    }
+    assert "state_vector_v1.valuation_multiple" not in profile["feature_transforms"]
+
+
