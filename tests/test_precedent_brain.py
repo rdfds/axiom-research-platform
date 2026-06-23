@@ -2241,3 +2241,188 @@ def test_weighted_distance_profile_v2_identity_transform_mode_skips_default_tran
     assert "state_vector_v1.valuation_multiple" not in profile["feature_transforms"]
 
 
+def test_weighted_distance_profile_v2_can_be_default_enabled_for_scope():
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_structure": {
+                "scope_key": "capital_structure",
+                "default_enabled": True,
+                "group_weights": {
+                    "capital_structure": 1.8,
+                    "valuation": 0.7,
+                },
+                "feature_relative_weights": {
+                    "state_vector_v1.profitability": 1.4,
+                    "state_vector_v1.cash_generation": 0.8,
+                },
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        try:
+            cap_profile = _weighted_distance_profile("capital_structure.new_debt_issuance", "new_debt_issuance")
+            buyback_profile = _weighted_distance_profile("capital_return.open_market_buyback", "open_market_buyback")
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert cap_profile["version"] == "weighted_distance_v2"
+    assert cap_profile["weight_scope"] == "capital_structure"
+    assert np.isclose(cap_profile["feature_relative_weights"]["state_vector_v1.profitability"], 1.4)
+    assert np.isclose(cap_profile["feature_relative_weights"]["state_vector_v1.cash_generation"], 0.8)
+    assert buyback_profile["version"] == "weighted_distance_v1"
+
+
+def test_weighted_distance_v2_penalizes_large_regime_mismatch():
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000401",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=0,
+                ticker="BADREGIME",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "state_vector_v1.valuation_multiple": 12.0,
+                    "state_vector_v1.rates_level": 0.20,
+                    "state_vector_v1.credit_spread": 6.20,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000402",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=1,
+                ticker="GOODREGIME",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "state_vector_v1.valuation_multiple": 13.2,
+                    "state_vector_v1.rates_level": 4.20,
+                    "state_vector_v1.credit_spread": 3.05,
+                },
+            ),
+        ]
+    )
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_structure": {
+                "scope_key": "capital_structure",
+                "group_weights": {
+                    "identity": 1.0,
+                    "capital_structure": 1.4,
+                    "liquidity": 1.2,
+                    "valuation": 1.1,
+                    "market": 0.9,
+                    "macro_regime": 1.5,
+                },
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.4,
+                },
+                "penalties": {
+                    "regime_rate_gap_threshold": 0.5,
+                    "regime_rate_penalty_weight": 1.2,
+                    "regime_credit_gap_threshold": 0.75,
+                    "regime_credit_penalty_weight": 1.0,
+                },
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        try:
+            pack = build_precedent_pack_v2(
+                candidate_id="cand-v2-regime",
+                run_id="run-v2-regime",
+                company_id="001690",
+                action_id="capital_structure.new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                action_params={},
+                candidate_features=_state_vector_candidate_features(
+                    **{
+                        "state_vector_v1.rates_level": 4.25,
+                        "state_vector_v1.credit_spread": 3.00,
+                    }
+                ),
+                candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+                historical_df=hist,
+                top_k=2,
+                min_k=1,
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert pack.retrieved_cohorts[0].company_id == "000402"
+    diag = pack.mismatch_diagnostics
+    assert diag.get("state_distance_version") == "weighted_distance_v2"
+
+
+def test_candidate_state_feature_weight_multipliers_downweight_current_debt_liquidity_proxy():
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(345_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.8793),
+        "market.equity_window_proxy": _raw_feature_record(0.2693),
+        "market.credit_spread_level": _raw_feature_record(0.0121),
+        "macro.fed_funds_effective": _raw_feature_record(4.58),
+        "macro.hy_oas": _raw_feature_record(2.64),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    multipliers = precedent_brain._candidate_state_feature_weight_multipliers(
+        candidate_features,
+        action_id="capital_structure.new_debt_issuance",
+        action_subtype="new_debt_issuance",
+    )
+
+    liquidity_multiplier = float(multipliers["state_vector_v1.liquidity_flexibility"])
+    rates_multiplier = float(multipliers["state_vector_v1.rates_level"])
+    credit_multiplier = float(multipliers["state_vector_v1.credit_spread"])
+
+    assert liquidity_multiplier <= 0.15
+    assert rates_multiplier > liquidity_multiplier
+    assert credit_multiplier > liquidity_multiplier
+
+
