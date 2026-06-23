@@ -208,3 +208,30 @@ def _nonnull_compact_count(match_row: pd.Series) -> int:
     return sum(0 if _is_missing(match_row.get(key)) else 1 for key in _STATE_VECTOR_V1_FEATURES)
 
 
+def _locate_match_row(historical_df: pd.DataFrame, case: Any) -> pd.Series:
+    action_date = pd.to_datetime(case.decision_time).normalize()
+    mask = historical_df["company_id"].astype(str).eq(str(case.company_id))
+    mask &= pd.to_datetime(historical_df["action_date"], errors="coerce").dt.normalize().eq(action_date)
+    normalized_action_id = historical_df.get("normalized_action_id")
+    if normalized_action_id is not None and str(case.action_id or "").strip():
+        id_mask = normalized_action_id.fillna("").astype(str).eq(str(case.action_id))
+        if bool((mask & id_mask).any()):
+            mask &= id_mask
+    matches = historical_df.loc[mask]
+    if matches.empty:
+        raise RuntimeError(
+            f"Could not locate historical row for company_id={case.company_id} action_date={action_date} action_id={case.action_id}"
+        )
+    return matches.iloc[0]
+
+
+def _build_target_payload(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    adapted_row, _ = adapt_snapshot(row)
+    adapted_row = attach_model_feature_bundle(adapted_row)
+    bundle = build_model_feature_bundle(adapted_row)
+    precedent_features = feature_view_from_snapshot(adapted_row, view_name="precedent")
+    baseline_features = _baseline_from_world_model_features(precedent_features)
+    regime = adapted_row.get("regime", {}) if isinstance(adapted_row.get("regime"), dict) else {}
+    return adapted_row, bundle, {"baseline_features": baseline_features, "regime": regime}
+
+

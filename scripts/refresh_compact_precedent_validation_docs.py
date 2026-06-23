@@ -211,3 +211,21 @@ def _refresh_followup_note(note_text: str) -> str:
     return note_text[:index] + insert + note_text[index:]
 
 
+def main() -> None:
+    rows = _load_snapshots()
+    bundles = {company_id: build_model_feature_bundle(row) for company_id, row in rows.items()}
+
+    validation_doc = VALIDATION_DOC_PATH.read_text()
+    for company_id in ["0001018724", "0001318605", "0000104169"]:
+        validation_doc = _refresh_validation_examples(validation_doc, company_id, bundles[company_id], rows[company_id])
+    VALIDATION_DOC_PATH.write_text(validation_doc)
+
+    raw_doc = RAW_VALIDATION_DOC_PATH.read_text()
+    for company_id in ["0000080424", "0001018724", "0001318605", "0000104169"]:
+        raw_doc = _refresh_raw_validation(raw_doc, company_id, bundles[company_id], rows[company_id])
+    RAW_VALIDATION_DOC_PATH.write_text(raw_doc)
+
+    note_text = FOLLOWUP_NOTE_PATH.read_text()
+    FOLLOWUP_NOTE_PATH.write_text(_refresh_followup_note(note_text))
+
+
