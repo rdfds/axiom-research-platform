@@ -476,3 +476,5 @@ def main() -> None:
     print(f"Saved hyperparams -> {args.out} ({len(best_df):,} rows)", flush=True)
 
 
+if __name__ == "__main__":
+    main()
