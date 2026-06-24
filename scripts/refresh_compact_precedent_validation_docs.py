@@ -229,3 +229,5 @@ def main() -> None:
     FOLLOWUP_NOTE_PATH.write_text(_refresh_followup_note(note_text))
 
 
+if __name__ == "__main__":
+    main()
