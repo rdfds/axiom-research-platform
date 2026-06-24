@@ -221,3 +221,52 @@ def bucket_filter(series: pd.Series, value: float, window: int = 1) -> pd.Series
     return series.apply(lambda v: low <= np.digitize([v], quantiles)[0] <= high if pd.notna(v) else False)
 
 
+def stage1_filter(
+    df: pd.DataFrame,
+    baseline: Dict[str, Any],
+    config: Dict[str, Any],
+) -> pd.DataFrame:
+    out = df.copy()
+    stage1 = config.get("stage1", {})
+
+    sector_mode = stage1.get("sector_mode", "weighted")
+    if sector_mode == "strict" and "sector" in df.columns and baseline.get("sector"):
+        out = out[out["sector"] == baseline["sector"]]
+
+    size_window = stage1.get("size_decile_window", 1)
+    size_col = _first_present_column(out, ["state_vector_v1.size_log_revenue", "base_market_cap"])
+    size_baseline = _state_vector_baseline_value(baseline, "state_vector_v1.size_log_revenue")
+    if size_col == "base_market_cap":
+        size_baseline = _safe_float(baseline.get("market_cap"))
+    if size_col and size_baseline is not None:
+        mask = bucket_filter(out[size_col], size_baseline, size_window)
+        out = out[mask]
+
+    lev_window = stage1.get("leverage_band_window", 1)
+    leverage_col = _first_present_column(
+        out,
+        [
+            "state_vector_v1.net_obligation_burden",
+            "state_vector_v1.gross_obligation_burden",
+            "base_leverage",
+        ],
+    )
+    leverage_baseline = (
+        _state_vector_baseline_value(baseline, "state_vector_v1.net_obligation_burden")
+        or _state_vector_baseline_value(baseline, "state_vector_v1.gross_obligation_burden")
+        or _safe_float(baseline.get("leverage_net_debt_ebitda"))
+    )
+    if leverage_col and leverage_baseline is not None:
+        mask = bucket_filter(out[leverage_col], leverage_baseline, lev_window)
+        out = out[mask]
+
+    margin_window = stage1.get("margin_band_window", 1)
+    margin_col = _first_present_column(out, ["state_vector_v1.profitability", "base_margin"])
+    margin_baseline = _state_vector_baseline_value(baseline, "state_vector_v1.profitability") or _safe_float(baseline.get("ebitda_margin"))
+    if margin_col and margin_baseline is not None:
+        mask = bucket_filter(out[margin_col], margin_baseline, margin_window)
+        out = out[mask]
+
+    return out
+
+

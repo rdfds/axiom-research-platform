@@ -2426,3 +2426,257 @@ def test_candidate_state_feature_weight_multipliers_downweight_current_debt_liqu
     assert credit_multiplier > liquidity_multiplier
 
 
+def test_weighted_distance_profile_v2_strengthens_capital_structure_regime_features(monkeypatch):
+    monkeypatch.setenv("PRECEDENT_DISTANCE_PROFILE_VERSION", "weighted_distance_v2")
+    profile = _weighted_distance_profile("capital_structure.new_debt_issuance", "new_debt_issuance")
+
+    assert profile["version"] == "weighted_distance_v2"
+    assert "state_vector_v1.rates_level" in profile["critical_features"]
+    assert "state_vector_v1.credit_spread" in profile["critical_features"]
+    assert profile["regime_rate_gap_threshold"] <= 0.75
+    assert profile["regime_credit_gap_threshold"] <= 0.90
+    assert profile["feature_relative_weights"]["state_vector_v1.credit_spread"] > profile["feature_relative_weights"]["state_vector_v1.liquidity_flexibility"]
+
+
+def test_weighted_distance_v2_prefers_credit_regime_match_when_candidate_liquidity_is_proxy(monkeypatch):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000501",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=0,
+                ticker="BADREGIME",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.profitability": 0.118,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 2.43,
+                    "state_vector_v1.net_obligation_burden": 1.67,
+                    "state_vector_v1.liquidity_flexibility": 15.0,
+                    "state_vector_v1.interest_coverage": 2.76,
+                    "state_vector_v1.valuation_multiple": 5.35,
+                    "state_vector_v1.cash_generation": -0.016,
+                    "state_vector_v1.market_stress": 0.17,
+                    "state_vector_v1.market_access": 0.27,
+                    "state_vector_v1.rates_level": 0.13,
+                    "state_vector_v1.credit_spread": 5.96,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000502",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=1,
+                ticker="GOODREGIME",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.profitability": 0.105,
+                    "state_vector_v1.growth": -0.01,
+                    "state_vector_v1.gross_obligation_burden": 2.70,
+                    "state_vector_v1.net_obligation_burden": 1.85,
+                    "state_vector_v1.liquidity_flexibility": 3.0,
+                    "state_vector_v1.interest_coverage": 2.55,
+                    "state_vector_v1.valuation_multiple": 6.10,
+                    "state_vector_v1.cash_generation": -0.030,
+                    "state_vector_v1.market_stress": 0.19,
+                    "state_vector_v1.market_access": 0.26,
+                    "state_vector_v1.rates_level": 4.58,
+                    "state_vector_v1.credit_spread": 2.64,
+                },
+            ),
+        ]
+    )
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(345_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.8793),
+        "market.equity_window_proxy": _raw_feature_record(0.2693),
+        "market.credit_spread_level": _raw_feature_record(0.0121),
+        "macro.fed_funds_effective": _raw_feature_record(4.58),
+        "macro.hy_oas": _raw_feature_record(2.64),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    monkeypatch.setenv("PRECEDENT_DISTANCE_PROFILE_VERSION", "weighted_distance_v2")
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-liquidity-proxy",
+        run_id="run-liquidity-proxy",
+        company_id="001690",
+        action_id="capital_structure.new_debt_issuance",
+        action_subtype="new_debt_issuance",
+        action_params={"amount_usd": 200_000_000.0},
+        candidate_features=candidate_features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=2,
+        min_k=1,
+    )
+
+    assert pack.retrieved_cohorts[0].company_id == "000502"
+
+
+def test_weighted_distance_v2_prefers_stressed_borrower_in_same_financing_environment(monkeypatch):
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000601",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=0,
+                ticker="BADREGIME",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.profitability": 0.11,
+                    "state_vector_v1.growth": 0.09,
+                    "state_vector_v1.gross_obligation_burden": 2.5,
+                    "state_vector_v1.net_obligation_burden": 1.8,
+                    "state_vector_v1.liquidity_flexibility": 1.9,
+                    "state_vector_v1.interest_coverage": 2.8,
+                    "state_vector_v1.valuation_multiple": 5.8,
+                    "state_vector_v1.cash_generation": -0.02,
+                    "state_vector_v1.market_stress": 0.17,
+                    "state_vector_v1.market_access": 0.62,
+                    "state_vector_v1.rates_level": 0.13,
+                    "state_vector_v1.credit_spread": 5.96,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000602",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=1,
+                ticker="HEALTHY",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.profitability": 0.26,
+                    "state_vector_v1.growth": 0.06,
+                    "state_vector_v1.gross_obligation_burden": 1.0,
+                    "state_vector_v1.net_obligation_burden": 0.4,
+                    "state_vector_v1.liquidity_flexibility": 2.5,
+                    "state_vector_v1.interest_coverage": 11.0,
+                    "state_vector_v1.valuation_multiple": 14.0,
+                    "state_vector_v1.cash_generation": 0.09,
+                    "state_vector_v1.market_stress": 0.18,
+                    "state_vector_v1.market_access": 0.86,
+                    "state_vector_v1.rates_level": 4.58,
+                    "state_vector_v1.credit_spread": 2.64,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000603",
+                action_type="new_debt_issuance",
+                action_subtype="new_debt_issuance",
+                offset_days=2,
+                ticker="STRESSED",
+                **{
+                    "normalized_action_family": "capital_structure",
+                    "normalized_action_subfamily": "new_debt_issuance",
+                    "normalized_action_id": "capital_structure.new_debt_issuance",
+                    "base_sector": "Industrials",
+                    "base_industry": "Commercial Services & Supplies",
+                    "state_vector_v1.profitability": 0.10,
+                    "state_vector_v1.growth": 0.05,
+                    "state_vector_v1.gross_obligation_burden": 2.7,
+                    "state_vector_v1.net_obligation_burden": 1.9,
+                    "state_vector_v1.liquidity_flexibility": 1.6,
+                    "state_vector_v1.interest_coverage": 2.4,
+                    "state_vector_v1.valuation_multiple": 6.2,
+                    "state_vector_v1.cash_generation": -0.03,
+                    "state_vector_v1.market_stress": 0.18,
+                    "state_vector_v1.market_access": 0.61,
+                    "state_vector_v1.rates_level": 4.58,
+                    "state_vector_v1.credit_spread": 2.64,
+                },
+            ),
+        ]
+    )
+    candidate_features = {
+        "operating.revenue_ttm_provider_direct": _raw_feature_record(3_802_000_000.0),
+        "operating.ebitda_ltm_provider_direct": _raw_feature_record(451_600_000.0),
+        "cash_flow.free_cash_flow_ttm": _raw_feature_record(-59_200_000.0),
+        "capital_structure.total_debt_provider_direct": _raw_feature_record(1_100_400_000.0),
+        "capital_structure.net_debt_normalized": _raw_feature_record(754_700_000.0),
+        "liquidity.available_liquidity_normalized": _raw_feature_record(345_700_000.0),
+        "capital_structure.current_debt_statement_direct": _raw_feature_record(800_000.0),
+        "capital_structure.interest_expense_statement_direct": _raw_feature_record(164_000_000.0),
+        "market.market_cap_provider_direct": _raw_feature_record(1_677_742_200.0),
+        "market.ev_ebitda": _raw_feature_record(5.3863),
+        "market.fcf_yield": _raw_feature_record(-0.0353),
+        "market.credit_window_proxy": _raw_feature_record(0.8793),
+        "market.equity_window_proxy": _raw_feature_record(0.2693),
+        "market.credit_spread_level": _raw_feature_record(0.0121),
+        "macro.fed_funds_effective": _raw_feature_record(4.58),
+        "macro.hy_oas": _raw_feature_record(2.64),
+        "taxonomy.sector": _raw_feature_record("Industrials"),
+        "taxonomy.subsector": _raw_feature_record("Commercial Services & Supplies"),
+    }
+
+    monkeypatch.setenv("PRECEDENT_DISTANCE_PROFILE_VERSION", "weighted_distance_v2")
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-stressed-align",
+        run_id="run-stressed-align",
+        company_id="001691",
+        action_id="capital_structure.new_debt_issuance",
+        action_subtype="new_debt_issuance",
+        action_params={"amount_usd": 200_000_000.0},
+        candidate_features=candidate_features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=3,
+        min_k=1,
+    )
+
+    assert pack.retrieved_cohorts[0].company_id == "000603"
+
+
+def test_narrative_mismatch_triggers_with_real_text():
+    hist = _hist_df(35).copy()
+    hist["headline"] = "Board approves share repurchase authorization"
+    hist["text"] = "capital return buyback repurchase dividend shareholder payout"
+    features = _candidate_features()
+    features["narrative_text"] = "transformational integration expansion platform acquisition synergy pipeline"
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-10",
+        run_id="run-10",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("narrative_real_text_rows", 0) >= 5
+    assert diag.get("narrative_mismatch") is True
+
+
