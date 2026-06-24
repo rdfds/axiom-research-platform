@@ -714,7 +714,7 @@ def _target_compact_values(snapshot_row: Dict[str, Any]) -> Dict[str, Any]:
     flattened: Dict[str, Any] = {}
     for key, payload in feature_payload.items():
         if isinstance(payload, dict):
-            flattened[str(key)] = payload['value']
+            flattened[str(key)] = payload.get("value")
         else:
             flattened[str(key)] = payload
 
