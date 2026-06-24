@@ -2680,3 +2680,23 @@ def test_narrative_mismatch_triggers_with_real_text():
     assert diag.get("narrative_mismatch") is True
 
 
+def test_retrieval_tier_metadata_is_present():
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-11",
+        run_id="run-11",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "tight", "risk_regime": "risk_off", "vol_regime": "high"},
+        historical_df=_hist_df(50),
+        top_k=20,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("retrieval_tier") in {"exact", "sibling_type", "global"}
+    assert isinstance(diag.get("regime_prefilter_applied"), bool)
+    assert isinstance(diag.get("sector_prefilter_applied"), bool)
+
+
