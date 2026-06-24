@@ -1294,3 +1294,7 @@ def _is_revolver_draw_or_resize_action(action_id: str) -> bool:
     return str(action_id or "").strip().lower() == "capital_structure.revolver_draw_or_resize"
 
 
+def _same_action_prefers_cross_company(action_id: str) -> bool:
+    return _is_revolver_draw_or_resize_action(action_id)
+
+
