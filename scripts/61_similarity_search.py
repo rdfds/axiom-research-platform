@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 """
-Validate similarity matching by comparing KNN outcome predictions vs baselines.
+Similarity search over historical actions.
 
-This is a lightweight backtest on a sample:
-  - For each sampled row, find top-K neighbors by distance
-  - Predict outcome as mean of neighbors' outcomes
-  - Compare MAE vs baseline (global mean) and random-K baseline
+Given a query (company_id + action_date + action_type), returns top-K matches
+based on profile + change + macro distances using robust z-scores.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -23,6 +21,8 @@ CURATED_DIR = ROOT / "data" / "curated"
 
 FEATURES_PATH = CURATED_DIR / "similarity_features.parquet"
 WEIGHTS_PATH = CURATED_DIR / "similarity_weights.parquet"
+TARGET_MAP_PATH = CURATED_DIR / "similarity_best_targets.parquet"
+HYPERPARAMS_PATH = CURATED_DIR / "similarity_hyperparams.parquet"
 
 BASE_FEATURES = [
     "z_base_market_cap_log",
@@ -93,57 +93,21 @@ MACRO_FEATURES = [
 ]
 
 
-def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]:
-    vix = row.get("z_macro_vix")
-    ig = row.get("z_macro_ig_oas")
-    hy = row.get("z_macro_hy_oas")
-    r10 = row['z_macro_rate_10y']
-
-    risk = "risk_off" if pd.notna(vix) and vix >= thresh else "risk_on"
-    credit = "credit_tight" if pd.notna(ig) and pd.notna(hy) and max(ig, hy) >= thresh else "credit_loose"
-    rate = "rate_high" if pd.notna(r10) and r10 >= thresh else "rate_low"
-    return risk, credit, rate
-
-
-def quantile_bins(series: pd.Series, q: int) -> pd.Series:
-    s = pd.to_numeric(series, errors="coerce")
-    try:
-        edges = s.quantile(np.linspace(0, 1, q + 1)).values
-    except Exception:
-        return pd.Series(index=s.index, data=np.nan)
-    edges = np.unique(edges)
-    if len(edges) < 2:
-        return pd.Series(index=s.index, data=np.nan)
-    edges[0] -= 1e-9
-    edges[-1] += 1e-9
-    return pd.cut(s, bins=edges, labels=False, include_lowest=True)
-
-
 def load_weights() -> pd.DataFrame | None:
     if not WEIGHTS_PATH.exists():
         return None
     return pd.read_parquet(WEIGHTS_PATH)
 
 
-def weight_lookup(weights: Optional[pd.DataFrame], action_type: str, features: List[str]) -> np.ndarray:
-    if weights is None or weights.empty:
-        return np.ones(len(features), dtype=float)
-    subset = weights[(weights["action_type"] == action_type) & (weights["feature"].isin(features))]
-    if subset.empty:
-        subset = weights[(weights["action_type"] == "ALL") & (weights["feature"].isin(features))]
-    if subset.empty:
-        return np.ones(len(features), dtype=float)
-    mapping = dict(zip(subset["feature"], subset["weight"]))
-    return np.array([mapping.get(f, 1.0) for f in features], dtype=float)
+def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]:
+    vix = row['z_macro_vix']
+    ig = row.get("z_macro_ig_oas")
+    hy = row.get("z_macro_hy_oas")
+    r10 = row.get("z_macro_rate_10y")
 
-
-def weighted_distance(row: pd.Series, query: pd.Series, features: List[str], weights: np.ndarray) -> float:
-    diffs = row[features] - query[features]
-    mask = diffs.notna() & query[features].notna()
-    if mask.sum() == 0:
-        return np.nan
-    w = weights[mask.to_numpy()]
-    d = np.sqrt(np.sum(w * (diffs[mask].to_numpy() ** 2)) / np.sum(w))
-    return float(d)
+    risk = "risk_off" if pd.notna(vix) and vix >= thresh else "risk_on"
+    credit = "credit_tight" if pd.notna(ig) and pd.notna(hy) and max(ig, hy) >= thresh else "credit_loose"
+    rate = "rate_high" if pd.notna(r10) and r10 >= thresh else "rate_low"
+    return risk, credit, rate
 
 

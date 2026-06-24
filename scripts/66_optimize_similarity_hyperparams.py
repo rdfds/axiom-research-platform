@@ -100,7 +100,7 @@ def parse_list(raw: str | None, cast):
     return [cast(x.strip()) for x in raw.split(",") if x.strip() != ""]
 
 
-def quantile_bins(series: pd.Series, q: int) :
+def quantile_bins(series: pd.Series, q: int) -> pd.Series:
     s = pd.to_numeric(series, errors="coerce")
     try:
         edges = s.quantile(np.linspace(0, 1, q + 1)).values
