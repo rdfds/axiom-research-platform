@@ -270,3 +270,16 @@ def stage1_filter(
     return out
 
 
+def _baseline_value(baseline: Dict[str, Any], col: str) -> Optional[float]:
+    if col.startswith("state_vector_v1."):
+        return _state_vector_baseline_value(baseline, col)
+    key = col[5:] if col.startswith("base_") else col
+    val = baseline.get(key)
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return None
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+

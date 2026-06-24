@@ -356,3 +356,36 @@ def _render_detail_doc(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _render_note(match_payloads: dict[str, list[dict[str, Any]]], historical_path: Path) -> str:
+    lines = [
+        "# Compact Precedent Validation Richer Historical Refresh",
+        "",
+        f"As of `2026-04-06`, I reran the compact precedent validation examples against:",
+        f"- `{historical_path}`",
+        "",
+        "## What Changed",
+        "- The matched historical rows now come from the richer historical outcomes artifact rather than the thinner normalized-full artifact.",
+        "- That materially densifies the historical compact feature set for `growth`, `gross_obligation_burden`, `liquidity_flexibility`, `interest_coverage`, and `cash_generation`.",
+        "- Historical `market_access` is now fed by richer price/macro-derived proxy inputs, and `market_stress` now has a macro-VIX fallback when company-level 90-day price windows are unavailable.",
+        "",
+        "## Match Density Snapshot",
+    ]
+    for target in TARGETS:
+        company_id = target["company_id"]
+        counts = [payload["nonnull_compact_features"] for payload in match_payloads[company_id]]
+        avg_count = sum(counts) / max(1, len(counts))
+        lines.append(
+            f"- `{target['name']}`: top-3 matches average `{avg_count:.2f}/{len(_STATE_VECTOR_V1_FEATURES)}` non-null compact features "
+            f"(matches: {', '.join(str(count) for count in counts)})"
+        )
+    lines.extend(
+        [
+            "",
+            "## Files",
+            f"- `{SUMMARY_DOC_PATH}`",
+            f"- `{DETAIL_DOC_PATH}`",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
