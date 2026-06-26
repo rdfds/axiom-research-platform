@@ -97,7 +97,7 @@ def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]
     vix = row.get("z_macro_vix")
     ig = row.get("z_macro_ig_oas")
     hy = row.get("z_macro_hy_oas")
-    r10 = row['z_macro_rate_10y']
+    r10 = row.get("z_macro_rate_10y")
 
     risk = "risk_off" if pd.notna(vix) and vix >= thresh else "risk_on"
     credit = "credit_tight" if pd.notna(ig) and pd.notna(hy) and max(ig, hy) >= thresh else "credit_loose"
