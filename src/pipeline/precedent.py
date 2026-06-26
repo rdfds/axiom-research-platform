@@ -283,3 +283,25 @@ def _baseline_value(baseline: Dict[str, Any], col: str) -> Optional[float]:
         return None
 
 
+def _extract_features(
+    df: pd.DataFrame,
+    requested: List[str],
+    baseline: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[str], List[float]]:
+    cols: List[str] = []
+    vals: List[float] = []
+    for key in requested:
+        if key not in df.columns:
+            continue
+        if baseline is None:
+            cols.append(key)
+            vals.append(0.0)
+            continue
+        base_val = _baseline_value(baseline, key)
+        if base_val is None:
+            continue
+        cols.append(key)
+        vals.append(base_val)
+    return cols, vals
+
+
