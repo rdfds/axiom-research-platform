@@ -389,3 +389,54 @@ def _render_note(match_payloads: dict[str, list[dict[str, Any]]], historical_pat
     return "\n".join(lines).rstrip() + "\n"
 
 
+def main() -> None:
+    target_rows = _load_snapshot_rows()
+    historical_path = _default_precedent_outcomes_path()
+    historical_df = augment_precedent_state_vector_columns(pd.read_parquet(historical_path))
+    retrieval_index = build_precedent_retrieval_index(historical_df)
+
+    bundles: dict[str, dict[str, Any]] = {}
+    match_payloads: dict[str, list[dict[str, Any]]] = {}
+
+    for target in TARGETS:
+        company_id = target["company_id"]
+        row = target_rows[company_id]
+        adapted_row, bundle, precedent_payload = _build_target_payload(row)
+        bundles[company_id] = bundle
+        pack = build_precedent_pack_v2(
+            candidate_id=f"validation:{company_id}",
+            run_id=f"validation:{uuid.uuid4()}",
+            company_id=company_id,
+            action_id=target["action_id"],
+            action_subtype=None,
+            action_params={},
+            candidate_features=precedent_payload["baseline_features"],
+            candidate_regime=precedent_payload["regime"],
+            retrieval_index=retrieval_index,
+            top_k=3,
+            min_k=3,
+        )
+        payloads: list[dict[str, Any]] = []
+        for case in pack.retrieved_cohorts[:3]:
+            hist_row = _locate_match_row(historical_df, case)
+            payloads.append(
+                {
+                    "precedent_id": case.precedent_id,
+                    "company_id": case.company_id,
+                    "ticker": hist_row.get("ticker"),
+                    "action_id": case.action_id,
+                    "decision_time": case.decision_time,
+                    "similarity_score": float(case.similarity_score),
+                    "historical_row": hist_row,
+                    "nonnull_compact_features": _nonnull_compact_count(hist_row),
+                }
+            )
+        match_payloads[company_id] = payloads
+
+    SUMMARY_DOC_PATH.write_text(_render_summary_doc(target_rows, bundles, match_payloads, historical_path))
+    DETAIL_DOC_PATH.write_text(_render_detail_doc(target_rows, bundles, match_payloads, historical_path))
+    NOTE_DOC_PATH.write_text(_render_note(match_payloads, historical_path))
+
+
+if __name__ == "__main__":
+    main()

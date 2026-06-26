@@ -420,3 +420,22 @@ def summarize_outcomes(df: pd.DataFrame, outcome_cols: List[str]) -> List[Impact
     return distributions
 
 
+def build_precedent_pack(
+    df: pd.DataFrame,
+    change_vector: Dict[str, float],
+    baseline: Dict[str, Any],
+    config: Dict[str, Any],
+    target_col: str,
+    outcome_cols: List[str],
+    top_n: int = 50,
+) -> PrecedentPack:
+    matches, weights = match_precedents(df, change_vector, baseline, config, target_col, top_n=top_n)
+    distributions = summarize_outcomes(matches, outcome_cols)
+    mismatch = {}
+    if matches.empty:
+        mismatch["reason"] = "no_matches"
+    return PrecedentPack(
+        matches=matches.to_dict(orient="records"),
+        distributions=distributions,
+        mismatch_diagnostics={"weights": weights.to_dict(), **mismatch},
+    )
