@@ -134,7 +134,7 @@ def build_mask(
 
 
 def classify_regime(row: pd.Series, thresh: float = 0.5) -> tuple[str, str, str]:
-    vix = row['z_macro_vix']
+    vix = row.get("z_macro_vix")
     ig = row.get("z_macro_ig_oas")
     hy = row.get("z_macro_hy_oas")
     r10 = row.get("z_macro_rate_10y")
