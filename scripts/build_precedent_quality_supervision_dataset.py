@@ -1367,3 +1367,536 @@ def _debt_issuance_market_regime_similarity(
     return float(np.exp(np.mean(np.log(np.clip(np.asarray(similarities, dtype=float), 1e-9, 1.0)))))
 
 
+def _debt_issuance_archetype_profile(
+    *,
+    compact_features: Dict[str, Any],
+    action_id: str = "capital_structure.new_debt_issuance",
+    action_scale: Optional[float] = None,
+) -> Dict[str, Any]:
+    action_text = str(action_id or "").strip().lower()
+    profitability = _numeric_feature_value(compact_features, "state_vector_v1.profitability")
+    cash_generation = _numeric_feature_value(compact_features, "state_vector_v1.cash_generation")
+    growth = _numeric_feature_value(compact_features, "state_vector_v1.growth")
+    gross_burden = _numeric_feature_value(compact_features, "state_vector_v1.gross_obligation_burden")
+    net_burden = _numeric_feature_value(compact_features, "state_vector_v1.net_obligation_burden")
+    interest_coverage = _numeric_feature_value(compact_features, "state_vector_v1.interest_coverage")
+    valuation_multiple = _numeric_feature_value(compact_features, "state_vector_v1.valuation_multiple")
+    liquidity_flexibility = _numeric_feature_value(compact_features, "state_vector_v1.liquidity_flexibility")
+    market_access = _numeric_feature_value(compact_features, "state_vector_v1.market_access")
+    market_stress = _numeric_feature_value(compact_features, "state_vector_v1.market_stress")
+    credit_spread = _numeric_feature_value(compact_features, "state_vector_v1.credit_spread")
+    scale_value = float(action_scale) if action_scale is not None and pd.notna(action_scale) else None
+
+    def _maybe_score(value: Optional[float], *, threshold: float, scale: float, lower_is_worse: bool) -> Optional[float]:
+        if value is None:
+            return None
+        signed = (threshold - float(value)) if lower_is_worse else (float(value) - threshold)
+        return _bounded_sigmoid(signed / max(float(scale), 1e-9))
+
+    if action_text == "capital_structure.revolver_draw_or_resize":
+        distressed_components = [
+            (_maybe_score(profitability, threshold=0.10, scale=0.06, lower_is_worse=True), 1.00),
+            (_maybe_score(cash_generation, threshold=0.00, scale=0.04, lower_is_worse=True), 1.10),
+            (_maybe_score(interest_coverage, threshold=3.00, scale=1.50, lower_is_worse=True), 1.15),
+            (_maybe_score(net_burden, threshold=1.60, scale=0.95, lower_is_worse=False), 1.10),
+            (_maybe_score(gross_burden, threshold=2.50, scale=1.05, lower_is_worse=False), 0.95),
+            (_maybe_score(liquidity_flexibility, threshold=1.10, scale=0.60, lower_is_worse=True), 1.45),
+            (_maybe_score(market_access, threshold=0.66, scale=0.12, lower_is_worse=True), 1.20),
+            (_maybe_score(market_stress, threshold=0.22, scale=0.08, lower_is_worse=False), 1.10),
+            (_maybe_score(credit_spread, threshold=3.60, scale=0.85, lower_is_worse=False), 1.00),
+        ]
+        distressed_numer = sum(score * weight for score, weight in distressed_components if score is not None)
+        distressed_denom = sum(weight for score, weight in distressed_components if score is not None)
+        distressed_score = float(distressed_numer / distressed_denom) if distressed_denom > 0.0 else 0.5
+
+        refinancing_components = [
+            (_maybe_score(liquidity_flexibility, threshold=1.55, scale=0.85, lower_is_worse=True), 1.30),
+            (_maybe_score(gross_burden, threshold=1.90, scale=0.95, lower_is_worse=False), 1.00),
+            (_maybe_score(net_burden, threshold=1.10, scale=0.85, lower_is_worse=False), 1.05),
+            (_maybe_score(interest_coverage, threshold=4.00, scale=2.00, lower_is_worse=True), 0.80),
+            (_maybe_score(market_access, threshold=0.76, scale=0.15, lower_is_worse=True), 0.90),
+            (_maybe_score(market_stress, threshold=0.18, scale=0.08, lower_is_worse=False), 0.75),
+        ]
+        if scale_value is not None:
+            refinancing_components.append(
+                (_maybe_score(scale_value, threshold=0.08, scale=0.05, lower_is_worse=False), 1.10)
+            )
+        refi_numer = sum(score * weight for score, weight in refinancing_components if score is not None)
+        refi_denom = sum(weight for score, weight in refinancing_components if score is not None)
+        refinancing_pressure_score = float(refi_numer / refi_denom) if refi_denom > 0.0 else 0.5
+
+        opportunistic_components = [
+            (_maybe_score(profitability, threshold=0.16, scale=0.07, lower_is_worse=False), 1.15),
+            (_maybe_score(cash_generation, threshold=0.01, scale=0.04, lower_is_worse=False), 1.10),
+            (_maybe_score(growth, threshold=0.05, scale=0.12, lower_is_worse=False), 0.70),
+            (_maybe_score(interest_coverage, threshold=5.50, scale=2.50, lower_is_worse=False), 1.00),
+            (_maybe_score(liquidity_flexibility, threshold=1.80, scale=1.00, lower_is_worse=False), 1.00),
+            (_maybe_score(market_access, threshold=0.80, scale=0.12, lower_is_worse=False), 1.15),
+            (_maybe_score(market_stress, threshold=0.16, scale=0.08, lower_is_worse=True), 1.00),
+            (_maybe_score(credit_spread, threshold=3.20, scale=0.75, lower_is_worse=True), 0.90),
+            (_maybe_score(net_burden, threshold=2.20, scale=1.20, lower_is_worse=True), 0.75),
+        ]
+        opp_numer = sum(score * weight for score, weight in opportunistic_components if score is not None)
+        opp_denom = sum(weight for score, weight in opportunistic_components if score is not None)
+        opportunistic_score = float(opp_numer / opp_denom) if opp_denom > 0.0 else 0.5
+
+        scores = {
+            "distressed_borrower": distressed_score,
+            "refinancing_pressure": refinancing_pressure_score,
+            "opportunistic_issuer": opportunistic_score,
+        }
+        if distressed_score >= 0.60 and distressed_score >= opportunistic_score + 0.06:
+            label = "distressed_borrower"
+        elif opportunistic_score >= 0.60 and opportunistic_score >= distressed_score + 0.06:
+            label = "opportunistic_issuer"
+        else:
+            label = max(scores.items(), key=lambda item: item[1])[0]
+        return {
+            "label": str(label),
+            "scores": scores,
+        }
+
+    distressed_components = [
+        (_maybe_score(profitability, threshold=0.12, scale=0.06, lower_is_worse=True), 1.10),
+        (_maybe_score(cash_generation, threshold=0.00, scale=0.04, lower_is_worse=True), 1.20),
+        (_maybe_score(interest_coverage, threshold=3.00, scale=1.50, lower_is_worse=True), 1.20),
+        (_maybe_score(net_burden, threshold=1.50, scale=1.00, lower_is_worse=False), 1.20),
+        (_maybe_score(gross_burden, threshold=2.40, scale=1.10, lower_is_worse=False), 1.05),
+        (_maybe_score(market_access, threshold=0.70, scale=0.14, lower_is_worse=True), 1.15),
+        (_maybe_score(market_stress, threshold=0.20, scale=0.10, lower_is_worse=False), 0.85),
+        (_maybe_score(credit_spread, threshold=3.00, scale=0.90, lower_is_worse=False), 0.85),
+        (_maybe_score(valuation_multiple, threshold=7.00, scale=4.00, lower_is_worse=True), 0.55),
+    ]
+    distressed_numer = sum(score * weight for score, weight in distressed_components if score is not None)
+    distressed_denom = sum(weight for score, weight in distressed_components if score is not None)
+    distressed_score = float(distressed_numer / distressed_denom) if distressed_denom > 0.0 else 0.5
+
+    refinancing_components = [
+        (_maybe_score(liquidity_flexibility, threshold=1.50, scale=0.75, lower_is_worse=True), 1.25),
+        (_maybe_score(gross_burden, threshold=2.00, scale=1.00, lower_is_worse=False), 1.05),
+        (_maybe_score(net_burden, threshold=1.00, scale=0.90, lower_is_worse=False), 1.10),
+        (_maybe_score(interest_coverage, threshold=4.00, scale=2.00, lower_is_worse=True), 0.80),
+        (_maybe_score(market_access, threshold=0.78, scale=0.16, lower_is_worse=True), 0.70),
+    ]
+    if scale_value is not None:
+        refinancing_components.append((_maybe_score(scale_value, threshold=0.08, scale=0.05, lower_is_worse=False), 1.20))
+    refi_numer = sum(score * weight for score, weight in refinancing_components if score is not None)
+    refi_denom = sum(weight for score, weight in refinancing_components if score is not None)
+    refinancing_pressure_score = float(refi_numer / refi_denom) if refi_denom > 0.0 else 0.5
+
+    opportunistic_components = [
+        (_maybe_score(profitability, threshold=0.18, scale=0.07, lower_is_worse=False), 1.15),
+        (_maybe_score(cash_generation, threshold=0.01, scale=0.04, lower_is_worse=False), 1.15),
+        (_maybe_score(interest_coverage, threshold=6.00, scale=3.00, lower_is_worse=False), 1.10),
+        (_maybe_score(market_access, threshold=0.82, scale=0.12, lower_is_worse=False), 1.20),
+        (_maybe_score(market_stress, threshold=0.14, scale=0.10, lower_is_worse=True), 0.85),
+        (_maybe_score(credit_spread, threshold=3.00, scale=0.80, lower_is_worse=True), 0.95),
+        (_maybe_score(net_burden, threshold=2.50, scale=1.40, lower_is_worse=True), 0.80),
+        (_maybe_score(valuation_multiple, threshold=10.0, scale=6.0, lower_is_worse=False), 0.55),
+    ]
+    opp_numer = sum(score * weight for score, weight in opportunistic_components if score is not None)
+    opp_denom = sum(weight for score, weight in opportunistic_components if score is not None)
+    opportunistic_score = float(opp_numer / opp_denom) if opp_denom > 0.0 else 0.5
+
+    scores = {
+        "distressed_borrower": distressed_score,
+        "refinancing_pressure": refinancing_pressure_score,
+        "opportunistic_issuer": opportunistic_score,
+    }
+    label = "refinancing_pressure"
+    if distressed_score >= 0.58 and distressed_score >= opportunistic_score + 0.08:
+        label = "distressed_borrower"
+    elif opportunistic_score >= 0.58 and opportunistic_score >= distressed_score + 0.08:
+        label = "opportunistic_issuer"
+    else:
+        label = max(scores.items(), key=lambda item: item[1])[0]
+    return {
+        "label": str(label),
+        "scores": scores,
+    }
+
+
+def _debt_issuance_archetype_distance(
+    *,
+    action_id: str,
+    target_compact: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    target_action_scale: Optional[float] = None,
+    candidate_action_scale: Optional[float] = None,
+) -> float:
+    target_profile = _debt_issuance_archetype_profile(
+        compact_features=target_compact,
+        action_id=action_id,
+        action_scale=target_action_scale,
+    )
+    candidate_profile = _debt_issuance_archetype_profile(
+        compact_features=candidate_features,
+        action_id=action_id,
+        action_scale=candidate_action_scale,
+    )
+    target_scores = dict(target_profile.get("scores") or {})
+    candidate_scores = dict(candidate_profile.get("scores") or {})
+    shared_labels = [label for label in _DEBT_ISSUANCE_ARCHETYPE_LABELS if label in target_scores and label in candidate_scores]
+    if not shared_labels:
+        return 0.0
+    score_distance = float(
+        np.mean(
+            [
+                abs(float(target_scores[label]) - float(candidate_scores[label]))
+                for label in shared_labels
+            ]
+        )
+    )
+    target_label = str(target_profile.get("label") or "")
+    candidate_label = str(candidate_profile.get("label") or "")
+    label_penalty = 0.0
+    if target_label and candidate_label and target_label != candidate_label:
+        label_pair = {target_label, candidate_label}
+        if label_pair == {"distressed_borrower", "opportunistic_issuer"}:
+            label_penalty = 1.00
+        elif "refinancing_pressure" in label_pair:
+            label_penalty = 0.55
+        else:
+            label_penalty = 0.75
+    return float(score_distance + label_penalty)
+
+
+def _mean_abs_diff(target_compact: Dict[str, Any], candidate_features: Dict[str, Any], feature_names: Iterable[str]) -> float:
+    diffs: List[float] = []
+    for feature in feature_names:
+        diff = _absdiff(target_compact.get(feature), candidate_features.get(feature))
+        if diff is not None:
+            diffs.append(float(diff))
+    if not diffs:
+        return float("inf")
+    return float(sum(diffs) / len(diffs))
+
+
+def _action_specific_same_action_distance(
+    *,
+    action_id: str,
+    target_compact: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    feature_scales: Optional[Dict[str, Any]] = None,
+    target_action_scale: Optional[float] = None,
+    candidate_action_scale: Optional[float] = None,
+) -> float:
+    action_text = str(action_id or "").strip().lower()
+    if action_text not in {"capital_structure.new_debt_issuance", "capital_structure.revolver_draw_or_resize"}:
+        return float("inf")
+    if action_text == "capital_structure.revolver_draw_or_resize":
+        feature_weights = _REVOLVER_SUPPORT_FEATURE_WEIGHTS
+        fallback_scales = _REVOLVER_SUPPORT_FEATURE_FALLBACK_SCALES
+        archetype_weight = 1.05
+        regime_floor = 0.78
+        regime_weight = 0.90
+        action_scale_weight = 0.35
+    else:
+        feature_weights = _DEBT_ISSUANCE_BORROWER_FEATURE_WEIGHTS
+        fallback_scales = _DEBT_ISSUANCE_BORROWER_FEATURE_FALLBACK_SCALES
+        archetype_weight = 0.90
+        regime_floor = 0.72
+        regime_weight = 0.60
+        action_scale_weight = 0.20
+    numer = 0.0
+    denom = 0.0
+    for feature, weight in feature_weights.items():
+        diff = _absdiff(target_compact.get(feature), candidate_features.get(feature))
+        if diff is None or not pd.notna(diff):
+            continue
+        scale_value = None
+        if isinstance(feature_scales, dict):
+            scale_value = _first([feature_scales.get(feature)], None)
+        try:
+            scale = float(scale_value) if scale_value is not None else None
+        except Exception:
+            scale = None
+        if scale is not None and pd.isna(scale):
+            scale = None
+        if scale is None or not pd.notna(scale) or scale <= 1e-9:
+            scale = float(fallback_scales.get(feature, 1.0))
+        numer += float(weight) * float(diff) / max(float(scale), 1e-9)
+        denom += float(weight)
+    if denom <= 1e-12:
+        return float("inf")
+    base_distance = float(numer / denom)
+    archetype_distance = _debt_issuance_archetype_distance(
+        action_id=action_text,
+        target_compact=target_compact,
+        candidate_features=candidate_features,
+        target_action_scale=target_action_scale,
+        candidate_action_scale=candidate_action_scale,
+    )
+    market_regime_similarity = _debt_issuance_market_regime_similarity(
+        target_compact=target_compact,
+        candidate_features=candidate_features,
+    )
+    action_scale_distance = _action_scale_gap(target_action_scale, candidate_action_scale)
+    if not pd.notna(action_scale_distance):
+        action_scale_distance = 0.0
+    return float(
+        base_distance
+        + archetype_weight * float(archetype_distance)
+        + regime_weight * max(0.0, regime_floor - float(market_regime_similarity))
+        + action_scale_weight * min(float(action_scale_distance), 2.0)
+    )
+
+
+def _match_taxonomy_rank(
+    match_features: Dict[str, Any],
+    *,
+    target_sector: str,
+    target_subsector: str,
+    taxonomy_mode: str,
+) -> tuple[int, int]:
+    match_sector = str(match_features.get("sector") or match_features.get("base_sector") or "").strip()
+    match_subsector = str(match_features.get("subsector") or "").strip()
+    same_sector = bool(target_sector and match_sector and target_sector == match_sector)
+    same_subsector = bool(target_subsector and match_subsector and target_subsector == match_subsector)
+    if taxonomy_mode == "prefer_same_subsector_then_sector":
+        return (0 if same_subsector else 1, 0 if same_sector else 1)
+    if taxonomy_mode == "prefer_same_sector":
+        return (0 if same_sector else 1, 0)
+    return (0, 0)
+
+
+def _rank_hard_negative_matches(
+    matches: List[Dict[str, Any]],
+    *,
+    target_compact: Dict[str, Any],
+    target_sector: str,
+    target_subsector: str,
+    taxonomy_mode: str,
+) -> List[Dict[str, Any]]:
+    ranked = list(matches or [])
+    ranked.sort(
+        key=lambda match: (
+            *_match_taxonomy_rank(
+                dict(match.get("key_state_features") or {}),
+                target_sector=target_sector,
+                target_subsector=target_subsector,
+                taxonomy_mode=taxonomy_mode,
+            ),
+            _mean_abs_diff(
+                target_compact,
+                dict(match.get("key_state_features") or {}),
+                _HARD_NEGATIVE_SAFETY_FEATURES,
+            ),
+            -float(match.get("similarity_score") or 0.0),
+        )
+    )
+    return ranked
+
+
+def _action_scale_gap(target_action_scale: Optional[float], candidate_action_scale: Any) -> float:
+    try:
+        target_value = float(target_action_scale)
+        candidate_value = float(candidate_action_scale)
+    except Exception:
+        return float("inf")
+    if not pd.notna(target_value) or not pd.notna(candidate_value):
+        return float("inf")
+    return float(abs(np.log1p(max(target_value, 0.0)) - np.log1p(max(candidate_value, 0.0))))
+
+
+def _rank_same_action_hard_confusers(
+    matches: List[Dict[str, Any]],
+    *,
+    action_id: str,
+    target_compact: Dict[str, Any],
+    target_sector: str,
+    target_subsector: str,
+    target_action_scale: Optional[float],
+) -> List[Dict[str, Any]]:
+    ranked = list(matches or [])
+    target_profile = _debt_issuance_archetype_profile(
+        compact_features=target_compact,
+        action_id=action_id,
+        action_scale=target_action_scale,
+    )
+    target_label = str(target_profile.get("label") or "")
+
+    def _match_action_scale(match: Dict[str, Any]) -> Optional[float]:
+        try:
+            numeric = float(match.get("action_scale"))
+        except Exception:
+            return None
+        if not pd.notna(numeric):
+            return None
+        return float(numeric)
+
+    def _confuser_priority(match: Dict[str, Any]) -> tuple[int, float]:
+        candidate_features = dict(match.get("key_state_features") or {})
+        candidate_scale = _match_action_scale(match)
+        candidate_profile = _debt_issuance_archetype_profile(
+            compact_features=candidate_features,
+            action_id=action_id,
+            action_scale=candidate_scale,
+        )
+        candidate_label = str(candidate_profile.get("label") or "")
+        regime_similarity = _debt_issuance_market_regime_similarity(
+            target_compact=target_compact,
+            candidate_features=candidate_features,
+        )
+        if target_label and candidate_label and candidate_label != target_label and regime_similarity >= 0.64:
+            return (0, -regime_similarity)
+        if target_label and candidate_label and candidate_label == target_label and regime_similarity < 0.58:
+            return (1, regime_similarity)
+        if target_label and candidate_label and candidate_label != target_label:
+            return (2, -regime_similarity)
+        return (3, regime_similarity)
+
+    ranked.sort(
+        key=lambda match: (
+            *_match_taxonomy_rank(
+                dict(match.get("key_state_features") or {}),
+                target_sector=target_sector,
+                target_subsector=target_subsector,
+                taxonomy_mode="prefer_same_subsector_then_sector",
+            ),
+            *_confuser_priority(match),
+            _action_scale_gap(target_action_scale, match.get("action_scale")),
+            _action_specific_same_action_distance(
+                action_id=action_id,
+                target_compact=target_compact,
+                candidate_features=dict(match.get("key_state_features") or {}),
+                target_action_scale=target_action_scale,
+                candidate_action_scale=_match_action_scale(match),
+            ),
+            float(match.get("analog_distance")) if pd.notna(match.get("analog_distance")) else float("inf"),
+            _mean_abs_diff(
+                target_compact,
+                dict(match.get("key_state_features") or {}),
+                _HARD_NEGATIVE_SAFETY_FEATURES,
+            ),
+            -float(match.get("similarity_score") or 0.0),
+        )
+    )
+    return ranked
+
+
+def _same_action_negative_pool_limit(top_k: int, anchor_matches: List[Dict[str, Any]]) -> int:
+    positive_count = max(1, len(list(anchor_matches or [])))
+    return max(int(max(1, top_k)), min(24, positive_count * 4))
+
+
+def _same_action_ordering_window(top_k: int) -> int:
+    return max(2, min(8, max(2, int(top_k // 2) if int(top_k) > 0 else 4)))
+
+
+def _select_actual_anchor_outcome(
+    case: Dict[str, Any],
+    *,
+    anchor_outcomes_lookup: Dict[tuple[str, str], List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    rows = list(anchor_outcomes_lookup.get((company_id, action_id), []) or [])
+    if not rows:
+        return None
+    anchor_dt = pd.to_datetime(case.get("anchor_action_date"), utc=True, errors="coerce")
+    anchor_raw_subtype = _case_anchor_action_subtype(case).lower()
+    anchor_effective_subtype = _case_anchor_effective_action_subtype(case)
+    if pd.isna(anchor_dt) and not anchor_raw_subtype and not anchor_effective_subtype:
+        return rows[0]
+    ranked = []
+    for row in rows:
+        row_raw_subtype = str(row.get("raw_action_subtype") or row.get("action_subtype") or "").strip().lower()
+        exact_penalty = int(bool(anchor_raw_subtype) and row_raw_subtype != anchor_raw_subtype)
+        row_effective_subtype = _row_effective_action_subtype(action_id, row)
+        family_penalty = int(bool(anchor_effective_subtype) and row_effective_subtype != anchor_effective_subtype)
+        action_dt = pd.to_datetime(row.get("action_date"), utc=True, errors="coerce")
+        delta = (
+            abs((action_dt - anchor_dt).total_seconds())
+            if pd.notna(anchor_dt) and pd.notna(action_dt)
+            else float("inf")
+        )
+        try:
+            action_size = float(row.get("action_size"))
+        except Exception:
+            action_size = 0.0
+        if pd.isna(action_size):
+            action_size = 0.0
+        ranked.append(((exact_penalty, family_penalty, delta, -action_size), row))
+    ranked.sort(key=lambda item: item[0])
+    return ranked[0][1] if ranked else None
+
+
+def _actual_anchor_match_payload(case: Dict[str, Any], outcome_row: Dict[str, Any]) -> Dict[str, Any]:
+    precedent_id = str(
+        outcome_row.get("precedent_id")
+        or f"{outcome_row.get('company_id')}::{outcome_row.get('action_date')}::actual_anchor"
+    )
+    feature_values = {feature: outcome_row.get(feature) for feature in _STATE_VECTOR_V1_FEATURES}
+    return {
+        "precedent_id": precedent_id,
+        "company_id": str(outcome_row.get("company_id") or ""),
+        "similarity_score": 1.0,
+        "key_state_features": feature_values,
+        "sector": outcome_row.get("sector"),
+        "subsector": outcome_row.get("subsector"),
+    }
+
+
+def _enrich_match_compact(
+    match: Dict[str, Any],
+    *,
+    precedent_outcomes_lookup: Dict[tuple[str, str, str], Dict[str, Any]],
+) -> Dict[str, Any]:
+    key_state_features = dict(match.get("key_state_features") or {})
+    lookup_key = (
+        str(match.get("company_id") or "").strip(),
+        str(match.get("action_id") or "").strip(),
+        _normalize_as_of_time(str(match.get("decision_time") or "")),
+    )
+    outcome_row = precedent_outcomes_lookup.get(lookup_key)
+    if outcome_row is None:
+        return key_state_features
+    enriched = dict(key_state_features)
+    for feature in _STATE_VECTOR_V1_FEATURES:
+        if enriched.get(feature) is None and outcome_row.get(feature) is not None:
+            enriched[feature] = outcome_row.get(feature)
+    for feature in (
+        "base_sector",
+        "sector",
+        "subsector",
+        "base_revenue_ttm",
+        "base_revenue_ttm_lag_1y",
+        "base_revenue_growth_yoy",
+        "base_ebitda_ttm",
+        "base_total_debt",
+        "base_current_debt",
+        "base_cash",
+        "base_available_liquidity",
+        "base_interest_expense",
+        "base_market_cap",
+        "base_ev_ebitda",
+        "base_fcf_yield",
+        "base_volatility_30d",
+        "base_volatility_90d",
+        "base_drawdown_90d",
+        "base_credit_spread_level",
+        "base_equity_window_proxy",
+        "base_credit_window_proxy",
+        "base_net_debt",
+        "base_leverage",
+        "base_margin",
+        "macro_fed_funds_effective",
+        "macro_hy_oas",
+        "macro_real_gdp_growth_yoy",
+        "macro_vix",
+    ):
+        if enriched.get(feature) is None and outcome_row.get(feature) is not None:
+            enriched[feature] = outcome_row.get(feature)
+    return enriched
+
+
+def _match_identity_key(match: Dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(match.get("precedent_id") or "").strip(),
+        str(match.get("company_id") or "").strip(),
+        str(match.get("action_id") or "").strip(),
+        _normalize_as_of_time(str(match.get("decision_time") or "")),
+    )
+
+

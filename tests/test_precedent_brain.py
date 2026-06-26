@@ -2700,3 +2700,286 @@ def test_retrieval_tier_metadata_is_present():
     assert isinstance(diag.get("sector_prefilter_applied"), bool)
 
 
+def test_tier_confidence_discount_lowers_non_exact_confidence():
+    hist = _hist_df(60).copy()
+    hist["action_type"] = "capital_return"
+    hist["action_subtype"] = ["open_market_buyback" if i < 40 else "dividend_cut" for i in range(len(hist))]
+    hist["action_id"] = ["capital_return." + s for s in hist["action_subtype"].astype(str).tolist()]
+
+    common_kwargs = dict(
+        candidate_id="cand-tier",
+        run_id="run-tier",
+        company_id="001690",
+        action_params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0}},
+        candidate_features=_candidate_features(),
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    pack_exact = build_precedent_pack_v2(
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        **common_kwargs,
+    )
+    pack_sibling = build_precedent_pack_v2(
+        action_id="capital_return.tender_offer_buyback",
+        action_subtype="tender_offer_buyback",
+        **common_kwargs,
+    )
+    diag_exact = (
+        pack_exact.mismatch_diagnostics.to_dict()
+        if hasattr(pack_exact.mismatch_diagnostics, "to_dict")
+        else pack_exact.mismatch_diagnostics
+    )
+    diag_sibling = (
+        pack_sibling.mismatch_diagnostics.to_dict()
+        if hasattr(pack_sibling.mismatch_diagnostics, "to_dict")
+        else pack_sibling.mismatch_diagnostics
+    )
+    assert diag_exact.get("retrieval_tier") == "exact"
+    assert diag_sibling.get("retrieval_tier") in {"sibling_type", "global"}
+    assert float(diag_exact.get("tier_confidence_discount", 1.0)) >= 0.99
+    assert float(diag_sibling.get("tier_confidence_discount", 1.0)) < 1.0
+    exact_pre = float(diag_exact.get("confidence_pre_tier_discount", 0.0))
+    exact_disc = float(diag_exact.get("tier_confidence_discount", 1.0))
+    sibling_pre = float(diag_sibling.get("confidence_pre_tier_discount", 0.0))
+    sibling_disc = float(diag_sibling.get("tier_confidence_discount", 1.0))
+    assert abs(pack_exact.calibration_confidence - (exact_pre * exact_disc)) < 1e-9
+    assert abs(pack_sibling.calibration_confidence - (sibling_pre * sibling_disc)) < 1e-9
+
+
+def test_refinancing_infers_term_loan_family_for_exact_matching():
+    effective_subtype = precedent_brain._effective_action_subtype(
+        "capital_structure.refinancing",
+        None,
+        {"instrument_type": "term_loan"},
+    )
+    assert effective_subtype == "refinancing_term_loan_family"
+    resolved_subtype = precedent_brain._resolved_normalized_subfamily(
+        "capital_structure",
+        "refinancing",
+        "loan_refinancing",
+        "Term Loan B",
+    )
+    assert resolved_subtype == "refinancing_term_loan_family"
+    assert precedent_brain._historical_action_family(
+        action_type="loan_refinancing",
+        action_subtype="Revolver/Line >= 1 Yr.",
+    ) == "capital_structure.refinancing_revolver_family"
+    family_weights = precedent_brain._candidate_action_family_weights(
+        "capital_structure.refinancing",
+        effective_subtype,
+    )
+    assert family_weights[0][0] == "capital_structure.refinancing_term_loan_family"
+    exact_keys = precedent_brain._candidate_exact_action_keys(
+        "capital_structure.refinancing",
+        effective_subtype,
+        "refinancing",
+        "refinancing",
+    )
+    assert exact_keys == ("refinancing_term_loan_family",)
+    assert precedent_brain._candidate_action_id_keys(
+        "capital_structure.refinancing",
+        effective_subtype,
+    ) == ()
+
+
+def test_hard_sector_market_cap_prefilter_applies_when_enough_depth():
+    hist = _hist_df(60).copy()
+    hist["action_type"] = "capital_return"
+    hist["action_subtype"] = "open_market_buyback"
+    hist["action_id"] = "capital_return.open_market_buyback"
+    hist.loc[:29, "base_sector"] = "TECH"
+    hist.loc[30:, "base_sector"] = "UTILITIES"
+    hist.loc[:29, "base_market_cap"] = np.linspace(900.0, 1800.0, 30)
+    hist.loc[30:, "base_market_cap"] = np.linspace(5.0e8, 1.8e9, 30)
+
+    features = _candidate_features()
+    features["sector"] = "TECH"
+    features["market_cap"] = 1200.0
+
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-hard-filter",
+        run_id="run-hard-filter",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05},
+        candidate_features=features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("hard_prefilter_applied") is True
+    assert diag.get("hard_prefilter_relaxed") is False
+    assert diag.get("market_cap_prefilter_applied") is True
+    assert all((c.key_state_features.get("base_sector") or "").upper() == "TECH" for c in pack.retrieved_cohorts)
+    assert all(float(c.key_state_features.get("base_market_cap") or 0.0) < 1.0e7 for c in pack.retrieved_cohorts)
+
+
+def test_hard_prefilter_relaxes_when_bucket_and_sector_too_sparse():
+    hist = _hist_df(30).copy()
+    hist["action_type"] = "capital_return"
+    hist["action_subtype"] = "open_market_buyback"
+    hist["action_id"] = "capital_return.open_market_buyback"
+    hist["base_sector"] = "TECH"
+    hist.loc[:4, "base_market_cap"] = np.linspace(950.0, 1500.0, 5)
+    hist.loc[5:, "base_market_cap"] = np.linspace(3.0e8, 1.2e9, 25)
+
+    features = _candidate_features()
+    features["sector"] = "TECH"
+    features["market_cap"] = 1200.0
+
+    pack = build_precedent_pack_v2(
+        candidate_id="cand-hard-relax",
+        run_id="run-hard-relax",
+        company_id="001690",
+        action_id="capital_return.open_market_buyback",
+        action_subtype="open_market_buyback",
+        action_params={"size_pct_market_cap": 0.05},
+        candidate_features=features,
+        candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+        historical_df=hist,
+        top_k=20,
+        min_k=10,
+    )
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("hard_prefilter_applied") is False
+    assert diag.get("hard_prefilter_relaxed") is True
+    assert any(float(c.key_state_features.get("base_market_cap") or 0.0) > 1.0e8 for c in pack.retrieved_cohorts)
+
+
+def test_weighted_distance_v2_feature_transforms_compress_extreme_safety_tails():
+    old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+    os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+    try:
+        profile = _weighted_distance_profile("capital_return.dividend_increase", "dividend_increase")
+    finally:
+        if old_version is None:
+            os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        else:
+            os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+
+    embedding_cols = (
+        "state_vector_v1.liquidity_flexibility",
+        "state_vector_v1.interest_coverage",
+        "state_vector_v1.valuation_multiple",
+    )
+    emb_raw = np.array(
+        [
+            [6.0, 20.0, 12.0],
+            [150.0, 114.0, 4.0],
+        ],
+        dtype=float,
+    )
+    candidate_vec_raw = np.array([10.0, 30.0, 12.0], dtype=float)
+    transformed_emb, transformed_candidate, transformed_features = _apply_matching_feature_transforms(
+        emb_raw,
+        candidate_vec_raw,
+        embedding_cols,
+        profile,
+    )
+
+    raw_liquidity_ratio = abs(emb_raw[1, 0] - candidate_vec_raw[0]) / abs(emb_raw[0, 0] - candidate_vec_raw[0])
+    transformed_liquidity_ratio = abs(transformed_emb[1, 0] - transformed_candidate[0]) / abs(
+        transformed_emb[0, 0] - transformed_candidate[0]
+    )
+    raw_coverage_ratio = abs(emb_raw[1, 1] - candidate_vec_raw[1]) / abs(emb_raw[0, 1] - candidate_vec_raw[1])
+    transformed_coverage_ratio = abs(transformed_emb[1, 1] - transformed_candidate[1]) / abs(
+        transformed_emb[0, 1] - transformed_candidate[1]
+    )
+
+    assert "state_vector_v1.liquidity_flexibility" in transformed_features
+    assert "state_vector_v1.interest_coverage" in transformed_features
+    assert transformed_liquidity_ratio < raw_liquidity_ratio
+    assert transformed_coverage_ratio < raw_coverage_ratio
+
+
+def test_weighted_distance_v2_latent_regime_penalty_prefers_same_buyback_regime():
+    feature_names = [
+        "state_vector_v1.growth",
+        "state_vector_v1.valuation_multiple",
+        "state_vector_v1.cash_generation",
+    ]
+    compact_rows = [
+        {
+            "state_vector_v1.growth": 0.18,
+            "state_vector_v1.valuation_multiple": 48.0,
+            "state_vector_v1.cash_generation": 0.01,
+        },
+        {
+            "state_vector_v1.growth": 0.16,
+            "state_vector_v1.valuation_multiple": 42.0,
+            "state_vector_v1.cash_generation": 0.015,
+        },
+        {
+            "state_vector_v1.growth": 0.02,
+            "state_vector_v1.valuation_multiple": 13.0,
+            "state_vector_v1.cash_generation": 0.06,
+        },
+        {
+            "state_vector_v1.growth": 0.00,
+            "state_vector_v1.valuation_multiple": 9.0,
+            "state_vector_v1.cash_generation": 0.07,
+        },
+    ]
+    latent_model = fit_latent_regime_kmeans(
+        raw_feature_matrix_from_compacts(compact_rows, feature_names=feature_names),
+        feature_names=feature_names,
+        n_clusters=2,
+        seed=7,
+        max_iter=20,
+    )
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "scope_key": "capital_return.open_market_buyback",
+                "default_enabled": True,
+                "use_in_runtime": True,
+                "latent_regime_model": latent_model,
+                "latent_regime_penalty_weight": 2.0,
+            }
+        },
+    }
+    embedding_cols = tuple(feature_names)
+    emb_raw = np.array(
+        [
+            [0.17, 44.0, 0.012],
+            [0.01, 11.0, 0.065],
+        ],
+        dtype=float,
+    )
+    candidate_vec_raw = np.array([0.19, 50.0, 0.010], dtype=float)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        try:
+            result = _weighted_state_similarity_v2(
+                emb_raw=emb_raw,
+                candidate_vec_raw=candidate_vec_raw,
+                embedding_cols=embedding_cols,
+                action_id="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+
+    assert result["latent_regime_penalty_factor"][0] > result["latent_regime_penalty_factor"][1]
+
+

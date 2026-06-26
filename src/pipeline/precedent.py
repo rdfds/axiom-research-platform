@@ -369,7 +369,7 @@ def match_precedents(
     if change_dist is None and profile_dist is None:
         return filtered.head(top_n), pd.Series(dtype=float)
 
-    stage2 = config['stage2']
+    stage2 = config.get("stage2", {})
     change_weight = float(stage2.get("change_weight", 0.7))
     profile_weight = float(stage2.get("profile_weight", 0.3))
     total_weight = change_weight + profile_weight
