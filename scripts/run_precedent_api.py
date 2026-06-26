@@ -27,3 +27,14 @@ def _default_precedent_outcomes_path() -> str:
     return str(repo_root / "data" / "curated" / "action_outcomes_with_credit_ratings.normalized_full.parquet")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Serve run_precedent over HTTP.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8088)
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--outcomes-path", default=_default_precedent_outcomes_path())
+    parser.add_argument("--state-snapshot-root", default=None)
+    parser.add_argument("--state-snapshot-path", default=None)
+    return parser.parse_args()
+
+
