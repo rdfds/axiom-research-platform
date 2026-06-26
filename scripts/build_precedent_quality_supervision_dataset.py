@@ -1298,3 +1298,7 @@ def _same_action_prefers_cross_company(action_id: str) -> bool:
     return _is_revolver_draw_or_resize_action(action_id)
 
 
+def _same_action_target_company_cap(action_id: str) -> int:
+    return 1 if _is_revolver_draw_or_resize_action(action_id) else 0
+
+
