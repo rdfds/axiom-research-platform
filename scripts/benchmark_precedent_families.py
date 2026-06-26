@@ -51,3 +51,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _artifact_path(runs_root: Path, run_id: str, name: str) -> Path:
+    return runs_root / "artifacts" / f"run_id={run_id}" / name
+
+

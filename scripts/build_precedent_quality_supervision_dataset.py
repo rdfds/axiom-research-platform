@@ -1302,7 +1302,7 @@ def _same_action_target_company_cap(action_id: str) -> int:
     return 1 if _is_revolver_draw_or_resize_action(action_id) else 0
 
 
-def _same_action_company_cap(action_id: str) :
+def _same_action_company_cap(action_id: str) -> int:
     return 2 if _is_revolver_draw_or_resize_action(action_id) else 0
 
 

@@ -2983,3 +2983,348 @@ def test_weighted_distance_v2_latent_regime_penalty_prefers_same_buyback_regime(
     assert result["latent_regime_penalty_factor"][0] > result["latent_regime_penalty_factor"][1]
 
 
+def test_weighted_distance_v2_target_regime_mixture_can_shift_buyback_weights_by_target():
+    feature_names = [
+        "state_vector_v1.growth",
+        "state_vector_v1.valuation_multiple",
+        "state_vector_v1.cash_generation",
+    ]
+    compact_rows = [
+        {
+            "state_vector_v1.growth": 0.18,
+            "state_vector_v1.valuation_multiple": 48.0,
+            "state_vector_v1.cash_generation": 0.01,
+        },
+        {
+            "state_vector_v1.growth": 0.16,
+            "state_vector_v1.valuation_multiple": 42.0,
+            "state_vector_v1.cash_generation": 0.015,
+        },
+        {
+            "state_vector_v1.growth": 0.00,
+            "state_vector_v1.valuation_multiple": 11.0,
+            "state_vector_v1.cash_generation": 0.06,
+        },
+        {
+            "state_vector_v1.growth": -0.02,
+            "state_vector_v1.valuation_multiple": 9.0,
+            "state_vector_v1.cash_generation": 0.07,
+        },
+    ]
+    model = fit_latent_regime_kmeans(
+        raw_feature_matrix_from_compacts(compact_rows, feature_names=feature_names),
+        feature_names=feature_names,
+        n_clusters=2,
+        seed=7,
+        max_iter=20,
+    )
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "scope_key": "capital_return.open_market_buyback",
+                "default_enabled": True,
+                "use_in_runtime": True,
+                "target_regime_mixture": {
+                    "model": model,
+                    "regimes": [
+                        {
+                            "cluster": 0,
+                            "feature_relative_weights": {
+                                "state_vector_v1.growth": 0.6,
+                                "state_vector_v1.valuation_multiple": 2.5,
+                                "state_vector_v1.cash_generation": 0.4,
+                            },
+                            "interaction_terms": [],
+                        },
+                        {
+                            "cluster": 1,
+                            "feature_relative_weights": {
+                                "state_vector_v1.growth": 0.4,
+                                "state_vector_v1.valuation_multiple": 0.6,
+                                "state_vector_v1.cash_generation": 2.2,
+                            },
+                            "interaction_terms": [],
+                        },
+                    ],
+                },
+            }
+        },
+    }
+    embedding_cols = tuple(feature_names)
+    emb_raw = np.array(
+        [
+            [0.15, 44.0, 0.015],
+            [0.02, 12.0, 0.06],
+        ],
+        dtype=float,
+    )
+    candidate_vec_raw = np.array([0.19, 50.0, 0.010], dtype=float)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = "weighted_distance_v2"
+        try:
+            result = _weighted_state_similarity_v2(
+                emb_raw=emb_raw,
+                candidate_vec_raw=candidate_vec_raw,
+                embedding_cols=embedding_cols,
+                action_id="capital_return.open_market_buyback",
+                action_subtype="open_market_buyback",
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+
+    assert result["state_similarity"][0] > result["state_similarity"][1]
+    assert result["target_regime_membership"].size == 2
+
+
+def test_weighted_distance_v2_prefers_same_industry_over_cross_sector_safety_proxy():
+    hist = pd.DataFrame(
+        [
+            _state_vector_hist_row(
+                company_id="000501",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=0,
+                ticker="GOODIND",
+                **{
+                    "base_sector": "INDUSTRIALS",
+                    "subsector": "MACHINERY",
+                    "normalized_action_family": "capital_return",
+                    "normalized_action_subfamily": "dividend_increase",
+                    "normalized_action_id": "capital_return.dividend_increase",
+                    "state_vector_v1.size_log_revenue": 9.8,
+                    "state_vector_v1.profitability": 0.24,
+                    "state_vector_v1.growth": 0.02,
+                    "state_vector_v1.gross_obligation_burden": 1.15,
+                    "state_vector_v1.net_obligation_burden": 0.15,
+                    "state_vector_v1.liquidity_flexibility": 12.0,
+                    "state_vector_v1.interest_coverage": 22.0,
+                    "state_vector_v1.valuation_multiple": 11.8,
+                    "state_vector_v1.cash_generation": 0.05,
+                    "state_vector_v1.market_stress": 0.24,
+                    "state_vector_v1.market_access": 0.79,
+                },
+            ),
+            _state_vector_hist_row(
+                company_id="000502",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=1,
+                ticker="WRONGSEC",
+                **{
+                    "base_sector": "ENERGY",
+                    "subsector": "INTEGRATED_OIL_GAS",
+                    "normalized_action_family": "capital_return",
+                    "normalized_action_subfamily": "dividend_increase",
+                    "normalized_action_id": "capital_return.dividend_increase",
+                    "state_vector_v1.size_log_revenue": 9.9,
+                    "state_vector_v1.profitability": 0.09,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 0.85,
+                    "state_vector_v1.net_obligation_burden": 0.05,
+                    "state_vector_v1.liquidity_flexibility": 145.0,
+                    "state_vector_v1.interest_coverage": 118.0,
+                    "state_vector_v1.valuation_multiple": 4.2,
+                    "state_vector_v1.cash_generation": 0.14,
+                    "state_vector_v1.market_stress": 0.40,
+                    "state_vector_v1.market_access": 0.76,
+                },
+            ),
+        ]
+    )
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.dividend_increase": {
+                "scope_key": "capital_return.dividend_increase",
+                "default_enabled": True,
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        try:
+            pack = build_precedent_pack_v2(
+                candidate_id="cand-v2-industry",
+                run_id="run-v2-industry",
+                company_id="001690",
+                action_id="capital_return.dividend_increase",
+                action_subtype="dividend_increase",
+                action_params={},
+                candidate_features=_state_vector_candidate_features(
+                    **{
+                        "taxonomy.sector": "Industrials",
+                        "taxonomy.subsector": "Machinery",
+                        "sector": "INDUSTRIALS",
+                        "state_vector_v1.size_log_revenue": 9.75,
+                        "state_vector_v1.profitability": 0.28,
+                        "state_vector_v1.growth": 0.01,
+                        "state_vector_v1.gross_obligation_burden": 0.95,
+                        "state_vector_v1.net_obligation_burden": 0.03,
+                        "state_vector_v1.liquidity_flexibility": 148.0,
+                        "state_vector_v1.interest_coverage": 114.0,
+                        "state_vector_v1.valuation_multiple": 12.4,
+                        "state_vector_v1.cash_generation": 0.08,
+                        "state_vector_v1.market_stress": 0.25,
+                        "state_vector_v1.market_access": 0.79,
+                    }
+                ),
+                candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+                historical_df=hist,
+                top_k=2,
+                min_k=1,
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    assert pack.retrieved_cohorts[0].company_id == "000501"
+
+
+def test_weighted_distance_v2_identity_prefilter_drops_known_cross_sector_rows_when_same_sector_depth_exists():
+    hist_rows = []
+    for i in range(5):
+        hist_rows.append(
+            _state_vector_hist_row(
+                company_id=f"00060{i}",
+                action_type="dividend_increase",
+                action_subtype="dividend_increase",
+                offset_days=i,
+                ticker=f"GOOD{i}",
+                **{
+                    "base_sector": "INDUSTRIALS",
+                    "subsector": "MACHINERY",
+                    "normalized_action_family": "capital_return",
+                    "normalized_action_subfamily": "dividend_increase",
+                    "normalized_action_id": "capital_return.dividend_increase",
+                    "state_vector_v1.size_log_revenue": 9.8 + 0.01 * i,
+                    "state_vector_v1.profitability": 0.24 + 0.002 * i,
+                    "state_vector_v1.growth": 0.01,
+                    "state_vector_v1.gross_obligation_burden": 1.05,
+                    "state_vector_v1.net_obligation_burden": 0.12,
+                    "state_vector_v1.liquidity_flexibility": 9.0 + i,
+                    "state_vector_v1.interest_coverage": 18.0 + i,
+                    "state_vector_v1.valuation_multiple": 11.7 + 0.1 * i,
+                    "state_vector_v1.cash_generation": 0.05,
+                    "state_vector_v1.market_stress": 0.24,
+                    "state_vector_v1.market_access": 0.79,
+                },
+            )
+        )
+    hist_rows.append(
+        _state_vector_hist_row(
+            company_id="000699",
+            action_type="dividend_increase",
+            action_subtype="dividend_increase",
+            offset_days=20,
+            ticker="WRONGSEC",
+            **{
+                "base_sector": "ENERGY",
+                "subsector": "INTEGRATED_OIL_GAS",
+                "normalized_action_family": "capital_return",
+                "normalized_action_subfamily": "dividend_increase",
+                "normalized_action_id": "capital_return.dividend_increase",
+                "state_vector_v1.size_log_revenue": 9.9,
+                "state_vector_v1.profitability": 0.09,
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.gross_obligation_burden": 0.85,
+                "state_vector_v1.net_obligation_burden": 0.05,
+                "state_vector_v1.liquidity_flexibility": 145.0,
+                "state_vector_v1.interest_coverage": 118.0,
+                "state_vector_v1.valuation_multiple": 4.2,
+                "state_vector_v1.cash_generation": 0.14,
+                "state_vector_v1.market_stress": 0.40,
+                "state_vector_v1.market_access": 0.76,
+            },
+        )
+    )
+    hist = pd.DataFrame(hist_rows)
+    payload = {
+        "version": "precedent_distance_weights_v2",
+        "scopes": {
+            "capital_return.dividend_increase": {
+                "scope_key": "capital_return.dividend_increase",
+                "default_enabled": True,
+                "use_in_runtime": True,
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/precedent_distance_weights_v2.json"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        old_path = os.environ.get("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH")
+        old_version = os.environ.get("PRECEDENT_DISTANCE_PROFILE_VERSION")
+        os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = path
+        os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+        try:
+            pack = build_precedent_pack_v2(
+                candidate_id="cand-v2-identity-gate",
+                run_id="run-v2-identity-gate",
+                company_id="001690",
+                action_id="capital_return.dividend_increase",
+                action_subtype="dividend_increase",
+                action_params={},
+                candidate_features=_state_vector_candidate_features(
+                    **{
+                        "taxonomy.sector": "Industrials",
+                        "taxonomy.subsector": "Machinery",
+                        "sector": "INDUSTRIALS",
+                        "state_vector_v1.size_log_revenue": 9.75,
+                        "state_vector_v1.profitability": 0.28,
+                        "state_vector_v1.growth": 0.01,
+                        "state_vector_v1.gross_obligation_burden": 0.95,
+                        "state_vector_v1.net_obligation_burden": 0.03,
+                        "state_vector_v1.liquidity_flexibility": 148.0,
+                        "state_vector_v1.interest_coverage": 114.0,
+                        "state_vector_v1.valuation_multiple": 12.4,
+                        "state_vector_v1.cash_generation": 0.08,
+                        "state_vector_v1.market_stress": 0.25,
+                        "state_vector_v1.market_access": 0.79,
+                    }
+                ),
+                candidate_regime={"credit_regime": "neutral", "risk_regime": "neutral", "vol_regime": "normal"},
+                historical_df=hist,
+                top_k=5,
+                min_k=10,
+            )
+        finally:
+            if old_path is None:
+                os.environ.pop("PRECEDENT_DISTANCE_V2_WEIGHTS_PATH", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_V2_WEIGHTS_PATH"] = old_path
+            if old_version is None:
+                os.environ.pop("PRECEDENT_DISTANCE_PROFILE_VERSION", None)
+            else:
+                os.environ["PRECEDENT_DISTANCE_PROFILE_VERSION"] = old_version
+    diag = pack.mismatch_diagnostics.to_dict() if hasattr(pack.mismatch_diagnostics, "to_dict") else pack.mismatch_diagnostics
+    assert diag.get("identity_prefilter_applied") is True
+    assert diag.get("identity_prefilter_mode") == "subsector"
+    assert all(case.company_id != "000699" for case in pack.retrieved_cohorts[:5])
+
+
