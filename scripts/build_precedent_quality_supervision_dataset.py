@@ -1913,3 +1913,26 @@ def _dedupe_matches(matches: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return ordered
 
 
+def _outcome_row_taxonomy(row: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "sector": str(
+            row.get("taxonomy.sector")
+            or row.get("sector")
+            or row.get("base_sector")
+            or row.get("gics_sector")
+            or ""
+        ).strip(),
+        "subsector": str(
+            row.get("taxonomy.subsector")
+            or row.get("subsector")
+            or row.get("industry")
+            or row.get("base_industry")
+            or ""
+        ).strip(),
+    }
+
+
+def _normalize_ticker_key(value: Any) -> str:
+    return str(value or "").strip().upper()
+
+
