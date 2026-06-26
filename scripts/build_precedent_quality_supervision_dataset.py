@@ -1900,3 +1900,16 @@ def _match_identity_key(match: Dict[str, Any]) -> tuple[str, str, str, str]:
     )
 
 
+def _dedupe_matches(matches: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ordered: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for raw_match in matches:
+        match = dict(raw_match or {})
+        identity = _match_identity_key(match)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        ordered.append(match)
+    return ordered
+
+

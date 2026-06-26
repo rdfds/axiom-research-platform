@@ -55,3 +55,9 @@ def _artifact_path(runs_root: Path, run_id: str, name: str) -> Path:
     return runs_root / "artifacts" / f"run_id={run_id}" / name
 
 
+def _metadata_execution_config(run: Any) -> Dict[str, Any]:
+    metadata = dict(getattr(run, "metadata", {}) or {})
+    config = dict(metadata.get("config", {}) or {})
+    return dict(config.get("execution", {}) or {})
+
+

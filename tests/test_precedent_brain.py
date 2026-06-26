@@ -3328,3 +3328,25 @@ def test_weighted_distance_v2_identity_prefilter_drops_known_cross_sector_rows_w
     assert all(case.company_id != "000699" for case in pack.retrieved_cohorts[:5])
 
 
+def test_regime_thresholds_handles_missing_macro_columns():
+    frame = pd.DataFrame(
+        {
+            "ticker": ["IFF", "DD"],
+            "company_id": ["006078", "004060"],
+            "action_date": pd.to_datetime(["2020-05-15", "2020-04-16"], utc=True),
+            "normalized_action_id": ["capital_structure.refinancing", "capital_structure.refinancing"],
+            "base_market_cap": [10.0, 20.0],
+            "base_revenue_ttm": [1.0, 2.0],
+            "base_total_debt": [3.0, 4.0],
+        }
+    )
+    thresholds = precedent_brain._regime_thresholds(frame)
+
+    assert thresholds == {
+        "hy_q25": 0.0,
+        "hy_q75": 0.0,
+        "vix_q25": 0.0,
+        "vix_q75": 0.0,
+    }
+    index = build_precedent_retrieval_index(frame)
+    assert len(index.df) == 2
