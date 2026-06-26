@@ -305,3 +305,118 @@ def _extract_features(
     return cols, vals
 
 
+def match_precedents(
+    df: pd.DataFrame,
+    change_vector: Dict[str, float],
+    baseline: Dict[str, Any],
+    config: Dict[str, Any],
+    target_col: str,
+    top_n: int = 50,
+) -> Tuple[pd.DataFrame, pd.Series]:
+    if df.empty:
+        return df, pd.Series(dtype=float)
+
+    filtered = stage1_filter(df, baseline, config)
+    min_candidates = config.get("stage1", {}).get("min_candidates")
+    if filtered.empty or (min_candidates and len(filtered) < min_candidates):
+        filtered = df
+
+    change_cols = []
+    change_vals = []
+    for key, val in change_vector.items():
+        for candidate_col in (f"delta_{key}", f"change_{key}", key):
+            if candidate_col in filtered.columns:
+                change_cols.append(candidate_col)
+                change_vals.append(val)
+                break
+
+    profile_features = config.get("profile_features") or list(_COMPACT_PROFILE_FEATURES)
+    profile_cols, profile_vals = _extract_features(filtered, profile_features, baseline=baseline)
+
+    change_weights = pd.Series(dtype=float)
+    profile_weights = pd.Series(dtype=float)
+    change_dist = None
+    profile_dist = None
+
+    if change_cols:
+        X_change = (
+            filtered[change_cols]
+            .apply(_safe_numeric)
+            .fillna(filtered[change_cols].median())
+            .to_numpy()
+        )
+        x_change = np.array(change_vals, dtype=float)
+        change_weights = learn_feature_weights(filtered, change_cols, target_col)
+        if change_weights.empty:
+            change_weights = pd.Series([1.0] * len(change_cols), index=change_cols)
+        change_weights = change_weights.reindex(change_cols).fillna(1.0)
+        change_dist = weighted_mahalanobis_distances(X_change, x_change, change_weights.to_numpy())
+
+    if profile_cols:
+        X_profile = (
+            filtered[profile_cols]
+            .apply(_safe_numeric)
+            .fillna(filtered[profile_cols].median())
+            .to_numpy()
+        )
+        x_profile = np.array(profile_vals, dtype=float)
+        profile_weights = learn_feature_weights(filtered, profile_cols, target_col)
+        if profile_weights.empty:
+            profile_weights = pd.Series([1.0] * len(profile_cols), index=profile_cols)
+        profile_weights = profile_weights.reindex(profile_cols).fillna(1.0)
+        profile_dist = weighted_mahalanobis_distances(X_profile, x_profile, profile_weights.to_numpy())
+
+    if change_dist is None and profile_dist is None:
+        return filtered.head(top_n), pd.Series(dtype=float)
+
+    stage2 = config['stage2']
+    change_weight = float(stage2.get("change_weight", 0.7))
+    profile_weight = float(stage2.get("profile_weight", 0.3))
+    total_weight = change_weight + profile_weight
+    if total_weight == 0:
+        total_weight = 1.0
+    change_weight /= total_weight
+    profile_weight /= total_weight
+
+    if change_dist is None:
+        distances = profile_dist
+    elif profile_dist is None:
+        distances = change_dist
+    else:
+        distances = (change_weight * change_dist) + (profile_weight * profile_dist)
+
+    filtered = filtered.copy()
+    filtered["distance"] = distances
+    filtered = filtered.sort_values("distance").head(top_n)
+    weights = pd.concat(
+        [
+            change_weights.rename(lambda c: f"change::{c}"),
+            profile_weights.rename(lambda c: f"profile::{c}"),
+        ]
+    )
+    return filtered, weights
+
+
+def summarize_outcomes(df: pd.DataFrame, outcome_cols: List[str]) -> List[ImpactDistribution]:
+    distributions = []
+    for col in outcome_cols:
+        if col not in df.columns:
+            continue
+        values = pd.to_numeric(df[col], errors="coerce").dropna()
+        if values.empty:
+            distributions.append(ImpactDistribution(metric=col, horizon_months=0, p25=None, p50=None, p75=None, n=0))
+            continue
+        p25, p50, p75 = np.percentile(values, [25, 50, 75])
+        distributions.append(
+            ImpactDistribution(
+                metric=col,
+                horizon_months=0,
+                p25=float(p25),
+                p50=float(p50),
+                p75=float(p75),
+                n=len(values),
+            )
+        )
+    return distributions
+
+
