@@ -206,3 +206,77 @@ def _get_nested(config: Dict[str, Any], path: Tuple[str, ...]) -> Any:
     return value
 
 
+def _set_nested(config: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
+    cursor = config
+    for key in path[:-1]:
+        next_value = cursor.get(key)
+        if not isinstance(next_value, dict):
+            next_value = {}
+            cursor[key] = next_value
+        cursor = next_value
+    cursor[path[-1]] = value
+
+
+def coordinate_search_scope_configuration(
+    *,
+    scope_key: str,
+    objective_config: Dict[str, Any],
+    evaluate_scope_config: Callable[[Dict[str, Any]], Dict[str, Any]],
+    max_rounds: int = 1,
+) -> Dict[str, Any]:
+    best_config = default_scope_configuration(scope_key)
+    best_report = evaluate_scope_config(best_config)
+    best_metrics = extract_report_aggregate(best_report)
+    history: List[Dict[str, Any]] = [
+        {
+            "stage": "seed",
+            "config": copy.deepcopy(best_config),
+            "aggregate": dict(best_metrics),
+        }
+    ]
+    parameter_grid = _parameter_grid(objective_config)
+
+    for round_index in range(max(1, int(max_rounds))):
+        improved = False
+        for path, grid_values in parameter_grid:
+            current_value = _get_nested(best_config, path)
+            path_best_config: Optional[Dict[str, Any]] = None
+            path_best_report: Optional[Dict[str, Any]] = None
+            path_best_metrics: Optional[Dict[str, Any]] = None
+            for grid_value in grid_values:
+                if current_value is not None and abs(float(current_value) - float(grid_value)) <= 1e-12:
+                    continue
+                candidate_config = copy.deepcopy(best_config)
+                _set_nested(candidate_config, path, float(grid_value))
+                candidate_report = evaluate_scope_config(candidate_config)
+                candidate_metrics = extract_report_aggregate(candidate_report)
+                history.append(
+                    {
+                        "stage": f"round_{round_index + 1}",
+                        "parameter_path": ".".join(path),
+                        "parameter_value": float(grid_value),
+                        "aggregate": dict(candidate_metrics),
+                    }
+                )
+                incumbent_metrics = path_best_metrics if path_best_metrics is not None else best_metrics
+                if is_better_report_aggregate(candidate_metrics, incumbent_metrics, objective_config):
+                    path_best_config = candidate_config
+                    path_best_report = candidate_report
+                    path_best_metrics = candidate_metrics
+            if path_best_metrics is not None and is_better_report_aggregate(path_best_metrics, best_metrics, objective_config):
+                best_config = path_best_config if path_best_config is not None else best_config
+                best_report = path_best_report if path_best_report is not None else best_report
+                best_metrics = path_best_metrics
+                improved = True
+        if not improved:
+            break
+
+    return {
+        "scope_key": str(scope_key or "").strip().lower(),
+        "best_config": best_config,
+        "best_report": best_report,
+        "best_aggregate": best_metrics,
+        "history": history,
+    }
+
+
