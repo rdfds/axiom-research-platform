@@ -293,3 +293,85 @@ def test_enrich_match_compact_backfills_missing_state_vector_fields_from_outcome
     assert enriched["subsector"] == "Health Care Equipment & Supplies"
 
 
+def test_target_context_from_anchor_outcome_uses_anchor_row_state_features():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "anchor_action_id": "capital_structure.new_debt_issuance",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    lookup = {
+        ("0000002488", "capital_structure.new_debt_issuance"): [
+            {
+                "company_id": "0000002488",
+                "normalized_action_id": "capital_structure.new_debt_issuance",
+                "action_date": "2024-09-02T00:00:00+00:00",
+                "state_vector_v1.valuation_multiple": 11.5,
+                "state_vector_v1.net_obligation_burden": 0.8,
+                "action_size": 250.0,
+                "base_market_cap": 1000.0,
+                "sector": "Information Technology",
+                "subsector": "Semiconductors",
+            }
+        ]
+    }
+
+    context = _target_context_from_anchor_outcome(case, anchor_outcomes_lookup=lookup)
+
+    assert context is not None
+    assert context["target_source"] == "anchor_outcome_fallback"
+    assert context["target_compact"]["state_vector_v1.valuation_multiple"] == 11.5
+    assert context["target_compact"]["state_vector_v1.net_obligation_burden"] == 0.8
+    assert context["target_taxonomy"] == {
+        "sector": "Information Technology",
+        "subsector": "Semiconductors",
+    }
+    assert context["target_action_params"] == {
+        "amount_usd": 250.0,
+        "action_size": 250.0,
+    }
+    assert context["target_market_cap"] == 1000.0
+
+
+def test_infer_target_taxonomy_from_same_action_universe_uses_company_history():
+    action_id = "capital_structure.equity_issuance"
+
+    taxonomy = _infer_target_taxonomy_from_same_action_universe(
+        {
+            "company_id": "025430",
+            "source_company_id": "025430",
+            "anchor_action_id": action_id,
+            "ticker": "FCEL",
+        },
+        same_action_universe_lookup={
+            action_id: {
+                "rows": [
+                    {
+                        "company_id": "025430",
+                        "ticker": "FCEL",
+                        "sector": "Industrials",
+                        "subsector": "Electrical Equipment",
+                    },
+                    {
+                        "company_id": "025430",
+                        "ticker": "FCEL",
+                        "taxonomy.sector": "Industrials",
+                        "taxonomy.subsector": "Electrical Equipment",
+                    },
+                    {
+                        "company_id": "999999",
+                        "ticker": "OTHER",
+                        "sector": "Health Care",
+                        "subsector": "Biotechnology",
+                    },
+                ]
+            }
+        },
+    )
+
+    assert taxonomy == {
+        "sector": "Industrials",
+        "subsector": "Electrical Equipment",
+    }
+
+

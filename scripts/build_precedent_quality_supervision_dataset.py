@@ -1302,3 +1302,68 @@ def _same_action_target_company_cap(action_id: str) -> int:
     return 1 if _is_revolver_draw_or_resize_action(action_id) else 0
 
 
+def _same_action_company_cap(action_id: str) :
+    return 2 if _is_revolver_draw_or_resize_action(action_id) else 0
+
+
+def _same_action_regime_requires_latent_model(action_id: str) -> bool:
+    action_text = str(action_id or "").strip().lower()
+    if action_text in {
+        "capital_structure.new_debt_issuance",
+        "capital_structure.revolver_draw_or_resize",
+    }:
+        # These actions have explicit regime heuristics, so the heavy latent
+        # clustering pass is unnecessary for regime-aware teacher mining.
+        return False
+    return True
+
+
+def _limit_same_action_company_repeats(
+    matches: Iterable[Dict[str, Any]],
+    *,
+    per_company_cap: int,
+    target_company_id: str = "",
+    target_company_cap: int = 0,
+) -> List[Dict[str, Any]]:
+    if per_company_cap <= 0 and target_company_cap <= 0:
+        return list(matches or [])
+    counts: Dict[str, int] = {}
+    limited: List[Dict[str, Any]] = []
+    for match in list(matches or []):
+        company_id = str((match or {}).get("company_id") or "").strip()
+        effective_cap = int(per_company_cap)
+        if target_company_id and company_id and company_id == str(target_company_id or "") and int(target_company_cap) > 0:
+            effective_cap = int(target_company_cap)
+        if effective_cap > 0 and company_id and counts.get(company_id, 0) >= effective_cap:
+            continue
+        limited.append(match)
+        if company_id:
+            counts[company_id] = counts.get(company_id, 0) + 1
+    return limited
+
+
+def _debt_issuance_market_regime_similarity(
+    *,
+    target_compact: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+) -> float:
+    similarities: List[float] = []
+    specs = (
+        ("state_vector_v1.rates_level", 0.25, 0.55),
+        ("state_vector_v1.credit_spread", 0.35, 0.60),
+        ("state_vector_v1.market_access", 0.00, 0.18),
+        ("state_vector_v1.market_stress", 0.00, 0.12),
+    )
+    for feature_name, threshold, scale in specs:
+        target_value = _numeric_feature_value(target_compact, feature_name)
+        candidate_value = _numeric_feature_value(candidate_features, feature_name)
+        if target_value is None or candidate_value is None:
+            continue
+        gap = abs(float(target_value) - float(candidate_value))
+        similarity = np.exp(-max(gap - float(threshold), 0.0) / max(float(scale), 1e-9))
+        similarities.append(float(similarity))
+    if not similarities:
+        return 1.0
+    return float(np.exp(np.mean(np.log(np.clip(np.asarray(similarities, dtype=float), 1e-9, 1.0)))))
+
+
