@@ -375,3 +375,53 @@ def test_infer_target_taxonomy_from_same_action_universe_uses_company_history():
     }
 
 
+def test_target_context_from_same_action_universe_uses_exact_company_history():
+    context = _target_context_from_same_action_universe(
+        {
+            "source_company_id": "162233",
+            "company_id": "162233",
+            "ticker": "DGLY",
+            "anchor_action_id": "capital_structure.equity_issuance",
+            "anchor_action_date": "2024-12-30",
+        },
+        same_action_universe_lookup={
+            "capital_structure.equity_issuance": {
+                "rows": [
+                    {
+                        "company_id": "162233",
+                        "ticker": "DGLY",
+                        "action_date": "2024-12-31T00:00:00Z",
+                        "taxonomy.sector": "Information Technology",
+                        "taxonomy.subsector": "Communications Equipment",
+                        "state_vector_v1.size_log_revenue": 1.25,
+                        "state_vector_v1.cash_generation": -0.5,
+                        "state_vector_v1.market_access": -1.2,
+                        "base_market_cap": 42.0,
+                        "action_size": 10.0,
+                    },
+                    {
+                        "company_id": "162233",
+                        "ticker": "DGLY",
+                        "action_date": "2023-12-31T00:00:00Z",
+                        "taxonomy.sector": "Health Care",
+                        "taxonomy.subsector": "Biotechnology",
+                        "state_vector_v1.size_log_revenue": 9.99,
+                        "base_market_cap": 99.0,
+                        "action_size": 5.0,
+                    },
+                ]
+            }
+        },
+    )
+
+    assert context is not None
+    assert context["target_source"] == "same_action_universe_fallback"
+    assert context["target_taxonomy"] == {
+        "sector": "Information Technology",
+        "subsector": "Communications Equipment",
+    }
+    assert context["target_compact"]["state_vector_v1.size_log_revenue"] == 1.25
+    assert context["target_market_cap"] == 42.0
+    assert context["target_action_params"]["action_size"] == 10.0
+
+

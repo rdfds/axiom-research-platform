@@ -2329,3 +2329,243 @@ def _same_action_model_confuser_match_payload(
     }
 
 
+def _build_same_action_model_confuser_matches(
+    *,
+    case: Dict[str, Any],
+    target_compact: Dict[str, Any],
+    target_taxonomy: Dict[str, str],
+    target_action_params: Optional[Dict[str, Any]],
+    target_market_cap: Optional[float],
+    top_k: int,
+    positive_limit_per_source: int,
+    negative_limit_per_competitor: int,
+    same_action_universe_lookup: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    if not action_id:
+        return []
+    payload = dict(same_action_universe_lookup.get(action_id) or {})
+    universe_rows = list(payload.get("rows") or [])
+    if not universe_rows:
+        return []
+
+    feature_matrix = (
+        np.asarray(payload.get("feature_matrix"), dtype=float)
+        if payload.get("feature_matrix") is not None
+        else np.column_stack(
+            [
+                np.asarray(
+                    [pd.to_numeric((row or {}).get(feature), errors="coerce") for row in universe_rows],
+                    dtype=float,
+                )
+                for feature in _STATE_VECTOR_V1_FEATURES
+            ]
+        )
+    )
+    n_rows = len(universe_rows)
+    if feature_matrix.size == 0 or feature_matrix.shape[0] != n_rows:
+        return []
+
+    target_action_scale = _estimate_action_scale(dict(target_action_params or {}), target_market_cap)
+
+    company_id_arr = (
+        np.asarray(payload.get("company_id_arr"), dtype=object)
+        if payload.get("company_id_arr") is not None
+        else np.asarray([str((row or {}).get("company_id") or "") for row in universe_rows], dtype=object)
+    )
+    action_time_arr = (
+        np.asarray(payload.get("action_time_arr"), dtype="datetime64[ns]")
+        if payload.get("action_time_arr") is not None
+        else pd.to_datetime(
+            [str((row or {}).get("action_date") or "") for row in universe_rows],
+            utc=True,
+            errors="coerce",
+        ).tz_convert(None).to_numpy(dtype="datetime64[ns]")
+    )
+    sector_arr = (
+        np.asarray(payload.get("sector_arr"), dtype=object)
+        if payload.get("sector_arr") is not None
+        else np.asarray([_outcome_row_taxonomy(row).get("sector") for row in universe_rows], dtype=object)
+    )
+    subsector_arr = (
+        np.asarray(payload.get("subsector_arr"), dtype=object)
+        if payload.get("subsector_arr") is not None
+        else np.asarray([_outcome_row_taxonomy(row).get("subsector") for row in universe_rows], dtype=object)
+    )
+
+    target_vector = np.asarray(
+        [
+            float(target_compact.get(feature)) if target_compact.get(feature) is not None else np.nan
+            for feature in _STATE_VECTOR_V1_FEATURES
+        ],
+        dtype=float,
+    )
+    target_action_subtype = _effective_action_subtype(
+        action_id,
+        dict(target_action_params or {}).get("source_action_subtype"),
+        dict(target_action_params or {}),
+    )
+    similarity = _weighted_state_similarity(
+        emb_raw=feature_matrix,
+        candidate_vec_raw=target_vector,
+        embedding_cols=_STATE_VECTOR_V1_FEATURES,
+        action_id=action_id,
+        action_subtype=target_action_subtype,
+    )
+    similarity_scores = np.asarray(similarity.get("state_similarity"), dtype=float)
+    weighted_coverage = np.asarray(similarity.get("weighted_coverage"), dtype=float)
+    critical_coverage = np.asarray(similarity.get("critical_coverage"), dtype=float)
+    coverage_gate_mask = np.asarray(similarity.get("coverage_gate_mask"), dtype=bool)
+    size_gate_mask = np.asarray(similarity.get("size_gate_mask"), dtype=bool)
+    if similarity_scores.shape[0] != n_rows:
+        return []
+
+    borrower_profile_distance = np.asarray(
+        [
+            _action_specific_same_action_distance(
+                action_id=action_id,
+                target_compact=target_compact,
+                candidate_features=dict(universe_rows[int(idx)] or {}),
+                feature_scales=dict(payload.get("feature_scales") or {}),
+                target_action_scale=target_action_scale,
+                candidate_action_scale=_estimate_action_scale(
+                    _outcome_row_action_params(universe_rows[int(idx)]),
+                    _outcome_row_market_cap(universe_rows[int(idx)]),
+                ),
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+    candidate_action_scales = np.asarray(
+        [
+            _estimate_action_scale(
+                _outcome_row_action_params(universe_rows[int(idx)]),
+                _outcome_row_market_cap(universe_rows[int(idx)]),
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+    candidate_archetype_labels = np.asarray(
+        [
+            _debt_issuance_archetype_profile(
+                compact_features=dict(universe_rows[int(idx)] or {}),
+                action_id=action_id,
+                action_scale=float(candidate_action_scales[int(idx)]) if np.isfinite(candidate_action_scales[int(idx)]) else None,
+            ).get("label")
+            for idx in range(n_rows)
+        ],
+        dtype=object,
+    )
+    candidate_market_regime_similarity = np.asarray(
+        [
+            _debt_issuance_market_regime_similarity(
+                target_compact=target_compact,
+                candidate_features=dict(universe_rows[int(idx)] or {}),
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+
+    target_company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    as_of_dt = pd.to_datetime(case.get("as_of_time"), utc=True, errors="coerce")
+    anchor_dt = pd.to_datetime(case.get("anchor_action_date") or case.get("as_of_time"), utc=True, errors="coerce")
+    normalized_anchor_dt = _normalize_as_of_time(str(anchor_dt)) if pd.notna(anchor_dt) else ""
+
+    positive_count = int(positive_limit_per_source) if int(positive_limit_per_source) > 0 else int(max(1, top_k))
+    tail_count = int(negative_limit_per_competitor) if int(negative_limit_per_competitor) > 0 else int(max(1, top_k))
+    candidate_limit = max(positive_count + tail_count, int(max(1, top_k)))
+
+    eligible_mask = np.isfinite(similarity_scores)
+    if pd.notna(as_of_dt):
+        eligible_mask &= np.isnat(action_time_arr) | (action_time_arr <= as_of_dt.to_datetime64())
+    if target_company_id and normalized_anchor_dt:
+        anchor_time64 = pd.to_datetime(normalized_anchor_dt, utc=True, errors="coerce")
+        if pd.notna(anchor_time64):
+            eligible_mask &= ~(
+                (company_id_arr.astype(str) == target_company_id)
+                & (action_time_arr == anchor_time64.to_datetime64())
+            )
+    if coverage_gate_mask.shape[0] == n_rows:
+        eligible_mask &= coverage_gate_mask
+    if size_gate_mask.shape[0] == n_rows:
+        eligible_mask &= size_gate_mask
+    if not bool(np.any(eligible_mask)):
+        return []
+
+    target_sector = str(target_taxonomy.get("sector") or "").strip()
+    target_subsector = str(target_taxonomy.get("subsector") or "").strip()
+    same_subsector_mask = eligible_mask & (subsector_arr.astype(str) == target_subsector) if target_subsector else np.zeros(n_rows, dtype=bool)
+    same_sector_mask = eligible_mask & (sector_arr.astype(str) == target_sector) if target_sector else np.zeros(n_rows, dtype=bool)
+    if int(np.count_nonzero(same_subsector_mask)) >= int(max(1, candidate_limit)):
+        neighborhood_mask = same_subsector_mask
+        taxonomy_mode = "same_subsector"
+    elif int(np.count_nonzero(same_sector_mask)) >= int(max(1, candidate_limit)):
+        neighborhood_mask = same_sector_mask
+        taxonomy_mode = "same_sector"
+    else:
+        neighborhood_mask = eligible_mask
+        taxonomy_mode = "same_action"
+
+    candidate_idx = np.flatnonzero(neighborhood_mask)
+    if candidate_idx.size == 0:
+        return []
+    prefer_cross_company = bool(_same_action_prefers_cross_company(action_id) and target_company_id)
+    per_company_cap = int(_same_action_company_cap(action_id))
+    target_company_cap = int(_same_action_target_company_cap(action_id))
+    ranked_pool_limit = int(candidate_limit)
+    if prefer_cross_company or per_company_cap > 0 or target_company_cap > 0:
+        ranked_pool_limit = max(int(candidate_limit), int(candidate_limit) * 4)
+    ranked_idx = np.asarray(
+        sorted(
+            candidate_idx.tolist(),
+            key=lambda idx: (
+                1 if (prefer_cross_company and str(company_id_arr[int(idx)] or "") == target_company_id) else 0,
+                _action_specific_same_action_distance(
+                    action_id=action_id,
+                    target_compact=target_compact,
+                    candidate_features=dict(universe_rows[int(idx)] or {}),
+                    feature_scales=dict(payload.get("feature_scales") or {}),
+                ),
+                -float(similarity_scores[int(idx)] if np.isfinite(similarity_scores[int(idx)]) else -1.0),
+                -float(weighted_coverage[int(idx)] if np.isfinite(weighted_coverage[int(idx)]) else 0.0),
+                -float(critical_coverage[int(idx)] if np.isfinite(critical_coverage[int(idx)]) else 0.0),
+                int(idx),
+            ),
+        )[:ranked_pool_limit],
+        dtype=int,
+    )
+    matches = [
+        _same_action_model_confuser_match_payload(
+            universe_rows[int(idx)],
+            similarity_score=float(similarity_scores[int(idx)]),
+            taxonomy_mode=taxonomy_mode,
+            weighted_coverage=(
+                float(weighted_coverage[int(idx)]) if np.isfinite(weighted_coverage[int(idx)]) else None
+            ),
+            critical_coverage=(
+                float(critical_coverage[int(idx)]) if np.isfinite(critical_coverage[int(idx)]) else None
+            ),
+            analog_distance=(
+                float(borrower_profile_distance[int(idx)]) if np.isfinite(borrower_profile_distance[int(idx)]) else None
+            ),
+            debt_archetype_label=str(candidate_archetype_labels[int(idx)] or "") if candidate_archetype_labels.size else None,
+            debt_market_regime_similarity=(
+                float(candidate_market_regime_similarity[int(idx)])
+                if np.isfinite(candidate_market_regime_similarity[int(idx)])
+                else None
+            ),
+        )
+        for idx in ranked_idx.tolist()
+    ]
+    matches = _limit_same_action_company_repeats(
+        matches,
+        per_company_cap=per_company_cap,
+        target_company_id=target_company_id,
+        target_company_cap=target_company_cap,
+    )
+    return matches[:candidate_limit]
+
+
