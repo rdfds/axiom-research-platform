@@ -101,3 +101,93 @@ def _load_candidates_from_candidate_set(path: Path) -> List[Dict[str, Any]]:
     return [dict(row or {}) for row in payload.get("candidates", []) if isinstance(row, dict)]
 
 
+def _parse_slices(values: Sequence[str]) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+    if not values:
+        return DEFAULT_PRESET
+    out: List[Tuple[str, Tuple[str, ...]]] = []
+    for raw in values:
+        label, sep, actions = str(raw).partition("=")
+        if not sep or not label.strip() or not actions.strip():
+            raise SystemExit(f"Invalid --slice value: {raw!r}")
+        action_ids = tuple(a.strip() for a in actions.split(",") if a.strip())
+        if not action_ids:
+            raise SystemExit(f"Invalid --slice value: {raw!r}")
+        out.append((label.strip(), action_ids))
+    return tuple(out)
+
+
+def _mean(values: Iterable[float]) -> float:
+    vals = [float(v) for v in values]
+    if not vals:
+        return 0.0
+    return float(sum(vals) / len(vals))
+
+
+def _slice_summary(label: str, action_ids: Sequence[str], matches: Sequence[Dict[str, Any]], elapsed_seconds: float) -> Dict[str, Any]:
+    confs: List[float] = []
+    oos_flags: List[float] = []
+    action_scores: List[float] = []
+    sims: List[float] = []
+    tiers: Dict[str, int] = {}
+    family_scale_keys: Dict[str, int] = {}
+    family_keys: Dict[str, int] = {}
+    pool_sizes: List[float] = []
+
+    for row in matches:
+        pack = dict(row.get("precedent_pack", {}) or {})
+        md = dict(pack.get("mismatch_diagnostics", {}) or {})
+        prof = dict(pack.get("profiling", {}) or {})
+        confs.append(float(pack.get("precedent_confidence", pack.get("calibration_confidence", 0.0)) or 0.0))
+        oos_flags.append(1.0 if bool(md.get("out_of_sample_flag")) else 0.0)
+        action_scores.append(float(md.get("top_action_match_score") or 0.0))
+        sims.append(float(md.get("top_similarity_mean") or 0.0))
+        tier = str(md.get("retrieval_tier", "") or "")
+        tiers[tier] = tiers.get(tier, 0) + 1
+        for key in prof.get("selected_family_scale_keys") or []:
+            s = str(key)
+            family_scale_keys[s] = family_scale_keys.get(s, 0) + 1
+        for key in prof.get("selected_family_keys") or []:
+            s = str(key)
+            family_keys[s] = family_keys.get(s, 0) + 1
+        if prof.get("candidate_pool_size_after_prefilter") is not None:
+            pool_sizes.append(float(prof.get("candidate_pool_size_after_prefilter") or 0.0))
+
+    return {
+        "label": label,
+        "action_ids": list(action_ids),
+        "selected_precedent_candidates": int(len(matches)),
+        "precedent_conf_mean": round(_mean(confs), 6),
+        "oos_rate": round(_mean(oos_flags), 6),
+        "top_action_match_mean": round(_mean(action_scores), 6),
+        "top_similarity_mean": round(_mean(sims), 6),
+        "candidate_pool_size_after_prefilter_mean": round(_mean(pool_sizes), 3) if pool_sizes else 0.0,
+        "tiers": dict(sorted(tiers.items())),
+        "selected_family_scale_keys": dict(sorted(family_scale_keys.items())),
+        "selected_family_keys": dict(sorted(family_keys.items())),
+        "elapsed_seconds": round(float(elapsed_seconds), 6),
+    }
+
+
+def _print_table(rows: Sequence[Dict[str, Any]]) :
+    headers = (
+        ("label", 22),
+        ("selected_precedent_candidates", 6),
+        ("precedent_conf_mean", 8),
+        ("oos_rate", 8),
+        ("top_action_match_mean", 8),
+        ("top_similarity_mean", 8),
+        ("candidate_pool_size_after_prefilter_mean", 8),
+        ("elapsed_seconds", 8),
+    )
+    header_line = " ".join(f"{name[:width]:<{width}}" for name, width in headers)
+    print(header_line)
+    print("-" * len(header_line))
+    for row in rows:
+        print(
+            " ".join(
+                f"{str(row.get(name, ''))[:width]:<{width}}"
+                for name, width in headers
+            )
+        )
+
+
