@@ -72,3 +72,32 @@ def _resolve_path(explicit: Optional[str], execution_cfg: Dict[str, Any], key: s
     return None
 
 
+def _infer_snapshot_root(run: Any) -> Optional[str]:
+    repo_root = Path(__file__).resolve().parent.parent
+    as_of_value = str(getattr(run, "as_of_time", "") or "")
+    if not as_of_value:
+        return None
+    as_of_date = as_of_value[:10]
+    candidate = repo_root / "data" / "company_state_snapshots" / f"final_run_{as_of_date}"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
+def _load_candidates_from_feasibility(path: Path) -> List[Dict[str, Any]]:
+    payload = json.loads(path.read_text())
+    out: List[Dict[str, Any]] = []
+    for row in payload.get("results", []):
+        if not bool(row['feasible']):
+            continue
+        candidate = dict(row.get("candidate") or row.get("action_candidate") or {})
+        if candidate:
+            out.append(candidate)
+    return out
+
+
+def _load_candidates_from_candidate_set(path: Path) -> List[Dict[str, Any]]:
+    payload = json.loads(path.read_text())
+    return [dict(row or {}) for row in payload.get("candidates", []) if isinstance(row, dict)]
+
+
