@@ -191,3 +191,148 @@ def _print_table(rows: Sequence[Dict[str, Any]]) :
         )
 
 
+def main() -> None:
+    t0 = time.time()
+    args = parse_args()
+    slices = _parse_slices(args.slice)
+
+    print(json.dumps({"ok": True, "event": "startup", "stage": "import_precedent_benchmark"}), flush=True)
+    from src.recommendation_run import RecommendationRunStore
+    from src.recommendation_run_orchestrator import _precedent_bindings, _precedent_profile, _retrieve_precedents
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_done",
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+        ),
+        flush=True,
+    )
+
+    runs_root = Path(args.runs_root)
+    store = RecommendationRunStore(runs_root)
+    run = store.get_run(args.run_id)
+    if run is None:
+        raise SystemExit(f"Run not found: {args.run_id}")
+
+    execution_cfg = _metadata_execution_config(run)
+    snapshot_root = _resolve_path(args.snapshot_root, execution_cfg, "snapshot_root")
+    snapshot_path = _resolve_path(args.snapshot_path, execution_cfg, "snapshot_path")
+    outcomes_path = _resolve_path(args.outcomes_path, execution_cfg, "outcomes_path")
+    config_path = _resolve_path(args.config_path, execution_cfg, "config_path")
+    if not snapshot_root and not snapshot_path:
+        snapshot_root = _infer_snapshot_root(run)
+
+    feasibility_path = Path(args.feasibility_path) if args.feasibility_path else _artifact_path(
+        runs_root,
+        args.run_id,
+        "FeasibilityResults.json",
+    )
+    candidate_set_path = Path(args.candidate_set_path) if args.candidate_set_path else _artifact_path(
+        runs_root,
+        args.run_id,
+        "CandidateSet.json",
+    )
+
+    feasible_candidates = _load_candidates_from_feasibility(feasibility_path)
+    all_candidates = _load_candidates_from_candidate_set(candidate_set_path)
+    build_precedent_index, run_precedent, _ = _precedent_bindings()
+
+    summaries: List[Dict[str, Any]] = []
+    artifacts: Dict[str, Dict[str, str]] = {}
+    for label, action_ids in slices:
+        candidate_source = "feasibility_results"
+        selected = [row for row in feasible_candidates if str(row.get("action_id", "")) in set(action_ids)]
+        if not selected:
+            candidate_source = "candidate_set"
+            selected = [row for row in all_candidates if str(row.get("action_id", "")) in set(action_ids)]
+
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "benchmark_slice_started",
+                    "label": label,
+                    "action_ids": list(action_ids),
+                    "candidate_source": candidate_source,
+                    "candidate_count": len(selected),
+                }
+            ),
+            flush=True,
+        )
+        started = time.time()
+        matches = _retrieve_precedents(
+            run=run,
+            feasible_candidates=selected,
+            precedent_runner=run_precedent,
+            precedent_top_k=int(args.precedent_top_k),
+            snapshot_root=snapshot_root,
+            snapshot_path=snapshot_path,
+            outcomes_path=outcomes_path,
+            config_path=config_path,
+            progress_callback=None,
+        )
+        elapsed = time.time() - started
+        profile = _precedent_profile(matches)
+        index = build_precedent_index(run_id=args.run_id, precedent_matches=matches)
+        tag = f"{args.artifact_prefix}_{label}".strip().replace(" ", "_")
+        matches_key = f"PrecedentMatches_{tag}"
+        index_key = f"PrecedentIndex_{tag}"
+        matches_path = store.attach_artifact(
+            args.run_id,
+            matches_key,
+            {
+                "run_id": args.run_id,
+                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "label": label,
+                "action_ids": list(action_ids),
+                "candidate_source": candidate_source,
+                "candidate_count": len(selected),
+                "profile": profile,
+                "results": matches,
+            },
+        )
+        index_path = store.attach_artifact(args.run_id, index_key, index)
+        artifacts[label] = {
+            "matches_artifact": str(matches_path),
+            "index_artifact": str(index_path),
+        }
+        summary = _slice_summary(label, action_ids, matches, elapsed)
+        summary["candidate_count"] = len(selected)
+        summary["candidate_source"] = candidate_source
+        summaries.append(summary)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "benchmark_slice_completed",
+                    "label": label,
+                    "summary": summary,
+                    "artifacts": artifacts[label],
+                }
+            ),
+            flush=True,
+        )
+
+    payload = {
+        "ok": True,
+        "run_id": args.run_id,
+        "runs_root": str(runs_root),
+        "precedent_top_k": int(args.precedent_top_k),
+        "summaries": summaries,
+        "artifacts": artifacts,
+        "elapsed_seconds": round(time.time() - t0, 3),
+    }
+    if args.out:
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(payload, indent=2))
+        payload["out"] = str(out_path)
+
+    print()
+    _print_table(summaries)
+    print()
+    print(json.dumps(payload, indent=2))
+
+
