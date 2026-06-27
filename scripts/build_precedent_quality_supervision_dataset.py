@@ -2569,3 +2569,1120 @@ def _build_same_action_model_confuser_matches(
     return matches[:candidate_limit]
 
 
+def _build_same_action_analog_positive_source(
+    *,
+    case: Dict[str, Any],
+    target_compact: Dict[str, Any],
+    target_taxonomy: Dict[str, str],
+    target_action_params: Optional[Dict[str, Any]],
+    target_market_cap: Optional[float],
+    top_k: int,
+    positive_limit_per_source: int,
+    negative_limit_per_competitor: int,
+    same_action_universe_lookup: Dict[str, Dict[str, Any]],
+    regime_aware: bool = False,
+) -> Optional[Dict[str, Any]]:
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    if not action_id:
+        return None
+    payload = dict(same_action_universe_lookup.get(action_id) or {})
+    universe_rows = list(payload.get("rows") or [])
+    if not universe_rows:
+        return None
+    feature_scales = dict(payload.get("feature_scales") or {})
+    if payload.get("feature_matrix") is not None:
+        feature_matrix = np.asarray(payload.get("feature_matrix"), dtype=float)
+    else:
+        feature_matrix = np.column_stack(
+            [
+                np.asarray(
+                    [pd.to_numeric((row or {}).get(feature), errors="coerce") for row in universe_rows],
+                    dtype=float,
+                )
+                for feature in _STATE_VECTOR_V1_FEATURES
+            ]
+        )
+    company_id_arr = (
+        np.asarray(payload.get("company_id_arr"), dtype=object)
+        if payload.get("company_id_arr") is not None
+        else np.asarray([str((row or {}).get("company_id") or "") for row in universe_rows], dtype=object)
+    )
+    action_time_arr = (
+        np.asarray(payload.get("action_time_arr"), dtype="datetime64[ns]")
+        if payload.get("action_time_arr") is not None
+        else pd.to_datetime(
+            [str((row or {}).get("action_date") or "") for row in universe_rows],
+            utc=True,
+            errors="coerce",
+        ).tz_convert(None).to_numpy(dtype="datetime64[ns]")
+    )
+    sector_arr = (
+        np.asarray(payload.get("sector_arr"), dtype=object)
+        if payload.get("sector_arr") is not None
+        else np.asarray([_outcome_row_taxonomy(row).get("sector") for row in universe_rows], dtype=object)
+    )
+    subsector_arr = (
+        np.asarray(payload.get("subsector_arr"), dtype=object)
+        if payload.get("subsector_arr") is not None
+        else np.asarray([_outcome_row_taxonomy(row).get("subsector") for row in universe_rows], dtype=object)
+    )
+    target_company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    as_of_dt = pd.to_datetime(case.get("as_of_time"), utc=True, errors="coerce")
+    anchor_dt = pd.to_datetime(case.get("anchor_action_date") or case.get("as_of_time"), utc=True, errors="coerce")
+    normalized_anchor_dt = _normalize_as_of_time(str(anchor_dt)) if pd.notna(anchor_dt) else ""
+
+    positive_count = int(positive_limit_per_source) if int(positive_limit_per_source) > 0 else int(max(1, top_k))
+    tail_count = int(negative_limit_per_competitor) if int(negative_limit_per_competitor) > 0 else int(max(1, top_k))
+    candidate_limit = max(positive_count + tail_count, int(max(1, top_k)))
+
+    n_rows = len(universe_rows)
+    if feature_matrix.size == 0 or feature_matrix.shape[0] != n_rows:
+        return None
+    eligible_mask = np.ones(n_rows, dtype=bool)
+    if pd.notna(as_of_dt):
+        eligible_mask &= np.isnat(action_time_arr) | (action_time_arr <= as_of_dt.to_datetime64())
+    if target_company_id and normalized_anchor_dt:
+        anchor_time64 = pd.to_datetime(normalized_anchor_dt, utc=True, errors="coerce")
+        if pd.notna(anchor_time64):
+            eligible_mask &= ~(
+                (company_id_arr.astype(str) == target_company_id)
+                & (action_time_arr == anchor_time64.to_datetime64())
+            )
+    if not bool(np.any(eligible_mask)):
+        return None
+
+    target_vector = np.asarray(
+        [
+            float(target_compact.get(feature)) if target_compact.get(feature) is not None else np.nan
+            for feature in _STATE_VECTOR_V1_FEATURES
+        ],
+        dtype=float,
+    )
+    scale_vector = np.asarray(
+        [float(feature_scales.get(feature) or 1.0) for feature in _STATE_VECTOR_V1_FEATURES],
+        dtype=float,
+    )
+    scale_vector = np.where(np.isfinite(scale_vector) & (scale_vector > 1e-9), scale_vector, 1.0)
+    valid_matrix = np.isfinite(feature_matrix) & np.isfinite(target_vector[None, :])
+    diff_matrix = np.where(
+        valid_matrix,
+        np.abs(feature_matrix - target_vector[None, :]) / scale_vector[None, :],
+        np.nan,
+    )
+    feature_counts = np.sum(valid_matrix, axis=1)
+    with np.errstate(invalid="ignore"):
+        analog_distances = np.nanmean(diff_matrix, axis=1)
+    eligible_mask &= feature_counts > 0
+    if not bool(np.any(eligible_mask)):
+        return None
+
+    target_action_scale = _estimate_action_scale(dict(target_action_params or {}), target_market_cap)
+    candidate_action_scales = np.asarray(
+        [
+            _estimate_action_scale(
+                _outcome_row_action_params(universe_rows[int(idx)]),
+                _outcome_row_market_cap(universe_rows[int(idx)]),
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+    if np.isfinite(target_action_scale):
+        candidate_log_scales = np.where(
+            np.isfinite(candidate_action_scales) & (candidate_action_scales >= 0.0),
+            np.log1p(candidate_action_scales),
+            np.nan,
+        )
+        target_log_scale = np.log1p(max(float(target_action_scale), 0.0))
+        scale_valid = np.isfinite(candidate_log_scales)
+        if bool(np.any(scale_valid)):
+            scale_center = float(np.nanmedian(candidate_log_scales[scale_valid]))
+            scale_dispersion = float(np.nanmedian(np.abs(candidate_log_scales[scale_valid] - scale_center)))
+            if not np.isfinite(scale_dispersion) or scale_dispersion <= 1e-6:
+                scale_dispersion = float(np.nanstd(candidate_log_scales[scale_valid]))
+            if not np.isfinite(scale_dispersion) or scale_dispersion <= 1e-6:
+                scale_dispersion = 0.05
+            scale_distances = np.abs(candidate_log_scales - target_log_scale) / max(scale_dispersion, 0.05)
+            analog_distances = np.where(
+                scale_valid,
+                np.where(
+                    np.isfinite(analog_distances),
+                    (analog_distances * feature_counts + scale_distances) / np.maximum(feature_counts + 1, 1),
+                    scale_distances,
+                ),
+                analog_distances,
+            )
+            feature_counts = feature_counts + scale_valid.astype(int)
+
+    borrower_profile_distance = np.asarray(
+        [
+            _action_specific_same_action_distance(
+                action_id=action_id,
+                target_compact=target_compact,
+                candidate_features=dict(universe_rows[int(idx)] or {}),
+                feature_scales=feature_scales,
+                target_action_scale=target_action_scale,
+                candidate_action_scale=float(candidate_action_scales[int(idx)]) if np.isfinite(candidate_action_scales[int(idx)]) else None,
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+    target_archetype_profile = _debt_issuance_archetype_profile(
+        compact_features=target_compact,
+        action_id=action_id,
+        action_scale=target_action_scale if np.isfinite(target_action_scale) else None,
+    )
+    target_archetype_label = str(target_archetype_profile.get("label") or "")
+    candidate_archetype_labels = np.asarray(
+        [
+            _debt_issuance_archetype_profile(
+                compact_features=dict(universe_rows[int(idx)] or {}),
+                action_id=action_id,
+                action_scale=float(candidate_action_scales[int(idx)]) if np.isfinite(candidate_action_scales[int(idx)]) else None,
+            ).get("label")
+            for idx in range(n_rows)
+        ],
+        dtype=object,
+    )
+    candidate_market_regime_similarity = np.asarray(
+        [
+            _debt_issuance_market_regime_similarity(
+                target_compact=target_compact,
+                candidate_features=dict(universe_rows[int(idx)] or {}),
+            )
+            for idx in range(n_rows)
+        ],
+        dtype=float,
+    )
+
+    latent_regime_similarity = np.full(n_rows, np.nan, dtype=float)
+    latent_regime_assignments = np.full(n_rows, -1, dtype=int)
+    if bool(regime_aware):
+        latent_model = payload.get("latent_regime_model")
+        latent_memberships = payload.get("latent_regime_memberships")
+        if isinstance(latent_model, dict):
+            try:
+                if latent_memberships is None:
+                    latent_memberships = latent_regime_memberships(feature_matrix, latent_model)
+                latent_memberships_arr = np.asarray(latent_memberships, dtype=float)
+                target_membership = latent_regime_memberships(target_vector.reshape(1, -1), latent_model)
+                if latent_memberships_arr.ndim == 2 and latent_memberships_arr.shape[0] == n_rows and target_membership.ndim == 2:
+                    latent_regime_similarity = np.sum(
+                        latent_memberships_arr * target_membership.reshape(1, -1),
+                        axis=1,
+                    )
+                    latent_regime_assignments = np.argmax(latent_memberships_arr, axis=1).astype(int)
+            except Exception:
+                latent_regime_similarity = np.full(n_rows, np.nan, dtype=float)
+                latent_regime_assignments = np.full(n_rows, -1, dtype=int)
+
+    target_sector = str(target_taxonomy.get("sector") or "").strip()
+    target_subsector = str(target_taxonomy.get("subsector") or "").strip()
+    same_subsector_mask = eligible_mask & (subsector_arr.astype(str) == target_subsector) if target_subsector else np.zeros(n_rows, dtype=bool)
+    same_sector_mask = eligible_mask & (sector_arr.astype(str) == target_sector) if target_sector else np.zeros(n_rows, dtype=bool)
+    if int(np.count_nonzero(same_subsector_mask)) >= int(max(1, candidate_limit)):
+        neighborhood_mask = same_subsector_mask
+        taxonomy_mode = "same_subsector"
+    elif int(np.count_nonzero(same_sector_mask)) >= int(max(1, candidate_limit)):
+        neighborhood_mask = same_sector_mask
+        taxonomy_mode = "same_sector"
+    else:
+        neighborhood_mask = eligible_mask
+        taxonomy_mode = "same_action"
+
+    candidate_idx = np.flatnonzero(neighborhood_mask)
+    if candidate_idx.size == 0:
+        return None
+    same_archetype_mask = (
+        neighborhood_mask & (candidate_archetype_labels.astype(str) == target_archetype_label)
+        if target_archetype_label
+        else np.zeros(n_rows, dtype=bool)
+    )
+    same_archetype_count = int(np.count_nonzero(same_archetype_mask))
+    if same_archetype_count >= int(max(positive_count, min(candidate_limit, 4))):
+        candidate_idx = np.flatnonzero(same_archetype_mask)
+        taxonomy_mode = f"{taxonomy_mode}_same_archetype"
+    prefer_cross_company = bool(_same_action_prefers_cross_company(action_id) and target_company_id)
+    per_company_cap = int(_same_action_company_cap(action_id))
+    target_company_cap = int(_same_action_target_company_cap(action_id))
+    ranked_pool_limit = int(candidate_limit)
+    if prefer_cross_company or per_company_cap > 0 or target_company_cap > 0:
+        ranked_pool_limit = max(int(candidate_limit), int(candidate_limit) * 4)
+    ranked_idx = np.asarray(
+        sorted(
+            candidate_idx.tolist(),
+            key=lambda idx: (
+                1 if (prefer_cross_company and str(company_id_arr[int(idx)] or "") == target_company_id) else 0,
+                0 if str(candidate_archetype_labels[int(idx)] or "") == target_archetype_label else 1,
+                0 if float(candidate_market_regime_similarity[int(idx)]) >= (0.72 if regime_aware else 0.60) else 1,
+                _action_specific_same_action_distance(
+                    action_id=action_id,
+                    target_compact=target_compact,
+                    candidate_features=dict(universe_rows[int(idx)] or {}),
+                    feature_scales=feature_scales,
+                    target_action_scale=target_action_scale,
+                    candidate_action_scale=(
+                        float(candidate_action_scales[int(idx)]) if np.isfinite(candidate_action_scales[int(idx)]) else None
+                    ),
+                ),
+                float(analog_distances[int(idx)]) if np.isfinite(analog_distances[int(idx)]) else float("inf"),
+                -float(candidate_market_regime_similarity[int(idx)] if np.isfinite(candidate_market_regime_similarity[int(idx)]) else 0.0),
+                -float(latent_regime_similarity[int(idx)] if np.isfinite(latent_regime_similarity[int(idx)]) else -1.0),
+                -int(feature_counts[int(idx)] if np.isfinite(feature_counts[int(idx)]) else 0),
+                int(idx),
+            ),
+        )[:ranked_pool_limit],
+        dtype=int,
+    )
+    if ranked_idx.size == 0:
+        return None
+    full_matches = [
+        _same_action_analog_match_payload(
+            universe_rows[int(idx)],
+            distance=float(analog_distances[int(idx)]),
+            feature_count=int(feature_counts[int(idx)]),
+            taxonomy_mode=taxonomy_mode,
+            latent_regime_similarity=(
+                float(latent_regime_similarity[int(idx)]) if np.isfinite(latent_regime_similarity[int(idx)]) else None
+            ),
+            latent_regime_cluster=(
+                int(latent_regime_assignments[int(idx)]) if int(latent_regime_assignments[int(idx)]) >= 0 else None
+            ),
+            debt_archetype_label=str(candidate_archetype_labels[int(idx)] or "") if candidate_archetype_labels.size else None,
+            debt_market_regime_similarity=(
+                float(candidate_market_regime_similarity[int(idx)])
+                if np.isfinite(candidate_market_regime_similarity[int(idx)])
+                else None
+            ),
+        )
+        for idx in ranked_idx.tolist()
+    ]
+    full_matches = _limit_same_action_company_repeats(
+        full_matches,
+        per_company_cap=per_company_cap,
+        target_company_id=target_company_id,
+        target_company_cap=target_company_cap,
+    )[:candidate_limit]
+    if not full_matches:
+        return None
+    matches = full_matches[:positive_count]
+    if not matches:
+        return None
+    source_type = "analog_regime_consensus_same_action_universe" if regime_aware else "analog_consensus_same_action_universe"
+    confuser_matches = _build_same_action_model_confuser_matches(
+        case=case,
+        target_compact=target_compact,
+        target_taxonomy=target_taxonomy,
+        target_action_params=target_action_params,
+        target_market_cap=target_market_cap,
+        top_k=top_k,
+        positive_limit_per_source=positive_limit_per_source,
+        negative_limit_per_competitor=negative_limit_per_competitor,
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+    confuser_matches = _limit_same_action_company_repeats(
+        confuser_matches,
+        per_company_cap=per_company_cap,
+        target_company_id=target_company_id,
+        target_company_cap=target_company_cap,
+    )
+    return {
+        "source_type": source_type,
+        "anchor_candidate_id": source_type,
+        "anchor_candidate_precedent_confidence": float(matches[0].get("similarity_score") or 0.0),
+        "anchor_candidate_rank": 0,
+        "matches": matches,
+        "full_matches": full_matches,
+        "confuser_matches": confuser_matches,
+        "taxonomy_mode": taxonomy_mode,
+        "regime_aware": bool(regime_aware),
+    }
+
+
+def _pair_rows_for_case(
+    *,
+    case: Dict[str, Any],
+    precedent_index: Dict[str, Any],
+    precedent_matches: Dict[str, Any],
+    target_compact: Dict[str, Any],
+    target_taxonomy: Dict[str, str],
+    target_action_params: Optional[Dict[str, Any]] = None,
+    target_market_cap: Optional[float] = None,
+    target_source: str = "snapshot",
+    top_k: int,
+    anchor_outcomes_lookup: Optional[Dict[tuple[str, str], List[Dict[str, Any]]]] = None,
+    precedent_outcomes_lookup: Optional[Dict[tuple[str, str, str], Dict[str, Any]]] = None,
+    positive_limit_per_source: int = 0,
+    negative_limit_per_competitor: int = 0,
+    same_family_negatives_only_if_available: bool = False,
+    always_include_actual_anchor_positive: bool = False,
+    include_within_action_hard_negatives: bool = False,
+    include_same_action_positive_ordering: bool = False,
+    actual_anchor_within_action_negative_source: str = "retrieved_pool",
+    positive_source_mode: str = "include_retrieved",
+    hard_negative_taxonomy_mode: str = "none",
+    same_action_universe_lookup: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    candidate_rows = _candidate_rankings(precedent_index)
+    result_lookup = _result_by_candidate_id(precedent_matches)
+    anchor_action_id = str(case.get("anchor_action_id") or "")
+    anchor_action_family = str(case.get("anchor_action_family") or "")
+
+    anchor_candidates = [row for row in candidate_rows if str(row.get("action_id") or "") == anchor_action_id]
+    competitor_candidates = _top_candidate_per_action(
+        [row for row in candidate_rows if str(row.get("action_id") or "") != anchor_action_id]
+    )
+    if same_family_negatives_only_if_available and anchor_action_family:
+        same_family_competitors = [
+            row
+            for row in competitor_candidates
+            if str(row['action_id'] or "").split(".", 1)[0] == anchor_action_family
+        ]
+        if same_family_competitors:
+            competitor_candidates = same_family_competitors
+    if not competitor_candidates and not include_within_action_hard_negatives and not include_same_action_positive_ordering:
+        return []
+
+    positive_sources: List[Dict[str, Any]] = []
+    retrieved_anchor_matches_all: List[Dict[str, Any]] = []
+    for anchor_candidate in anchor_candidates:
+        anchor_result = result_lookup.get(str(anchor_candidate.get("candidate_id") or ""))
+        if not anchor_result:
+            continue
+        anchor_matches = list((anchor_result.get("precedent_pack") or {}).get("matches", []) or [])[:top_k]
+        retrieved_anchor_matches_all.extend(anchor_matches)
+        if positive_limit_per_source > 0:
+            anchor_matches = anchor_matches[: int(positive_limit_per_source)]
+        if not anchor_matches:
+            continue
+        positive_sources.append(
+            {
+                "source_type": "retrieved_anchor_action",
+                "anchor_candidate_id": str(anchor_candidate.get("candidate_id") or ""),
+                "anchor_candidate_precedent_confidence": float(anchor_candidate.get("precedent_confidence") or 0.0),
+                "anchor_candidate_rank": int(_first((i + 1 for i, row in enumerate(candidate_rows) if row == anchor_candidate), 1)),
+                "matches": anchor_matches,
+                "full_matches": list((anchor_result.get("precedent_pack") or {}).get("matches", []) or [])[:top_k],
+            }
+        )
+
+    retrieved_anchor_matches_all = _dedupe_matches(retrieved_anchor_matches_all)
+    actual_row = (
+        _select_actual_anchor_outcome(case, anchor_outcomes_lookup=anchor_outcomes_lookup)
+        if anchor_outcomes_lookup
+        else None
+    )
+    if actual_row and (always_include_actual_anchor_positive or not positive_sources):
+        positive_sources.append(
+            {
+                "source_type": "actual_anchor_outcome",
+                "anchor_candidate_id": "actual_anchor_outcome",
+                "anchor_candidate_precedent_confidence": 1.0,
+                "anchor_candidate_rank": 0,
+                "matches": [_actual_anchor_match_payload(case, actual_row)],
+                "full_matches": list(retrieved_anchor_matches_all),
+            }
+        )
+
+    positive_source_mode_text = str(positive_source_mode or "include_retrieved").strip().lower()
+    if actual_row and positive_source_mode_text == "actual_anchor_preferred":
+        positive_sources = [
+            source
+            for source in positive_sources
+            if str(source.get("source_type") or "") == "actual_anchor_outcome"
+        ]
+    elif positive_source_mode_text == "analog_consensus_same_action_universe":
+        analog_source = _build_same_action_analog_positive_source(
+            case=case,
+            target_compact=target_compact,
+            target_taxonomy=target_taxonomy,
+            target_action_params=target_action_params,
+            target_market_cap=target_market_cap,
+            top_k=int(top_k),
+            positive_limit_per_source=int(positive_limit_per_source),
+            negative_limit_per_competitor=int(negative_limit_per_competitor),
+            same_action_universe_lookup=same_action_universe_lookup or {},
+            regime_aware=False,
+        )
+        if analog_source is not None:
+            positive_sources = [analog_source]
+    elif positive_source_mode_text == "analog_regime_consensus_same_action_universe":
+        analog_source = _build_same_action_analog_positive_source(
+            case=case,
+            target_compact=target_compact,
+            target_taxonomy=target_taxonomy,
+            target_action_params=target_action_params,
+            target_market_cap=target_market_cap,
+            top_k=int(top_k),
+            positive_limit_per_source=int(positive_limit_per_source),
+            negative_limit_per_competitor=int(negative_limit_per_competitor),
+            same_action_universe_lookup=same_action_universe_lookup or {},
+            regime_aware=True,
+        )
+        if analog_source is not None:
+            positive_sources = [analog_source]
+
+    if not positive_sources:
+        return []
+
+    def _append_pair_row(
+        *,
+        positive_source: Dict[str, Any],
+        pos_rank: int,
+        pos: Dict[str, Any],
+        pos_features: Dict[str, Any],
+        competitor_action_id: str,
+        competitor_candidate_id: str,
+        competitor_candidate_precedent_confidence: float,
+        competitor_candidate_rank: int,
+        neg_rank: int,
+        neg: Dict[str, Any],
+        neg_features: Dict[str, Any],
+        pair_source: str,
+        negative_source: str,
+    ) -> None:
+        positive_precedent_id = str(pos.get("precedent_id") or "")
+        negative_precedent_id = str(neg.get("precedent_id") or "")
+        target_action_scale = _estimate_action_scale(dict(target_action_params or {}), target_market_cap)
+        if positive_precedent_id and negative_precedent_id and positive_precedent_id == negative_precedent_id:
+            return
+        dedupe_key = (
+            str(case.get("company_id") or ""),
+            anchor_action_id,
+            competitor_action_id,
+            positive_precedent_id,
+            negative_precedent_id,
+        )
+        if dedupe_key in seen_pairs:
+            return
+        seen_pairs.add(dedupe_key)
+        target_action_subtype = _effective_action_subtype(
+            anchor_action_id,
+            dict(target_action_params or {}).get("source_action_subtype"),
+            dict(target_action_params or {}),
+        )
+        rows.append(
+            {
+                "company_id": str(case.get("company_id") or ""),
+                "as_of_time": str(case.get("as_of_time") or ""),
+                "anchor_action_id": anchor_action_id,
+                "anchor_action_subtype": target_action_subtype,
+                "anchor_action_family": str(case.get("anchor_action_family") or ""),
+                "anchor_candidate_id": str(positive_source.get("anchor_candidate_id") or ""),
+                "anchor_candidate_precedent_confidence": float(positive_source.get("anchor_candidate_precedent_confidence") or 0.0),
+                "anchor_candidate_rank": int(positive_source.get("anchor_candidate_rank") or 0),
+                "competitor_action_id": competitor_action_id,
+                "competitor_candidate_id": competitor_candidate_id,
+                "competitor_candidate_precedent_confidence": competitor_candidate_precedent_confidence,
+                "competitor_candidate_rank": competitor_candidate_rank,
+                "label": 1,
+                "pair_source": pair_source,
+                "positive_source": str(positive_source.get("source_type") or ""),
+                "negative_source": negative_source,
+                "positive_precedent_id": positive_precedent_id,
+                "positive_precedent_company_id": str(pos.get("company_id") or ""),
+                "positive_precedent_rank_within_candidate": pos_rank,
+                "positive_similarity_score": float(pos.get("similarity_score") or 0.0),
+                "negative_precedent_id": negative_precedent_id,
+                "negative_precedent_company_id": str(neg.get("company_id") or ""),
+                "negative_precedent_rank_within_candidate": neg_rank,
+                "negative_similarity_score": float(neg.get("similarity_score") or 0.0),
+                "target_compact": {feature: target_compact.get(feature) for feature in _STATE_VECTOR_V1_FEATURES},
+                "target_source": str(target_source or "snapshot"),
+                "target_sector": str(target_taxonomy.get("sector") or ""),
+                "target_subsector": str(target_taxonomy.get("subsector") or ""),
+                "target_action_scale": float(target_action_scale) if target_action_scale is not None else None,
+                "positive_compact": {feature: pos_features.get(feature) for feature in _STATE_VECTOR_V1_FEATURES},
+                "negative_compact": {feature: neg_features.get(feature) for feature in _STATE_VECTOR_V1_FEATURES},
+                "positive_sector": pos_features.get("sector") or pos_features.get("base_sector"),
+                "positive_subsector": pos_features.get("subsector"),
+                "positive_action_scale": pos.get("action_scale"),
+                "negative_sector": neg_features.get("sector") or neg_features.get("base_sector"),
+                "negative_subsector": neg_features.get("subsector"),
+                "negative_action_scale": neg.get("action_scale"),
+                "feature_gap_summary": {
+                    feature: {
+                        "positive_abs_diff": _absdiff(target_compact.get(feature), pos_features.get(feature)),
+                        "negative_abs_diff": _absdiff(target_compact.get(feature), neg_features.get(feature)),
+                    }
+                    for feature in _PAIRWISE_FEATURE_GAP_SUMMARY_FEATURES
+                },
+            }
+        )
+
+    target_action_scale = _estimate_action_scale(dict(target_action_params or {}), target_market_cap)
+    rows: List[Dict[str, Any]] = []
+    seen_pairs: set[tuple[str, str, str, str, str]] = set()
+    for positive_source in positive_sources:
+        anchor_matches = list(positive_source.get("matches") or [])
+        full_anchor_matches = list(positive_source.get("full_matches") or [])
+        confuser_matches = list(positive_source.get("confuser_matches") or [])
+        if not anchor_matches:
+            continue
+        if include_within_action_hard_negatives:
+            positive_source_type = str(positive_source.get("source_type") or "")
+            if positive_source_type == "actual_anchor_outcome":
+                negative_source_mode = str(actual_anchor_within_action_negative_source or "retrieved_pool").strip().lower()
+                same_action_negative_pool: List[Dict[str, Any]] = []
+                same_action_pair_source = "actual_anchor_outcome_vs_same_action_retrieved"
+                same_action_negative_source = "same_action_retrieved_pool"
+                if negative_source_mode == "same_action_universe":
+                    analog_source = _build_same_action_analog_positive_source(
+                        case=case,
+                        target_compact=target_compact,
+                        target_taxonomy=target_taxonomy,
+                        top_k=int(top_k),
+                        positive_limit_per_source=int(positive_limit_per_source),
+                        negative_limit_per_competitor=int(negative_limit_per_competitor),
+                        same_action_universe_lookup=same_action_universe_lookup or {},
+                        regime_aware=False,
+                    )
+                    if analog_source is not None:
+                        same_action_negative_pool = list(analog_source.get("full_matches") or [])
+                        same_action_pair_source = "actual_anchor_outcome_vs_same_action_universe"
+                        same_action_negative_source = "same_action_universe"
+                if not same_action_negative_pool:
+                    same_action_negative_pool = list(retrieved_anchor_matches_all)
+                    same_action_pair_source = "actual_anchor_outcome_vs_same_action_retrieved"
+                    same_action_negative_source = "same_action_retrieved_pool"
+            elif positive_source_type == "analog_consensus_same_action_universe":
+                positive_precedent_ids = {
+                    str(match.get("precedent_id") or "").strip()
+                    for match in anchor_matches
+                    if str(match.get("precedent_id") or "").strip()
+                }
+                same_action_negative_pool = [
+                    match
+                    for match in _dedupe_matches(
+                        list(full_anchor_matches[len(anchor_matches) :])
+                        + list(confuser_matches)
+                    )
+                    if str(match.get("precedent_id") or "").strip() not in positive_precedent_ids
+                ]
+                same_action_negative_pool = _rank_same_action_hard_confusers(
+                    same_action_negative_pool,
+                    action_id=anchor_action_id,
+                    target_compact=target_compact,
+                    target_sector=str(target_taxonomy.get("sector") or ""),
+                    target_subsector=str(target_taxonomy.get("subsector") or ""),
+                    target_action_scale=target_action_scale,
+                )[: _same_action_negative_pool_limit(int(top_k), anchor_matches)]
+                same_action_pair_source = "analog_consensus_same_action_universe_vs_same_action_confusers"
+                same_action_negative_source = "same_action_confuser_pool"
+            elif positive_source_type == "analog_regime_consensus_same_action_universe":
+                positive_precedent_ids = {
+                    str(match.get("precedent_id") or "").strip()
+                    for match in anchor_matches
+                    if str(match.get("precedent_id") or "").strip()
+                }
+                same_action_negative_pool = [
+                    match
+                    for match in _dedupe_matches(
+                        list(full_anchor_matches[len(anchor_matches) :])
+                        + list(confuser_matches)
+                    )
+                    if str(match.get("precedent_id") or "").strip() not in positive_precedent_ids
+                ]
+                same_action_negative_pool = _rank_same_action_hard_confusers(
+                    same_action_negative_pool,
+                    action_id=anchor_action_id,
+                    target_compact=target_compact,
+                    target_sector=str(target_taxonomy.get("sector") or ""),
+                    target_subsector=str(target_taxonomy.get("subsector") or ""),
+                    target_action_scale=target_action_scale,
+                )[: _same_action_negative_pool_limit(int(top_k), anchor_matches)]
+                same_action_pair_source = "analog_regime_consensus_same_action_universe_vs_same_action_confusers"
+                same_action_negative_source = "same_action_confuser_pool"
+            else:
+                same_action_negative_pool = list(full_anchor_matches[len(anchor_matches) :])
+                same_action_pair_source = "retrieved_anchor_action_vs_same_action_retrieved"
+                same_action_negative_source = "same_action_retrieved_pool"
+            if hard_negative_taxonomy_mode != "none":
+                same_action_negative_pool = _rank_hard_negative_matches(
+                    same_action_negative_pool,
+                    target_compact=target_compact,
+                    target_sector=str(target_taxonomy.get("sector") or ""),
+                    target_subsector=str(target_taxonomy.get("subsector") or ""),
+                    taxonomy_mode=hard_negative_taxonomy_mode,
+                )
+            for pos_rank, pos in enumerate(anchor_matches, start=1):
+                pos_features = _enrich_match_compact(
+                    pos,
+                    precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                )
+                for neg_rank, neg in enumerate(same_action_negative_pool, start=1):
+                    neg_features = _enrich_match_compact(
+                        neg,
+                        precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                    )
+                    _append_pair_row(
+                        positive_source=positive_source,
+                        pos_rank=pos_rank,
+                        pos=pos,
+                        pos_features=pos_features,
+                        competitor_action_id=anchor_action_id,
+                        competitor_candidate_id="same_action_retrieved_pool",
+                        competitor_candidate_precedent_confidence=float(
+                            positive_source.get("anchor_candidate_precedent_confidence") or 0.0
+                        ),
+                        competitor_candidate_rank=int(positive_source.get("anchor_candidate_rank") or 0),
+                        neg_rank=neg_rank,
+                        neg=neg,
+                        neg_features=neg_features,
+                        pair_source=same_action_pair_source,
+                        negative_source=same_action_negative_source,
+                    )
+
+        if include_same_action_positive_ordering:
+            ordered_same_action_matches = _dedupe_matches(list(full_anchor_matches))
+            if hard_negative_taxonomy_mode != "none":
+                ordered_same_action_matches = _rank_hard_negative_matches(
+                    ordered_same_action_matches,
+                    target_compact=target_compact,
+                    target_sector=str(target_taxonomy.get("sector") or ""),
+                    target_subsector=str(target_taxonomy.get("subsector") or ""),
+                    taxonomy_mode=hard_negative_taxonomy_mode,
+                )
+            comparison_window = _same_action_ordering_window(int(top_k))
+            for pos_rank, pos in enumerate(ordered_same_action_matches, start=1):
+                pos_features = _enrich_match_compact(
+                    pos,
+                    precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                )
+                next_matches = ordered_same_action_matches[pos_rank : pos_rank + comparison_window]
+                for neg_rank, neg in enumerate(next_matches, start=pos_rank + 1):
+                    neg_features = _enrich_match_compact(
+                        neg,
+                        precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                    )
+                    _append_pair_row(
+                        positive_source=positive_source,
+                        pos_rank=pos_rank,
+                        pos=pos,
+                        pos_features=pos_features,
+                        competitor_action_id=anchor_action_id,
+                        competitor_candidate_id="same_action_ranked_ordering",
+                        competitor_candidate_precedent_confidence=float(
+                            positive_source.get("anchor_candidate_precedent_confidence") or 0.0
+                        ),
+                        competitor_candidate_rank=int(positive_source.get("anchor_candidate_rank") or 0),
+                        neg_rank=neg_rank,
+                        neg=neg,
+                        neg_features=neg_features,
+                        pair_source=f"{str(positive_source.get('source_type') or 'same_action')}_rank_ordering",
+                        negative_source="same_action_ranked_ordering",
+                    )
+
+        if not competitor_candidates:
+            continue
+
+        for competitor_candidate in competitor_candidates:
+            competitor_result = result_lookup.get(str(competitor_candidate.get("candidate_id") or ""))
+            if not competitor_result:
+                continue
+            competitor_matches = list((competitor_result.get("precedent_pack") or {}).get("matches", []) or [])[:top_k]
+            if hard_negative_taxonomy_mode != "none":
+                competitor_matches = _rank_hard_negative_matches(
+                    competitor_matches,
+                    target_compact=target_compact,
+                    target_sector=str(target_taxonomy.get("sector") or ""),
+                    target_subsector=str(target_taxonomy.get("subsector") or ""),
+                    taxonomy_mode=hard_negative_taxonomy_mode,
+                )
+            if negative_limit_per_competitor > 0:
+                competitor_matches = competitor_matches[: int(negative_limit_per_competitor)]
+            if not competitor_matches:
+                continue
+            for pos_rank, pos in enumerate(anchor_matches, start=1):
+                pos_features = _enrich_match_compact(
+                    pos,
+                    precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                )
+                for neg_rank, neg in enumerate(competitor_matches, start=1):
+                    neg_features = _enrich_match_compact(
+                        neg,
+                        precedent_outcomes_lookup=precedent_outcomes_lookup or {},
+                    )
+                    _append_pair_row(
+                        positive_source=positive_source,
+                        pos_rank=pos_rank,
+                        pos=pos,
+                        pos_features=pos_features,
+                        competitor_action_id=str(competitor_candidate.get("action_id") or ""),
+                        competitor_candidate_id=str(competitor_candidate.get("candidate_id") or ""),
+                        competitor_candidate_precedent_confidence=float(
+                            competitor_candidate.get("precedent_confidence") or 0.0
+                        ),
+                        competitor_candidate_rank=int(
+                            _first((i + 1 for i, row in enumerate(candidate_rows) if row == competitor_candidate), 2)
+                        ),
+                        neg_rank=neg_rank,
+                        neg=neg,
+                        neg_features=neg_features,
+                        pair_source=str(
+                            positive_source.get("source_type") or "anchor_exact_action_vs_competitor_action"
+                        ),
+                        negative_source="competitor_action_retrieved",
+                    )
+    return rows
+
+
+def main() -> None:
+    args = _parse_args()
+    manifest_path = Path(args.manifest_path)
+    out_path = Path(args.out_path)
+    summary_path = Path(args.summary_path) if args.summary_path else None
+    snapshot_catalog_path = Path(args.snapshot_catalog_path) if args.snapshot_catalog_path else None
+    snapshot_cache_root = Path(args.snapshot_cache_root) if args.snapshot_cache_root else _snapshot_cache_root_for_manifest(manifest_path)
+    runs_root = Path(args.runs_root) if args.runs_root else None
+    outcomes_path = Path(args.outcomes_path) if args.outcomes_path else Path(_default_precedent_outcomes_path())
+    eval_prefix = str(args.eval_prefix or "").strip()
+    eval_id = str(args.eval_id or "001").strip()
+    teacher_config = _resolve_teacher_recipe(
+        teacher_recipe=str(args.teacher_recipe or "explicit_flags"),
+        positive_source_mode=str(args.positive_source_mode or "include_retrieved"),
+        include_within_action_hard_negatives=bool(args.include_within_action_hard_negatives),
+        include_same_action_positive_ordering=bool(args.include_same_action_positive_ordering),
+        actual_anchor_within_action_negative_source=str(
+            args.actual_anchor_within_action_negative_source or "retrieved_pool"
+        ),
+        always_include_actual_anchor_positive=bool(args.always_include_actual_anchor_positive),
+        same_family_negatives_only_if_available=bool(args.same_family_negatives_only_if_available),
+        hard_negative_taxonomy_mode=str(args.hard_negative_taxonomy_mode or "none"),
+    )
+
+    manifest = _load_json(manifest_path)
+    positive_source_mode_text = str(teacher_config.get("positive_source_mode") or "").strip().lower()
+    allow_cases_only_same_action_teacher = positive_source_mode_text in {
+        "analog_consensus_same_action_universe",
+        "analog_regime_consensus_same_action_universe",
+    }
+    selection_rows = list(manifest.get("selection_rankings", []) or [])
+    cases = list(manifest.get("cases", []) or [])
+    if not selection_rows:
+        selection_rows = [
+            {
+                "company_id": str(case.get("company_id") or ""),
+                "as_of_time": str(case.get("as_of_time") or ""),
+                "anchor_action_id": str(case.get("anchor_action_id") or ""),
+            }
+            for case in cases
+        ]
+    if not selection_rows:
+        raise SystemExit("Manifest must include cases or selection_rankings")
+
+    case_lookup = {
+        (
+            str(case.get("company_id") or ""),
+            str(case.get("as_of_time") or ""),
+            str(case.get("anchor_action_id") or ""),
+        ): dict(case)
+        for case in cases
+    }
+    resolved_cases: List[Dict[str, Any]] = []
+    referenced_precedent_keys: List[tuple[str, str, str]] = []
+    for row in selection_rows:
+        company_id = str(row.get("company_id") or "")
+        as_of_time = str(row.get("as_of_time") or "")
+        anchor_action_id = str(row.get("anchor_action_id") or "")
+        case = case_lookup.get((company_id, as_of_time, anchor_action_id), dict(row))
+        raw_precedent_index_path = str(row.get("precedent_index_path") or "").strip()
+        precedent_index_path = Path(raw_precedent_index_path) if raw_precedent_index_path else Path("")
+        precedent_matches_path = (
+            precedent_index_path.with_name("PrecedentMatches.json")
+            if raw_precedent_index_path
+            else Path("")
+        )
+        if not (precedent_index_path.is_file() and precedent_matches_path.is_file()):
+            if runs_root and eval_prefix:
+                resolved = _artifact_paths_from_runs_root(
+                    runs_root=runs_root,
+                    eval_prefix=eval_prefix,
+                    eval_id=eval_id,
+                    company_id=company_id,
+                    as_of_time=as_of_time,
+                )
+                if resolved:
+                    precedent_index_path = resolved["precedent_index_path"]
+                    precedent_matches_path = resolved["precedent_matches_path"]
+            elif runs_root:
+                resolved = _artifact_paths_from_runs_root(
+                    runs_root=runs_root,
+                    eval_prefix="",
+                    eval_id=eval_id,
+                    company_id=company_id,
+                    as_of_time=as_of_time,
+                )
+                if resolved:
+                    precedent_index_path = resolved["precedent_index_path"]
+                    precedent_matches_path = resolved["precedent_matches_path"]
+        if not (precedent_index_path.is_file() and precedent_matches_path.is_file()):
+            if not allow_cases_only_same_action_teacher:
+                continue
+            precedent_index = {"candidate_rows": []}
+            precedent_matches = {"results": []}
+        else:
+            precedent_index = _load_json(precedent_index_path)
+            precedent_matches = _load_json(precedent_matches_path)
+            referenced_precedent_keys.extend(
+                _collect_precedent_reference_keys(
+                    precedent_matches,
+                    top_k=int(args.top_k_per_candidate),
+                )
+            )
+        resolved_cases.append(
+            {
+                "case": case,
+                "company_id": company_id,
+                "as_of_time": as_of_time,
+                "precedent_index": precedent_index,
+                "precedent_matches": precedent_matches,
+            }
+        )
+
+    anchor_outcomes_lookup = (
+        _load_anchor_outcomes_lookup(outcomes_path, cases=cases)
+        if outcomes_path is not None and outcomes_path.exists()
+        else {}
+    )
+    same_action_universe_lookup = (
+        _load_same_action_universe_lookup(
+            outcomes_path,
+            cases=cases,
+            include_latent_regime_model=(
+                positive_source_mode_text == "analog_regime_consensus_same_action_universe"
+                and any(
+                    _same_action_regime_requires_latent_model(case.get("anchor_action_id"))
+                    for case in cases
+                )
+            ),
+            latent_regime_cluster_grid=_parse_int_grid(
+                str(args.analog_regime_cluster_grid or ""),
+                default=(2, 3, 4, 5, 6),
+            ),
+            latent_regime_seed=int(args.analog_regime_seed),
+            latent_regime_max_iter=int(args.analog_regime_max_iter),
+        )
+        if outcomes_path is not None and outcomes_path.exists()
+        else {}
+    )
+    precedent_outcomes_lookup = (
+        _load_precedent_outcomes_lookup(
+            outcomes_path,
+            cases=cases,
+            required_keys=referenced_precedent_keys,
+        )
+        if outcomes_path is not None and outcomes_path.exists()
+        else {}
+    )
+
+    pair_rows: List[Dict[str, Any]] = []
+    cases_with_pairs = 0
+    target_source_counts: Counter[str] = Counter()
+    for resolved in resolved_cases:
+        case = dict(resolved["case"])
+        company_id = str(resolved["company_id"] or "")
+        as_of_time = str(resolved["as_of_time"] or "")
+        target_source = "snapshot"
+        target_action_params: Dict[str, Any] = {}
+        target_market_cap: Optional[float] = None
+        prefer_anchor_outcome_target = str(case.get("mapping_method") or "").strip().lower().startswith(
+            "outcomes_parquet"
+        )
+        fallback_context = (
+            _target_context_from_anchor_outcome(
+                case,
+                anchor_outcomes_lookup=anchor_outcomes_lookup,
+            )
+            if prefer_anchor_outcome_target
+            else None
+        )
+        if fallback_context is None and prefer_anchor_outcome_target:
+            fallback_context = _target_context_from_same_action_universe(
+                case,
+                same_action_universe_lookup=same_action_universe_lookup,
+            )
+        if fallback_context is None and prefer_anchor_outcome_target and outcomes_path is not None and outcomes_path.exists():
+            fallback_context = _target_context_from_exact_outcomes_row(
+                case,
+                outcomes_path=outcomes_path,
+            )
+        if fallback_context is not None:
+            target_compact = dict(fallback_context.get("target_compact") or {})
+            target_taxonomy = dict(fallback_context.get("target_taxonomy") or {})
+            target_action_params = dict(fallback_context.get("target_action_params") or {})
+            target_market_cap = fallback_context.get("target_market_cap")
+            target_source = str(fallback_context.get("target_source") or "anchor_outcome_fallback")
+        else:
+            try:
+                snapshot_row = _load_snapshot_row(
+                    snapshot_cache_root,
+                    company_id=company_id,
+                    as_of_time=as_of_time,
+                    snapshot_catalog_path=snapshot_catalog_path,
+                )
+            except FileNotFoundError:
+                fallback_context = _target_context_from_anchor_outcome(
+                    case,
+                    anchor_outcomes_lookup=anchor_outcomes_lookup,
+                )
+                if fallback_context is None:
+                    fallback_context = _target_context_from_same_action_universe(
+                        case,
+                        same_action_universe_lookup=same_action_universe_lookup,
+                    )
+                if fallback_context is None and outcomes_path is not None and outcomes_path.exists():
+                    fallback_context = _target_context_from_exact_outcomes_row(
+                        case,
+                        outcomes_path=outcomes_path,
+                    )
+                if fallback_context is None:
+                    raise
+                target_compact = dict(fallback_context.get("target_compact") or {})
+                target_taxonomy = dict(fallback_context.get("target_taxonomy") or {})
+                target_action_params = dict(fallback_context.get("target_action_params") or {})
+                target_market_cap = fallback_context.get("target_market_cap")
+                target_source = str(fallback_context.get("target_source") or "anchor_outcome_fallback")
+            else:
+                target_compact = _target_compact_values(snapshot_row)
+                target_taxonomy = _target_taxonomy(snapshot_row)
+                target_action_params = dict(snapshot_row.get("action_params") or {})
+                target_market_cap = _snapshot_market_cap(snapshot_row)
+        if not str(target_taxonomy.get("sector") or "").strip() or not str(target_taxonomy.get("subsector") or "").strip():
+            inferred_target_taxonomy = _infer_target_taxonomy_from_same_action_universe(
+                case,
+                same_action_universe_lookup=same_action_universe_lookup,
+                target_compact=target_compact,
+            )
+            if inferred_target_taxonomy:
+                target_taxonomy = {
+                    "sector": str(target_taxonomy.get("sector") or inferred_target_taxonomy.get("sector") or "").strip(),
+                    "subsector": str(
+                        target_taxonomy.get("subsector") or inferred_target_taxonomy.get("subsector") or ""
+                    ).strip(),
+                }
+        target_source_counts[target_source] += 1
+        case_rows = _pair_rows_for_case(
+            case=case,
+            precedent_index=dict(resolved["precedent_index"]),
+            precedent_matches=dict(resolved["precedent_matches"]),
+            target_compact=target_compact,
+            target_taxonomy=target_taxonomy,
+            target_action_params=target_action_params,
+            target_market_cap=target_market_cap,
+            target_source=target_source,
+            top_k=int(args.top_k_per_candidate),
+            anchor_outcomes_lookup=anchor_outcomes_lookup,
+            precedent_outcomes_lookup=precedent_outcomes_lookup,
+            positive_limit_per_source=int(args.positive_limit_per_source),
+            negative_limit_per_competitor=int(args.negative_limit_per_competitor),
+            same_family_negatives_only_if_available=bool(
+                teacher_config.get("same_family_negatives_only_if_available")
+            ),
+            always_include_actual_anchor_positive=bool(
+                teacher_config.get("always_include_actual_anchor_positive")
+            ),
+            include_within_action_hard_negatives=bool(
+                teacher_config.get("include_within_action_hard_negatives")
+            ),
+            include_same_action_positive_ordering=bool(
+                teacher_config.get("include_same_action_positive_ordering")
+            ),
+            actual_anchor_within_action_negative_source=str(
+                teacher_config.get("actual_anchor_within_action_negative_source") or "retrieved_pool"
+            ),
+            positive_source_mode=str(teacher_config.get("positive_source_mode") or "include_retrieved"),
+            hard_negative_taxonomy_mode=str(teacher_config.get("hard_negative_taxonomy_mode") or "none"),
+            same_action_universe_lookup=same_action_universe_lookup,
+        )
+        if case_rows:
+            cases_with_pairs += 1
+            pair_rows.extend(case_rows)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    open_fn = gzip.open if out_path.suffix == ".gz" else open
+    with open_fn(out_path, "wt") as handle:
+        for row in pair_rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+    summary = {
+        "manifest_path": str(manifest_path),
+        "snapshot_cache_root": str(snapshot_cache_root),
+        "snapshot_catalog_path": str(snapshot_catalog_path) if snapshot_catalog_path else "",
+        "teacher_recipe": str(teacher_config.get("teacher_recipe") or "explicit_flags"),
+        "case_count_manifest": len(cases),
+        "selection_count": len(selection_rows),
+        "cases_with_pairs": cases_with_pairs,
+        "pair_row_count": len(pair_rows),
+        "top_k_per_candidate": int(args.top_k_per_candidate),
+        "positive_limit_per_source": int(args.positive_limit_per_source),
+        "negative_limit_per_competitor": int(args.negative_limit_per_competitor),
+        "same_family_negatives_only_if_available": bool(
+            teacher_config.get("same_family_negatives_only_if_available")
+        ),
+        "always_include_actual_anchor_positive": bool(
+            teacher_config.get("always_include_actual_anchor_positive")
+        ),
+        "include_within_action_hard_negatives": bool(
+            teacher_config.get("include_within_action_hard_negatives")
+        ),
+        "include_same_action_positive_ordering": bool(
+            teacher_config.get("include_same_action_positive_ordering")
+        ),
+        "actual_anchor_within_action_negative_source": str(
+            teacher_config.get("actual_anchor_within_action_negative_source") or "retrieved_pool"
+        ),
+        "positive_source_mode": str(teacher_config.get("positive_source_mode") or "include_retrieved"),
+        "hard_negative_taxonomy_mode": str(teacher_config.get("hard_negative_taxonomy_mode") or "none"),
+        "analog_regime_cluster_grid": _parse_int_grid(
+            str(args.analog_regime_cluster_grid or ""),
+            default=(2, 3, 4, 5, 6),
+        ),
+        "analog_regime_seed": int(args.analog_regime_seed),
+        "analog_regime_max_iter": int(args.analog_regime_max_iter),
+        "anchor_outcomes_lookup_size": int(len(anchor_outcomes_lookup)),
+        "same_action_universe_lookup_size": int(len(same_action_universe_lookup)),
+        "same_action_universe_action_count": int(len(same_action_universe_lookup)),
+        "same_action_universe_row_count_total": int(
+            sum(len((payload or {}).get("rows") or []) for payload in same_action_universe_lookup.values())
+        ),
+        "same_action_universe_row_count_by_action": {
+            str(action_id): int(len((payload or {}).get("rows") or []))
+            for action_id, payload in sorted(same_action_universe_lookup.items())
+        },
+        "precedent_outcomes_lookup_size": int(len(precedent_outcomes_lookup)),
+        "runs_root": str(runs_root) if runs_root else "",
+        "eval_prefix": eval_prefix,
+        "eval_id": eval_id,
+        "out_path": str(out_path),
+        "target_source_counts": dict(target_source_counts),
+        "pair_source_counts": dict(Counter(str(row.get("pair_source") or "") for row in pair_rows)),
+        "positive_source_counts": dict(Counter(str(row.get("positive_source") or "") for row in pair_rows)),
+        "negative_source_counts": dict(Counter(str(row.get("negative_source") or "") for row in pair_rows)),
+        "within_action_pair_row_count": int(
+            sum(1 for row in pair_rows if str(row.get("competitor_action_id") or "") == str(row.get("anchor_action_id") or ""))
+        ),
+        "competitor_action_pair_row_count": int(
+            sum(1 for row in pair_rows if str(row.get("competitor_action_id") or "") != str(row.get("anchor_action_id") or ""))
+        ),
+        "case_row_counts": {
+            f"{company_id}|{as_of_time}|{anchor_action_id}": count
+            for (company_id, as_of_time, anchor_action_id), count in Counter(
+                (
+                    str(pair_row.get("company_id") or ""),
+                    str(pair_row.get("as_of_time") or ""),
+                    str(pair_row.get("anchor_action_id") or ""),
+                )
+                for pair_row in pair_rows
+            ).items()
+        },
+    }
+    if summary_path:
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(summary, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
