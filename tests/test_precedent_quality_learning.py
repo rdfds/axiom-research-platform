@@ -127,3 +127,31 @@ def test_load_feature_transform_prior_respects_identity_mode(tmp_path):
     }
 
 
+def test_build_scope_payload_with_pairwise_weights_persists_identity_transform_mode(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                },
+                "feature_transforms": {
+                    "state_vector_v1.valuation_multiple": {"kind": "signed_log1p_cap", "cap": 25.0}
+                },
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    payload = build_scope_payload_with_pairwise_weights(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        learned_weights={"state_vector_v1.valuation_multiple": 1.2},
+        feature_transform_mode="identity",
+    )
+
+    scope = payload["scopes"]["capital_return.open_market_buyback"]
+    assert scope["feature_transform_mode"] == "identity"
+    assert "feature_transforms" not in scope
+
+

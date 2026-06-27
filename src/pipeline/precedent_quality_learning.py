@@ -63,3 +63,68 @@ def _pairwise_group_key(row: Dict[str, Any]) -> str:
     )
 
 
+def _scope_config_from_payload(payload: Dict[str, Any], scope_key: str) -> Dict[str, Any]:
+    scopes = dict(payload.get("scopes", {}) or {})
+    scope = _clean_scope_key(scope_key)
+    exact = scopes.get(scope)
+    if isinstance(exact, dict):
+        return exact
+    family = scope.split(".", 1)[0] if "." in scope else scope
+    family_scope = scopes.get(family)
+    if isinstance(family_scope, dict):
+        return family_scope
+    all_scope = scopes.get("ALL")
+    if isinstance(all_scope, dict):
+        return all_scope
+    return {}
+
+
+def load_feature_weight_prior(
+    base_payload_path: str | Path,
+    *,
+    scope_key: str,
+    feature_names: Sequence[str],
+    missing_default: float = 1.0,
+) -> np.ndarray:
+    payload = json.loads(Path(base_payload_path).read_text())
+    scope = _scope_config_from_payload(payload, scope_key)
+    weights = dict(scope.get("feature_relative_weights", {}) or {})
+    penalties = dict(scope.get("penalties", {}) or {})
+    for term in list(scope.get("interaction_terms", []) or []):
+        if not isinstance(term, dict):
+            continue
+        features = list(term.get("features") or [])
+        if len(features) != 2:
+            continue
+        interaction_name = _interaction_feature_name(str(features[0]), str(features[1]))
+        try:
+            weights[interaction_name] = float(term.get("weight"))
+        except Exception:
+            continue
+    prior_values: List[float] = []
+    for name in feature_names:
+        if name in weights:
+            prior_values.append(float(weights[name]))
+            continue
+        name_text = str(name)
+        if name_text == f"{_PENALTY_FEATURE_PREFIX}size_gap_excess":
+            prior_values.append(float(penalties.get("size_penalty_weight") or 0.0))
+            continue
+        if name_text == f"{_PENALTY_FEATURE_PREFIX}primary_burden_gap_excess":
+            prior_values.append(float(penalties.get("burden_penalty_weight") or 0.0))
+            continue
+        if name_text.startswith(_INTERACTION_FEATURE_PREFIX) or name_text.startswith(_LATENT_REGIME_FEATURE_PREFIX):
+            prior_values.append(0.0)
+        else:
+            prior_values.append(float(missing_default))
+    arr = np.array(prior_values, dtype=float)
+    positive = arr[arr > 0.0]
+    if positive.size:
+        arr = arr / float(np.mean(positive))
+    elif missing_default > 0.0:
+        arr = np.ones(len(feature_names), dtype=float)
+    else:
+        arr = np.zeros(len(feature_names), dtype=float)
+    return arr
+
+
