@@ -1972,3 +1972,360 @@ def _load_direct_refinitiv_taxonomy_lookup() -> Dict[str, Dict[str, str]]:
     return lookup
 
 
+@lru_cache(maxsize=1)
+def _load_direct_sec_ticker_cik_lookup() -> Dict[str, str]:
+    if str(os.environ.get("RECO_DISABLE_DIRECT_SEC_TICKER_CIK_LOOKUP") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return {}
+    path = _SEC_TICKER_CIK_PATH
+    if not path.exists():
+        return {}
+    try:
+        frame = pd.read_parquet(path, columns=["ticker", "cik"])
+    except Exception:
+        return {}
+    lookup: Dict[str, str] = {}
+    for ticker, cik in zip(
+        frame.get("ticker", pd.Series("", index=frame.index)),
+        frame.get("cik", pd.Series("", index=frame.index)),
+    ):
+        ticker_key = _normalize_ticker_key(ticker)
+        cik_text = str(cik or "").strip()
+        if cik_text.endswith(".0"):
+            cik_text = cik_text[:-2]
+        if cik_text.isdigit():
+            cik_text = cik_text.zfill(10)
+        if ticker_key and cik_text and ticker_key not in lookup:
+            lookup[ticker_key] = cik_text
+    return lookup
+
+
+@lru_cache(maxsize=1)
+def _load_direct_snapshot_taxonomy_lookup() -> Dict[str, Dict[str, str]]:
+    path = _SNAPSHOT_TAXONOMY_LOOKUP_PATH
+    if not path.exists():
+        return {}
+    try:
+        frame = pd.read_parquet(path, columns=["company_id", "taxonomy.sector", "taxonomy.subsector"])
+    except Exception:
+        return {}
+    lookup: Dict[str, Dict[str, str]] = {}
+    for company_id, sector_name, subsector_name in zip(
+        frame.get("company_id", pd.Series("", index=frame.index)),
+        frame.get("taxonomy.sector", pd.Series("", index=frame.index)),
+        frame.get("taxonomy.subsector", pd.Series("", index=frame.index)),
+    ):
+        company_key = str(company_id or "").strip()
+        if not company_key:
+            continue
+        sector_text = str(sector_name or "").strip()
+        subsector_text = str(subsector_name or "").strip()
+        if not sector_text and not subsector_text:
+            continue
+        lookup[company_key] = {
+            "sector": sector_text,
+            "subsector": subsector_text,
+        }
+    return lookup
+
+
+def _direct_historical_ticker_taxonomy(ticker: str) -> Dict[str, str]:
+    if str(os.environ.get("RECO_DISABLE_DIRECT_HISTORICAL_TAXONOMY") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return {}
+    payload = dict(_historical_taxonomy_for_ticker(ticker, allow_sec_identity_heuristics=True) or {})
+    return {
+        "sector": str(payload.get("taxonomy.sector") or "").strip(),
+        "subsector": str(payload.get("taxonomy.subsector") or "").strip(),
+    }
+
+
+def _allow_knn_target_taxonomy_inference(action_id: str) -> bool:
+    action_text = str(action_id or "").strip().lower()
+    if action_text == "capital_structure.equity_issuance":
+        # Numeric state neighbors are useful for equity-issuance retrieval, but
+        # they are too coarse to impute sector labels safely for the weird
+        # small-cap raise cases. Only trust exact history or direct ticker
+        # taxonomy for this action.
+        return False
+    return True
+
+
+def _infer_target_taxonomy_from_same_action_universe(
+    case: Dict[str, Any],
+    *,
+    same_action_universe_lookup: Dict[str, Dict[str, Any]],
+    target_compact: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    action_id = str(case.get("anchor_action_id") or "").strip()
+    if not action_id:
+        return {}
+    payload = dict(same_action_universe_lookup.get(action_id) or {})
+    rows = list(payload.get("rows") or [])
+    if not rows:
+        return {}
+
+    company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+    ticker = str(case.get("ticker") or "").strip().upper()
+
+    matches = [
+        row
+        for row in rows
+        if company_id and str(row.get("company_id") or "").strip() == company_id
+    ]
+    if not matches and ticker:
+        matches = [
+            row
+            for row in rows
+            if str(row.get("ticker") or "").strip().upper() == ticker
+        ]
+    if matches:
+        pair_votes: Counter[tuple[str, str]] = Counter()
+        sector_votes: Counter[str] = Counter()
+        subsector_votes: Counter[str] = Counter()
+        for row in matches:
+            taxonomy = _outcome_row_taxonomy(row)
+            sector = str(taxonomy.get("sector") or "").strip()
+            subsector = str(taxonomy.get("subsector") or "").strip()
+            if sector:
+                sector_votes[sector] += 1
+            if subsector:
+                subsector_votes[subsector] += 1
+            if sector or subsector:
+                pair_votes[(sector, subsector)] += 1
+
+        best_sector = sector_votes.most_common(1)[0][0] if sector_votes else ""
+        best_subsector = subsector_votes.most_common(1)[0][0] if subsector_votes else ""
+        if pair_votes:
+            best_pair, _ = pair_votes.most_common(1)[0]
+            if best_pair[0]:
+                best_sector = best_pair[0]
+            if best_pair[1]:
+                best_subsector = best_pair[1]
+        exact_match_taxonomy = {
+            "sector": str(best_sector or "").strip(),
+            "subsector": str(best_subsector or "").strip(),
+        }
+        if exact_match_taxonomy["sector"] or exact_match_taxonomy["subsector"]:
+            return exact_match_taxonomy
+    if ticker:
+        direct_payload = dict(_direct_historical_ticker_taxonomy(ticker) or {})
+        direct_taxonomy = {
+            "sector": str(direct_payload.get("sector") or "").strip(),
+            "subsector": str(direct_payload.get("subsector") or "").strip(),
+        }
+        if direct_taxonomy["sector"] or direct_taxonomy["subsector"]:
+            return direct_taxonomy
+    if not _allow_knn_target_taxonomy_inference(action_id):
+        return {}
+
+    target_compact = dict(target_compact or {})
+    if not target_compact:
+        return {}
+
+    feature_scales = dict(payload.get("feature_scales") or {})
+    weighted_pair_votes: Dict[tuple[str, str], float] = {}
+    weighted_sector_votes: Dict[str, float] = {}
+    weighted_subsector_votes: Dict[str, float] = {}
+    candidate_rows: List[tuple[float, int, str, str]] = []
+    for row in rows:
+        taxonomy = _outcome_row_taxonomy(row)
+        sector = str(taxonomy.get("sector") or "").strip()
+        subsector = str(taxonomy.get("subsector") or "").strip()
+        if not sector and not subsector:
+            continue
+        distance, shared_features = _standardized_feature_distance(
+            target_compact,
+            row,
+            feature_scales=feature_scales,
+        )
+        if not np.isfinite(distance) or int(shared_features) < 4:
+            continue
+        candidate_rows.append((float(distance), int(shared_features), sector, subsector))
+
+    if not candidate_rows:
+        return {}
+
+    candidate_rows.sort(key=lambda item: (item[0], -item[1], item[2], item[3]))
+    for distance, shared_features, sector, subsector in candidate_rows[:25]:
+        weight = (float(shared_features) ** 2) / (1.0 + float(distance))
+        if sector:
+            weighted_sector_votes[sector] = weighted_sector_votes.get(sector, 0.0) + weight
+        if subsector:
+            weighted_subsector_votes[subsector] = weighted_subsector_votes.get(subsector, 0.0) + weight
+        if sector or subsector:
+            weighted_pair_votes[(sector, subsector)] = weighted_pair_votes.get((sector, subsector), 0.0) + weight
+
+    best_sector = max(weighted_sector_votes.items(), key=lambda item: item[1])[0] if weighted_sector_votes else ""
+    best_subsector = max(weighted_subsector_votes.items(), key=lambda item: item[1])[0] if weighted_subsector_votes else ""
+    if weighted_pair_votes:
+        best_pair = max(weighted_pair_votes.items(), key=lambda item: item[1])[0]
+        if best_pair[0]:
+            best_sector = best_pair[0]
+        if best_pair[1]:
+            best_subsector = best_pair[1]
+    return {
+        "sector": str(best_sector or "").strip(),
+        "subsector": str(best_subsector or "").strip(),
+    }
+
+
+def _standardized_feature_distance(
+    target_compact: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    *,
+    feature_scales: Dict[str, float],
+) -> tuple[float, int]:
+    diffs: List[float] = []
+    for feature in _STATE_VECTOR_V1_FEATURES:
+        target_value = target_compact.get(feature)
+        candidate_value = candidate_features.get(feature)
+        diff = _absdiff(target_value, candidate_value)
+        if diff is None:
+            continue
+        scale = float(feature_scales.get(feature) or 1.0)
+        if not pd.notna(scale) or scale <= 1e-9:
+            scale = 1.0
+        diffs.append(float(diff) / scale)
+    if not diffs:
+        return float("inf"), 0
+    return float(sum(diffs) / len(diffs)), int(len(diffs))
+
+
+def _same_action_neighborhood_rows(
+    rows: List[Dict[str, Any]],
+    *,
+    target_taxonomy: Dict[str, str],
+    minimum_rows: int,
+) -> tuple[List[Dict[str, Any]], str]:
+    target_sector = str(target_taxonomy.get("sector") or "").strip()
+    target_subsector = str(target_taxonomy.get("subsector") or "").strip()
+    if not rows:
+        return [], "same_action"
+    same_subsector = [
+        row
+        for row in rows
+        if target_subsector and _outcome_row_taxonomy(row).get("subsector") == target_subsector
+    ]
+    if len(same_subsector) >= int(max(1, minimum_rows)):
+        return same_subsector, "same_subsector"
+    same_sector = [
+        row
+        for row in rows
+        if target_sector and _outcome_row_taxonomy(row).get("sector") == target_sector
+    ]
+    if len(same_sector) >= int(max(1, minimum_rows)):
+        return same_sector, "same_sector"
+    return list(rows), "same_action"
+
+
+def _same_action_analog_match_payload(
+    outcome_row: Dict[str, Any],
+    *,
+    distance: float,
+    feature_count: int,
+    taxonomy_mode: str,
+    latent_regime_similarity: Optional[float] = None,
+    latent_regime_cluster: Optional[int] = None,
+    debt_archetype_label: Optional[str] = None,
+    debt_market_regime_similarity: Optional[float] = None,
+) -> Dict[str, Any]:
+    action_time = _normalize_as_of_time(str(outcome_row.get("action_date") or ""))
+    taxonomy = _outcome_row_taxonomy(outcome_row)
+    action_params = _outcome_row_action_params(outcome_row)
+    market_cap = _outcome_row_market_cap(outcome_row)
+    feature_values = {feature: outcome_row.get(feature) for feature in _STATE_VECTOR_V1_FEATURES}
+    feature_values["sector"] = taxonomy["sector"]
+    feature_values["subsector"] = taxonomy["subsector"]
+    precedent_id = str(
+        outcome_row.get("precedent_id")
+        or f"{outcome_row.get('company_id')}::{action_time}::{outcome_row.get('normalized_action_id')}::analog_consensus"
+    )
+    similarity_score = 0.0 if not pd.notna(distance) or distance < 0.0 else float(1.0 / (1.0 + distance))
+    return {
+        "precedent_id": precedent_id,
+        "company_id": str(outcome_row.get("company_id") or ""),
+        "ticker": str(outcome_row.get("ticker") or ""),
+        "action_id": str(outcome_row.get("normalized_action_id") or ""),
+        "decision_time": action_time,
+        "similarity_score": similarity_score,
+        "analog_distance": float(distance) if pd.notna(distance) else None,
+        "analog_feature_count": int(feature_count),
+        "analog_taxonomy_mode": str(taxonomy_mode or "same_action"),
+        "analog_latent_regime_similarity": (
+            float(latent_regime_similarity) if latent_regime_similarity is not None and pd.notna(latent_regime_similarity) else None
+        ),
+        "analog_latent_regime_cluster": int(latent_regime_cluster) if latent_regime_cluster is not None else None,
+        "debt_archetype_label": str(debt_archetype_label or "") if debt_archetype_label else None,
+        "debt_market_regime_similarity": (
+            float(debt_market_regime_similarity)
+            if debt_market_regime_similarity is not None and pd.notna(debt_market_regime_similarity)
+            else None
+        ),
+        "action_params": action_params,
+        "market_cap": market_cap,
+        "action_scale": _estimate_action_scale(action_params, market_cap),
+        "key_state_features": feature_values,
+        "sector": taxonomy["sector"],
+        "subsector": taxonomy["subsector"],
+    }
+
+
+def _same_action_model_confuser_match_payload(
+    outcome_row: Dict[str, Any],
+    *,
+    similarity_score: float,
+    taxonomy_mode: str,
+    weighted_coverage: Optional[float] = None,
+    critical_coverage: Optional[float] = None,
+    analog_distance: Optional[float] = None,
+    debt_archetype_label: Optional[str] = None,
+    debt_market_regime_similarity: Optional[float] = None,
+) -> Dict[str, Any]:
+    action_time = _normalize_as_of_time(str(outcome_row.get("action_date") or ""))
+    taxonomy = _outcome_row_taxonomy(outcome_row)
+    action_params = _outcome_row_action_params(outcome_row)
+    market_cap = _outcome_row_market_cap(outcome_row)
+    feature_values = {feature: outcome_row.get(feature) for feature in _STATE_VECTOR_V1_FEATURES}
+    feature_values["sector"] = taxonomy["sector"]
+    feature_values["subsector"] = taxonomy["subsector"]
+    precedent_id = str(
+        outcome_row.get("precedent_id")
+        or f"{outcome_row.get('company_id')}::{action_time}::{outcome_row.get('normalized_action_id')}::model_confuser"
+    )
+    return {
+        "precedent_id": precedent_id,
+        "company_id": str(outcome_row.get("company_id") or ""),
+        "ticker": str(outcome_row.get("ticker") or ""),
+        "action_id": str(outcome_row.get("normalized_action_id") or ""),
+        "decision_time": action_time,
+        "similarity_score": float(similarity_score) if pd.notna(similarity_score) else 0.0,
+        "model_confuser_taxonomy_mode": str(taxonomy_mode or "same_action"),
+        "model_confuser_weighted_coverage": (
+            float(weighted_coverage) if weighted_coverage is not None and pd.notna(weighted_coverage) else None
+        ),
+        "model_confuser_critical_coverage": (
+            float(critical_coverage) if critical_coverage is not None and pd.notna(critical_coverage) else None
+        ),
+        "analog_distance": float(analog_distance) if analog_distance is not None and pd.notna(analog_distance) else None,
+        "debt_archetype_label": str(debt_archetype_label or "") if debt_archetype_label else None,
+        "debt_market_regime_similarity": (
+            float(debt_market_regime_similarity)
+            if debt_market_regime_similarity is not None and pd.notna(debt_market_regime_similarity)
+            else None
+        ),
+        "action_params": action_params,
+        "market_cap": market_cap,
+        "action_scale": _estimate_action_scale(action_params, market_cap),
+        "key_state_features": feature_values,
+        "sector": taxonomy["sector"],
+        "subsector": taxonomy["subsector"],
+    }
+
+

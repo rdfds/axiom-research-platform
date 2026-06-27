@@ -336,3 +336,5 @@ def main() -> None:
     print(json.dumps(payload, indent=2))
 
 
+if __name__ == "__main__":
+    main()
