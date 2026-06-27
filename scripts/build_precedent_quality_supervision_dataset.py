@@ -2937,7 +2937,7 @@ def _pair_rows_for_case(
         same_family_competitors = [
             row
             for row in competitor_candidates
-            if str(row['action_id'] or "").split(".", 1)[0] == anchor_action_family
+            if str(row.get("action_id") or "").split(".", 1)[0] == anchor_action_family
         ]
         if same_family_competitors:
             competitor_candidates = same_family_competitors

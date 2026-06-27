@@ -41,3 +41,25 @@ def load_pairwise_supervision(path: str | Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _clean_scope_key(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _feature_names() -> Tuple[str, ...]:
+    return tuple(_STATE_VECTOR_MATCHING_COLS)
+
+
+_INTERACTION_FEATURE_PREFIX = "pairwise_interaction::"
+_PENALTY_FEATURE_PREFIX = "pairwise_penalty::"
+_LATENT_REGIME_FEATURE_PREFIX = "latent_regime::"
+_LATENT_REGIME_SIMILARITY_FEATURE = f"{_LATENT_REGIME_FEATURE_PREFIX}similarity"
+
+
+def _pairwise_group_key(row: Dict[str, Any]) -> str:
+    return (
+        f"{str(row.get('company_id') or '')}|"
+        f"{str(row.get('as_of_time') or '')}|"
+        f"{str(row.get('anchor_action_id') or '')}"
+    )
+
+

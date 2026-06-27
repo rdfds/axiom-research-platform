@@ -97,3 +97,33 @@ def test_build_scope_payload_with_pairwise_weights_persists_feature_transforms(t
     assert scope["latent_regime_model"]["n_clusters"] == 2
 
 
+def test_load_feature_transform_prior_respects_identity_mode(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_transform_mode": "identity",
+                "feature_transforms": {
+                    "state_vector_v1.cash_generation": {"kind": "signed_asinh", "scale": 0.05}
+                },
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    transforms = load_feature_transform_prior(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        feature_names=[
+            "state_vector_v1.valuation_multiple",
+            "state_vector_v1.cash_generation",
+        ],
+    )
+
+    assert transforms["state_vector_v1.valuation_multiple"] == {}
+    assert transforms["state_vector_v1.cash_generation"] == {
+        "kind": "signed_asinh",
+        "scale": 0.05,
+    }
+
+
