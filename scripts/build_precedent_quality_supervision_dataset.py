@@ -1936,3 +1936,39 @@ def _normalize_ticker_key(value: Any) -> str:
     return str(value or "").strip().upper()
 
 
+def _normalize_instrument_root(value: Any) -> str:
+    return _normalize_ticker_key(value).split(".", 1)[0].strip()
+
+
+@lru_cache(maxsize=1)
+def _load_direct_refinitiv_taxonomy_lookup() -> Dict[str, Dict[str, str]]:
+    path = _REFINITIV_TAXONOMY_REFERENCE_PATH
+    if not path.exists():
+        return {}
+    try:
+        frame = pd.read_parquet(path, columns=["Instrument", "GICS Sector Name", "GICS Industry Name"])
+    except Exception:
+        return {}
+    lookup: Dict[str, Dict[str, str]] = {}
+    for instrument, sector_name, subsector_name in zip(
+        frame.get("Instrument", pd.Series("", index=frame.index)),
+        frame.get("GICS Sector Name", pd.Series("", index=frame.index)),
+        frame.get("GICS Industry Name", pd.Series("", index=frame.index)),
+    ):
+        ticker_key = _normalize_instrument_root(instrument)
+        if not ticker_key:
+            continue
+        sector_text = str(sector_name or "").strip()
+        subsector_text = str(subsector_name or "").strip()
+        if not sector_text and not subsector_text:
+            continue
+        existing = lookup.get(ticker_key)
+        if existing and existing.get("sector") and existing.get("subsector"):
+            continue
+        lookup[ticker_key] = {
+            "sector": sector_text,
+            "subsector": subsector_text,
+        }
+    return lookup
+
+

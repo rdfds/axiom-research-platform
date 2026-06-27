@@ -48,3 +48,13 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+def ridge_weights(X: np.ndarray, y: np.ndarray, lam: float) -> np.ndarray:
+    """Solve ridge regression weights: (X'X + lam I)^-1 X'y."""
+    n_features = X.shape[1]
+    xtx = X.T @ X
+    ridge = xtx + lam * np.eye(n_features)
+    xty = X.T @ y
+    coef = np.linalg.solve(ridge, xty)
+    return coef
+
+

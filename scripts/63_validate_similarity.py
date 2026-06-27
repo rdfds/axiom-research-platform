@@ -523,3 +523,5 @@ def main() -> None:
             print("\nNo target beat baseline MAE; best corr fallback:", best)
 
 
+if __name__ == "__main__":
+    main()
