@@ -168,7 +168,7 @@ def _slice_summary(label: str, action_ids: Sequence[str], matches: Sequence[Dict
     }
 
 
-def _print_table(rows: Sequence[Dict[str, Any]]) :
+def _print_table(rows: Sequence[Dict[str, Any]]) -> None:
     headers = (
         ("label", 22),
         ("selected_precedent_candidates", 6),
