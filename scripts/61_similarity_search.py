@@ -126,3 +126,28 @@ def quantile_bins(series: pd.Series, q: int) -> pd.Series:
     return pd.cut(s, bins=edges, labels=False, include_lowest=True)
 
 
+def weight_lookup(weights: pd.DataFrame, action_type: str, features: List[str], target: str | None = None) -> np.ndarray:
+    if weights is None or weights.empty:
+        return np.ones(len(features), dtype=float)
+    subset = weights[(weights["action_type"] == action_type) & (weights["feature"].isin(features))]
+    if target is not None and "target" in weights.columns:
+        subset = subset[subset["target"] == target]
+    if subset.empty:
+        subset = weights[(weights["action_type"] == "ALL") & (weights["feature"].isin(features))]
+        if target is not None and "target" in weights.columns:
+            subset = subset[subset["target"] == target]
+    if subset.empty:
+        return np.ones(len(features), dtype=float)
+    mapping = dict(zip(subset["feature"], subset["weight"]))
+    return np.array([mapping.get(f, 1.0) for f in features], dtype=float)
+
+
+def load_target_map(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(path)
+    if "action_type" not in df.columns or "target" not in df.columns:
+        return {}
+    return dict(zip(df["action_type"].astype(str), df["target"].astype(str)))
+
+
