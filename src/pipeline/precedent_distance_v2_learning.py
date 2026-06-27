@@ -280,3 +280,7 @@ def coordinate_search_scope_configuration(
     }
 
 
+def write_precedent_distance_v2_payload(payload: Dict[str, Any], out_path: str | Path) -> None:
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True))
