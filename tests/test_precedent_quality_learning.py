@@ -155,3 +155,71 @@ def test_build_scope_payload_with_pairwise_weights_persists_identity_transform_m
     assert "feature_transforms" not in scope
 
 
+def test_build_scope_payload_with_pairwise_weights_persists_second_stage_reranker(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                }
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    payload = build_scope_payload_with_pairwise_weights(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        learned_weights={},
+        second_stage_reranker={
+            "feature_weights": {
+                "base_state_similarity": 1.4,
+                "unweighted_state_similarity": 1.2,
+            },
+            "bias": 0.25,
+            "shortlist_size": 90,
+        },
+    )
+
+    scope = payload["scopes"]["capital_return.open_market_buyback"]
+    assert scope["second_stage_reranker"]["feature_weights"]["base_state_similarity"] == 1.4
+    assert scope["second_stage_reranker"]["feature_weights"]["unweighted_state_similarity"] == 1.2
+    assert scope["second_stage_reranker"]["bias"] == 0.25
+    assert scope["second_stage_reranker"]["shortlist_size"] == 90
+
+
+def test_build_scope_payload_with_pairwise_weights_persists_outcome_aware_reranker(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                }
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    payload = build_scope_payload_with_pairwise_weights(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        learned_weights={},
+        outcome_aware_reranker={
+            "feature_weights": {
+                "current_similarity_score": 1.3,
+                "outcome_valuation_score": 0.9,
+            },
+            "bias": 0.1,
+            "shortlist_size": 50,
+        },
+    )
+
+    scope = payload["scopes"]["capital_return.open_market_buyback"]
+    assert scope["outcome_aware_reranker"]["feature_weights"]["current_similarity_score"] == 1.3
+    assert scope["outcome_aware_reranker"]["feature_weights"]["outcome_valuation_score"] == 0.9
+    assert scope["outcome_aware_reranker"]["bias"] == 0.1
+    assert scope["outcome_aware_reranker"]["shortlist_size"] == 50
+
+

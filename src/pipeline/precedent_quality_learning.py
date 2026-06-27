@@ -128,3 +128,49 @@ def load_feature_weight_prior(
     return arr
 
 
+def load_feature_weight_floor(
+    *,
+    feature_names: Sequence[str],
+    base_feature_floor: float = 0.25,
+) -> np.ndarray:
+    floors: List[float] = []
+    for name in feature_names:
+        name_text = str(name)
+        if (
+            name_text.startswith(_INTERACTION_FEATURE_PREFIX)
+            or name_text.startswith(_PENALTY_FEATURE_PREFIX)
+            or name_text.startswith(_LATENT_REGIME_FEATURE_PREFIX)
+        ):
+            floors.append(0.0)
+        else:
+            floors.append(float(base_feature_floor))
+    return np.asarray(floors, dtype=float)
+
+
+def load_penalty_feature_specs(
+    base_payload_path: str | Path,
+    *,
+    scope_key: str,
+) -> List[Dict[str, Any]]:
+    payload = json.loads(Path(base_payload_path).read_text())
+    scope = _scope_config_from_payload(payload, scope_key)
+    gates = dict(scope.get("gates", {}) or {})
+    primary_burden_feature = str(scope.get("primary_burden_feature") or "state_vector_v1.net_obligation_burden").strip()
+    specs: List[Dict[str, Any]] = [
+        {
+            "name": "size_gap_excess",
+            "source_feature": "state_vector_v1.size_log_revenue",
+            "soft_threshold": float(gates.get("soft_size_gap") or 0.35),
+        },
+    ]
+    if primary_burden_feature:
+        specs.append(
+            {
+                "name": "primary_burden_gap_excess",
+                "source_feature": primary_burden_feature,
+                "soft_threshold": float(gates.get("soft_burden_gap") or 1.25),
+            }
+        )
+    return specs
+
+
