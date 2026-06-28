@@ -28,3 +28,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _norm_str(v: Any) -> str:
+    return str(v or "").strip()
+
+

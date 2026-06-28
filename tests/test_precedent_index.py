@@ -52,3 +52,21 @@ def _pack() -> dict:
     }
 
 
+def test_build_precedent_index_creates_candidate_and_distribution_rows():
+    matches = [
+        {
+            "candidate": {
+                "candidate_id": "c1",
+                "action_type": "capital_return",
+                "action_subtype": "open_market_buyback",
+                "action_id": "capital_return.open_market_buyback",
+            },
+            "precedent_pack": _pack(),
+        }
+    ]
+    idx = build_precedent_index(run_id="run-1", precedent_matches=matches)
+    assert idx.get("index_version")
+    assert idx["counts"]["candidates"] == 1
+    assert idx["counts"]["distribution_rows"] > 0
+
+
