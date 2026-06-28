@@ -46,3 +46,18 @@ def _metadata_execution_config(run: Any) -> Dict[str, Any]:
     return dict(config.get("execution", {}) or {})
 
 
+def _resolve_path(
+    explicit: Optional[str],
+    execution_cfg: Dict[str, Any],
+    key: str,
+) -> Optional[str]:
+    if explicit:
+        return str(explicit)
+    value = execution_cfg.get(key)
+    if value:
+        return str(value)
+    if key == "outcomes_path":
+        return _default_precedent_outcomes_path()
+    return None
+
+
