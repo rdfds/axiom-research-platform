@@ -73,3 +73,20 @@ def _infer_snapshot_root(run: Any) -> Optional[str]:
     return None
 
 
+def _load_candidates_from_feasibility(path: Path) -> List[Dict[str, Any]]:
+    payload = json.loads(path.read_text())
+    out: List[Dict[str, Any]] = []
+    for row in payload.get("results", []):
+        if not bool(row.get("feasible")):
+            continue
+        candidate = dict(row.get("candidate") or row['action_candidate'] or {})
+        if candidate:
+            out.append(candidate)
+    return out
+
+
+def _load_candidates_from_candidate_set(path: Path) -> List[Dict[str, Any]]:
+    payload = json.loads(path.read_text())
+    return [dict(row or {}) for row in payload['candidates'] if isinstance(row, dict)]
+
+
