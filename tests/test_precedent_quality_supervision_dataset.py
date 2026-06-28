@@ -854,3 +854,145 @@ def test_debt_issuance_archetype_profile_separates_distressed_refinancing_and_op
     assert opportunistic["label"] == "opportunistic_issuer"
 
 
+def test_same_action_analog_positive_source_prefers_refinancing_pressure_over_opportunistic():
+    action_id = "capital_structure.new_debt_issuance"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.16,
+            "state_vector_v1.cash_generation": 0.01,
+            "state_vector_v1.gross_obligation_burden": 2.5,
+            "state_vector_v1.net_obligation_burden": 2.0,
+            "state_vector_v1.interest_coverage": 4.0,
+            "state_vector_v1.valuation_multiple": 8.5,
+            "state_vector_v1.market_access": 0.74,
+            "state_vector_v1.market_stress": 0.15,
+            "state_vector_v1.rates_level": 4.58,
+            "state_vector_v1.credit_spread": 2.64,
+            "state_vector_v1.growth": 0.04,
+            "state_vector_v1.liquidity_flexibility": 0.8,
+        }
+    )
+    row_common = {
+        "normalized_action_id": action_id,
+        "action_date": "2024-01-15T00:00:00+00:00",
+        "taxonomy.sector": "Industrials",
+        "taxonomy.subsector": "Commercial Services & Supplies",
+        "state_vector_v1.size_log_revenue": 9.4,
+    }
+    rows = [
+        {
+            **row_common,
+            "company_id": "1111111111",
+            "ticker": "REFI",
+            "action_size": 220.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+        {
+            **row_common,
+            "company_id": "2222222222",
+            "ticker": "OPPORTUNISTIC",
+            "action_size": 60.0,
+            "base_market_cap": 1000.0,
+            **{
+                **target_compact,
+                "state_vector_v1.profitability": 0.29,
+                "state_vector_v1.cash_generation": 0.08,
+                "state_vector_v1.gross_obligation_burden": 0.9,
+                "state_vector_v1.net_obligation_burden": 0.2,
+                "state_vector_v1.interest_coverage": 12.0,
+                "state_vector_v1.market_access": 0.91,
+                "state_vector_v1.market_stress": 0.08,
+                "state_vector_v1.credit_spread": 2.1,
+                "state_vector_v1.liquidity_flexibility": 3.5,
+                "state_vector_v1.valuation_multiple": 14.0,
+            },
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Industrials", "subsector": "Commercial Services & Supplies"},
+        target_action_params={"amount_usd": 220.0, "action_size": 220.0},
+        target_market_cap=1000.0,
+        top_k=2,
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=1,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=False,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["ticker"] == "REFI"
+
+
+def test_same_action_analog_positive_source_excludes_same_company_same_action_date():
+    action_id = "capital_structure.new_debt_issuance"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    target_compact.update({"state_vector_v1.profitability": 0.12, "state_vector_v1.credit_spread": 2.64})
+    rows = [
+        {
+            "company_id": "0000002488",
+            "ticker": "SELF",
+            "normalized_action_id": action_id,
+            "action_date": "2024-09-02T00:00:00+00:00",
+            "taxonomy.sector": "Industrials",
+            "taxonomy.subsector": "Commercial Services & Supplies",
+            "action_size": 100.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+        {
+            "company_id": "1111111111",
+            "ticker": "OTHER",
+            "normalized_action_id": action_id,
+            "action_date": "2024-08-15T00:00:00+00:00",
+            "taxonomy.sector": "Industrials",
+            "taxonomy.subsector": "Commercial Services & Supplies",
+            "action_size": 95.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Industrials", "subsector": "Commercial Services & Supplies"},
+        target_action_params={"amount_usd": 100.0, "action_size": 100.0},
+        target_market_cap=1000.0,
+        top_k=2,
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=1,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=False,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["ticker"] == "OTHER"
+
+
