@@ -32,3 +32,16 @@ def _norm_str(v: Any) -> str:
     return str(v or "").strip()
 
 
+def _norm_lower(v: Any) -> str:
+    return _norm_str(v).lower()
+
+
+def _to_float(v: Any) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+

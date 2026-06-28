@@ -121,3 +121,23 @@ def build_handler(defaults: argparse.Namespace):
     return Handler
 
 
+def main() -> None:
+    args = _parse_args()
+    handler = build_handler(args)
+    server = ThreadingHTTPServer((args.host, args.port), handler)
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "message": "run_precedent_api_started",
+                "host": args.host,
+                "port": args.port,
+            }
+        ),
+        flush=True,
+    )
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

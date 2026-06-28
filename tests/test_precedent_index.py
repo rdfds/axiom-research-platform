@@ -70,3 +70,38 @@ def test_build_precedent_index_creates_candidate_and_distribution_rows():
     assert idx["counts"]["distribution_rows"] > 0
 
 
+def test_query_precedent_index_filters_by_action_regime_horizon():
+    matches = [
+        {
+            "candidate": {
+                "candidate_id": "c1",
+                "action_type": "capital_return",
+                "action_subtype": "open_market_buyback",
+                "action_id": "capital_return.open_market_buyback",
+            },
+            "precedent_pack": _pack(),
+        },
+        {
+            "candidate": {
+                "candidate_id": "c2",
+                "action_type": "capital_structure",
+                "action_subtype": "refinancing",
+                "action_id": "capital_structure.refinancing",
+            },
+            "precedent_pack": _pack(),
+        },
+    ]
+    idx = build_precedent_index(run_id="run-2", precedent_matches=matches)
+    out = query_precedent_index(
+        idx,
+        action_type="capital_return",
+        regime="credit_tight",
+        time_horizon="12m",
+        limit=50,
+    )
+    assert out["count"] > 0
+    assert all(r["action_type"] == "capital_return" for r in out["rows"])
+    assert all(r["regime_label"] == "credit_tight" for r in out["rows"])
+    assert all(r["time_horizon"] == "12m" for r in out["rows"])
+
+

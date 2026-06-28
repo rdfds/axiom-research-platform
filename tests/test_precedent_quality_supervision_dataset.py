@@ -491,3 +491,118 @@ def test_infer_target_taxonomy_from_same_action_universe_uses_nearest_taxonomy_n
     }
 
 
+def test_infer_target_taxonomy_from_same_action_universe_ignores_nan_features():
+    action_id = "mna.platform_acquisition"
+    target_compact = {
+        "state_vector_v1.size_log_revenue": 6.0,
+        "state_vector_v1.profitability": float("nan"),
+        "state_vector_v1.growth": 1.2,
+        "state_vector_v1.valuation_multiple": -8.0,
+        "state_vector_v1.cash_generation": -0.6,
+    }
+    taxonomy = _infer_target_taxonomy_from_same_action_universe(
+        {
+            "company_id": "162233",
+            "source_company_id": "162233",
+            "anchor_action_id": action_id,
+            "ticker": "DGLY",
+        },
+        same_action_universe_lookup={
+            action_id: {
+                "rows": [
+                    {
+                        "company_id": "100001",
+                        "ticker": "PEER1",
+                        "taxonomy.sector": "Industrials",
+                        "taxonomy.subsector": "Electrical Equipment",
+                        "state_vector_v1.size_log_revenue": 6.1,
+                        "state_vector_v1.profitability": -0.5,
+                        "state_vector_v1.growth": 1.1,
+                        "state_vector_v1.valuation_multiple": -7.5,
+                        "state_vector_v1.cash_generation": -0.5,
+                    },
+                    {
+                        "company_id": "100002",
+                        "ticker": "OTHER",
+                        "taxonomy.sector": "Health Care",
+                        "taxonomy.subsector": "Biotechnology",
+                        "state_vector_v1.size_log_revenue": 9.0,
+                        "state_vector_v1.profitability": 0.6,
+                        "state_vector_v1.growth": -0.2,
+                        "state_vector_v1.valuation_multiple": 12.0,
+                        "state_vector_v1.cash_generation": 0.4,
+                    },
+                ],
+                "feature_scales": {
+                    "state_vector_v1.size_log_revenue": 1.0,
+                    "state_vector_v1.profitability": 1.0,
+                    "state_vector_v1.growth": 1.0,
+                    "state_vector_v1.valuation_multiple": 1.0,
+                    "state_vector_v1.cash_generation": 1.0,
+                },
+            }
+        },
+        target_compact=target_compact,
+    )
+
+    assert taxonomy == {
+        "sector": "Industrials",
+        "subsector": "Electrical Equipment",
+    }
+
+
+def test_infer_target_taxonomy_from_same_action_universe_prefers_direct_historical_ticker_taxonomy(monkeypatch):
+    action_id = "capital_structure.equity_issuance"
+    monkeypatch.setattr(
+        "scripts.build_precedent_quality_supervision_dataset._direct_historical_ticker_taxonomy",
+        lambda ticker: {
+            "sector": "Industrials",
+            "subsector": "Electrical Equipment",
+        }
+        if str(ticker).upper() == "FCEL"
+        else {},
+    )
+
+    taxonomy = _infer_target_taxonomy_from_same_action_universe(
+        {
+            "company_id": "025430",
+            "source_company_id": "025430",
+            "anchor_action_id": action_id,
+            "ticker": "FCEL",
+        },
+        same_action_universe_lookup={
+            action_id: {
+                "rows": [
+                    {
+                        "company_id": "100001",
+                        "ticker": "PEER1",
+                        "taxonomy.sector": "Health Care",
+                        "taxonomy.subsector": "Biotechnology",
+                        "state_vector_v1.size_log_revenue": 6.1,
+                        "state_vector_v1.profitability": -0.5,
+                        "state_vector_v1.growth": 1.1,
+                        "state_vector_v1.valuation_multiple": -7.5,
+                    }
+                ],
+                "feature_scales": {
+                    "state_vector_v1.size_log_revenue": 1.0,
+                    "state_vector_v1.profitability": 1.0,
+                    "state_vector_v1.growth": 1.0,
+                    "state_vector_v1.valuation_multiple": 1.0,
+                },
+            }
+        },
+        target_compact={
+            "state_vector_v1.size_log_revenue": 6.0,
+            "state_vector_v1.profitability": -0.4,
+            "state_vector_v1.growth": 1.2,
+            "state_vector_v1.valuation_multiple": -8.0,
+        },
+    )
+
+    assert taxonomy == {
+        "sector": "Industrials",
+        "subsector": "Electrical Equipment",
+    }
+
+
