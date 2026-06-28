@@ -151,3 +151,15 @@ def load_target_map(path: Path) -> dict[str, str]:
     return dict(zip(df["action_type"].astype(str), df["target"].astype(str)))
 
 
+def load_hyperparams(path: Path) -> dict[str, dict[str, object]]:
+    if not path.exists():
+        return {}
+    df = pd.read_parquet(path)
+    if "action_type" not in df.columns:
+        return {}
+    out: dict[str, dict[str, object]] = {}
+    for _, row in df.iterrows():
+        out[str(row["action_type"])] = row.to_dict()
+    return out
+
+
