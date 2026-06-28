@@ -145,3 +145,33 @@ def test_query_precedent_index_supports_min_sample_size_and_oos_filter():
     assert all(bool(r["out_of_sample_flag"]) is False for r in out["rows"])
 
 
+def test_sector_enriched_from_cohort_company_ids(monkeypatch):
+    import src.pipeline.precedent_index as pi
+
+    monkeypatch.setattr(
+        pi,
+        "_load_gvkey_sector_map",
+        lambda: {"012421": "MANUFACTURING"},
+    )
+
+    matches = [
+        {
+            "candidate": {
+                "candidate_id": "c1",
+                "action_type": "capital_return",
+                "action_subtype": "open_market_buyback",
+                "action_id": "capital_return.open_market_buyback",
+            },
+            "precedent_pack": {
+                **_pack(),
+                "cohorts": [
+                    {"company_id": "12421", "key_state_features": {}},
+                    {"company_id": "012421", "key_state_features": {}},
+                ],
+            },
+        }
+    ]
+    idx = build_precedent_index(run_id="run-4", precedent_matches=matches)
+    assert idx["candidate_rows"][0]["sector"] == "MANUFACTURING"
+
+
