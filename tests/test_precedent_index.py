@@ -175,3 +175,46 @@ def test_sector_enriched_from_cohort_company_ids(monkeypatch):
     assert idx["candidate_rows"][0]["sector"] == "MANUFACTURING"
 
 
+def test_query_precedent_index_ranks_high_confidence_rows_first():
+    high = _pack()
+    high["precedent_confidence"] = 0.90
+    low = _pack()
+    low["precedent_confidence"] = 0.20
+    low["mismatch_diagnostics"] = {"out_of_sample_flag": True, "cohort_size": 30}
+
+    idx = build_precedent_index(
+        run_id="run-5",
+        precedent_matches=[
+            {
+                "candidate": {
+                    "candidate_id": "c1",
+                    "action_type": "capital_return",
+                    "action_subtype": "open_market_buyback",
+                    "action_id": "capital_return.open_market_buyback",
+                },
+                "precedent_pack": low,
+            },
+            {
+                "candidate": {
+                    "candidate_id": "c2",
+                    "action_type": "capital_return",
+                    "action_subtype": "open_market_buyback",
+                    "action_id": "capital_return.open_market_buyback",
+                },
+                "precedent_pack": high,
+            },
+        ],
+    )
+
+    out = query_precedent_index(
+        idx,
+        action_type="capital_return",
+        regime="all",
+        time_horizon="12m",
+        limit=10,
+    )
+    assert out["count"] > 0
+    assert float(out["rows"][0]["precedent_confidence"]) >= float(out["rows"][-1]["precedent_confidence"])
+    assert float(out["rows"][0]["query_score"]) >= float(out["rows"][-1]["query_score"])
+
+
