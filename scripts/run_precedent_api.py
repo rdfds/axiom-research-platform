@@ -57,3 +57,67 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> Tuple[Dict[str, Any], st
         return {}, "invalid_json"
 
 
+def build_handler(defaults: argparse.Namespace):
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, status: int, payload: Dict[str, Any]) -> None:
+            body = _json_bytes(payload)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args) -> None:
+            # Keep server output concise.
+            return
+
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                self._send(200, {"ok": True})
+                return
+            self._send(404, {"ok": False, "error": "not_found"})
+
+        def do_POST(self) -> None:
+            if self.path != "/run_precedent":
+                self._send(404, {"ok": False, "error": "not_found"})
+                return
+            body, err = _read_json_body(self)
+            if err:
+                self._send(400, {"ok": False, "error": err})
+                return
+
+            company_id = body.get("company_id")
+            as_of = body.get("as_of")
+            action_id = body.get("action_id")
+            action_type = body.get("action_type")
+            action_subtype = body.get("action_subtype")
+            action_params = body.get("action_params", {})
+
+            if not company_id or not as_of:
+                self._send(400, {"ok": False, "error": "missing_company_id_or_as_of"})
+                return
+            if not action_id and not action_type:
+                self._send(400, {"ok": False, "error": "missing_action_id_or_action_type"})
+                return
+
+            try:
+                pack = run_precedent(
+                    company_id=str(company_id),
+                    as_of_date=str(as_of),
+                    action_id=str(action_id) if action_id is not None else None,
+                    action_type=str(action_type) if action_type is not None else None,
+                    action_subtype=str(action_subtype) if action_subtype is not None else None,
+                    action_params=action_params if isinstance(action_params, dict) else {},
+                    config_path=defaults.config,
+                    outcomes_path=defaults.outcomes_path,
+                    state_snapshot_root=defaults.state_snapshot_root,
+                    state_snapshot_path=defaults.state_snapshot_path,
+                )
+                payload = pack.to_dict()
+                self._send(200, {"ok": True, "result": payload})
+            except Exception as exc:
+                self._send(400, {"ok": False, "error": str(exc)})
+
+    return Handler
+
+

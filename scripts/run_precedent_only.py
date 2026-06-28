@@ -18,3 +18,21 @@ def _default_precedent_outcomes_path() -> str:
     return str(repo_root / "data" / "curated" / "action_outcomes_with_credit_ratings.normalized_full.parquet")
 
 
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Run precedent retrieval only for an existing run")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--runs-root", default="data/recommendation_runs")
+    p.add_argument("--snapshot-root", default=None)
+    p.add_argument("--snapshot-path", default=None)
+    p.add_argument("--outcomes-path", default=None)
+    p.add_argument("--config-path", default=None)
+    p.add_argument("--feasibility-path", default=None)
+    p.add_argument("--candidate-set-path", default=None)
+    p.add_argument("--precedent-top-k", type=int, default=25)
+    p.add_argument("--action-id", action="append", default=[])
+    p.add_argument("--artifact-tag", default="precedent_only")
+    p.add_argument("--all-candidates", action="store_true", help="Use CandidateSet instead of feasible candidates")
+    p.add_argument("--log-candidates", action="store_true", help="Emit per-candidate start/finish logs")
+    return p.parse_args()
+
+
