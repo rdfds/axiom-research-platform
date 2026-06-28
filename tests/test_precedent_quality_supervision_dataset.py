@@ -996,3 +996,64 @@ def test_same_action_analog_positive_source_excludes_same_company_same_action_da
     assert source["matches"][0]["ticker"] == "OTHER"
 
 
+def test_rank_same_action_hard_confusers_prefers_wrong_archetype_in_same_regime():
+    target_compact = {
+        feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES
+    }
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.12,
+            "state_vector_v1.cash_generation": -0.03,
+            "state_vector_v1.gross_obligation_burden": 2.4,
+            "state_vector_v1.net_obligation_burden": 1.7,
+            "state_vector_v1.interest_coverage": 2.8,
+            "state_vector_v1.valuation_multiple": 5.4,
+            "state_vector_v1.market_access": 0.63,
+            "state_vector_v1.market_stress": 0.17,
+            "state_vector_v1.rates_level": 4.58,
+            "state_vector_v1.credit_spread": 2.64,
+        }
+    )
+    matches = [
+        {
+            "ticker": "HEALTHY",
+            "action_scale": 0.1,
+            "analog_distance": 0.2,
+            "similarity_score": 0.9,
+            "key_state_features": {
+                **target_compact,
+                "sector": "Industrials",
+                "subsector": "Commercial Services & Supplies",
+                "state_vector_v1.profitability": 0.30,
+                "state_vector_v1.cash_generation": 0.12,
+                "state_vector_v1.gross_obligation_burden": 0.8,
+                "state_vector_v1.net_obligation_burden": 0.4,
+                "state_vector_v1.interest_coverage": 12.0,
+                "state_vector_v1.market_access": 0.9,
+            },
+        },
+        {
+            "ticker": "DISTRESS",
+            "action_scale": 0.1,
+            "analog_distance": 0.25,
+            "similarity_score": 0.85,
+            "key_state_features": {
+                **target_compact,
+                "sector": "Industrials",
+                "subsector": "Commercial Services & Supplies",
+            },
+        },
+    ]
+
+    ranked = _rank_same_action_hard_confusers(
+        matches,
+        action_id="capital_structure.new_debt_issuance",
+        target_compact=target_compact,
+        target_sector="Industrials",
+        target_subsector="Commercial Services & Supplies",
+        target_action_scale=0.1,
+    )
+
+    assert ranked[0]["ticker"] == "HEALTHY"
+
+

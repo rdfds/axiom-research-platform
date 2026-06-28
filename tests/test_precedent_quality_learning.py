@@ -223,3 +223,73 @@ def test_build_scope_payload_with_pairwise_weights_persists_outcome_aware_rerank
     assert scope["outcome_aware_reranker"]["shortlist_size"] == 50
 
 
+def test_build_second_stage_reranker_matrix_uses_same_action_pairs_only():
+    df = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "as_of_time": "2024-01-01T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "competitor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {
+                    "state_vector_v1.valuation_multiple": 40.0,
+                    "state_vector_v1.cash_generation": 0.02,
+                },
+                "positive_compact": {
+                    "state_vector_v1.valuation_multiple": 35.0,
+                    "state_vector_v1.cash_generation": 0.021,
+                },
+                "target_sector": "TECH",
+                "target_subsector": "SEMI",
+                "positive_sector": "TECH",
+                "positive_subsector": "SEMI",
+                "negative_sector": "TECH",
+                "negative_subsector": "HARDWARE",
+                "target_action_scale": 0.20,
+                "positive_action_scale": 0.21,
+                "negative_action_scale": 0.80,
+                "negative_compact": {
+                    "state_vector_v1.valuation_multiple": 10.0,
+                    "state_vector_v1.cash_generation": 0.07,
+                },
+            },
+            {
+                "company_id": "000002",
+                "as_of_time": "2024-01-02T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "competitor_action_id": "capital_return.dividend_increase",
+                "target_compact": {
+                    "state_vector_v1.valuation_multiple": 12.0,
+                    "state_vector_v1.cash_generation": 0.04,
+                },
+                "positive_compact": {
+                    "state_vector_v1.valuation_multiple": 11.0,
+                    "state_vector_v1.cash_generation": 0.039,
+                },
+                "target_sector": "INDUSTRIALS",
+                "target_subsector": "ELEC",
+                "positive_sector": "INDUSTRIALS",
+                "positive_subsector": "ELEC",
+                "negative_sector": "TECH",
+                "negative_subsector": "SEMI",
+                "target_action_scale": 0.05,
+                "positive_action_scale": 0.08,
+                "negative_action_scale": 0.30,
+                "negative_compact": {
+                    "state_vector_v1.valuation_multiple": 8.0,
+                    "state_vector_v1.cash_generation": 0.06,
+                },
+            },
+        ]
+    )
+
+    matrix = build_second_stage_reranker_matrix(df, same_action_only=True)
+
+    assert matrix["pair_count"] == 1
+    assert len(matrix["selected_features"]) >= 4
+    assert "parameter_similarity" in matrix["selected_features"]
+    assert "sector_similarity" in matrix["selected_features"]
+    assert "regime_similarity" in matrix["selected_features"]
+    assert matrix["X"].shape[0] == 2
+
+
