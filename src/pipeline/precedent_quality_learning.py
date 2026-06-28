@@ -174,3 +174,20 @@ def load_penalty_feature_specs(
     return specs
 
 
+def _feature_advantage(row: Dict[str, Any], feature_name: str) -> Optional[float]:
+    gap_summary = dict(row.get("feature_gap_summary") or {})
+    feature_payload = dict(gap_summary.get(feature_name) or {})
+    pos = feature_payload.get("positive_abs_diff")
+    neg = feature_payload.get("negative_abs_diff")
+    try:
+        if pos is None or neg is None:
+            return None
+        pos_f = float(pos)
+        neg_f = float(neg)
+        if not np.isfinite(pos_f) or not np.isfinite(neg_f):
+            return None
+        return neg_f - pos_f
+    except Exception:
+        return None
+
+
