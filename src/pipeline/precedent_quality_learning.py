@@ -191,3 +191,52 @@ def _feature_advantage(row: Dict[str, Any], feature_name: str) -> Optional[float
         return None
 
 
+def _feature_transform_prior(
+    base_payload_path: str | Path,
+    *,
+    scope_key: str,
+    feature_names: Sequence[str],
+    feature_transform_mode: Optional[str] = None,
+) -> Dict[str, Dict[str, Any]]:
+    payload = json.loads(Path(base_payload_path).read_text())
+    scope = _scope_config_from_payload(payload, scope_key)
+    normalized_mode = _normalize_feature_transform_mode(
+        feature_transform_mode if feature_transform_mode is not None else scope.get("feature_transform_mode")
+    )
+    overrides = dict(scope.get("feature_transforms", {}) or {})
+    out: Dict[str, Dict[str, Any]] = {}
+    for feature_name in feature_names:
+        spec = {}
+        if normalized_mode != "identity":
+            spec = dict(_STATE_VECTOR_V2_DEFAULT_FEATURE_TRANSFORMS.get(feature_name, {}) or {})
+        override = overrides.get(feature_name)
+        if isinstance(override, dict):
+            spec.update(override)
+        out[feature_name] = _normalize_transform_spec(spec)
+    return out
+
+
+def load_feature_transform_prior(
+    base_payload_path: str | Path,
+    *,
+    scope_key: str,
+    feature_names: Optional[Sequence[str]] = None,
+    feature_transform_mode: Optional[str] = None,
+) -> Dict[str, Dict[str, Any]]:
+    names = list(feature_names or _feature_names())
+    return _feature_transform_prior(
+        base_payload_path,
+        scope_key=scope_key,
+        feature_names=names,
+        feature_transform_mode=feature_transform_mode,
+    )
+
+
+def _clean_numeric(value: Any) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except Exception:
+        return None
+    return numeric if np.isfinite(numeric) else None
+
+
