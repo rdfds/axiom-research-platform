@@ -61,3 +61,15 @@ def _resolve_path(
     return None
 
 
+def _infer_snapshot_root(run: Any) -> Optional[str]:
+    repo_root = Path(__file__).resolve().parent.parent
+    as_of_value = str(getattr(run, "as_of_time", "") or "")
+    if not as_of_value:
+        return None
+    as_of_date = as_of_value[:10]
+    candidate = repo_root / "data" / "company_state_snapshots" / f"final_run_{as_of_date}"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+

@@ -218,3 +218,41 @@ def test_query_precedent_index_ranks_high_confidence_rows_first():
     assert float(out["rows"][0]["query_score"]) >= float(out["rows"][-1]["query_score"])
 
 
+def test_query_precedent_index_supports_min_precedent_confidence():
+    weak = _pack()
+    weak["precedent_confidence"] = 0.12
+    strong = _pack()
+    strong["precedent_confidence"] = 0.82
+    idx = build_precedent_index(
+        run_id="run-6",
+        precedent_matches=[
+            {
+                "candidate": {
+                    "candidate_id": "c1",
+                    "action_type": "capital_return",
+                    "action_subtype": "open_market_buyback",
+                    "action_id": "capital_return.open_market_buyback",
+                },
+                "precedent_pack": weak,
+            },
+            {
+                "candidate": {
+                    "candidate_id": "c2",
+                    "action_type": "capital_return",
+                    "action_subtype": "open_market_buyback",
+                    "action_id": "capital_return.open_market_buyback",
+                },
+                "precedent_pack": strong,
+            },
+        ],
+    )
+    out = query_precedent_index(
+        idx,
+        action_type="capital_return",
+        regime="all",
+        time_horizon="12m",
+        min_precedent_confidence=0.5,
+        limit=50,
+    )
+    assert out["count"] > 0
+    assert all(float(row["precedent_confidence"]) >= 0.5 for row in out["rows"])

@@ -1057,3 +1057,156 @@ def test_rank_same_action_hard_confusers_prefers_wrong_archetype_in_same_regime(
     assert ranked[0]["ticker"] == "HEALTHY"
 
 
+def test_action_specific_same_action_distance_revolver_prefers_liquidity_stress_peer():
+    target_compact = {
+        feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES
+    }
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.06,
+            "state_vector_v1.cash_generation": -0.02,
+            "state_vector_v1.gross_obligation_burden": 2.8,
+            "state_vector_v1.net_obligation_burden": 2.1,
+            "state_vector_v1.liquidity_flexibility": 0.35,
+            "state_vector_v1.interest_coverage": 2.4,
+            "state_vector_v1.market_access": 0.56,
+            "state_vector_v1.market_stress": 0.31,
+            "state_vector_v1.credit_spread": 4.9,
+            "state_vector_v1.rates_level": 1.20,
+            "state_vector_v1.valuation_multiple": 6.5,
+        }
+    )
+    stressed_peer = {
+        **target_compact,
+        "state_vector_v1.liquidity_flexibility": 0.50,
+        "state_vector_v1.market_stress": 0.28,
+        "state_vector_v1.credit_spread": 4.4,
+    }
+    routine_self_history = {
+        **target_compact,
+        "state_vector_v1.profitability": 0.18,
+        "state_vector_v1.cash_generation": 0.08,
+        "state_vector_v1.gross_obligation_burden": 1.2,
+        "state_vector_v1.net_obligation_burden": 0.8,
+        "state_vector_v1.liquidity_flexibility": 3.2,
+        "state_vector_v1.interest_coverage": 7.5,
+        "state_vector_v1.market_access": 0.86,
+        "state_vector_v1.market_stress": 0.12,
+        "state_vector_v1.credit_spread": 2.2,
+        "state_vector_v1.valuation_multiple": 12.0,
+    }
+
+    stressed_distance = _action_specific_same_action_distance(
+        action_id="capital_structure.revolver_draw_or_resize",
+        target_compact=target_compact,
+        candidate_features=stressed_peer,
+        feature_scales={feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+        target_action_scale=0.22,
+        candidate_action_scale=0.20,
+    )
+    routine_distance = _action_specific_same_action_distance(
+        action_id="capital_structure.revolver_draw_or_resize",
+        target_compact=target_compact,
+        candidate_features=routine_self_history,
+        feature_scales={feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+        target_action_scale=0.22,
+        candidate_action_scale=0.22,
+    )
+
+    assert stressed_distance < routine_distance
+
+
+def test_same_action_analog_positive_source_revolver_prefers_cross_company_and_caps_self_history():
+    action_id = "capital_structure.revolver_draw_or_resize"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.05,
+            "state_vector_v1.cash_generation": -0.01,
+            "state_vector_v1.gross_obligation_burden": 2.9,
+            "state_vector_v1.net_obligation_burden": 2.2,
+            "state_vector_v1.liquidity_flexibility": 0.40,
+            "state_vector_v1.interest_coverage": 2.5,
+            "state_vector_v1.market_access": 0.55,
+            "state_vector_v1.market_stress": 0.30,
+            "state_vector_v1.credit_spread": 4.8,
+        }
+    )
+    rows = [
+        {
+            "company_id": "0000002488",
+            "ticker": "SELF1",
+            "normalized_action_id": action_id,
+            "action_date": "2024-08-01T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 200.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+        {
+            "company_id": "0000002488",
+            "ticker": "SELF2",
+            "normalized_action_id": action_id,
+            "action_date": "2024-07-01T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 195.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+        {
+            "company_id": "1111111111",
+            "ticker": "PEER1",
+            "normalized_action_id": action_id,
+            "action_date": "2024-07-15T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 205.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+            "state_vector_v1.market_stress": 0.28,
+        },
+        {
+            "company_id": "2222222222",
+            "ticker": "PEER2",
+            "normalized_action_id": action_id,
+            "action_date": "2024-06-20T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 180.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+            "state_vector_v1.market_stress": 0.32,
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Consumer Discretionary", "subsector": "Specialty Retail"},
+        target_action_params={"draw_amount_usd": 200.0, "action_size": 200.0},
+        target_market_cap=1000.0,
+        top_k=3,
+        positive_limit_per_source=3,
+        negative_limit_per_competitor=2,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=False,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["ticker"] == "PEER1"
+    assert [match["company_id"] for match in source["full_matches"]].count("0000002488") <= 1
+
+
