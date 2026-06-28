@@ -38,3 +38,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _json_bytes(payload: Dict[str, Any]) -> bytes:
+    return json.dumps(payload, default=str).encode("utf-8")
+
+
