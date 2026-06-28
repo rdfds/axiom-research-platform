@@ -1210,3 +1210,184 @@ def test_same_action_analog_positive_source_revolver_prefers_cross_company_and_c
     assert [match["company_id"] for match in source["full_matches"]].count("0000002488") <= 1
 
 
+def test_same_action_analog_positive_source_revolver_regime_aware_prefers_stress_regime_peers():
+    action_id = "capital_structure.revolver_draw_or_resize"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.05,
+            "state_vector_v1.cash_generation": -0.01,
+            "state_vector_v1.growth": 0.00,
+            "state_vector_v1.gross_obligation_burden": 2.9,
+            "state_vector_v1.net_obligation_burden": 2.2,
+            "state_vector_v1.liquidity_flexibility": 0.40,
+            "state_vector_v1.interest_coverage": 2.5,
+            "state_vector_v1.market_access": 0.55,
+            "state_vector_v1.market_stress": 0.30,
+            "state_vector_v1.credit_spread": 4.8,
+            "state_vector_v1.rates_level": 1.20,
+            "state_vector_v1.valuation_multiple": 6.5,
+        }
+    )
+    rows = [
+        {
+            "company_id": "0000002488",
+            "ticker": "SELF_ROUTINE",
+            "normalized_action_id": action_id,
+            "action_date": "2024-08-01T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 200.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+            "state_vector_v1.profitability": 0.18,
+            "state_vector_v1.cash_generation": 0.08,
+            "state_vector_v1.gross_obligation_burden": 1.2,
+            "state_vector_v1.net_obligation_burden": 0.8,
+            "state_vector_v1.liquidity_flexibility": 3.2,
+            "state_vector_v1.interest_coverage": 7.5,
+            "state_vector_v1.market_access": 0.86,
+            "state_vector_v1.market_stress": 0.12,
+            "state_vector_v1.credit_spread": 2.2,
+            "state_vector_v1.valuation_multiple": 12.0,
+        },
+        {
+            "company_id": "1111111111",
+            "ticker": "PEER_STRESS",
+            "normalized_action_id": action_id,
+            "action_date": "2024-07-15T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 205.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+            "state_vector_v1.liquidity_flexibility": 0.50,
+            "state_vector_v1.market_stress": 0.28,
+            "state_vector_v1.credit_spread": 4.4,
+        },
+        {
+            "company_id": "2222222222",
+            "ticker": "PEER_BUFFER",
+            "normalized_action_id": action_id,
+            "action_date": "2024-06-20T00:00:00+00:00",
+            "taxonomy.sector": "Consumer Discretionary",
+            "taxonomy.subsector": "Specialty Retail",
+            "action_size": 180.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+            "state_vector_v1.profitability": 0.15,
+            "state_vector_v1.cash_generation": 0.05,
+            "state_vector_v1.liquidity_flexibility": 2.2,
+            "state_vector_v1.interest_coverage": 6.5,
+            "state_vector_v1.market_access": 0.82,
+            "state_vector_v1.market_stress": 0.14,
+            "state_vector_v1.credit_spread": 2.6,
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Consumer Discretionary", "subsector": "Specialty Retail"},
+        target_action_params={"draw_amount_usd": 200.0, "action_size": 200.0},
+        target_market_cap=1000.0,
+        top_k=2,
+        positive_limit_per_source=2,
+        negative_limit_per_competitor=2,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=True,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["ticker"] == "PEER_STRESS"
+    assert all(match["ticker"] != "SELF_ROUTINE" for match in source["matches"])
+
+
+def test_pair_rows_include_actual_anchor_positive_against_same_action_retrieved_negatives():
+    case = {
+        "company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "source_company_id": "0000002488",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    precedent_index = {
+        "candidate_rows": [
+            {
+                "candidate_id": "anchor-1",
+                "action_id": "capital_return.open_market_buyback",
+                "precedent_confidence": 0.9,
+            }
+        ]
+    }
+    precedent_matches = {
+        "results": [
+            {
+                "candidate": {"candidate_id": "anchor-1"},
+                "precedent_pack": {
+                    "matches": [
+                        {
+                            "precedent_id": "p1",
+                            "company_id": "111111",
+                            "action_id": "capital_return.open_market_buyback",
+                            "decision_time": "2023-01-01T00:00:00+00:00",
+                            "similarity_score": 0.91,
+                            "key_state_features": {"state_vector_v1.valuation_multiple": 20.0},
+                        },
+                        {
+                            "precedent_id": "p2",
+                            "company_id": "222222",
+                            "action_id": "capital_return.open_market_buyback",
+                            "decision_time": "2022-01-01T00:00:00+00:00",
+                            "similarity_score": 0.82,
+                            "key_state_features": {"state_vector_v1.valuation_multiple": 12.0},
+                        },
+                    ]
+                },
+            }
+        ]
+    }
+    anchor_outcomes_lookup = {
+        ("0000002488", "capital_return.open_market_buyback"): [
+            {"company_id": "0000002488", "action_date": "2024-09-02T00:00:00+00:00"}
+        ]
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index=precedent_index,
+        precedent_matches=precedent_matches,
+        target_compact={"state_vector_v1.valuation_multiple": 25.0},
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        target_source="anchor_outcome_fallback",
+        top_k=2,
+        anchor_outcomes_lookup=anchor_outcomes_lookup,
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=0,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=True,
+        include_within_action_hard_negatives=True,
+        positive_source_mode="include_retrieved",
+        hard_negative_taxonomy_mode="none",
+    )
+
+    actual_rows = [row for row in rows if row["pair_source"] == "actual_anchor_outcome_vs_same_action_retrieved"]
+    assert len(actual_rows) == 2
+    assert {row["target_source"] for row in actual_rows} == {"anchor_outcome_fallback"}
+    assert {row["negative_precedent_id"] for row in actual_rows} == {"p1", "p2"}
+    assert {row["negative_source"] for row in actual_rows} == {"same_action_retrieved_pool"}
+
+
