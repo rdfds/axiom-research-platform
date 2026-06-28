@@ -36,3 +36,13 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _artifact_path(runs_root: Path, run_id: str, name: str) :
+    return runs_root / "artifacts" / f"run_id={run_id}" / name
+
+
+def _metadata_execution_config(run: Any) -> Dict[str, Any]:
+    metadata = dict(getattr(run, "metadata", {}) or {})
+    config = dict(metadata.get("config", {}) or {})
+    return dict(config.get("execution", {}) or {})
+
+

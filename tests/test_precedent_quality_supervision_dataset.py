@@ -802,3 +802,55 @@ def test_same_action_analog_positive_source_prioritizes_debt_borrower_profile():
     assert source["matches"][0]["company_id"] == "1111111111"
 
 
+def test_debt_issuance_archetype_profile_separates_distressed_refinancing_and_opportunistic():
+    distressed = _debt_issuance_archetype_profile(
+        compact_features={
+            "state_vector_v1.profitability": 0.08,
+            "state_vector_v1.cash_generation": -0.05,
+            "state_vector_v1.gross_obligation_burden": 2.9,
+            "state_vector_v1.net_obligation_burden": 2.1,
+            "state_vector_v1.interest_coverage": 1.7,
+            "state_vector_v1.liquidity_flexibility": 0.8,
+            "state_vector_v1.market_access": 0.48,
+            "state_vector_v1.market_stress": 0.24,
+            "state_vector_v1.credit_spread": 4.4,
+            "state_vector_v1.valuation_multiple": 4.5,
+        },
+        action_scale=0.10,
+    )
+    refinancing = _debt_issuance_archetype_profile(
+        compact_features={
+            "state_vector_v1.profitability": 0.17,
+            "state_vector_v1.cash_generation": 0.01,
+            "state_vector_v1.gross_obligation_burden": 2.4,
+            "state_vector_v1.net_obligation_burden": 1.9,
+            "state_vector_v1.interest_coverage": 4.2,
+            "state_vector_v1.liquidity_flexibility": 0.9,
+            "state_vector_v1.market_access": 0.73,
+            "state_vector_v1.market_stress": 0.16,
+            "state_vector_v1.credit_spread": 2.9,
+            "state_vector_v1.valuation_multiple": 8.0,
+        },
+        action_scale=0.22,
+    )
+    opportunistic = _debt_issuance_archetype_profile(
+        compact_features={
+            "state_vector_v1.profitability": 0.28,
+            "state_vector_v1.cash_generation": 0.07,
+            "state_vector_v1.gross_obligation_burden": 1.1,
+            "state_vector_v1.net_obligation_burden": 0.4,
+            "state_vector_v1.interest_coverage": 10.0,
+            "state_vector_v1.liquidity_flexibility": 3.2,
+            "state_vector_v1.market_access": 0.91,
+            "state_vector_v1.market_stress": 0.09,
+            "state_vector_v1.credit_spread": 2.2,
+            "state_vector_v1.valuation_multiple": 14.0,
+        },
+        action_scale=0.06,
+    )
+
+    assert distressed["label"] == "distressed_borrower"
+    assert refinancing["label"] == "refinancing_pressure"
+    assert opportunistic["label"] == "opportunistic_issuer"
+
+

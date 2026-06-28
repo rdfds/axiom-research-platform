@@ -105,3 +105,43 @@ def test_query_precedent_index_filters_by_action_regime_horizon():
     assert all(r["time_horizon"] == "12m" for r in out["rows"])
 
 
+def test_query_precedent_index_supports_min_sample_size_and_oos_filter():
+    matches = [
+        {
+            "candidate": {
+                "candidate_id": "c1",
+                "action_type": "capital_return",
+                "action_subtype": "open_market_buyback",
+                "action_id": "capital_return.open_market_buyback",
+            },
+            "precedent_pack": _pack(),
+        },
+        {
+            "candidate": {
+                "candidate_id": "c2",
+                "action_type": "capital_return",
+                "action_subtype": "open_market_buyback",
+                "action_id": "capital_return.open_market_buyback",
+            },
+            "precedent_pack": {
+                **_pack(),
+                "mismatch_diagnostics": {"out_of_sample_flag": True, "cohort_size": 5},
+            },
+        },
+    ]
+    idx = build_precedent_index(run_id="run-3", precedent_matches=matches)
+
+    out = query_precedent_index(
+        idx,
+        action_type="capital_return",
+        regime="all",
+        time_horizon="12m",
+        min_sample_size=13,
+        exclude_out_of_sample=True,
+        limit=200,
+    )
+    assert out["count"] > 0
+    assert all(int(r["sample_size"]) >= 13 for r in out["rows"])
+    assert all(bool(r["out_of_sample_flag"]) is False for r in out["rows"])
+
+
