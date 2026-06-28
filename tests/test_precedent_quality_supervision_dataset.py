@@ -606,3 +606,199 @@ def test_infer_target_taxonomy_from_same_action_universe_prefers_direct_historic
     }
 
 
+def test_infer_target_taxonomy_from_same_action_universe_skips_knn_for_equity_issuance(monkeypatch):
+    action_id = "capital_structure.equity_issuance"
+    monkeypatch.setattr(
+        "scripts.build_precedent_quality_supervision_dataset._direct_historical_ticker_taxonomy",
+        lambda ticker: {},
+    )
+
+    taxonomy = _infer_target_taxonomy_from_same_action_universe(
+        {
+            "company_id": "025430",
+            "source_company_id": "025430",
+            "anchor_action_id": action_id,
+            "ticker": "FCEL",
+        },
+        same_action_universe_lookup={
+            action_id: {
+                "rows": [
+                    {
+                        "company_id": "100001",
+                        "ticker": "PEER1",
+                        "taxonomy.sector": "Health Care",
+                        "taxonomy.subsector": "Biotechnology",
+                        "state_vector_v1.size_log_revenue": 6.1,
+                        "state_vector_v1.profitability": -0.5,
+                        "state_vector_v1.growth": 1.1,
+                        "state_vector_v1.valuation_multiple": -7.5,
+                    },
+                    {
+                        "company_id": "100002",
+                        "ticker": "PEER2",
+                        "taxonomy.sector": "Health Care",
+                        "taxonomy.subsector": "Biotechnology",
+                        "state_vector_v1.size_log_revenue": 5.9,
+                        "state_vector_v1.profitability": -0.3,
+                        "state_vector_v1.growth": 1.0,
+                        "state_vector_v1.valuation_multiple": -8.4,
+                    },
+                ],
+                "feature_scales": {
+                    "state_vector_v1.size_log_revenue": 1.0,
+                    "state_vector_v1.profitability": 1.0,
+                    "state_vector_v1.growth": 1.0,
+                    "state_vector_v1.valuation_multiple": 1.0,
+                },
+            }
+        },
+        target_compact={
+            "state_vector_v1.size_log_revenue": 6.0,
+            "state_vector_v1.profitability": -0.4,
+            "state_vector_v1.growth": 1.2,
+            "state_vector_v1.valuation_multiple": -8.0,
+        },
+    )
+
+    assert taxonomy == {}
+
+
+def test_same_action_analog_positive_source_uses_action_scale_when_state_is_tied():
+    action_id = "capital_structure.new_debt_issuance"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    row_common = {
+        "normalized_action_id": action_id,
+        "action_date": "2024-01-15T00:00:00+00:00",
+        "taxonomy.sector": "Information Technology",
+        "taxonomy.subsector": "Semiconductors",
+    }
+    rows = [
+        {
+            **row_common,
+            "company_id": "1111111111",
+            "ticker": "CLOSE",
+            "action_size": 100.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+        {
+            **row_common,
+            "company_id": "2222222222",
+            "ticker": "FAR",
+            "action_size": 10.0,
+            "base_market_cap": 1000.0,
+            **target_compact,
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        target_action_params={"amount_usd": 100.0, "action_size": 100.0},
+        target_market_cap=1000.0,
+        top_k=2,
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=1,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=False,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["ticker"] == "CLOSE"
+
+
+def test_same_action_analog_positive_source_prioritizes_debt_borrower_profile():
+    action_id = "capital_structure.new_debt_issuance"
+    target_compact = {feature: 0.0 for feature in _STATE_VECTOR_V1_FEATURES}
+    target_compact.update(
+        {
+            "state_vector_v1.profitability": 0.12,
+            "state_vector_v1.cash_generation": -0.03,
+            "state_vector_v1.gross_obligation_burden": 2.4,
+            "state_vector_v1.net_obligation_burden": 1.7,
+            "state_vector_v1.interest_coverage": 2.8,
+            "state_vector_v1.valuation_multiple": 5.4,
+            "state_vector_v1.market_access": 0.63,
+            "state_vector_v1.market_stress": 0.17,
+            "state_vector_v1.rates_level": 4.58,
+            "state_vector_v1.credit_spread": 2.64,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.liquidity_flexibility": 2.0,
+        }
+    )
+    row_common = {
+        "normalized_action_id": action_id,
+        "action_date": "2024-01-15T00:00:00+00:00",
+        "taxonomy.sector": "Industrials",
+        "taxonomy.subsector": "Commercial Services & Supplies",
+        "action_size": 100.0,
+        "base_market_cap": 1000.0,
+        "state_vector_v1.size_log_revenue": 9.6,
+        "state_vector_v1.liquidity_flexibility": 2.0,
+    }
+    rows = [
+        {
+            **row_common,
+            "company_id": "1111111111",
+            "ticker": "DISTRESS",
+            **target_compact,
+        },
+        {
+            **row_common,
+            "company_id": "2222222222",
+            "ticker": "HEALTHY",
+            **{
+                **target_compact,
+                "state_vector_v1.profitability": 0.28,
+                "state_vector_v1.cash_generation": 0.10,
+                "state_vector_v1.gross_obligation_burden": 0.8,
+                "state_vector_v1.net_obligation_burden": 0.3,
+                "state_vector_v1.interest_coverage": 18.0,
+                "state_vector_v1.valuation_multiple": 13.0,
+                "state_vector_v1.market_access": 0.88,
+                "state_vector_v1.market_stress": 0.10,
+                "state_vector_v1.growth": 0.06,
+            },
+        },
+    ]
+
+    source = _build_same_action_analog_positive_source(
+        case={
+            "company_id": "0000002488",
+            "source_company_id": "0000002488",
+            "anchor_action_id": action_id,
+            "anchor_action_date": "2024-09-02T00:00:00+00:00",
+            "as_of_time": "2024-09-02T00:00:00+00:00",
+        },
+        target_compact=target_compact,
+        target_taxonomy={"sector": "Industrials", "subsector": "Commercial Services & Supplies"},
+        target_action_params={"amount_usd": 100.0, "action_size": 100.0},
+        target_market_cap=1000.0,
+        top_k=2,
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=1,
+        same_action_universe_lookup={
+            action_id: {
+                "rows": rows,
+                "feature_scales": {feature: 1.0 for feature in _STATE_VECTOR_V1_FEATURES},
+            }
+        },
+        regime_aware=False,
+    )
+
+    assert source is not None
+    assert source["matches"][0]["company_id"] == "1111111111"
+
+
