@@ -153,3 +153,46 @@ def _calendar_year_end_timestamp(year: int) -> str:
     return pd.Timestamp(year=year, month=12, day=31, tz="UTC").isoformat()
 
 
+def _calendar_year_exclusive_upper_bound(year: int) -> str:
+    return pd.Timestamp(year=year + 1, month=1, day=1, tz="UTC").isoformat()
+
+
+def _resolve_snapshot_policy(action_id: str, snapshot_as_of_time: str | None) -> Dict[str, str]:
+    normalized_requested = _normalize_as_of_time(snapshot_as_of_time)
+    target_snapshot_as_of_time = normalized_requested
+    historical_precedent_cutoff_time = normalized_requested
+    cutoff_policy = "requested_snapshot_as_of_time"
+    target_snapshot_cutoff_date = ""
+    if normalized_requested:
+        stamp = pd.to_datetime(normalized_requested, utc=True, errors="coerce")
+        if pd.notna(stamp):
+            target_snapshot_cutoff_date = str(stamp.date())
+    return {
+        "requested_snapshot_as_of_time": normalized_requested,
+        "target_snapshot_as_of_time": target_snapshot_as_of_time,
+        "historical_precedent_cutoff_time": historical_precedent_cutoff_time,
+        "target_snapshot_cutoff_date": target_snapshot_cutoff_date,
+        "cutoff_policy": cutoff_policy,
+    }
+
+
+def _load_snapshot_row(snapshot_path: Path, company_id: str, snapshot_as_of_time: str | None = None) -> Dict[str, Any]:
+    matches: list[Dict[str, Any]] = []
+    normalized_target_time = _normalize_as_of_time(snapshot_as_of_time)
+    with gzip.open(snapshot_path, "rt") as handle:
+        for line in handle:
+            row = json.loads(line)
+            if str(row.get("company_id") or "") != company_id:
+                continue
+            if normalized_target_time and _normalize_as_of_time(str(row.get("as_of_time") or "")) == normalized_target_time:
+                return row
+            matches.append(row)
+    if not matches:
+        raise ValueError(f"company_id={company_id} not found in snapshot file {snapshot_path}")
+    if normalized_target_time:
+        raise ValueError(
+            f"company_id={company_id} snapshot_as_of_time={snapshot_as_of_time} not found in snapshot file {snapshot_path}"
+        )
+    return max(matches, key=_row_as_of_sort_key)
+
+
