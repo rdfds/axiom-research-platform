@@ -2058,3 +2058,94 @@ def test_pair_rows_can_use_same_action_regime_analog_consensus_teacher():
     assert {row["positive_precedent_company_id"] for row in rows} == {"111111"}
 
 
+def test_actual_anchor_teacher_can_mine_within_action_negatives_from_same_action_universe():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "anchor_action_date": "2024-12-31T00:00:00+00:00",
+    }
+    precedent_index = {"candidate_rows": []}
+    precedent_matches = {"results": []}
+    anchor_outcomes_lookup = {
+        ("0000002488", "capital_return.open_market_buyback"): [
+            {
+                "company_id": "0000002488",
+                "action_date": "2024-12-31T00:00:00+00:00",
+                "state_vector_v1.valuation_multiple": 36.0,
+            }
+        ]
+    }
+    same_action_universe_lookup = {
+        "capital_return.open_market_buyback": {
+            "feature_scales": {
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "rows": [
+                {
+                    "company_id": "111111",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-06-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 58.0,
+                    "state_vector_v1.growth": 0.05,
+                    "state_vector_v1.cash_generation": 0.020,
+                },
+                {
+                    "company_id": "222222",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-05-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 40.0,
+                    "state_vector_v1.growth": 0.03,
+                    "state_vector_v1.cash_generation": 0.018,
+                },
+                {
+                    "company_id": "333333",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-04-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 24.0,
+                    "state_vector_v1.growth": -0.02,
+                    "state_vector_v1.cash_generation": 0.010,
+                },
+            ],
+        }
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index=precedent_index,
+        precedent_matches=precedent_matches,
+        target_compact={
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.cash_generation": 0.021,
+        },
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        top_k=2,
+        anchor_outcomes_lookup=anchor_outcomes_lookup,
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=2,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=True,
+        include_within_action_hard_negatives=True,
+        actual_anchor_within_action_negative_source="same_action_universe",
+        positive_source_mode="actual_anchor_preferred",
+        hard_negative_taxonomy_mode="none",
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+
+    assert rows
+    assert {row["positive_source"] for row in rows} == {"actual_anchor_outcome"}
+    assert {row["pair_source"] for row in rows} == {"actual_anchor_outcome_vs_same_action_universe"}
+    assert {row["negative_source"] for row in rows} == {"same_action_universe"}
+    assert {row["negative_precedent_company_id"] for row in rows} == {"111111", "222222", "333333"}
