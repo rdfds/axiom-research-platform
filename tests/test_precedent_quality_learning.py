@@ -506,3 +506,121 @@ def test_build_pairwise_matrix_teacher_confidence_weights_rows_by_teacher_margin
     assert weights[2] > weights[3]
 
 
+def test_build_pairwise_matrix_target_regime_rarity_upweights_sparse_targets():
+    df = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "as_of_time": "2024-01-01T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {"state_vector_v1.valuation_multiple": 60.0},
+                "positive_compact": {"state_vector_v1.valuation_multiple": 45.0},
+                "negative_compact": {"state_vector_v1.valuation_multiple": 20.0},
+                "feature_gap_summary": {
+                    "state_vector_v1.valuation_multiple": {
+                        "positive_abs_diff": 15.0,
+                        "negative_abs_diff": 40.0,
+                    }
+                },
+            },
+            {
+                "company_id": "000002",
+                "as_of_time": "2024-01-02T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {"state_vector_v1.valuation_multiple": 11.0},
+                "positive_compact": {"state_vector_v1.valuation_multiple": 10.0},
+                "negative_compact": {"state_vector_v1.valuation_multiple": 3.0},
+                "feature_gap_summary": {
+                    "state_vector_v1.valuation_multiple": {
+                        "positive_abs_diff": 1.0,
+                        "negative_abs_diff": 8.0,
+                    }
+                },
+            },
+            {
+                "company_id": "000003",
+                "as_of_time": "2024-01-03T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {"state_vector_v1.valuation_multiple": 10.5},
+                "positive_compact": {"state_vector_v1.valuation_multiple": 9.5},
+                "negative_compact": {"state_vector_v1.valuation_multiple": 2.5},
+                "feature_gap_summary": {
+                    "state_vector_v1.valuation_multiple": {
+                        "positive_abs_diff": 1.0,
+                        "negative_abs_diff": 8.0,
+                    }
+                },
+            },
+        ]
+    )
+
+    matrix = build_pairwise_matrix(
+        df,
+        feature_names=["state_vector_v1.valuation_multiple"],
+        min_feature_coverage_rows=1,
+        pair_weight_mode="target_regime_rarity",
+    )
+
+    weights = list(matrix["sample_weights"])
+    assert weights[0] > weights[1]
+    assert weights[0] > weights[2]
+    assert matrix["group_rarity_weights"]
+    rare_group = "000001|2024-01-01T00:00:00+00:00|capital_return.open_market_buyback"
+    common_group = "000002|2024-01-02T00:00:00+00:00|capital_return.open_market_buyback"
+    assert matrix["group_rarity_weights"][rare_group] > matrix["group_rarity_weights"][common_group]
+
+
+def test_build_pairwise_matrix_can_include_runtime_penalty_features():
+    df = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "as_of_time": "2024-01-01T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {
+                    "state_vector_v1.size_log_revenue": 10.0,
+                    "state_vector_v1.net_obligation_burden": 0.2,
+                },
+                "positive_compact": {
+                    "state_vector_v1.size_log_revenue": 9.8,
+                    "state_vector_v1.net_obligation_burden": 0.3,
+                },
+                "negative_compact": {
+                    "state_vector_v1.size_log_revenue": 8.0,
+                    "state_vector_v1.net_obligation_burden": 1.6,
+                },
+            },
+            {
+                "company_id": "000002",
+                "as_of_time": "2024-01-02T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {
+                    "state_vector_v1.size_log_revenue": 9.7,
+                    "state_vector_v1.net_obligation_burden": 0.1,
+                },
+                "positive_compact": {
+                    "state_vector_v1.size_log_revenue": 9.6,
+                    "state_vector_v1.net_obligation_burden": 0.2,
+                },
+                "negative_compact": {
+                    "state_vector_v1.size_log_revenue": 8.4,
+                    "state_vector_v1.net_obligation_burden": 1.4,
+                },
+            },
+        ]
+    )
+
+    matrix = build_pairwise_matrix(
+        df,
+        feature_names=[],
+        min_feature_coverage_rows=1,
+        penalty_feature_specs=[
+            {"name": "size_gap_excess", "source_feature": "state_vector_v1.size_log_revenue", "soft_threshold": 0.35},
+            {"name": "primary_burden_gap_excess", "source_feature": "state_vector_v1.net_obligation_burden", "soft_threshold": 1.25},
+        ],
+    )
+
+    assert "pairwise_penalty::size_gap_excess" in matrix["selected_features"]
+    assert "pairwise_penalty::primary_burden_gap_excess" in matrix["selected_features"]
+
+

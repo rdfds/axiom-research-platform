@@ -76,3 +76,62 @@ def test_match_explanation_lines_call_out_closest_and_gaps() -> None:
     assert "market stress" in joined
 
 
+def test_synthesized_snapshot_row_from_outcome_row_preserves_core_features() -> None:
+    row = audit._synthesized_snapshot_row_from_outcome_row(
+        {
+            "action_size": 250000000.0,
+            "base_revenue_ttm": 1000.0,
+            "base_revenue_ttm_lag_1y": 900.0,
+            "base_ebitda_ttm": 200.0,
+            "base_margin": 0.2,
+            "base_fcf_margin": 0.1,
+            "base_total_debt": 300.0,
+            "base_net_debt": 120.0,
+            "base_cash": 180.0,
+            "base_available_liquidity": 260.0,
+            "base_current_debt": 40.0,
+            "base_interest_expense": 20.0,
+            "base_market_cap": 2500.0,
+            "base_ev_ebitda": 12.5,
+            "base_fcf_yield": 0.04,
+            "base_volatility_30d": 0.2,
+            "base_volatility_90d": 0.3,
+            "base_drawdown_90d": -0.2,
+            "base_momentum_60d": 0.08,
+            "base_credit_spread_level": 0.035,
+            "base_credit_window_proxy": 0.7,
+            "base_equity_window_proxy": 0.8,
+            "base_revenue_growth_yoy": 0.11,
+            "macro_vix": 18.0,
+            "macro_fed_funds_effective": 0.0525,
+            "macro_hy_oas": 0.038,
+            "macro_ig_oas": 0.012,
+            "macro_real_gdp_growth_yoy": 0.021,
+            "macro_sofr": 0.053,
+            "macro_rate_10y": 0.041,
+            "macro_rate_2y": 0.045,
+            "sector": "Industrials",
+            "subsector": "Electrical Equipment",
+        },
+        company_id="0000012345",
+        as_of_time="2024-08-01T00:00:00+00:00",
+        outcomes_path=Path("/tmp/mock_outcomes.parquet"),
+    )
+
+    features = row["features"]
+    assert row["action_params"]["amount_usd"] == 250000000.0
+    assert row["action_params"]["action_size"] == 250000000.0
+    assert features["market.ev_ebitda"]["value"] == 12.5
+    assert features["cash_flow.free_cash_flow_ttm"]["value"] == 100.0 * 1_000_000.0
+    assert features["capital_structure.current_debt_provider_direct"]["value"] == 40.0 * 1_000_000.0
+    assert features["capital_structure.debt_due_next_24m"]["value"] == 40.0 * 1_000_000.0
+    assert features["capital_structure.debt_due_next_24m"]["support_mode"] == "proxy_missing_component"
+    assert features["capital_structure.interest_coverage"]["value"] == 10.0
+    assert features["market.enterprise_value"]["value"] == 2620.0 * 1_000_000.0
+    assert features["market.vix"]["value"] == 18.0
+    assert features["macro.fed_funds_effective"]["value"] == 0.0525
+    assert features["macro.hy_oas"]["value"] == 0.038
+    assert features["taxonomy.sector"]["value"] == "Industrials"
+    assert features["operating.revenue_yoy_last_q"]["value"] == 0.11
+
+
