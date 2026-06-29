@@ -35,3 +35,109 @@ Default precedent CLI/API entrypoints now resolve to the normalized full corpus 
 - `./scripts/execute_recommendation_run.py`
 - `./scripts/50_run_precedent_pipeline.py`
 
+## Validation
+
+### 5-Company Batch
+
+Current baseline batch:
+
+Source:
+
+- `/tmp/ml_status_precedent_normfull_v2.json`
+
+Metrics:
+
+- `precedent_conf_mean = 0.353771`
+- `precedent_oos_mean = 0.216`
+- `causal_rate_mean = 0.79`
+- `strict_causal_mean = 1.0`
+
+Tier mix:
+
+- `exact = 55`
+- `family = 70`
+- `sibling_type = 0`
+
+This is the current accepted precedent baseline.
+
+### 20-Company Broad Sample
+
+Source:
+
+- `/tmp/ml_status_precedent_normfull_20.json`
+
+Metrics:
+
+- `precedent_conf_mean = 0.346849`
+- `precedent_oos_mean = 0.308`
+- `causal_rate_mean = 0.800167`
+- `strict_causal_mean = 1.0`
+
+Tier mix:
+
+- `exact = 208`
+- `family = 292`
+- `sibling_type = 0`
+
+Interpretation:
+
+- the 5-company regression result holds on a broader 20-company sample
+- confidence is slightly lower than the fixed regression set, which is expected on broader coverage
+- no fallback collapse to `sibling_type` appeared in the broader sample
+
+### Prior Comparison Batch
+
+Source:
+
+- `/tmp/ml_status_precedent_normfull_v1.json`
+
+Metrics:
+
+- `precedent_conf_mean = 0.345856`
+- `precedent_oos_mean = 0.328`
+- `causal_rate_mean = 0.79`
+- `strict_causal_mean = 1.0`
+
+Tier mix from that batch:
+
+- `exact = 55`
+- `family = 55`
+- `sibling_type = 15`
+
+At that point, every `sibling_type` case was `capital_structure.convertible_issuance`.
+
+### Post-Batch Targeted Fix
+
+Convertible issuance was patched after the 5-company batch and validated separately.
+
+Source:
+
+- `/tmp/precedent_convertible_check_v2.json`
+
+Result:
+
+- `action_id = capital_structure.convertible_issuance`
+- `retrieval_tier = family`
+- `precedent_conf_mean = 0.46208`
+- `oos_rate = 0.0`
+- `selected_family_scale_keys = capital_structure.equity_issuance.scale_small`
+
+### Targeted Family Checks
+
+Source:
+
+- `/tmp/precedent_targeted_norm_full_v4_benchmark.json`
+
+Validated families:
+
+- `capital_structure.new_debt_issuance`
+- `capital_structure.refinancing`
+- `capital_structure.convertible_issuance`
+- `mna.platform_acquisition`
+- `mna.tuck_in_acquisition`
+- `portfolio.divestiture_partial`
+- `capital_return.open_market_buyback`
+- `capital_return.accelerated_share_repurchase`
+
+All targeted checks are currently `oos = 0.0`.
+
