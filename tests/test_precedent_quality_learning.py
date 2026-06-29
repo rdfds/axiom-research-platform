@@ -443,3 +443,66 @@ def test_outcome_aware_reranker_prior_keeps_similarity_as_baseline():
     assert prior.tolist() == [1.0, 0.0, 0.0, 0.0]
 
 
+def test_second_stage_reranker_prior_keeps_base_state_as_baseline():
+    prior = _second_stage_reranker_prior(
+        [
+            "base_state_similarity",
+            "parameter_similarity",
+            "sector_similarity",
+            "action_match_score",
+        ]
+    )
+
+    assert prior.tolist() == [1.0, 0.0, 0.0, 0.0]
+
+
+def test_build_pairwise_matrix_teacher_confidence_weights_rows_by_teacher_margin():
+    df = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "as_of_time": "2024-01-01T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {"state_vector_v1.valuation_multiple": 40.0},
+                "positive_compact": {"state_vector_v1.valuation_multiple": 35.0},
+                "negative_compact": {"state_vector_v1.valuation_multiple": 10.0},
+                "feature_gap_summary": {
+                    "state_vector_v1.valuation_multiple": {
+                        "positive_abs_diff": 5.0,
+                        "negative_abs_diff": 30.0,
+                    }
+                },
+                "positive_similarity_score": 0.80,
+                "negative_similarity_score": 0.20,
+            },
+            {
+                "company_id": "000002",
+                "as_of_time": "2024-01-02T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "target_compact": {"state_vector_v1.valuation_multiple": 40.0},
+                "positive_compact": {"state_vector_v1.valuation_multiple": 35.0},
+                "negative_compact": {"state_vector_v1.valuation_multiple": 10.0},
+                "feature_gap_summary": {
+                    "state_vector_v1.valuation_multiple": {
+                        "positive_abs_diff": 5.0,
+                        "negative_abs_diff": 30.0,
+                    }
+                },
+                "positive_similarity_score": 0.61,
+                "negative_similarity_score": 0.60,
+            },
+        ]
+    )
+
+    matrix = build_pairwise_matrix(
+        df,
+        feature_names=["state_vector_v1.valuation_multiple"],
+        min_feature_coverage_rows=1,
+        pair_weight_mode="teacher_confidence",
+    )
+
+    weights = list(matrix["sample_weights"])
+    assert weights[0] > weights[1]
+    assert weights[2] > weights[3]
+
+

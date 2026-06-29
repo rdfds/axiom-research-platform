@@ -274,3 +274,115 @@ def _transform_spec_key(spec: Dict[str, Any]) -> Tuple[Any, ...]:
     )
 
 
+def _pair_teacher_confidence_weight(row: Dict[str, Any], mode: Any) -> float:
+    normalized_mode = _normalize_pair_weight_mode(mode)
+    if normalized_mode in {"uniform", "target_regime_rarity"}:
+        return 1.0
+    pos_score = _clean_numeric(row.get("positive_similarity_score"))
+    neg_score = _clean_numeric(row.get("negative_similarity_score"))
+    if pos_score is not None and neg_score is not None:
+        return max(0.0, float(pos_score) - float(neg_score))
+    pos_rank = _clean_numeric(row.get("positive_precedent_rank_within_candidate"))
+    neg_rank = _clean_numeric(row.get("negative_precedent_rank_within_candidate"))
+    if pos_rank is not None and neg_rank is not None:
+        return max(0.0, float(neg_rank) - float(pos_rank))
+    return 1.0
+
+
+def _target_regime_rarity_weights(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    feature_names: Sequence[str],
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, float]:
+    base_features = [
+        str(feature)
+        for feature in list(feature_names or [])
+        if not str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+        and not str(feature).startswith(_LATENT_REGIME_FEATURE_PREFIX)
+    ]
+    if not base_features:
+        return {}
+
+    group_rows: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        group_key = _pairwise_group_key(row)
+        if group_key and group_key not in group_rows:
+            group_rows[group_key] = dict(row)
+    ordered_groups = list(group_rows.keys())
+    if len(ordered_groups) < 3:
+        return {group_key: 1.0 for group_key in ordered_groups}
+
+    transform_overrides = {
+        str(feature): _normalize_transform_spec(spec)
+        for feature, spec in dict(transform_specs or {}).items()
+    }
+    target_matrix = np.full((len(ordered_groups), len(base_features)), np.nan, dtype=float)
+    for row_idx, group_key in enumerate(ordered_groups):
+        target_compact = dict(group_rows[group_key].get("target_compact") or {})
+        for feature_idx, feature_name in enumerate(base_features):
+            value = _clean_numeric(target_compact.get(feature_name))
+            if value is None:
+                continue
+            transformed = _transform_matching_values(
+                np.asarray([float(value)], dtype=float),
+                transform_overrides.get(feature_name),
+            )
+            target_matrix[row_idx, feature_idx] = float(transformed[0]) if transformed.size else float(value)
+
+    standardized = np.column_stack(
+        [_robust_standardize_vector(target_matrix[:, idx]) for idx in range(target_matrix.shape[1])]
+    )
+    pairwise_distance = np.full((standardized.shape[0], standardized.shape[0]), np.nan, dtype=float)
+    for left_idx in range(standardized.shape[0]):
+        pairwise_distance[left_idx, left_idx] = 0.0
+        for right_idx in range(left_idx + 1, standardized.shape[0]):
+            valid = np.isfinite(standardized[left_idx]) & np.isfinite(standardized[right_idx])
+            if not bool(np.any(valid)):
+                continue
+            distance = float(np.sqrt(np.mean(np.square(standardized[left_idx, valid] - standardized[right_idx, valid]))))
+            pairwise_distance[left_idx, right_idx] = distance
+            pairwise_distance[right_idx, left_idx] = distance
+
+    local_rarity = np.ones(standardized.shape[0], dtype=float)
+    neighbor_count = min(5, standardized.shape[0] - 1)
+    if neighbor_count <= 0:
+        return {group_key: 1.0 for group_key in ordered_groups}
+
+    for row_idx in range(standardized.shape[0]):
+        candidates = pairwise_distance[row_idx]
+        valid = np.isfinite(candidates) & (np.arange(candidates.shape[0]) != row_idx)
+        if not bool(np.any(valid)):
+            continue
+        ordered = np.sort(candidates[valid])[:neighbor_count]
+        if ordered.size:
+            local_rarity[row_idx] = float(np.mean(ordered))
+
+    finite = local_rarity[np.isfinite(local_rarity) & (local_rarity > 0.0)]
+    if finite.size == 0:
+        return {group_key: 1.0 for group_key in ordered_groups}
+    median_rarity = float(np.median(finite))
+    if not np.isfinite(median_rarity) or median_rarity <= 1e-9:
+        return {group_key: 1.0 for group_key in ordered_groups}
+
+    rarity_weights = np.sqrt(np.maximum(local_rarity, 1e-9) / median_rarity)
+    finite_weight_mask = np.isfinite(rarity_weights) & (rarity_weights > 0.0)
+    if bool(np.any(finite_weight_mask)):
+        rarity_weights = rarity_weights / float(np.mean(rarity_weights[finite_weight_mask]))
+    else:
+        rarity_weights = np.ones_like(rarity_weights, dtype=float)
+    return {
+        group_key: float(rarity_weights[idx]) if np.isfinite(rarity_weights[idx]) and rarity_weights[idx] > 0.0 else 1.0
+        for idx, group_key in enumerate(ordered_groups)
+    }
+
+
+def _compact_feature_triplet(row: Dict[str, Any], feature_name: str) -> Optional[Tuple[float, float, float]]:
+    target = _clean_numeric(dict(row.get("target_compact") or {}).get(feature_name))
+    positive = _clean_numeric(dict(row.get("positive_compact") or {}).get(feature_name))
+    negative = _clean_numeric(dict(row.get("negative_compact") or {}).get(feature_name))
+    if target is None or positive is None or negative is None:
+        return None
+    return target, positive, negative
+
+
