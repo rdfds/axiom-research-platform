@@ -123,3 +123,33 @@ def _is_missing(value: Any) -> bool:
     return value is None or (isinstance(value, float) and not math.isfinite(value))
 
 
+def _fmt_value(value: Any) -> str:
+    if _is_missing(value):
+        return "`null`"
+    if isinstance(value, bool):
+        return f"`{str(value).lower()}`"
+    if isinstance(value, int):
+        return f"`{value}`"
+    if isinstance(value, float):
+        return f"`{value:.4f}`"
+    return f"`{value}`"
+
+
+def _row_as_of_sort_key(row: Dict[str, Any]) -> str:
+    return str(row.get("as_of_time") or "")
+
+
+def _normalize_as_of_time(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    stamp = pd.to_datetime(text, utc=True, errors="coerce")
+    if pd.isna(stamp):
+        return text
+    return stamp.isoformat()
+
+
+def _calendar_year_end_timestamp(year: int) -> str:
+    return pd.Timestamp(year=year, month=12, day=31, tz="UTC").isoformat()
+
+
