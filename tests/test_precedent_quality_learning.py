@@ -361,3 +361,85 @@ def test_build_second_stage_reranker_matrix_uses_pair_metadata_for_sector_and_sc
     assert np.abs(matrix["X"][:, feature_idx["parameter_similarity"]]).sum() > 0.0
 
 
+def test_build_outcome_aware_reranker_matrix_uses_outcome_lookup():
+    pairs = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "as_of_time": "2024-01-01T00:00:00+00:00",
+                "anchor_action_id": "capital_return.open_market_buyback",
+                "competitor_action_id": "capital_return.open_market_buyback",
+                "positive_precedent_id": "000001::2024-03-31T00:00:00::0",
+                "negative_precedent_id": "000002::2024-03-31T00:00:00::0",
+                "positive_similarity_score": 0.82,
+                "negative_similarity_score": 0.61,
+            },
+        ]
+    )
+    outcomes = pd.DataFrame(
+        [
+            {
+                "company_id": "000001",
+                "action_date": "2024-03-31T00:00:00",
+                "normalized_action_id": "capital_return.open_market_buyback",
+                "outcome_pe_6m": 0.30,
+                "outcome_pe_12m": 0.40,
+                "outcome_ev_ebitda_6m": 0.25,
+                "outcome_ev_ebitda_12m": 0.35,
+                "credit_spread_change_1m": -15.0,
+                "credit_spread_change_6m": -25.0,
+                "credit_spread_change_12m": -30.0,
+                "credit_spread_change_24m": -40.0,
+                "rating_migration_1m": 1.0,
+                "rating_migration_6m": 1.0,
+                "rating_migration_12m": 1.0,
+                "rating_migration_24m": 1.0,
+                "leverage_delta": -0.20,
+                "fcf_margin_delta": 0.03,
+            },
+            {
+                "company_id": "000002",
+                "action_date": "2024-03-31T00:00:00",
+                "normalized_action_id": "capital_return.open_market_buyback",
+                "outcome_pe_6m": -0.10,
+                "outcome_pe_12m": -0.20,
+                "outcome_ev_ebitda_6m": -0.05,
+                "outcome_ev_ebitda_12m": -0.15,
+                "credit_spread_change_1m": 10.0,
+                "credit_spread_change_6m": 20.0,
+                "credit_spread_change_12m": 25.0,
+                "credit_spread_change_24m": 35.0,
+                "rating_migration_1m": -1.0,
+                "rating_migration_6m": -1.0,
+                "rating_migration_12m": -1.0,
+                "rating_migration_24m": -1.0,
+                "leverage_delta": 0.15,
+                "fcf_margin_delta": -0.02,
+            },
+        ]
+    )
+
+    matrix = build_outcome_aware_reranker_matrix(pairs, outcomes_df=outcomes, same_action_only=True)
+
+    assert matrix["pair_count"] == 1
+    assert "outcome_valuation_score" in matrix["selected_features"]
+    assert "outcome_credit_score" in matrix["selected_features"]
+    assert matrix["feature_coverage"]["current_similarity_score"] == 1
+    assert matrix["feature_coverage"]["outcome_valuation_score"] == 1
+    assert matrix["feature_coverage"]["outcome_credit_score"] == 1
+    assert matrix["X"].shape == (2, len(matrix["selected_features"]))
+
+
+def test_outcome_aware_reranker_prior_keeps_similarity_as_baseline():
+    prior = _outcome_aware_reranker_prior(
+        [
+            "current_similarity_score",
+            "outcome_equity_score",
+            "outcome_valuation_score",
+            "outcome_credit_score",
+        ]
+    )
+
+    assert prior.tolist() == [1.0, 0.0, 0.0, 0.0]
+
+

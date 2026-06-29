@@ -240,3 +240,37 @@ def _clean_numeric(value: Any) -> Optional[float]:
     return numeric if np.isfinite(numeric) else None
 
 
+def _normalize_transform_spec(spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(spec, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    kind = str(spec.get("kind") or "").strip().lower()
+    if kind and kind not in {"identity", "none"}:
+        out["kind"] = kind
+    cap = _clean_numeric(spec.get("cap"))
+    if cap is not None and cap > 0.0:
+        out["cap"] = float(cap)
+    scale = _clean_numeric(spec.get("scale"))
+    if scale is not None and scale > 0.0:
+        out["scale"] = float(scale)
+    return out
+
+
+def _normalize_pair_weight_mode(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"target_regime_rarity", "regime_rarity", "target_density", "rare_target"}:
+        return "target_regime_rarity"
+    if text in {"teacher_confidence", "teacher_margin", "confidence"}:
+        return "teacher_confidence"
+    return "uniform"
+
+
+def _transform_spec_key(spec: Dict[str, Any]) -> Tuple[Any, ...]:
+    normalized = _normalize_transform_spec(spec)
+    return (
+        normalized.get("kind"),
+        round(float(normalized.get("cap")), 8) if normalized.get("cap") is not None else None,
+        round(float(normalized.get("scale")), 8) if normalized.get("scale") is not None else None,
+    )
+
+
