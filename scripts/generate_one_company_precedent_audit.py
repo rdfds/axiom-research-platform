@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+from datetime import date
+import duckdb
+from functools import lru_cache
+import gzip
+import json
+import math
+import os
+import sys
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import pandas as pd
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+os.environ.setdefault("RECO_DISABLE_PRECEDENT_NARRATIVE", "1")
+sys.path.insert(0, str(REPO_ROOT))
+
+from src.model_feature_bundle import _STATE_VECTOR_V1_FEATURES, build_model_feature_bundle
+from src.pipeline.historical_price_metric_backfill import backfill_historical_price_window_metrics
+from src.pipeline.precedent_brain import (
+    _PRECEDENT_DISTANCE_WEIGHTS_CACHE,
+    _PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE,
+    _enrich_missing_historical_taxonomy,
+    _effective_action_subtype,
+    _historical_taxonomy_for_ticker,
+    augment_precedent_state_vector_columns,
+    build_precedent_pack_v2,
+    build_precedent_retrieval_index,
+)
+from src.pipeline.run import (
+    _default_precedent_outcomes_path,
+    adapt_snapshot,
+    attach_model_feature_bundle,
+    feature_view_from_snapshot,
+)
+
+SNAPSHOT_PATH = (
+    REPO_ROOT
+    / "out/materialized_feedback_20260405/company_state_snapshots_input_complete_catalog.asof_safe_v1.jsonl.gz"
+)
+TARGET_RAW_METRIC_SPECS: list[tuple[str, tuple[str, ...]]] = [
+    ("operating.revenue_ttm_provider_direct", ("operating.revenue_ttm_provider_direct", "operating.revenue_ttm")),
+    ("operating.revenue_ttm_lag_1y", ("operating.revenue_ttm_lag_1y", "operating.revenue_ttm_prior_year", "operating.revenue_ttm_prev_year")),
+    ("operating.ebitda_ltm_provider_direct", ("operating.ebitda_ltm_provider_direct", "operating.ebitda_ttm", "operating.operating_earnings_normalized")),
+    ("operating.ebitda_margin_ttm", ("operating.ebitda_margin_ttm",)),
+    ("cash_flow.free_cash_flow_ttm", ("cash_flow.free_cash_flow_ttm", "operating.free_cash_flow_ttm", "cash_flow.free_cash_flow", "free_cash_flow_ttm")),
+    ("capital_structure.total_debt_provider_direct", ("capital_structure.total_debt_provider_direct", "capital_structure.total_debt_reported", "capital_structure.total_debt")),
+    ("capital_structure.net_debt_normalized", ("capital_structure.net_debt_normalized", "capital_structure.net_debt_standardized", "capital_structure.net_debt")),
+    ("capital_structure.lease_liabilities_sec_exact", ("capital_structure.lease_liabilities_sec_exact",)),
+    ("capital_structure.combined_retirement_liability", ("capital_structure.combined_retirement_liability",)),
+    ("liquidity.cash_and_short_term_investments_provider_direct", ("liquidity.cash_and_short_term_investments_provider_direct", "liquidity.cash")),
+    ("liquidity.marketable_securities_sec_exact", ("liquidity.marketable_securities_sec_exact", "liquidity.marketable_securities")),
+    ("liquidity.revolver_undrawn", ("liquidity.revolver_undrawn",)),
+    ("liquidity.available_liquidity_normalized", ("liquidity.available_liquidity_normalized",)),
+    ("capital_structure.debt_due_next_24m", ("capital_structure.debt_due_next_24m", "capital_structure.debt_due_0_12m")),
+    ("capital_structure.current_debt_statement_direct", ("capital_structure.current_debt_statement_direct", "capital_structure.current_debt")),
+    ("capital_structure.current_debt_provider_direct", ("capital_structure.current_debt_provider_direct", "capital_structure.current_debt")),
+    ("capital_structure.interest_expense_statement_direct", ("capital_structure.interest_expense_statement_direct", "capital_structure.interest_expense")),
+    ("capital_structure.interest_coverage", ("capital_structure.interest_coverage",)),
+    ("market.market_cap_provider_direct", ("market.market_cap_provider_direct", "market.market_cap")),
+    ("market.enterprise_value", ("market.enterprise_value", "market.enterprise_value_provider_direct")),
+    ("market.ev_ebitda", ("market.ev_ebitda",)),
+    ("market.fcf_yield", ("market.fcf_yield",)),
+    ("market.volatility_90d", ("market.volatility_90d",)),
+    ("market.drawdown_90d", ("market.drawdown_90d",)),
+    ("market.vix", ("market.vix",)),
+    ("market.credit_window_proxy", ("market.credit_window_proxy",)),
+    ("market.equity_window_proxy", ("market.equity_window_proxy",)),
+    ("market.credit_spread_level", ("market.credit_spread_level",)),
+    ("macro.fed_funds_effective", ("macro.fed_funds_effective",)),
+    ("macro.hy_oas", ("macro.hy_oas",)),
+]
+HISTORICAL_RAW_FIELD_ORDER = [
+    "ticker",
+    "base_revenue_ttm",
+    "base_revenue_ttm_lag_1y",
+    "base_revenue_growth_yoy",
+    "base_ebitda_ttm",
+    "base_total_debt",
+    "base_current_debt",
+    "base_cash",
+    "base_available_liquidity",
+    "base_interest_expense",
+    "base_market_cap",
+    "base_ev_ebitda",
+    "base_fcf_yield",
+    "base_volatility_30d",
+    "base_volatility_90d",
+    "base_drawdown_90d",
+    "base_credit_spread_level",
+    "base_equity_window_proxy",
+    "base_credit_window_proxy",
+    "base_net_debt",
+    "base_leverage",
+    "base_margin",
+    "macro_fed_funds_effective",
+    "macro_hy_oas",
+    "macro_real_gdp_growth_yoy",
+]
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a one-company precedent audit packet.")
+    parser.add_argument("--company-id", required=True)
+    parser.add_argument("--company-name", required=True)
+    parser.add_argument("--action-id", required=True)
+    parser.add_argument("--source-company-id")
+    parser.add_argument("--target-ticker")
+    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--snapshot-path", default=str(SNAPSHOT_PATH))
+    parser.add_argument("--snapshot-as-of-time")
+    parser.add_argument("--snapshot-row-path")
+    parser.add_argument("--snapshot-source-note")
+    parser.add_argument("--outcomes-path", default=_default_precedent_outcomes_path())
+    parser.add_argument("--out-path", required=True)
+    return parser.parse_args()
+
+
+def _is_missing(value: Any) -> bool:
+    return value is None or (isinstance(value, float) and not math.isfinite(value))
+
+

@@ -1659,3 +1659,402 @@ def test_pair_rows_can_use_same_action_analog_consensus_teacher():
     assert {row["negative_precedent_company_id"] for row in rows} >= {"222222", "333333"}
 
 
+def test_same_action_analog_confusers_do_not_reintroduce_retrieved_anchor_noise():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    precedent_index = {
+        "candidate_rows": [
+            {
+                "candidate_id": "anchor_retrieved",
+                "action_id": "capital_return.open_market_buyback",
+                "precedent_confidence": 0.9,
+            }
+        ]
+    }
+    precedent_matches = {
+        "results": [
+            {
+                "candidate_id": "anchor_retrieved",
+                "precedent_pack": {
+                    "matches": [
+                        {
+                            "precedent_id": "999999::2024-02-01::0",
+                            "company_id": "999999",
+                            "action_id": "capital_return.open_market_buyback",
+                            "decision_time": "2024-02-01T00:00:00+00:00",
+                            "similarity_score": 0.99,
+                            "key_state_features": {
+                                "sector": "Consumer Discretionary",
+                                "subsector": "Retail",
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    same_action_universe_lookup = {
+        "capital_return.open_market_buyback": {
+            "feature_scales": {
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "rows": [
+                {
+                    "company_id": "111111",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-06-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 58.0,
+                    "state_vector_v1.growth": 0.05,
+                    "state_vector_v1.cash_generation": 0.020,
+                },
+                {
+                    "company_id": "222222",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-05-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 40.0,
+                    "state_vector_v1.growth": 0.03,
+                    "state_vector_v1.cash_generation": 0.018,
+                },
+                {
+                    "company_id": "333333",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-04-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 24.0,
+                    "state_vector_v1.growth": -0.02,
+                    "state_vector_v1.cash_generation": 0.010,
+                },
+                {
+                    "company_id": "444444",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-03-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Hardware",
+                    "state_vector_v1.valuation_multiple": 20.0,
+                    "state_vector_v1.growth": -0.03,
+                    "state_vector_v1.cash_generation": 0.011,
+                },
+            ],
+        }
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index=precedent_index,
+        precedent_matches=precedent_matches,
+        target_compact={
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.cash_generation": 0.021,
+        },
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        top_k=2,
+        anchor_outcomes_lookup={},
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=0,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=False,
+        include_within_action_hard_negatives=True,
+        positive_source_mode="analog_consensus_same_action_universe",
+        hard_negative_taxonomy_mode="none",
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+
+    assert rows
+    assert "999999" not in {row["negative_precedent_company_id"] for row in rows}
+
+
+def test_pair_rows_can_add_same_action_rank_ordering_pairs_for_analog_teacher():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    same_action_universe_lookup = {
+        "capital_return.open_market_buyback": {
+            "feature_scales": {
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "rows": [
+                {
+                    "company_id": "111111",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-06-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 58.0,
+                    "state_vector_v1.growth": 0.05,
+                    "state_vector_v1.cash_generation": 0.020,
+                },
+                {
+                    "company_id": "222222",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-05-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 40.0,
+                    "state_vector_v1.growth": 0.03,
+                    "state_vector_v1.cash_generation": 0.018,
+                },
+                {
+                    "company_id": "333333",
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": "2024-04-01T00:00:00+00:00",
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": 24.0,
+                    "state_vector_v1.growth": -0.02,
+                    "state_vector_v1.cash_generation": 0.010,
+                },
+            ],
+        }
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index={"candidate_rows": []},
+        precedent_matches={"results": []},
+        target_compact={
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.cash_generation": 0.021,
+        },
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        top_k=3,
+        anchor_outcomes_lookup={},
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=0,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=False,
+        include_within_action_hard_negatives=False,
+        include_same_action_positive_ordering=True,
+        positive_source_mode="analog_consensus_same_action_universe",
+        hard_negative_taxonomy_mode="none",
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+
+    ordering_rows = [row for row in rows if row["pair_source"] == "analog_consensus_same_action_universe_rank_ordering"]
+    assert ordering_rows
+    assert {row["positive_precedent_company_id"] for row in ordering_rows} >= {"111111", "222222"}
+    assert {row["negative_precedent_company_id"] for row in ordering_rows} >= {"222222", "333333"}
+
+
+def test_same_action_rank_ordering_uses_local_window():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    same_action_universe_lookup = {
+        "capital_return.open_market_buyback": {
+            "feature_scales": {
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "rows": [
+                {
+                    "company_id": company_id,
+                    "normalized_action_id": "capital_return.open_market_buyback",
+                    "action_date": action_date,
+                    "taxonomy.sector": "Information Technology",
+                    "taxonomy.subsector": "Semiconductors",
+                    "state_vector_v1.valuation_multiple": valuation,
+                    "state_vector_v1.growth": growth,
+                    "state_vector_v1.cash_generation": cash_generation,
+                }
+                for company_id, action_date, valuation, growth, cash_generation in [
+                    ("111111", "2024-06-01T00:00:00+00:00", 58.0, 0.050, 0.020),
+                    ("222222", "2024-05-01T00:00:00+00:00", 52.0, 0.045, 0.019),
+                    ("333333", "2024-04-01T00:00:00+00:00", 45.0, 0.040, 0.018),
+                    ("444444", "2024-03-01T00:00:00+00:00", 30.0, 0.010, 0.014),
+                    ("555555", "2024-02-01T00:00:00+00:00", 18.0, -0.020, 0.010),
+                ]
+            ],
+        }
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index={"candidate_rows": []},
+        precedent_matches={"results": []},
+        target_compact={
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.cash_generation": 0.021,
+        },
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        top_k=4,
+        anchor_outcomes_lookup={},
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=0,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=False,
+        include_within_action_hard_negatives=False,
+        include_same_action_positive_ordering=True,
+        positive_source_mode="analog_consensus_same_action_universe",
+        hard_negative_taxonomy_mode="none",
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+
+    ordering_rows = [row for row in rows if row["pair_source"] == "analog_consensus_same_action_universe_rank_ordering"]
+    assert ordering_rows
+    top_vs_far_tail = [
+        row
+        for row in ordering_rows
+        if row["positive_precedent_company_id"] == "111111" and row["negative_precedent_company_id"] == "555555"
+    ]
+    assert top_vs_far_tail == []
+
+
+def test_pair_rows_can_use_same_action_regime_analog_consensus_teacher():
+    case = {
+        "company_id": "0000002488",
+        "source_company_id": "0000002488",
+        "as_of_time": "2024-09-02T00:00:00+00:00",
+        "anchor_action_id": "capital_return.open_market_buyback",
+        "anchor_action_family": "capital_return",
+        "anchor_action_date": "2024-09-02T00:00:00+00:00",
+    }
+    precedent_index = {"candidate_rows": []}
+    precedent_matches = {"results": []}
+    rows_payload = [
+        {
+            "company_id": "111111",
+            "normalized_action_id": "capital_return.open_market_buyback",
+            "action_date": "2024-06-01T00:00:00+00:00",
+            "taxonomy.sector": "Information Technology",
+            "taxonomy.subsector": "Semiconductors",
+            "state_vector_v1.valuation_multiple": 58.0,
+            "state_vector_v1.growth": 0.14,
+            "state_vector_v1.cash_generation": 0.012,
+        },
+        {
+            "company_id": "222222",
+            "normalized_action_id": "capital_return.open_market_buyback",
+            "action_date": "2024-05-01T00:00:00+00:00",
+            "taxonomy.sector": "Information Technology",
+            "taxonomy.subsector": "Semiconductors",
+            "state_vector_v1.valuation_multiple": 46.0,
+            "state_vector_v1.growth": 0.06,
+            "state_vector_v1.cash_generation": 0.020,
+        },
+        {
+            "company_id": "333333",
+            "normalized_action_id": "capital_return.open_market_buyback",
+            "action_date": "2024-04-01T00:00:00+00:00",
+            "taxonomy.sector": "Information Technology",
+            "taxonomy.subsector": "Semiconductors",
+            "state_vector_v1.valuation_multiple": 18.0,
+            "state_vector_v1.growth": 0.02,
+            "state_vector_v1.cash_generation": 0.060,
+        },
+        {
+            "company_id": "444444",
+            "normalized_action_id": "capital_return.open_market_buyback",
+            "action_date": "2024-03-01T00:00:00+00:00",
+            "taxonomy.sector": "Information Technology",
+            "taxonomy.subsector": "Semiconductors",
+            "state_vector_v1.valuation_multiple": 16.0,
+            "state_vector_v1.growth": 0.01,
+            "state_vector_v1.cash_generation": 0.055,
+        },
+    ]
+    feature_matrix = []
+    for row in rows_payload:
+        feature_matrix.append(
+            [
+                float(row.get(feature)) if row.get(feature) is not None else float("nan")
+                for feature in _STATE_VECTOR_V1_FEATURES
+            ]
+        )
+    import numpy as np
+
+    feature_matrix_np = np.asarray(feature_matrix, dtype=float)
+    regime_model = fit_latent_regime_kmeans(
+        feature_matrix_np,
+        feature_names=_STATE_VECTOR_V1_FEATURES,
+        n_clusters=2,
+        seed=7,
+        max_iter=50,
+    )
+    regime_memberships = latent_regime_memberships(feature_matrix_np, regime_model)
+
+    same_action_universe_lookup = {
+        "capital_return.open_market_buyback": {
+            "feature_scales": {
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "rows": rows_payload,
+            "feature_matrix": feature_matrix_np,
+            "company_id_arr": np.asarray([row["company_id"] for row in rows_payload], dtype=object),
+            "action_time_arr": np.asarray(
+                [
+                    np.datetime64("2024-06-01T00:00:00"),
+                    np.datetime64("2024-05-01T00:00:00"),
+                    np.datetime64("2024-04-01T00:00:00"),
+                    np.datetime64("2024-03-01T00:00:00"),
+                ]
+            ),
+            "sector_arr": np.asarray(["Information Technology"] * 4, dtype=object),
+            "subsector_arr": np.asarray(["Semiconductors"] * 4, dtype=object),
+            "latent_regime_model": regime_model,
+            "latent_regime_memberships": regime_memberships,
+        }
+    }
+
+    rows = _pair_rows_for_case(
+        case=case,
+        precedent_index=precedent_index,
+        precedent_matches=precedent_matches,
+        target_compact={
+            "state_vector_v1.valuation_multiple": 60.0,
+            "state_vector_v1.growth": 0.05,
+            "state_vector_v1.cash_generation": 0.020,
+        },
+        target_taxonomy={"sector": "Information Technology", "subsector": "Semiconductors"},
+        top_k=2,
+        anchor_outcomes_lookup={},
+        precedent_outcomes_lookup={},
+        positive_limit_per_source=1,
+        negative_limit_per_competitor=0,
+        same_family_negatives_only_if_available=False,
+        always_include_actual_anchor_positive=False,
+        include_within_action_hard_negatives=True,
+        positive_source_mode="analog_regime_consensus_same_action_universe",
+        hard_negative_taxonomy_mode="none",
+        same_action_universe_lookup=same_action_universe_lookup,
+    )
+
+    assert rows
+    assert {row["positive_source"] for row in rows} == {"analog_regime_consensus_same_action_universe"}
+    assert {row["pair_source"] for row in rows} == {"analog_regime_consensus_same_action_universe_vs_same_action_confusers"}
+    assert {row["positive_precedent_company_id"] for row in rows} == {"111111"}
+
+
