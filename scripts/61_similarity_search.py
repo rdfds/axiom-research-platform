@@ -163,3 +163,13 @@ def load_hyperparams(path: Path) -> dict[str, dict[str, object]]:
     return out
 
 
+def weighted_distance(row: pd.Series, query: pd.Series, features: List[str], weights: np.ndarray) -> float:
+    diffs = row[features] - query[features]
+    mask = diffs.notna() & query[features].notna()
+    if mask.sum() == 0:
+        return np.nan
+    w = weights[mask.to_numpy()]
+    d = np.sqrt(np.sum(w * (diffs[mask].to_numpy() ** 2)) / np.sum(w))
+    return float(d)
+
+
