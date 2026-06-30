@@ -386,3 +386,17 @@ def _compact_feature_triplet(row: Dict[str, Any], feature_name: str) -> Optional
     return target, positive, negative
 
 
+def _feature_advantage_from_compacts(
+    row: Dict[str, Any],
+    feature_name: str,
+    transform_spec: Optional[Dict[str, Any]] = None,
+) -> Optional[float]:
+    triplet = _compact_feature_triplet(row, feature_name)
+    if triplet is None:
+        return None
+    target, positive, negative = triplet
+    values = np.array([target, positive, negative], dtype=float)
+    transformed = _transform_matching_values(values, _normalize_transform_spec(transform_spec))
+    return float(abs(transformed[0] - transformed[2]) - abs(transformed[0] - transformed[1]))
+
+
