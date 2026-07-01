@@ -135,3 +135,32 @@ def test_synthesized_snapshot_row_from_outcome_row_preserves_core_features() -> 
     assert features["operating.revenue_yoy_last_q"]["value"] == 0.11
 
 
+def test_synthesized_snapshot_row_uses_direct_ticker_taxonomy_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("PRECEDENT_DISABLE_HISTORICAL_TAXONOMY_LOOKUP", "1")
+    monkeypatch.setattr(audit, "_enrich_missing_historical_taxonomy", lambda df: df)
+    monkeypatch.setattr(
+        audit,
+        "_historical_taxonomy_for_ticker",
+        lambda ticker, allow_sec_identity_heuristics=False: {
+            "taxonomy.sector": "Information Technology",
+            "taxonomy.subsector": "Semiconductors",
+        },
+    )
+
+    row = audit._synthesized_snapshot_row_from_outcome_row(
+        {
+            "ticker": "FLNC",
+            "action_size": 400000000.0,
+            "base_revenue_ttm": 1000.0,
+            "base_ebitda_ttm": 100.0,
+            "base_market_cap": 2500.0,
+        },
+        company_id="0001868941",
+        as_of_time="2024-08-01T00:00:00+00:00",
+        outcomes_path=Path("/tmp/mock_outcomes.parquet"),
+    )
+
+    assert row["features"]["taxonomy.sector"]["value"] == "Information Technology"
+    assert row["features"]["taxonomy.subsector"]["value"] == "Semiconductors"
+
+
