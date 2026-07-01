@@ -196,3 +196,31 @@ def _load_snapshot_row(snapshot_path: Path, company_id: str, snapshot_as_of_time
     return max(matches, key=_row_as_of_sort_key)
 
 
+def _load_snapshot_row_from_json(snapshot_row_path: Path, company_id: str) -> Dict[str, Any]:
+    row = json.loads(snapshot_row_path.read_text())
+    if str(row.get("company_id") or "") != company_id:
+        raise ValueError(
+            f"company_id mismatch for snapshot row {snapshot_row_path}: "
+            f"expected {company_id}, found {row.get('company_id')}"
+        )
+    return row
+
+
+def _is_flat_outcome_row(row: Dict[str, Any]) -> bool:
+    if not isinstance(row, dict) or not row:
+        return False
+    features = row.get("features")
+    if isinstance(features, dict) and features:
+        return False
+    outcome_markers = (
+        "normalized_action_id",
+        "normalized_action_family",
+        "action_date",
+        "base_revenue_ttm",
+        "base_total_debt",
+        "base_market_cap",
+        "base_ebitda_ttm",
+    )
+    return any(marker in row for marker in outcome_markers)
+
+

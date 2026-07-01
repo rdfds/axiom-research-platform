@@ -164,3 +164,37 @@ def test_synthesized_snapshot_row_uses_direct_ticker_taxonomy_fallback(monkeypat
     assert row["features"]["taxonomy.subsector"]["value"] == "Semiconductors"
 
 
+def test_coerce_snapshot_row_for_audit_synthesizes_flat_outcome_rows() -> None:
+    flat_row = {
+        "company_id": "005338",
+        "ticker": "GEF",
+        "normalized_action_id": "capital_structure.refinancing",
+        "action_date": "2016-11-03T00:00:00+00:00",
+        "base_revenue_ttm": 3425.2,
+        "base_ebitda_ttm": 468.6,
+        "base_total_debt": 1026.2,
+        "base_cash": 103.7,
+        "base_market_cap": 2490.227,
+        "base_ev_ebitda": 7.2828,
+        "base_fcf_yield": 0.0761,
+        "macro_fed_funds_effective": 0.41,
+        "sector": "Containers & Packaging",
+        "subsector": "SIC 2673",
+    }
+
+    row = audit._coerce_snapshot_row_for_audit(
+        flat_row,
+        company_id="005338",
+        snapshot_as_of_time="2016-11-03T00:00:00+00:00",
+        outcomes_path=Path("/tmp/mock_outcomes.parquet"),
+    )
+
+    assert "features" in row
+    assert row["features"]["operating.revenue_ttm_provider_direct"]["value"] == 3425.2 * 1_000_000.0
+
+    _, _, payload = audit._build_target_payload(row)
+
+    assert payload["target_values"]["state_vector_v1.size_log_revenue"] is not None
+    assert payload["target_values"]["state_vector_v1.valuation_multiple"] is not None
+
+
