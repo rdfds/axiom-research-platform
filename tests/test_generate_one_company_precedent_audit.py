@@ -198,3 +198,115 @@ def test_coerce_snapshot_row_for_audit_synthesizes_flat_outcome_rows() -> None:
     assert payload["target_values"]["state_vector_v1.valuation_multiple"] is not None
 
 
+def test_build_target_payload_backfills_market_cap_and_taxonomy_aliases() -> None:
+    row = {
+        "company_id": "0000012345",
+        "as_of_time": "2024-08-01T00:00:00+00:00",
+        "features": {
+            "market.market_cap_provider_direct": {"value": 2_500_000_000.0, "support_mode": "exact"},
+            "taxonomy.sector": {"value": "Industrials", "support_mode": "exact"},
+            "taxonomy.subsector": {"value": "Electrical Equipment", "support_mode": "exact"},
+            "operating.revenue_ttm_provider_direct": {"value": 1_000_000_000.0, "support_mode": "exact"},
+            "operating.ebitda_ltm_provider_direct": {"value": 200_000_000.0, "support_mode": "exact"},
+        },
+    }
+
+    _, _, payload = audit._build_target_payload(row)
+
+    assert payload["precedent_features"]["market_cap"]["value"] == 2_500_000_000.0
+    assert payload["precedent_features"]["sector"]["value"] == "Industrials"
+    assert payload["precedent_features"]["subsector"]["value"] == "Electrical Equipment"
+
+
+def test_build_target_payload_caps_liquidity_when_current_debt_is_only_proxy() -> None:
+    row = audit._synthesized_snapshot_row_from_outcome_row(
+        {
+            "action_size": 200_000_000.0,
+            "base_revenue_ttm": 3802.0,
+            "base_revenue_ttm_lag_1y": 3575.8,
+            "base_ebitda_ttm": 451.6,
+            "base_margin": 0.1188,
+            "base_fcf_margin": -0.0156,
+            "base_total_debt": 1100.4,
+            "base_net_debt": 754.7,
+            "base_cash": 345.7,
+            "base_available_liquidity": 345.7,
+            "base_current_debt": 0.8,
+            "base_interest_expense": 164.0,
+            "base_market_cap": 1677.7422,
+            "base_ev_ebitda": 5.3863,
+            "base_fcf_yield": -0.0353,
+            "base_credit_spread_level": 0.0121,
+            "base_credit_window_proxy": 0.8793,
+            "base_equity_window_proxy": 0.2693,
+            "macro_vix": 13.58,
+            "macro_fed_funds_effective": 4.58,
+            "macro_hy_oas": 2.64,
+            "sector": "Industrials",
+            "subsector": "Commercial Services & Supplies",
+        },
+        company_id="0000028823",
+        as_of_time="2024-12-11T00:00:00+00:00",
+        outcomes_path=Path("/tmp/mock_outcomes.parquet"),
+    )
+
+    _, bundle, payload = audit._build_target_payload(row)
+    support_meta = (bundle.get("state_vector_v1", {}) or {}).get("support", {})
+
+    assert payload["target_values"]["state_vector_v1.liquidity_flexibility"] == 25.0
+    assert "current_debt_proxy_ratio_capped" in set(
+        (support_meta.get("state_vector_v1.liquidity_flexibility") or {}).get("quality_flags") or []
+    )
+
+
+def test_load_historical_outcome_target_row_prefers_forward_nearest_action_date(tmp_path, monkeypatch) -> None:
+    outcomes_path = tmp_path / "outcomes.parquet"
+    monkeypatch.setenv("PRECEDENT_DISABLE_HISTORICAL_TAXONOMY_LOOKUP", "1")
+    frame = pd.DataFrame(
+        [
+            {
+                "company_id": "src123",
+                "ticker": "TEST",
+                "normalized_action_id": "capital_structure.new_debt_issuance",
+                "action_date": "2024-10-01T00:00:00+00:00",
+                "sector": "Industrials",
+                "subsector": "Electrical Equipment",
+                "base_revenue_ttm": 1000.0,
+                "base_ebitda_ttm": 100.0,
+                "base_ev_ebitda": 9.0,
+                "base_total_debt": 500.0,
+                "base_cash": 50.0,
+                "base_market_cap": 1200.0,
+            },
+            {
+                "company_id": "src123",
+                "ticker": "TEST",
+                "normalized_action_id": "capital_structure.new_debt_issuance",
+                "action_date": "2024-12-15T00:00:00+00:00",
+                "sector": "Industrials",
+                "subsector": "Electrical Equipment",
+                "base_revenue_ttm": 1000.0,
+                "base_ebitda_ttm": 100.0,
+                "base_ev_ebitda": 13.0,
+                "base_total_debt": 500.0,
+                "base_cash": 50.0,
+                "base_market_cap": 1200.0,
+            },
+        ]
+    )
+    frame.to_parquet(outcomes_path, index=False)
+
+    row = audit._load_historical_outcome_target_row(
+        outcomes_path,
+        action_id="capital_structure.new_debt_issuance",
+        company_id="0000012345",
+        snapshot_as_of_time="2024-08-01T00:00:00+00:00",
+        source_company_id="src123",
+        target_ticker="",
+    )
+
+    assert row is not None
+    assert row["features"]["market.ev_ebitda"]["value"] == 9.0
+    assert row["snapshot_catalog_source"] == "historical_outcome_fallback"
+
+

@@ -141,3 +141,11 @@ Validated families:
 
 All targeted checks are currently `oos = 0.0`.
 
+## Operational Notes
+
+- precedent quality work is separated from runtime work
+- remaining runtime slowness is wrapper/orchestration overhead, not the core retriever
+- if future runs regress to `sibling_type`, audit the action ids first before changing scoring
+- causal production notes and exceptions are documented in `./docs/causal_baseline.md`
+- broader non-regression monitoring is documented in `./docs/model_monitoring.md`
+

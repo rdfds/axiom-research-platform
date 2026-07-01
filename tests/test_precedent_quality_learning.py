@@ -872,3 +872,75 @@ def test_build_pairwise_matrix_can_restrict_interactions():
     )
 
 
+def test_build_pairwise_matrix_can_include_latent_regime_similarity():
+    rows = [
+        {
+            "company_id": "000001",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.18,
+                "state_vector_v1.valuation_multiple": 42.0,
+                "state_vector_v1.cash_generation": 0.01,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.16,
+                "state_vector_v1.valuation_multiple": 38.0,
+                "state_vector_v1.cash_generation": 0.015,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.valuation_multiple": 11.0,
+                "state_vector_v1.cash_generation": 0.06,
+            },
+        },
+        {
+            "company_id": "000002",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.20,
+                "state_vector_v1.valuation_multiple": 48.0,
+                "state_vector_v1.cash_generation": 0.008,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.17,
+                "state_vector_v1.valuation_multiple": 35.0,
+                "state_vector_v1.cash_generation": 0.02,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": -0.02,
+                "state_vector_v1.valuation_multiple": 9.0,
+                "state_vector_v1.cash_generation": 0.07,
+            },
+        },
+    ]
+    feature_names = [
+        "state_vector_v1.growth",
+        "state_vector_v1.valuation_multiple",
+        "state_vector_v1.cash_generation",
+    ]
+    compact_rows = []
+    for row in rows:
+        compact_rows.extend([row["target_compact"], row["positive_compact"], row["negative_compact"]])
+    latent_model = fit_latent_regime_kmeans(
+        raw_feature_matrix_from_compacts(compact_rows, feature_names=feature_names),
+        feature_names=feature_names,
+        n_clusters=2,
+        seed=7,
+        max_iter=20,
+    )
+
+    matrix = build_pairwise_matrix(
+        pd.DataFrame(json.loads(json.dumps(rows))),
+        feature_names=feature_names,
+        min_feature_coverage_rows=1,
+        transform_specs={feature: {} for feature in feature_names},
+        include_latent_regime=True,
+        latent_regime_model=latent_model,
+        latent_feature_names=["latent_regime::similarity"],
+    )
+
+    assert "latent_regime::similarity" in matrix["selected_features"]
+
+
