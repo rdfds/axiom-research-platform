@@ -624,3 +624,95 @@ def test_build_pairwise_matrix_can_include_runtime_penalty_features():
     assert "pairwise_penalty::primary_burden_gap_excess" in matrix["selected_features"]
 
 
+def test_build_scope_payload_with_pairwise_weights_updates_runtime_penalties(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                },
+                "penalties": {
+                    "size_penalty_weight": 1.15,
+                    "burden_penalty_weight": 0.40,
+                },
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    payload = build_scope_payload_with_pairwise_weights(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        learned_weights={
+            "state_vector_v1.valuation_multiple": 1.2,
+            "pairwise_penalty::size_gap_excess": 0.55,
+            "pairwise_penalty::primary_burden_gap_excess": 0.10,
+        },
+    )
+
+    scope = payload["scopes"]["capital_return.open_market_buyback"]
+    assert scope["penalties"]["size_penalty_weight"] == 0.55
+    assert scope["penalties"]["burden_penalty_weight"] == 0.10
+
+
+def test_learn_feature_transforms_returns_selected_features_and_specs(tmp_path):
+    rows = [
+        {
+            "company_id": "000001",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {"state_vector_v1.valuation_multiple": 60.0},
+            "positive_compact": {"state_vector_v1.valuation_multiple": 45.0},
+            "negative_compact": {"state_vector_v1.valuation_multiple": 15.0},
+            "feature_gap_summary": {
+                "state_vector_v1.valuation_multiple": {
+                    "positive_abs_diff": 15.0,
+                    "negative_abs_diff": 45.0,
+                }
+            },
+        },
+        {
+            "company_id": "000002",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {"state_vector_v1.valuation_multiple": 55.0},
+            "positive_compact": {"state_vector_v1.valuation_multiple": 40.0},
+            "negative_compact": {"state_vector_v1.valuation_multiple": 12.0},
+            "feature_gap_summary": {
+                "state_vector_v1.valuation_multiple": {
+                    "positive_abs_diff": 15.0,
+                    "negative_abs_diff": 43.0,
+                }
+            },
+        },
+    ]
+    dataset_path = tmp_path / "pairwise.jsonl"
+    dataset_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                }
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    learned = learn_feature_transforms_from_pairwise_supervision(
+        dataset_path,
+        scope_key="capital_return.open_market_buyback",
+        base_payload_path=base_path,
+        feature_names=["state_vector_v1.valuation_multiple"],
+        min_feature_coverage_rows=1,
+        l2_grid=(0.25,),
+        max_iter=50,
+    )
+
+    assert learned["selected_features"] == ["state_vector_v1.valuation_multiple"]
+    assert "state_vector_v1.valuation_multiple" in learned["chosen_feature_transforms"]
+
+

@@ -400,3 +400,93 @@ def _feature_advantage_from_compacts(
     return float(abs(transformed[0] - transformed[2]) - abs(transformed[0] - transformed[1]))
 
 
+def _feature_value_sample(rows: Sequence[Dict[str, Any]], feature_name: str) -> np.ndarray:
+    values: List[float] = []
+    for row in rows:
+        triplet = _compact_feature_triplet(row, feature_name)
+        if triplet is None:
+            continue
+        values.extend(triplet)
+    if not values:
+        return np.empty(0, dtype=float)
+    return np.asarray(values, dtype=float)
+
+
+def _penalty_feature_name(name: str) -> str:
+    return f"{_PENALTY_FEATURE_PREFIX}{str(name or '').strip()}"
+
+
+def _parse_penalty_feature_name(name: str) -> Optional[str]:
+    text = str(name or "").strip()
+    if not text.startswith(_PENALTY_FEATURE_PREFIX):
+        return None
+    suffix = text[len(_PENALTY_FEATURE_PREFIX) :].strip()
+    return suffix or None
+
+
+def _penalty_feature_advantage(
+    row: Dict[str, Any],
+    *,
+    source_feature: str,
+    soft_threshold: float,
+) -> Optional[float]:
+    triplet = _compact_feature_triplet(row, source_feature)
+    if triplet is None:
+        return None
+    target, positive, negative = triplet
+    positive_excess = max(abs(target - positive) - float(soft_threshold), 0.0)
+    negative_excess = max(abs(target - negative) - float(soft_threshold), 0.0)
+    return float(negative_excess - positive_excess)
+
+
+def _candidate_abs_diff_triplets(
+    rows: Sequence[Dict[str, Any]],
+    feature_name: str,
+    *,
+    transform_spec: Optional[Dict[str, Any]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    target_values: List[float] = []
+    positive_values: List[float] = []
+    negative_values: List[float] = []
+    for row in rows:
+        triplet = _compact_feature_triplet(row, feature_name)
+        if triplet is None:
+            target_values.append(np.nan)
+            positive_values.append(np.nan)
+            negative_values.append(np.nan)
+            continue
+        target_values.append(triplet[0])
+        positive_values.append(triplet[1])
+        negative_values.append(triplet[2])
+
+    target_arr = np.asarray(target_values, dtype=float)
+    positive_arr = np.asarray(positive_values, dtype=float)
+    negative_arr = np.asarray(negative_values, dtype=float)
+    combined = np.concatenate([target_arr, positive_arr, negative_arr])
+    transformed = _transform_matching_values(combined, _normalize_transform_spec(transform_spec))
+    standardized = _robust_standardize_vector(transformed)
+    n = len(rows)
+    target_std = standardized[:n]
+    positive_std = standardized[n : 2 * n]
+    negative_std = standardized[2 * n :]
+    positive_abs = np.abs(target_std - positive_std)
+    negative_abs = np.abs(target_std - negative_std)
+    return positive_abs, negative_abs
+
+
+def _interaction_feature_name(feature_a: str, feature_b: str) -> str:
+    left, right = sorted((str(feature_a), str(feature_b)))
+    return f"{_INTERACTION_FEATURE_PREFIX}{left}::{right}"
+
+
+def _parse_interaction_feature_name(name: str) -> Optional[Tuple[str, str]]:
+    raw = str(name or "")
+    if not raw.startswith(_INTERACTION_FEATURE_PREFIX):
+        return None
+    body = raw[len(_INTERACTION_FEATURE_PREFIX) :]
+    parts = body.split("::")
+    if len(parts) != 2:
+        return None
+    return parts[0], parts[1]
+
+
