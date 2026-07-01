@@ -716,3 +716,159 @@ def test_learn_feature_transforms_returns_selected_features_and_specs(tmp_path):
     assert "state_vector_v1.valuation_multiple" in learned["chosen_feature_transforms"]
 
 
+def test_learn_feature_transforms_scores_candidates_in_full_feature_context(tmp_path, monkeypatch):
+    rows = [
+        {
+            "company_id": "000001",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.valuation_multiple": 60.0,
+                "state_vector_v1.growth": 0.10,
+            },
+            "positive_compact": {
+                "state_vector_v1.valuation_multiple": 45.0,
+                "state_vector_v1.growth": 0.08,
+            },
+            "negative_compact": {
+                "state_vector_v1.valuation_multiple": 15.0,
+                "state_vector_v1.growth": -0.02,
+            },
+        },
+        {
+            "company_id": "000002",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.valuation_multiple": 55.0,
+                "state_vector_v1.growth": 0.12,
+            },
+            "positive_compact": {
+                "state_vector_v1.valuation_multiple": 40.0,
+                "state_vector_v1.growth": 0.11,
+            },
+            "negative_compact": {
+                "state_vector_v1.valuation_multiple": 12.0,
+                "state_vector_v1.growth": 0.01,
+            },
+        },
+    ]
+    dataset_path = tmp_path / "pairwise.jsonl"
+    dataset_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.valuation_multiple": 1.0,
+                    "state_vector_v1.growth": 1.0,
+                }
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    recorded_feature_sets = []
+
+    def _fake_cv(*args, **kwargs):
+        recorded_feature_sets.append(tuple(kwargs.get("feature_names") or ()))
+        return {
+            "best_evaluation": {
+                "mean_pair_log_loss": 1.0,
+                "mean_pair_accuracy": 0.5,
+                "mean_positive_margin": 0.0,
+            }
+        }
+
+    monkeypatch.setattr(precedent_quality_learning, "cross_validate_pairwise_precedent_quality_weights", _fake_cv)
+
+    learned = learn_feature_transforms_from_pairwise_supervision(
+        dataset_path,
+        scope_key="capital_return.open_market_buyback",
+        base_payload_path=base_path,
+        feature_names=["state_vector_v1.valuation_multiple", "state_vector_v1.growth"],
+        min_feature_coverage_rows=1,
+        l2_grid=(0.25,),
+        max_iter=50,
+    )
+
+    assert learned["selected_features"] == [
+        "state_vector_v1.valuation_multiple",
+        "state_vector_v1.growth",
+    ]
+    assert recorded_feature_sets
+    assert set(recorded_feature_sets) == {
+        ("state_vector_v1.valuation_multiple", "state_vector_v1.growth")
+    }
+
+
+def test_build_pairwise_matrix_can_restrict_interactions():
+    rows = [
+        {
+            "company_id": "000001",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.10,
+                "state_vector_v1.valuation_multiple": 20.0,
+                "state_vector_v1.cash_generation": 0.03,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.08,
+                "state_vector_v1.valuation_multiple": 18.0,
+                "state_vector_v1.cash_generation": 0.04,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": -0.02,
+                "state_vector_v1.valuation_multiple": 8.0,
+                "state_vector_v1.cash_generation": 0.01,
+            },
+        },
+        {
+            "company_id": "000002",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.12,
+                "state_vector_v1.valuation_multiple": 22.0,
+                "state_vector_v1.cash_generation": 0.02,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.11,
+                "state_vector_v1.valuation_multiple": 19.0,
+                "state_vector_v1.cash_generation": 0.03,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.valuation_multiple": 9.0,
+                "state_vector_v1.cash_generation": -0.01,
+            },
+        },
+    ]
+    interaction_name = "pairwise_interaction::state_vector_v1.growth::state_vector_v1.valuation_multiple"
+
+    matrix = build_pairwise_matrix(
+        pd.DataFrame(json.loads(json.dumps(rows))),
+        feature_names=[
+            "state_vector_v1.growth",
+            "state_vector_v1.valuation_multiple",
+            "state_vector_v1.cash_generation",
+        ],
+        min_feature_coverage_rows=1,
+        transform_specs={
+            "state_vector_v1.growth": {},
+            "state_vector_v1.valuation_multiple": {},
+            "state_vector_v1.cash_generation": {},
+        },
+        include_interactions=True,
+        interaction_feature_names=[interaction_name],
+    )
+
+    assert interaction_name in matrix["selected_features"]
+    assert all(
+        feature == interaction_name or not str(feature).startswith("pairwise_interaction::")
+        for feature in matrix["selected_features"]
+    )
+
+
