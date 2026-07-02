@@ -177,3 +177,18 @@ def _feature_value(raw: Any) -> Any:
     return raw
 
 
+def canonicalize_feature_name(name: str) -> str:
+    key = str(name or "").strip()
+    return LEGACY_TO_CANONICAL.get(key, key)
+
+
+def feature_aliases(name: str) -> Tuple[str, ...]:
+    canonical = canonicalize_feature_name(name)
+    return FEATURE_ALIASES.get(canonical, (canonical,))
+
+
+def primary_legacy_alias(name: str) -> Optional[str]:
+    aliases = feature_aliases(name)
+    return aliases[1] if len(aliases) > 1 else None
+
+

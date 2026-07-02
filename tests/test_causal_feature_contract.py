@@ -64,3 +64,21 @@ def test_contract_resolves_legacy_aliases_and_param_overrides():
     assert out["regime.vol_high"] == 1.0
 
 
+def test_contract_helpers_support_canonical_and_legacy_names():
+    mapping = {"macro.ust_10y_yield": {"value": 4.58}}
+
+    assert canonicalize_feature_name("base_market_cap") == "scale.market_cap"
+    assert resolve_mapping_value(mapping, "macro_rate_10y") == 4.58
+    assert normalize_feature_value("base_market_cap", 2_500_000_000.0) is not None
+    assert normalize_feature_value("scale.market_cap", 2_500_000_000.0) == normalize_feature_value(
+        "base_market_cap",
+        2_500_000_000.0,
+    )
+    assert normalize_feature_value(
+        "base_combined_retirement_liability",
+        150_000_000.0,
+    ) == normalize_feature_value("capital.combined_retirement_liability", 150_000_000.0)
+    assert normalize_feature_value(
+        "base_net_debt_including_retirement",
+        900_000_000.0,
+    ) == normalize_feature_value("capital.net_debt_including_retirement", 900_000_000.0)
