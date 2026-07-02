@@ -332,3 +332,20 @@ def test_load_snapshot_row_requires_exact_as_of_match_when_requested(tmp_path) -
         raise AssertionError("expected exact as-of lookup to fail when no exact match exists")
 
 
+def test_filter_historical_precedents_as_of_excludes_future_rows() -> None:
+    frame = pd.DataFrame(
+        [
+            {"action_date": "2024-08-13T00:00:00+00:00", "ticker": "OLD"},
+            {"action_date": "2024-08-14T00:00:00+00:00", "ticker": "SAME_DAY"},
+            {"action_date": "2024-08-15T00:00:00+00:00", "ticker": "FUTURE"},
+        ]
+    )
+
+    filtered = audit._filter_historical_precedents_as_of(
+        frame,
+        snapshot_as_of_time="2024-08-14T00:00:00+00:00",
+    )
+
+    assert list(filtered["ticker"]) == ["OLD"]
+
+

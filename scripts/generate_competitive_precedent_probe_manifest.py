@@ -26,3 +26,7 @@ def _score_actions(candidate_rows: List[Dict[str, Any]]) -> Dict[str, float]:
     return action_scores
 
 
+def _action_family(action_id: str) -> str:
+    return action_id.split(".", 1)[0] if "." in action_id else action_id
+
+

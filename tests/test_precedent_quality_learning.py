@@ -1063,3 +1063,37 @@ def test_search_target_regime_mixture_returns_regime_payload(tmp_path):
     assert len(result["chosen_target_regime_payload"]) == 2
 
 
+def test_load_feature_weight_prior_includes_interaction_terms(tmp_path):
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.cash_generation": 1.2,
+                    "state_vector_v1.interest_coverage": 0.8,
+                },
+                "interaction_terms": [
+                    {
+                        "features": [
+                            "state_vector_v1.cash_generation",
+                            "state_vector_v1.interest_coverage",
+                        ],
+                        "weight": 1.5,
+                    }
+                ],
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    prior = load_feature_weight_prior(
+        base_path,
+        scope_key="capital_return.open_market_buyback",
+        feature_names=[
+            "state_vector_v1.cash_generation",
+            "pairwise_interaction::state_vector_v1.cash_generation::state_vector_v1.interest_coverage",
+        ],
+    )
+
+    assert prior.shape == (2,)
+    assert float(prior[1]) > float(prior[0])
