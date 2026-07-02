@@ -310,3 +310,25 @@ def test_load_historical_outcome_target_row_prefers_forward_nearest_action_date(
     assert row["snapshot_catalog_source"] == "historical_outcome_fallback"
 
 
+def test_load_snapshot_row_requires_exact_as_of_match_when_requested(tmp_path) -> None:
+    snapshot_path = tmp_path / "snapshots.jsonl.gz"
+    rows = [
+        {"company_id": "0000012345", "as_of_time": "2024-08-15T00:00:00+00:00"},
+        {"company_id": "0000012345", "as_of_time": "2024-09-01T00:00:00+00:00"},
+    ]
+    with gzip.open(snapshot_path, "wt") as handle:
+        for row in rows:
+            handle.write(json.dumps(row) + "\n")
+
+    try:
+        audit._load_snapshot_row(
+            snapshot_path,
+            company_id="0000012345",
+            snapshot_as_of_time="2024-08-14T00:00:00+00:00",
+        )
+    except ValueError as exc:
+        assert "snapshot_as_of_time" in str(exc)
+    else:
+        raise AssertionError("expected exact as-of lookup to fail when no exact match exists")
+
+

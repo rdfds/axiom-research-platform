@@ -11,3 +11,18 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _score_actions(candidate_rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    action_scores: Dict[str, float] = {}
+    for row in candidate_rows:
+        action_id = str(row['action_id'] or "").strip()
+        if not action_id:
+            continue
+        confidence = row.get("precedent_confidence")
+        if confidence is None:
+            continue
+        score = float(confidence)
+        if action_id not in action_scores or score > action_scores[action_id]:
+            action_scores[action_id] = score
+    return action_scores
+
+

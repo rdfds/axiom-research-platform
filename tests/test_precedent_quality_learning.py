@@ -944,3 +944,122 @@ def test_build_pairwise_matrix_can_include_latent_regime_similarity():
     assert "latent_regime::similarity" in matrix["selected_features"]
 
 
+def test_search_target_regime_mixture_returns_regime_payload(tmp_path):
+    rows = [
+        {
+            "company_id": "000001",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.18,
+                "state_vector_v1.valuation_multiple": 42.0,
+                "state_vector_v1.cash_generation": 0.01,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.16,
+                "state_vector_v1.valuation_multiple": 38.0,
+                "state_vector_v1.cash_generation": 0.015,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.valuation_multiple": 11.0,
+                "state_vector_v1.cash_generation": 0.06,
+            },
+        },
+        {
+            "company_id": "000002",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.20,
+                "state_vector_v1.valuation_multiple": 48.0,
+                "state_vector_v1.cash_generation": 0.008,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.17,
+                "state_vector_v1.valuation_multiple": 35.0,
+                "state_vector_v1.cash_generation": 0.02,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": -0.02,
+                "state_vector_v1.valuation_multiple": 9.0,
+                "state_vector_v1.cash_generation": 0.07,
+            },
+        },
+        {
+            "company_id": "000003",
+            "as_of_time": "2024-01-03T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.valuation_multiple": 10.0,
+                "state_vector_v1.cash_generation": 0.07,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.00,
+                "state_vector_v1.valuation_multiple": 11.0,
+                "state_vector_v1.cash_generation": 0.06,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": 0.15,
+                "state_vector_v1.valuation_multiple": 34.0,
+                "state_vector_v1.cash_generation": 0.02,
+            },
+        },
+        {
+            "company_id": "000004",
+            "as_of_time": "2024-01-04T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "target_compact": {
+                "state_vector_v1.growth": -0.01,
+                "state_vector_v1.valuation_multiple": 12.0,
+                "state_vector_v1.cash_generation": 0.06,
+            },
+            "positive_compact": {
+                "state_vector_v1.growth": 0.01,
+                "state_vector_v1.valuation_multiple": 13.0,
+                "state_vector_v1.cash_generation": 0.05,
+            },
+            "negative_compact": {
+                "state_vector_v1.growth": 0.18,
+                "state_vector_v1.valuation_multiple": 40.0,
+                "state_vector_v1.cash_generation": 0.01,
+            },
+        },
+    ]
+    dataset_path = tmp_path / "pairwise.jsonl"
+    dataset_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    base_payload = {
+        "scopes": {
+            "capital_return.open_market_buyback": {
+                "feature_relative_weights": {
+                    "state_vector_v1.growth": 1.0,
+                    "state_vector_v1.valuation_multiple": 1.0,
+                    "state_vector_v1.cash_generation": 1.0,
+                }
+            }
+        }
+    }
+    base_path = tmp_path / "base.json"
+    base_path.write_text(json.dumps(base_payload))
+
+    result = search_target_regime_mixture_from_supervision(
+        dataset_path,
+        scope_key="capital_return.open_market_buyback",
+        base_payload_path=base_path,
+        feature_names=[
+            "state_vector_v1.growth",
+            "state_vector_v1.valuation_multiple",
+            "state_vector_v1.cash_generation",
+        ],
+        min_feature_coverage_rows=1,
+        l2_grid=(0.25,),
+        max_iter=50,
+        n_cluster_grid=(2,),
+        latent_max_iter=20,
+    )
+
+    assert result["chosen_target_regime_n_clusters"] == 2
+    assert len(result["chosen_target_regime_payload"]) == 2
+
+
