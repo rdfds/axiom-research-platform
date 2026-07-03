@@ -37,3 +37,12 @@ def test_pick_source_keeps_champion_when_challenger_not_better_by_delta() -> Non
     assert picked == "champion"
 
 
+def test_pick_source_replaces_when_champion_missing() -> None:
+    challenger = {"enabled": True, "oos_r2": 0.20}
+    picked = _pick_source(
+        champion_model=None,
+        challenger_model=challenger,
+        challenger_min_oos_r2=0.08,
+        replace_min_delta_oos_r2=0.0,
+    )
+    assert picked == "challenger"
