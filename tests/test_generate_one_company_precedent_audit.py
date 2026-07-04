@@ -371,3 +371,93 @@ def test_locate_match_row_handles_utc_normalized_dates() -> None:
     assert row["ticker"] == "ALLY"
 
 
+def test_resolve_snapshot_policy_keeps_requested_cutoff_for_debt_issuance() -> None:
+    policy = audit._resolve_snapshot_policy(
+        "capital_structure.new_debt_issuance",
+        "2024-12-11T00:00:00+00:00",
+    )
+
+    assert policy["target_snapshot_as_of_time"] == "2024-12-11T00:00:00+00:00"
+    assert policy["historical_precedent_cutoff_time"] == "2024-12-11T00:00:00+00:00"
+    assert policy["target_snapshot_cutoff_date"] == "2024-12-11"
+    assert policy["cutoff_policy"] == "requested_snapshot_as_of_time"
+
+
+def test_render_doc_surfaces_cutoff_policy_and_support_tiers() -> None:
+    target_values = {key: 0.0 for key in audit._STATE_VECTOR_V1_FEATURES}
+    row = {
+        "features": {
+            "taxonomy.sector": {"value": "Industrials", "support_mode": "exact"},
+            "taxonomy.subsector": {"value": "Commercial Services & Supplies", "support_mode": "exact"},
+        }
+    }
+    bundle = {
+        "state_vector_v1": {
+            "values": target_values,
+            "support": {},
+            "meta": {"sector": "Industrials", "subsector": "Commercial Services & Supplies"},
+        }
+    }
+    same_company_hist = pd.Series({"ticker": "DBD"})
+    peer_hist = pd.Series({"ticker": "XRX"})
+    learned = {
+        "state_weight_scope": "capital_structure.new_debt_issuance",
+        "calibration_confidence": 0.13,
+        "confidence_label": "low",
+        "retrieval_tier": "global",
+        "out_of_sample_flag": True,
+        "exact_match_count": 1,
+        "minimum_exact_support": 5,
+        "top_similarity_mean": 0.42,
+        "top_weighted_feature_coverage": 0.81,
+        "top_critical_feature_coverage": 0.66,
+        "top_action_match_score": 0.91,
+        "matches": [
+            {
+                "precedent_id": "xrx::2024-01-01",
+                "company_id": "0000101010",
+                "action_id": "capital_structure.new_debt_issuance",
+                "decision_time": "2024-01-01T00:00:00+00:00",
+                "similarity_score": 0.43,
+                "nonnull_compact_features": len(audit._STATE_VECTOR_V1_FEATURES),
+                "explanation_lines": ["- Why it matched: `borrower quality`"],
+                "historical_row": peer_hist,
+            },
+            {
+                "precedent_id": "dbd::2023-01-01",
+                "company_id": "0000028823",
+                "action_id": "capital_structure.new_debt_issuance",
+                "decision_time": "2023-01-01T00:00:00+00:00",
+                "similarity_score": 0.41,
+                "nonnull_compact_features": len(audit._STATE_VECTOR_V1_FEATURES),
+                "explanation_lines": ["- Why it matched: `same-company history`"],
+                "historical_row": same_company_hist,
+            },
+        ],
+    }
+    prior_only = dict(learned)
+    doc = audit._render_doc(
+        company_name="Diebold Nixdorf",
+        company_id="0000028823",
+        action_id="capital_structure.new_debt_issuance",
+        row=row,
+        bundle=bundle,
+        learned=learned,
+        prior_only=prior_only,
+        outcomes_path=Path("/tmp/mock_outcomes.parquet"),
+        snapshot_path=Path("/tmp/mock_snapshot.jsonl.gz"),
+        snapshot_source_note="historical_outcome_fallback",
+        target_snapshot_cutoff_date="2024-12-31",
+        historical_precedent_cutoff_time="2025-01-01T00:00:00+00:00",
+        cutoff_policy="fixed_calendar_year_end_2024",
+    )
+
+    assert "- Target snapshot cutoff date: `2024-12-31`" in doc
+    assert "- Historical precedent cutoff: `< 2025-01-01T00:00:00+00:00`" in doc
+    assert "- Cutoff policy: `fixed_calendar_year_end_2024`" in doc
+    assert "## Support Tiers" in doc
+    assert "Peer Primary" in doc
+    assert "Same Company History Primary" in doc
+    assert "No high-confidence precedent set was found" in doc
+    assert "- Support tier: `peer_primary`" in doc
+    assert "- Support tier: `same_company_history_primary`" in doc

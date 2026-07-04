@@ -224,3 +224,24 @@ def _is_flat_outcome_row(row: Dict[str, Any]) -> bool:
     return any(marker in row for marker in outcome_markers)
 
 
+def _coerce_snapshot_row_for_audit(
+    row: Dict[str, Any],
+    *,
+    company_id: str,
+    snapshot_as_of_time: str | None,
+    outcomes_path: Path,
+) -> Dict[str, Any]:
+    if not _is_flat_outcome_row(row):
+        return row
+    as_of_time = str(
+        snapshot_as_of_time
+        or _normalize_as_of_time(str(row.get("as_of_time") or row.get("action_date") or ""))
+    )
+    return _synthesized_snapshot_row_from_outcome_row(
+        row,
+        company_id=str(company_id or ""),
+        as_of_time=as_of_time,
+        outcomes_path=outcomes_path,
+    )
+
+
