@@ -149,3 +149,59 @@ All targeted checks are currently `oos = 0.0`.
 - causal production notes and exceptions are documented in `./docs/causal_baseline.md`
 - broader non-regression monitoring is documented in `./docs/model_monitoring.md`
 
+## Newly Added Standard Actions
+
+The following actions are now wired into the ontology and normalized precedent corpus:
+
+- `capital_return.dividend_initiate`
+- `mna.go_private_lbo`
+
+Supporting code paths:
+
+- `./src/action_ontology.py`
+- `./src/action_normalization.py`
+- `./src/pipeline/precedent_brain.py`
+- `./src/pipeline/run.py`
+
+Corpus status in `./data/curated/action_outcomes_with_credit_ratings.normalized_full.parquet`:
+
+- `capital_return.dividend_initiate`
+  - exact normalized rows: `1044`
+- `mna.go_private_lbo`
+  - exact normalized acquisition-LBO rows: `1680`
+
+Snapshot and candidate-generation support:
+
+- `./src/company_state_builder.py`
+  - adds:
+    - `capital_return.dividend_payer_flag`
+    - `capital_return.last_dividend_event_type`
+- `./src/candidate_generation.py`
+  - `capital_return.dividend_initiate` is only generated when:
+    - `capital_return.dividend_payer_flag == False`
+    - liquidity-excess conditions also hold
+
+Validation:
+
+- `0000320193`
+  - `dividend_payer_flag = True`
+  - `capital_return.dividend_initiate` not generated in natural candidate generation
+- `0000794619`
+  - `dividend_payer_flag = False`
+  - `capital_return.dividend_initiate` generated in natural candidate generation
+
+Status:
+
+- `capital_return.dividend_initiate`
+  - supported for ontology, normalized precedent corpus, and gated candidate generation
+- `mna.go_private_lbo`
+  - supported for ontology and normalized precedent corpus
+  - targeted precedent probe:
+    - source: `/tmp/precedent_go_private_lbo_probe.json`
+    - `precedent_conf_mean = 0.314205`
+    - `oos_rate = 0.0`
+    - `retrieval_tier = exact`
+    - `candidate_pool_size_after_prefilter = 34.0`
+  - promoted into the built-in targeted precedent benchmark preset in:
+    - `./scripts/benchmark_precedent_families.py`
+
