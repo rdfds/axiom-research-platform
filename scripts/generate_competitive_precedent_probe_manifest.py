@@ -81,3 +81,62 @@ def _analyze_case(
     }
 
 
+def _select_competitive_cases(
+    *,
+    cases: List[Dict[str, Any]],
+    search_root: Path,
+    eval_id: str,
+    eval_prefix: str,
+    min_distinct_actions: int,
+    require_anchor_family_present: bool,
+    require_anchor_action_present: bool,
+    limit: Optional[int],
+) -> Dict[str, Any]:
+    base = search_root / f"{eval_prefix}_eval_{eval_id}"
+    case_map = {str(case["company_id"]): case for case in cases}
+    analyses: List[Dict[str, Any]] = []
+
+    for run_file in sorted((base / "runs").glob("run_id=*.json")):
+        run = _load_json(run_file)
+        company_id = str(run["company_id"])
+        case = case_map.get(company_id)
+        if case is None:
+            continue
+        precedent_index_path = base / "artifacts" / f"run_id={run['run_id']}" / "PrecedentIndex.json"
+        precedent_index = _load_json(precedent_index_path)
+        analysis = _analyze_case(case=case, precedent_index=precedent_index)
+        analysis["precedent_index_path"] = str(precedent_index_path)
+        analyses.append(analysis)
+
+    selected: List[Dict[str, Any]] = []
+    for analysis in analyses:
+        if analysis["distinct_action_count"] < min_distinct_actions:
+            continue
+        if require_anchor_family_present and not analysis["anchor_family_present"]:
+            continue
+        if require_anchor_action_present and not analysis["anchor_action_present"]:
+            continue
+        selected.append(analysis)
+
+    selected.sort(
+        key=lambda item: (
+            0 if item["anchor_action_present"] else 1,
+            -int(item["anchor_family_present"]),
+            -int(item["distinct_action_count"]),
+            abs(item["anchor_action_margin"]) if item["anchor_action_margin"] is not None else 999.0,
+            str(item["company_id"]),
+        )
+    )
+    if limit is not None:
+        selected = selected[:limit]
+
+    selected_ids = {item["company_id"] for item in selected}
+    selected_cases = [case_map[company_id] for company_id in [item["company_id"] for item in selected] if company_id in selected_ids]
+    return {
+        "selection_rankings": selected,
+        "cases": selected_cases,
+        "analysis_count": len(analyses),
+        "selected_count": len(selected),
+    }
+
+
