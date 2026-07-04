@@ -205,3 +205,38 @@ Status:
   - promoted into the built-in targeted precedent benchmark preset in:
     - `./scripts/benchmark_precedent_families.py`
 
+## Refresh Commands
+
+Targeted benchmark:
+
+```bash
+cd .
+
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
+PYTHONPATH=. \
+python -u ./scripts/benchmark_precedent_families.py \
+  --run-id ba18753a-59fc-4f91-8650-d73f3025adeb \
+  --runs-root /tmp/recommendation_runs_v4_clean \
+  --precedent-top-k 1 \
+  --artifact-prefix precedent_targeted_norm_full_v4 \
+  --out /tmp/precedent_targeted_norm_full_v4_benchmark.json
+```
+
+5-company validation batch:
+
+```bash
+cd .
+
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
+RECO_PRECEDENT_MAX_PER_ACTION=3 \
+RECO_PRECEDENT_MAX_PER_DEBT_ACTION=1 \
+PYTHONPATH=. \
+python -u ./scripts/run_recommendation_prod.py \
+  --runs-root /tmp/recommendation_runs_prod_precedent_normfull_v1 \
+  --companies 0000320193 0000789019 0001652044 0001018724 0001326801 \
+  --causal-model-path ./data/models/causal_impact_model_v5_5_hybrid.json \
+  --causal-action-blocklist-path /tmp/causal_blocklist_prod.txt \
+  --precedent-workers 6 \
+  --run-ids-out /tmp/recommendation_runs_prod_precedent_normfull_v1_run_ids.txt \
+  --summary-out /tmp/recommendation_runs_prod_precedent_normfull_v1_summary.json
+```

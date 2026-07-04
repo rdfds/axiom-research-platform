@@ -983,3 +983,461 @@ def _normalize_timestamp_key(value: Any) -> str:
     return str(ts.tz_convert(None))
 
 
+def _normalize_outcomes_lookup_df(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["company_id_norm"] = out.get("company_id", pd.Series("", index=out.index)).astype(str).str.zfill(10)
+    out["action_date_norm"] = out.get("action_date", pd.Series("", index=out.index)).apply(_normalize_timestamp_key)
+    return out
+
+
+def _build_outcome_feature_lookup(outcomes_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    lookup: Dict[str, pd.DataFrame] = {}
+    normalized = _normalize_outcomes_lookup_df(outcomes_df)
+    if "normalized_action_id" not in normalized.columns:
+        return lookup
+    for action_id, subset in normalized.groupby(normalized["normalized_action_id"].astype(str), dropna=False):
+        feature_frame = _outcome_aware_reranker_feature_frame(subset).copy()
+        feature_frame["company_id_norm"] = subset["company_id_norm"].astype(str).tolist()
+        feature_frame["action_date_norm"] = subset["action_date_norm"].astype(str).tolist()
+        lookup[str(action_id)] = feature_frame
+    return lookup
+
+
+def _lookup_outcome_feature_row(
+    feature_lookup: Dict[str, pd.DataFrame],
+    *,
+    action_id: str,
+    precedent_id: Any,
+) -> Dict[str, float]:
+    company_id, action_date = _parse_precedent_id(precedent_id)
+    if not company_id or not action_date:
+        return {}
+    frame = feature_lookup.get(str(action_id or ""))
+    if frame is None or frame.empty:
+        return {}
+    company_key = str(company_id).zfill(10)
+    action_time_key = _normalize_timestamp_key(action_date)
+    mask = frame["company_id_norm"].astype(str).eq(company_key)
+    mask &= frame["action_date_norm"].astype(str).eq(action_time_key)
+    matches = frame.loc[mask]
+    if matches.empty:
+        return {}
+    row = matches.iloc[0]
+    return {
+        feature_name: float(row.get(feature_name))
+        for feature_name in _outcome_aware_reranker_feature_names()
+        if pd.notna(row.get(feature_name))
+    }
+
+
+def _outcome_aware_reranker_prior(feature_names: Sequence[str]) -> np.ndarray:
+    prior = np.zeros(len(feature_names), dtype=float)
+    for idx, feature_name in enumerate(feature_names):
+        if str(feature_name) == "current_similarity_score":
+            prior[idx] = 1.0
+    return prior
+
+
+def _second_stage_reranker_prior(feature_names: Sequence[str]) -> np.ndarray:
+    prior = np.zeros(len(feature_names), dtype=float)
+    for idx, feature_name in enumerate(feature_names):
+        if str(feature_name) == "base_state_similarity":
+            prior[idx] = 1.0
+    return prior
+
+
+def build_second_stage_reranker_matrix(
+    df: pd.DataFrame,
+    *,
+    pair_weight_mode: str = "uniform",
+    same_action_only: bool = True,
+) -> Dict[str, Any]:
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    feature_names = list(_second_stage_reranker_feature_names())
+    action_feature_names = list(_STATE_VECTOR_MATCHING_COLS)
+    X_pos_rows: List[np.ndarray] = []
+    groups: List[str] = []
+    selected_rows: List[Dict[str, Any]] = []
+    feature_coverage = {feature: 0 for feature in feature_names}
+
+    for row in rows:
+        anchor_action_id = str(row.get("anchor_action_id") or "")
+        competitor_action_id = str(row.get("competitor_action_id") or "")
+        if same_action_only and anchor_action_id and competitor_action_id and competitor_action_id != anchor_action_id:
+            continue
+        target_compact = dict(row['target_compact'] or {})
+        positive_compact = dict(row.get("positive_compact") or {})
+        negative_compact = dict(row.get("negative_compact") or {})
+        if not target_compact or not positive_compact or not negative_compact:
+            continue
+        target_vec = _compact_feature_vector(target_compact, feature_names=action_feature_names)
+        candidate_matrix = np.vstack(
+            [
+                _compact_feature_vector(positive_compact, feature_names=action_feature_names),
+                _compact_feature_vector(negative_compact, feature_names=action_feature_names),
+            ]
+        )
+        feature_payload = _second_stage_reranker_feature_matrix(
+            emb_raw=candidate_matrix,
+            candidate_vec_raw=target_vec,
+            embedding_cols=action_feature_names,
+            action_id=anchor_action_id,
+            action_subtype=str(row.get("anchor_action_subtype") or anchor_action_id),
+            profile_version="weighted_distance_v2",
+            target_action_scale=_clean_numeric(row.get("target_action_scale")),
+            row_action_scales=np.asarray(
+                [
+                    _clean_numeric(row.get("positive_action_scale")),
+                    _clean_numeric(row.get("negative_action_scale")),
+                ],
+                dtype=float,
+            ),
+            feature_overrides={
+                "parameter_similarity": np.asarray([np.nan, np.nan], dtype=float),
+                "sector_similarity": np.asarray([np.nan, np.nan], dtype=float),
+                "action_match_score": np.asarray(
+                    [
+                        0.92 if anchor_action_id and anchor_action_id == competitor_action_id else 0.65,
+                        0.92 if anchor_action_id and anchor_action_id == competitor_action_id else 0.65,
+                    ],
+                    dtype=float,
+                ),
+            },
+        )
+        matrix = np.asarray(feature_payload.get("matrix"), dtype=float)
+        if matrix.ndim != 2 or matrix.shape != (2, len(feature_names)):
+            continue
+        feature_idx = {name: idx for idx, name in enumerate(feature_names)}
+        target_sector = str(row.get("target_sector") or "").strip()
+        target_subsector = str(row.get("target_subsector") or "").strip()
+        positive_sector = str(row.get("positive_sector") or "").strip()
+        positive_subsector = str(row.get("positive_subsector") or "").strip()
+        negative_sector = str(row.get("negative_sector") or "").strip()
+        negative_subsector = str(row.get("negative_subsector") or "").strip()
+        if "sector_similarity" in feature_idx and target_sector:
+            matrix[0, feature_idx["sector_similarity"]] = float(
+                _sector_similarity(target_sector, positive_sector, target_subsector, positive_subsector)
+            )
+            matrix[1, feature_idx["sector_similarity"]] = float(
+                _sector_similarity(target_sector, negative_sector, target_subsector, negative_subsector)
+            )
+        if "parameter_similarity" in feature_idx:
+            target_scale = pd.to_numeric(row.get("target_action_scale"), errors="coerce")
+            positive_scale = pd.to_numeric(row.get("positive_action_scale"), errors="coerce")
+            negative_scale = pd.to_numeric(row.get("negative_action_scale"), errors="coerce")
+            eps = 1e-6
+            if pd.notna(target_scale) and pd.notna(positive_scale):
+                matrix[0, feature_idx["parameter_similarity"]] = float(
+                    np.exp(-abs(np.log((float(target_scale) + eps) / (float(positive_scale) + eps))))
+                )
+            if pd.notna(target_scale) and pd.notna(negative_scale):
+                matrix[1, feature_idx["parameter_similarity"]] = float(
+                    np.exp(-abs(np.log((float(target_scale) + eps) / (float(negative_scale) + eps))))
+                )
+        for feature_idx, feature_name in enumerate(feature_names):
+            if np.isfinite(matrix[:, feature_idx]).all():
+                feature_coverage[feature_name] += 1
+        X_pos_rows.append(matrix[0] - matrix[1])
+        groups.append(_pairwise_group_key(row))
+        selected_rows.append(row)
+
+    if not X_pos_rows:
+        raise ValueError("No rows available for second-stage reranker learning")
+
+    X_pos_raw = np.vstack(X_pos_rows).astype(float)
+    X_pos = np.column_stack(
+        [
+            _robust_standardize_vector(X_pos_raw[:, feature_idx])
+            for feature_idx in range(X_pos_raw.shape[1])
+        ]
+    ).astype(float)
+    X_neg = -1.0 * X_pos
+    X = np.vstack([X_pos, X_neg]).astype(float)
+    y = np.concatenate(
+        [
+            np.ones(X_pos.shape[0], dtype=float),
+            np.zeros(X_neg.shape[0], dtype=float),
+        ]
+    )
+    group_rarity_weights = (
+        _target_regime_rarity_weights(
+            selected_rows,
+            feature_names=list(_feature_names()),
+            transform_specs={},
+        )
+        if _normalize_pair_weight_mode(pair_weight_mode) == "target_regime_rarity"
+        else {}
+    )
+    duplicated_groups = groups + groups
+    group_counts = Counter(str(group) for group in duplicated_groups)
+    row_weights = np.array(
+        [_pair_teacher_confidence_weight(row, pair_weight_mode) for row in selected_rows],
+        dtype=float,
+    )
+    if group_rarity_weights:
+        row_weights = np.asarray(
+            [
+                float(row_weights[idx]) * float(group_rarity_weights.get(_pairwise_group_key(row), 1.0))
+                for idx, row in enumerate(selected_rows)
+            ],
+            dtype=float,
+        )
+    if row_weights.size and not bool(np.any(row_weights > 0.0)):
+        row_weights = np.ones_like(row_weights, dtype=float)
+    duplicated_row_weights = np.concatenate([row_weights, row_weights]).astype(float)
+    sample_weights = np.array(
+        [
+            duplicated_row_weights[idx] * (1.0 / max(1, int(group_counts[str(group)])))
+            for idx, group in enumerate(duplicated_groups)
+        ],
+        dtype=float,
+    )
+    if sample_weights.sum() > 0.0:
+        sample_weights = sample_weights * (float(sample_weights.size) / float(sample_weights.sum()))
+    return {
+        "X": X,
+        "y": y,
+        "groups": np.array(duplicated_groups, dtype=object),
+        "sample_weights": sample_weights,
+        "selected_features": tuple(feature_names),
+        "feature_coverage": feature_coverage,
+        "pair_count": int(len(selected_rows)),
+        "group_rarity_weights": dict(group_rarity_weights),
+    }
+
+
+def cross_validate_second_stage_reranker(
+    dataset_path: str | Path,
+    *,
+    pair_weight_mode: str = "uniform",
+    same_action_only: bool = True,
+    l2_grid: Sequence[float] = (0.1, 0.25, 0.5, 1.0, 2.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    matrix = build_second_stage_reranker_matrix(
+        df,
+        pair_weight_mode=pair_weight_mode,
+        same_action_only=same_action_only,
+    )
+    X = np.asarray(matrix["X"], dtype=float)
+    y = np.asarray(matrix["y"], dtype=float)
+    groups = np.asarray(matrix["groups"], dtype=object)
+    sample_weights = np.asarray(matrix["sample_weights"], dtype=float)
+    selected_features = list(matrix["selected_features"])
+    prior = _second_stage_reranker_prior(selected_features)
+    min_weights = np.zeros(len(selected_features), dtype=float)
+    unique_groups = np.array(sorted({str(group) for group in groups.tolist()}), dtype=object)
+    if unique_groups.size < 2:
+        raise ValueError("Need at least two distinct group cases for second-stage reranker cross-validation")
+
+    evaluations: List[Dict[str, Any]] = []
+    for l2_lambda in [float(value) for value in l2_grid]:
+        fold_metrics: List[Dict[str, Any]] = []
+        fold_weights: List[np.ndarray] = []
+        fold_biases: List[float] = []
+        for held_out_group in unique_groups.tolist():
+            holdout_mask = np.array([str(group) == held_out_group for group in groups.tolist()], dtype=bool)
+            train_mask = ~holdout_mask
+            fit = fit_nonnegative_pairwise_logistic(
+                X[train_mask],
+                y[train_mask],
+                prior=prior,
+                sample_weights=sample_weights[train_mask],
+                l2_lambda=l2_lambda,
+                learning_rate=float(learning_rate),
+                max_iter=int(max_iter),
+                min_weights=min_weights,
+            )
+            fold_weights.append(np.asarray(fit["weights"], dtype=float))
+            fold_biases.append(float(fit["bias"]))
+            metrics = _evaluate_fit(
+                X[holdout_mask],
+                y[holdout_mask],
+                weights=np.asarray(fit["weights"], dtype=float),
+                bias=float(fit["bias"]),
+                prior=prior,
+                sample_weights=sample_weights[holdout_mask],
+            )
+            metrics["held_out_group"] = str(held_out_group)
+            fold_metrics.append(metrics)
+
+        mean_weights = np.mean(np.stack(fold_weights), axis=0)
+        mean_bias = float(np.mean(np.asarray(fold_biases, dtype=float))) if fold_biases else 0.0
+        avg_log_loss = float(np.mean([float(item["pair_log_loss"]) for item in fold_metrics]))
+        avg_prior_log_loss = float(np.mean([float(item["pair_log_loss_prior"]) for item in fold_metrics]))
+        avg_accuracy = float(np.mean([float(item["pair_accuracy"]) for item in fold_metrics]))
+        avg_prior_accuracy = float(np.mean([float(item["pair_accuracy_prior"]) for item in fold_metrics]))
+        avg_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean") is not None
+                ]
+            )
+        )
+        avg_prior_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean_prior"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean_prior") is not None
+                ]
+            )
+        )
+        evaluations.append(
+            {
+                "l2_lambda": l2_lambda,
+                "fold_count": len(fold_metrics),
+                "mean_pair_accuracy": avg_accuracy,
+                "mean_pair_accuracy_prior": avg_prior_accuracy,
+                "mean_pair_log_loss": avg_log_loss,
+                "mean_pair_log_loss_prior": avg_prior_log_loss,
+                "mean_positive_margin": avg_margin,
+                "mean_positive_margin_prior": avg_prior_margin,
+                "mean_log_loss_improvement": avg_prior_log_loss - avg_log_loss,
+                "mean_accuracy_improvement": avg_accuracy - avg_prior_accuracy,
+                "mean_positive_margin_improvement": avg_margin - avg_prior_margin,
+                "mean_weights": {
+                    feature: float(mean_weights[idx]) for idx, feature in enumerate(selected_features)
+                },
+                "mean_bias": mean_bias,
+                "fold_metrics": fold_metrics,
+            }
+        )
+    best_evaluation = sorted(evaluations, key=_cv_evaluation_sort_key, reverse=True)[0]
+    return {
+        "dataset_path": str(dataset_path),
+        "selected_features": selected_features,
+        "feature_coverage": matrix["feature_coverage"],
+        "pair_count": int(matrix["pair_count"]),
+        "group_count": int(unique_groups.size),
+        "pair_weight_mode": _normalize_pair_weight_mode(pair_weight_mode),
+        "same_action_only": bool(same_action_only),
+        "evaluations": evaluations,
+        "best_evaluation": best_evaluation,
+    }
+
+
+def build_outcome_aware_reranker_matrix(
+    df: pd.DataFrame,
+    *,
+    outcomes_df: pd.DataFrame,
+    pair_weight_mode: str = "uniform",
+    same_action_only: bool = True,
+) -> Dict[str, Any]:
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    feature_names = list(_outcome_aware_reranker_feature_names())
+    X_pos_rows: List[np.ndarray] = []
+    groups: List[str] = []
+    selected_rows: List[Dict[str, Any]] = []
+    feature_coverage = {feature: 0 for feature in feature_names}
+    outcome_lookup = _build_outcome_feature_lookup(outcomes_df)
+
+    for row in rows:
+        anchor_action_id = str(row.get("anchor_action_id") or "")
+        competitor_action_id = str(row.get("competitor_action_id") or "")
+        if same_action_only and anchor_action_id and competitor_action_id and competitor_action_id != anchor_action_id:
+            continue
+        positive_features = _lookup_outcome_feature_row(
+            outcome_lookup,
+            action_id=anchor_action_id,
+            precedent_id=row.get("positive_precedent_id"),
+        )
+        negative_features = _lookup_outcome_feature_row(
+            outcome_lookup,
+            action_id=anchor_action_id,
+            precedent_id=row.get("negative_precedent_id"),
+        )
+        positive_vector: List[float] = []
+        negative_vector: List[float] = []
+        for feature_name in feature_names:
+            if feature_name == "current_similarity_score":
+                pos_value = _clean_numeric(row.get("positive_similarity_score"))
+                neg_value = _clean_numeric(row.get("negative_similarity_score"))
+            else:
+                pos_value = _clean_numeric(positive_features.get(feature_name))
+                neg_value = _clean_numeric(negative_features.get(feature_name))
+            if pos_value is not None and neg_value is not None:
+                feature_coverage[feature_name] += 1
+            positive_vector.append(
+                float(pos_value)
+                if pos_value is not None
+                else (0.0 if feature_name == "outcome_support_score" else 0.5)
+            )
+            negative_vector.append(
+                float(neg_value)
+                if neg_value is not None
+                else (0.0 if feature_name == "outcome_support_score" else 0.5)
+            )
+        X_pos_rows.append(np.asarray(positive_vector, dtype=float) - np.asarray(negative_vector, dtype=float))
+        groups.append(_pairwise_group_key(row))
+        selected_rows.append(row)
+
+    if not X_pos_rows:
+        raise ValueError("No rows available for outcome-aware reranker learning")
+
+    X_pos_raw = np.vstack(X_pos_rows).astype(float)
+    X_pos = np.column_stack(
+        [
+            _robust_standardize_vector(X_pos_raw[:, feature_idx])
+            for feature_idx in range(X_pos_raw.shape[1])
+        ]
+    ).astype(float)
+    X_neg = -1.0 * X_pos
+    X = np.vstack([X_pos, X_neg]).astype(float)
+    y = np.concatenate(
+        [
+            np.ones(X_pos.shape[0], dtype=float),
+            np.zeros(X_neg.shape[0], dtype=float),
+        ]
+    )
+    group_rarity_weights = (
+        _target_regime_rarity_weights(
+            selected_rows,
+            feature_names=list(_feature_names()),
+            transform_specs={},
+        )
+        if _normalize_pair_weight_mode(pair_weight_mode) == "target_regime_rarity"
+        else {}
+    )
+    duplicated_groups = groups + groups
+    group_counts = Counter(str(group) for group in duplicated_groups)
+    row_weights = np.array(
+        [_pair_teacher_confidence_weight(row, pair_weight_mode) for row in selected_rows],
+        dtype=float,
+    )
+    if group_rarity_weights:
+        row_weights = np.asarray(
+            [
+                float(row_weights[idx]) * float(group_rarity_weights.get(_pairwise_group_key(row), 1.0))
+                for idx, row in enumerate(selected_rows)
+            ],
+            dtype=float,
+        )
+    if row_weights.size and not bool(np.any(row_weights > 0.0)):
+        row_weights = np.ones_like(row_weights, dtype=float)
+    duplicated_row_weights = np.concatenate([row_weights, row_weights]).astype(float)
+    sample_weights = np.array(
+        [
+            duplicated_row_weights[idx] * (1.0 / max(1, int(group_counts[str(group)])))
+            for idx, group in enumerate(duplicated_groups)
+        ],
+        dtype=float,
+    )
+    if sample_weights.sum() > 0.0:
+        sample_weights = sample_weights * (float(sample_weights.size) / float(sample_weights.sum()))
+    return {
+        "X": X,
+        "y": y,
+        "groups": np.array(duplicated_groups, dtype=object),
+        "sample_weights": sample_weights,
+        "selected_features": tuple(feature_names),
+        "feature_coverage": feature_coverage,
+        "pair_count": int(len(selected_rows)),
+        "group_rarity_weights": dict(group_rarity_weights),
+    }
+
+
