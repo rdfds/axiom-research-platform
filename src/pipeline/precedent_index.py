@@ -85,3 +85,6 @@ def _query_rank_score(
     )
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+

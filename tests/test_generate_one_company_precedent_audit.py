@@ -349,3 +349,25 @@ def test_filter_historical_precedents_as_of_excludes_future_rows() -> None:
     assert list(filtered["ticker"]) == ["OLD"]
 
 
+def test_locate_match_row_handles_utc_normalized_dates() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "company_id": "163627",
+                "ticker": "ALLY",
+                "action_date": "2014-02-19T00:00:00+00:00",
+                "normalized_action_id": "capital_structure.refinancing",
+            }
+        ]
+    )
+    case = SimpleNamespace(
+        company_id="163627",
+        decision_time="2014-02-19 00:00:00",
+        action_id="capital_structure.refinancing",
+    )
+
+    row = audit._locate_match_row(frame, case)
+
+    assert row["ticker"] == "ALLY"
+
+
