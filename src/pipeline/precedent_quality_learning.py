@@ -490,3 +490,104 @@ def _parse_interaction_feature_name(name: str) -> Optional[Tuple[str, str]]:
     return parts[0], parts[1]
 
 
+def _latent_feature_name(name: Any = None) -> str:
+    raw = str(name or "").strip()
+    return raw if raw.startswith(_LATENT_REGIME_FEATURE_PREFIX) else _LATENT_REGIME_SIMILARITY_FEATURE
+
+
+def _fit_latent_regime_model_from_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    feature_names: Sequence[str],
+    n_clusters: int,
+    seed: int = 7,
+    max_iter: int = 100,
+) -> Optional[Dict[str, Any]]:
+    compact_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        for key in ("target_compact", "positive_compact", "negative_compact"):
+            compact = dict(row.get(key) or {})
+            if compact:
+                compact_rows.append(compact)
+    if not compact_rows:
+        return None
+    raw_matrix = raw_feature_matrix_from_compacts(compact_rows, feature_names=feature_names)
+    if raw_matrix.ndim != 2 or raw_matrix.shape[0] == 0:
+        return None
+    return fit_latent_regime_kmeans(
+        raw_matrix,
+        feature_names=feature_names,
+        n_clusters=int(n_clusters),
+        seed=int(seed),
+        max_iter=int(max_iter),
+    )
+
+
+def _latent_regime_advantage(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    model: Dict[str, Any],
+) -> np.ndarray:
+    feature_names = list(model.get("feature_names") or [])
+    if not feature_names:
+        return np.empty(len(rows), dtype=float)
+    target_matrix = raw_feature_matrix_from_compacts(
+        [dict(row.get("target_compact") or {}) for row in rows],
+        feature_names=feature_names,
+    )
+    positive_matrix = raw_feature_matrix_from_compacts(
+        [dict(row.get("positive_compact") or {}) for row in rows],
+        feature_names=feature_names,
+    )
+    negative_matrix = raw_feature_matrix_from_compacts(
+        [dict(row.get("negative_compact") or {}) for row in rows],
+        feature_names=feature_names,
+    )
+    positive_similarity = latent_regime_similarity(target_matrix, positive_matrix, model)
+    negative_similarity = latent_regime_similarity(target_matrix, negative_matrix, model)
+    advantage = positive_similarity - negative_similarity
+    invalid = ~np.isfinite(positive_similarity) | ~np.isfinite(negative_similarity)
+    if bool(np.any(invalid)):
+        advantage = np.array(advantage, dtype=float, copy=True)
+        advantage[invalid] = np.nan
+    return np.asarray(advantage, dtype=float)
+
+
+def _fit_target_latent_regime_model_from_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    feature_names: Sequence[str],
+    n_clusters: int,
+    seed: int = 7,
+    max_iter: int = 100,
+) -> Optional[Dict[str, Any]]:
+    compact_rows = [dict(row.get("target_compact") or {}) for row in rows if dict(row.get("target_compact") or {})]
+    if not compact_rows:
+        return None
+    raw_matrix = raw_feature_matrix_from_compacts(compact_rows, feature_names=feature_names)
+    if raw_matrix.ndim != 2 or raw_matrix.shape[0] == 0:
+        return None
+    return fit_latent_regime_kmeans(
+        raw_matrix,
+        feature_names=feature_names,
+        n_clusters=int(n_clusters),
+        seed=int(seed),
+        max_iter=int(max_iter),
+    )
+
+
+def _target_regime_memberships_for_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    model: Dict[str, Any],
+) -> np.ndarray:
+    feature_names = list(model.get("feature_names") or [])
+    if not feature_names:
+        return np.empty((len(rows), 0), dtype=float)
+    target_matrix = raw_feature_matrix_from_compacts(
+        [dict(row.get("target_compact") or {}) for row in rows],
+        feature_names=feature_names,
+    )
+    return latent_regime_memberships(target_matrix, model)
+
+
