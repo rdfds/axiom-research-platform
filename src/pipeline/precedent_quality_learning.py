@@ -591,3 +591,40 @@ def _target_regime_memberships_for_rows(
     return latent_regime_memberships(target_matrix, model)
 
 
+def _fit_regime_conditioned_weights(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    target_memberships: np.ndarray,
+    prior: np.ndarray,
+    sample_weights: np.ndarray,
+    l2_lambda: float,
+    learning_rate: float,
+    max_iter: int,
+    min_weights: np.ndarray,
+) -> Dict[str, Any]:
+    n_clusters = int(target_memberships.shape[1]) if target_memberships.ndim == 2 else 0
+    if n_clusters <= 0:
+        raise ValueError("target_memberships must have at least one cluster column")
+    regime_weights: List[np.ndarray] = []
+    regime_biases: List[float] = []
+    for cluster_idx in range(n_clusters):
+        cluster_row_weights = sample_weights * np.asarray(target_memberships[:, cluster_idx], dtype=float)
+        fit = fit_nonnegative_pairwise_logistic(
+            X,
+            y,
+            prior=prior,
+            sample_weights=cluster_row_weights,
+            l2_lambda=float(l2_lambda),
+            learning_rate=float(learning_rate),
+            max_iter=int(max_iter),
+            min_weights=min_weights,
+        )
+        regime_weights.append(np.asarray(fit["weights"], dtype=float))
+        regime_biases.append(float(fit["bias"]))
+    return {
+        "regime_weights": np.stack(regime_weights, axis=0),
+        "regime_biases": np.asarray(regime_biases, dtype=float),
+    }
+
+

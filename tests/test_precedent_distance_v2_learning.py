@@ -66,3 +66,36 @@ def test_coordinate_search_scope_configuration_improves_toward_preferred_weight(
     assert float(search["best_aggregate"]["mean_alignment_score"]) == 1.0
 
 
+def test_coordinate_search_scope_configuration_respects_custom_group_grid_values():
+    objective = {
+        "objective_order": [
+            {"metric": "mean_alignment_score", "direction": "maximize"},
+        ],
+        "search_space": {
+            "group_weights": ["valuation"],
+            "group_weight_grid_values": [0.7, 1.3],
+            "optimize_feature_relative_weights": False,
+            "optimize_gates": False,
+            "optimize_penalties": False,
+            "optimize_blend_weights": False,
+        },
+    }
+
+    seen_weights = []
+
+    def evaluate_scope_config(scope_config):
+        valuation_weight = float(scope_config["group_weights"]["valuation"])
+        seen_weights.append(valuation_weight)
+        alignment = 1.0 if abs(valuation_weight - 1.3) <= 1e-12 else 0.0
+        return {"aggregate": {"mean_alignment_score": alignment}}
+
+    search = coordinate_search_scope_configuration(
+        scope_key="capital_structure",
+        objective_config=objective,
+        evaluate_scope_config=evaluate_scope_config,
+        max_rounds=1,
+    )
+    assert sorted(set(seen_weights)) == [0.7, 0.88, 1.3]
+    assert float(search["best_config"]["group_weights"]["valuation"]) == 1.3
+
+
