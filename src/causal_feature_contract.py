@@ -204,3 +204,25 @@ def resolve_mapping_value(mapping: Mapping[str, Any], feature_name: str, default
     return default
 
 
+def normalize_feature_value(feature_name: str, value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if out != out or out in (float("inf"), float("-inf")):
+        return None
+
+    canonical = canonicalize_feature_name(feature_name)
+    if canonical in USD_MILLIONS_FEATURES and abs(out) >= 1e7:
+        out = out / 1e6
+    if canonical in RATE_PERCENT_FEATURES and abs(out) <= 1.0:
+        out = out * 100.0
+    if canonical in OAS_PERCENT_FEATURES and abs(out) >= 50.0:
+        out = out / 100.0
+    if canonical in SIGNED_LOG1P_FEATURES:
+        out = math.copysign(math.log1p(abs(out)), out)
+    return float(out)
+
+
