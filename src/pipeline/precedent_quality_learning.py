@@ -628,3 +628,358 @@ def _fit_regime_conditioned_weights(
     }
 
 
+def _evaluate_regime_conditioned_fit(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    target_memberships: np.ndarray,
+    regime_weights: np.ndarray,
+    regime_biases: np.ndarray,
+    prior: np.ndarray,
+    sample_weights: Optional[np.ndarray] = None,
+) -> Dict[str, Any]:
+    blended_weights = np.asarray(target_memberships, dtype=float) @ np.asarray(regime_weights, dtype=float)
+    blended_bias = np.sum(np.asarray(target_memberships, dtype=float) * np.asarray(regime_biases, dtype=float).reshape(1, -1), axis=1)
+    logits = blended_bias + np.sum(X * blended_weights, axis=1)
+    prob = _sigmoid(logits)
+    prior_prob = _sigmoid(X @ prior)
+    positive_mask = y == 1.0
+    margin_values = logits[positive_mask] if int(np.count_nonzero(positive_mask)) else np.empty(0)
+    prior_margin_values = (X[positive_mask] @ prior) if int(np.count_nonzero(positive_mask)) else np.empty(0)
+    positive_weights = (
+        np.asarray(sample_weights, dtype=float)[positive_mask]
+        if sample_weights is not None and int(np.count_nonzero(positive_mask))
+        else None
+    )
+
+    def _weighted_mean(values: np.ndarray, weights_arr: Optional[np.ndarray]) -> Optional[float]:
+        if values.size == 0:
+            return None
+        if weights_arr is None:
+            return float(np.mean(values))
+        total = float(np.sum(weights_arr))
+        if total <= 0.0:
+            return float(np.mean(values))
+        return float(np.sum(values * weights_arr) / total)
+
+    return {
+        "pair_accuracy": _pair_accuracy(y, prob, sample_weights=sample_weights),
+        "pair_log_loss": _log_loss(y, prob, sample_weights=sample_weights),
+        "pair_accuracy_prior": _pair_accuracy(y, prior_prob, sample_weights=sample_weights),
+        "pair_log_loss_prior": _log_loss(y, prior_prob, sample_weights=sample_weights),
+        "positive_margin_mean": _weighted_mean(margin_values, positive_weights),
+        "positive_margin_mean_prior": _weighted_mean(prior_margin_values, positive_weights),
+        "positive_margin_positive_rate": _weighted_mean((margin_values > 0.0).astype(float), positive_weights) if margin_values.size else None,
+        "positive_margin_positive_rate_prior": _weighted_mean((prior_margin_values > 0.0).astype(float), positive_weights) if prior_margin_values.size else None,
+        "n_rows": int(X.shape[0]),
+        "n_positive_rows": int(np.count_nonzero(positive_mask)),
+    }
+
+
+def _cv_evaluation_sort_key(row: Dict[str, Any]) -> Tuple[float, float, float]:
+    return (
+        float(row.get("mean_log_loss_improvement") or 0.0),
+        float(row.get("mean_accuracy_improvement") or 0.0),
+        float(row.get("mean_positive_margin_improvement") or 0.0),
+    )
+
+
+def _feature_transform_candidates(
+    rows: Sequence[Dict[str, Any]],
+    feature_name: str,
+    *,
+    base_spec: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    values = _feature_value_sample(rows, feature_name)
+    candidates: List[Dict[str, Any]] = []
+
+    def _append(spec: Dict[str, Any]) -> None:
+        normalized = _normalize_transform_spec(spec)
+        if any(_transform_spec_key(existing) == _transform_spec_key(normalized) for existing in candidates):
+            return
+        candidates.append(normalized)
+
+    _append(base_spec or {})
+    if values.size == 0:
+        return candidates
+
+    abs_values = np.abs(values[np.isfinite(values)])
+    if abs_values.size == 0:
+        return candidates
+
+    signed = bool(np.any(values < 0.0))
+    quantile_values = {
+        "q75": float(np.quantile(abs_values, 0.75)),
+        "q90": float(np.quantile(abs_values, 0.90)),
+        "q95": float(np.quantile(abs_values, 0.95)),
+        "q99": float(np.quantile(abs_values, 0.99)),
+    }
+    quantile_values = {
+        key: max(1e-6, value) for key, value in quantile_values.items() if np.isfinite(value) and value > 0.0
+    }
+    if not quantile_values:
+        return candidates
+
+    if signed:
+        if "q95" in quantile_values:
+            _append({"kind": "signed_log1p_cap", "cap": quantile_values["q95"]})
+        if "q75" in quantile_values:
+            _append({"kind": "signed_asinh", "scale": quantile_values["q75"]})
+    else:
+        if "q95" in quantile_values:
+            _append({"kind": "log1p_cap", "cap": quantile_values["q95"]})
+        if "q75" in quantile_values:
+            _append({"kind": "signed_asinh", "scale": quantile_values["q75"]})
+    return candidates
+
+
+def _robust_standardize_vector(values: np.ndarray) -> np.ndarray:
+    arr = np.array(values, dtype=float, copy=True)
+    valid = np.isfinite(arr)
+    if not bool(np.any(valid)):
+        return np.zeros_like(arr)
+    sample = arr[valid]
+    med = float(np.median(sample))
+    q25 = float(np.quantile(sample, 0.25))
+    q75 = float(np.quantile(sample, 0.75))
+    scale = (q75 - q25) / 1.349
+    if (not np.isfinite(scale)) or scale <= 1e-9:
+        scale = float(np.std(sample))
+    if (not np.isfinite(scale)) or scale <= 1e-9:
+        scale = 1.0
+    out = np.zeros_like(arr)
+    out[valid] = (arr[valid] - med) / scale
+    out[~valid] = 0.0
+    return out
+
+
+def build_pairwise_matrix(
+    df: pd.DataFrame,
+    *,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    include_interactions: bool = False,
+    interaction_feature_names: Optional[Sequence[str]] = None,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+    include_latent_regime: bool = False,
+    latent_regime_model: Optional[Dict[str, Any]] = None,
+    latent_feature_names: Optional[Sequence[str]] = None,
+    enforce_feature_names: bool = False,
+) -> Dict[str, Any]:
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    requested_feature_names = [str(name) for name in list(feature_names or _feature_names())]
+    candidate_features = [
+        name
+        for name in requested_feature_names
+        if not name.startswith(_INTERACTION_FEATURE_PREFIX) and not name.startswith(_LATENT_REGIME_FEATURE_PREFIX)
+    ]
+    transform_overrides = {
+        str(feature): _normalize_transform_spec(spec)
+        for feature, spec in dict(transform_specs or {}).items()
+    }
+    raw_advantages: Dict[str, List[Optional[float]]] = {
+        feature: [
+            (
+                _feature_advantage_from_compacts(row, feature, transform_overrides.get(feature))
+                if transform_overrides
+                else _feature_advantage(row, feature)
+            )
+            for row in rows
+        ]
+        for feature in candidate_features
+    }
+    if enforce_feature_names:
+        selected_features = list(candidate_features)
+    else:
+        selected_features = [
+            feature
+            for feature in candidate_features
+            if sum(1 for value in raw_advantages[feature] if value is not None) >= int(min_feature_coverage_rows)
+        ]
+    base_selected_features = list(selected_features)
+
+    X_pos_cols: List[np.ndarray] = []
+    feature_coverage: Dict[str, int] = {}
+    candidate_abs_diff_lookup: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    allowed_interaction_names = {
+        str(name)
+        for name in list(interaction_feature_names or [])
+        if str(name or "").startswith(_INTERACTION_FEATURE_PREFIX)
+    } or None
+    allowed_penalty_names = {
+        str(name)
+        for name in list(requested_feature_names)
+        if str(name or "").startswith(_PENALTY_FEATURE_PREFIX)
+    } or None
+    allowed_latent_names = {
+        _latent_feature_name(name)
+        for name in list(latent_feature_names or [])
+        if str(name or "").startswith(_LATENT_REGIME_FEATURE_PREFIX)
+    } or None
+    for feature in selected_features:
+        values = np.array(
+            [np.nan if value is None else float(value) for value in raw_advantages[feature]],
+            dtype=float,
+        )
+        feature_coverage[feature] = int(np.isfinite(values).sum())
+        X_pos_cols.append(_robust_standardize_vector(values))
+        if include_interactions:
+            candidate_abs_diff_lookup[feature] = _candidate_abs_diff_triplets(
+                rows,
+                feature,
+                transform_spec=transform_overrides.get(feature),
+            )
+
+    if include_interactions and len(selected_features) >= 2:
+        for idx_left, feature_left in enumerate(base_selected_features):
+            pos_left, neg_left = candidate_abs_diff_lookup[feature_left]
+            for feature_right in base_selected_features[idx_left + 1 :]:
+                pos_right, neg_right = candidate_abs_diff_lookup[feature_right]
+                pos_term = pos_left * pos_right
+                neg_term = neg_left * neg_right
+                valid = np.isfinite(pos_term) & np.isfinite(neg_term)
+                coverage = int(np.count_nonzero(valid))
+                interaction_name = _interaction_feature_name(feature_left, feature_right)
+                if coverage < int(min_feature_coverage_rows) and not (
+                    enforce_feature_names
+                    and allowed_interaction_names is not None
+                    and interaction_name in allowed_interaction_names
+                ):
+                    continue
+                if allowed_interaction_names is not None and interaction_name not in allowed_interaction_names:
+                    continue
+                advantage = np.full(pos_term.shape[0], np.nan, dtype=float)
+                advantage[valid] = neg_term[valid] - pos_term[valid]
+                feature_coverage[interaction_name] = coverage
+                X_pos_cols.append(_robust_standardize_vector(advantage))
+                selected_features.append(interaction_name)
+
+    for spec in list(penalty_feature_specs or []):
+        if not isinstance(spec, dict):
+            continue
+        penalty_name = _penalty_feature_name(str(spec.get("name") or ""))
+        source_feature = str(spec.get("source_feature") or "")
+        soft_threshold = _clean_numeric(spec.get("soft_threshold"))
+        if not penalty_name or not source_feature or soft_threshold is None:
+            continue
+        if allowed_penalty_names is not None and penalty_name not in allowed_penalty_names:
+            continue
+        values = np.array(
+            [
+                _penalty_feature_advantage(
+                    row,
+                    source_feature=source_feature,
+                    soft_threshold=float(soft_threshold),
+                )
+                for row in rows
+            ],
+            dtype=float,
+        )
+        coverage = int(np.count_nonzero(np.isfinite(values)))
+        if coverage < int(min_feature_coverage_rows) and not (
+            enforce_feature_names and allowed_penalty_names is not None and penalty_name in allowed_penalty_names
+        ):
+            continue
+        feature_coverage[penalty_name] = coverage
+        X_pos_cols.append(_robust_standardize_vector(values))
+        selected_features.append(penalty_name)
+
+    if include_latent_regime and isinstance(latent_regime_model, dict):
+        latent_name = _LATENT_REGIME_SIMILARITY_FEATURE
+        if allowed_latent_names is None or latent_name in allowed_latent_names:
+            advantage = _latent_regime_advantage(rows, model=latent_regime_model)
+            coverage = int(np.count_nonzero(np.isfinite(advantage)))
+            if coverage >= int(min_feature_coverage_rows) or (
+                enforce_feature_names
+                and (allowed_latent_names is None or latent_name in allowed_latent_names)
+            ):
+                feature_coverage[latent_name] = coverage
+                X_pos_cols.append(_robust_standardize_vector(advantage))
+                selected_features.append(latent_name)
+
+    if not X_pos_cols:
+        raise ValueError("No features met minimum pairwise coverage threshold")
+    X_pos = np.column_stack(X_pos_cols).astype(float)
+    X_neg = -1.0 * X_pos
+    X = np.vstack([X_pos, X_neg]).astype(float)
+    y = np.concatenate(
+        [
+            np.ones(X_pos.shape[0], dtype=float),
+            np.zeros(X_neg.shape[0], dtype=float),
+        ]
+    )
+    group_rarity_weights = (
+        _target_regime_rarity_weights(
+            rows,
+            feature_names=base_selected_features,
+            transform_specs=transform_overrides,
+        )
+        if _normalize_pair_weight_mode(pair_weight_mode) == "target_regime_rarity"
+        else {}
+    )
+    groups = [_pairwise_group_key(row) for row in rows]
+    groups = groups + groups
+    group_counts = Counter(str(group) for group in groups)
+    row_weights = np.array([_pair_teacher_confidence_weight(row, pair_weight_mode) for row in rows], dtype=float)
+    if group_rarity_weights:
+        row_weights = np.asarray(
+            [
+                float(row_weights[idx]) * float(group_rarity_weights.get(_pairwise_group_key(row), 1.0))
+                for idx, row in enumerate(rows)
+            ],
+            dtype=float,
+        )
+    if row_weights.size and not bool(np.any(row_weights > 0.0)):
+        row_weights = np.ones_like(row_weights, dtype=float)
+    duplicated_row_weights = np.concatenate([row_weights, row_weights]).astype(float)
+    sample_weights = np.array(
+        [
+            duplicated_row_weights[idx] * (1.0 / max(1, int(group_counts[str(group)])))
+            for idx, group in enumerate(groups)
+        ],
+        dtype=float,
+    )
+    if sample_weights.sum() > 0.0:
+        sample_weights = sample_weights * (float(sample_weights.size) / float(sample_weights.sum()))
+    return {
+        "X": X,
+        "y": y,
+        "groups": np.array(groups, dtype=object),
+        "sample_weights": sample_weights,
+        "selected_features": tuple(selected_features),
+        "feature_coverage": feature_coverage,
+        "pair_count": int(len(rows)),
+        "group_rarity_weights": dict(group_rarity_weights),
+    }
+
+
+def _compact_feature_vector(
+    compact: Dict[str, Any],
+    *,
+    feature_names: Sequence[str],
+) -> np.ndarray:
+    return np.array(
+        [
+            float(compact.get(feature)) if compact.get(feature) is not None else np.nan
+            for feature in feature_names
+        ],
+        dtype=float,
+    )
+
+
+def _parse_precedent_id(precedent_id: Any) -> Tuple[str, str]:
+    parts = str(precedent_id or "").split("::")
+    if len(parts) < 2:
+        return "", ""
+    return str(parts[0] or "").strip(), str(parts[1] or "").strip()
+
+
+def _normalize_timestamp_key(value: Any) -> str:
+    ts = pd.to_datetime(value, errors="coerce", utc=True)
+    if pd.isna(ts):
+        return ""
+    return str(ts.tz_convert(None))
+
+
