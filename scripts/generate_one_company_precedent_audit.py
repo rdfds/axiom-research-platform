@@ -528,3 +528,81 @@ def _synthesized_snapshot_row_from_outcome_row(
     }
 
 
+def _load_historical_outcome_target_row(
+    outcomes_path: Path,
+    *,
+    action_id: str,
+    company_id: str,
+    snapshot_as_of_time: str | None,
+    source_company_id: str = "",
+    target_ticker: str = "",
+) -> Dict[str, Any] | None:
+    if not outcomes_path.exists():
+        return None
+    frame = pd.read_parquet(outcomes_path, filters=[[("normalized_action_id", "==", str(action_id))]])
+    if frame.empty:
+        return None
+    if source_company_id:
+        frame = frame[frame.get("company_id", pd.Series("", index=frame.index)).astype(str) == str(source_company_id)]
+    elif target_ticker and "ticker" in frame.columns:
+        frame = frame[frame["ticker"].astype(str) == str(target_ticker)]
+    if frame.empty:
+        return None
+    frame = frame.copy()
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    if snapshot_as_of_time:
+        target_ts = pd.to_datetime(snapshot_as_of_time, utc=True, errors="coerce")
+        if pd.notna(target_ts):
+            delta = (frame["action_date"] - target_ts).dt.total_seconds()
+            forward = delta.where(delta >= 0.0)
+            if forward.notna().any():
+                frame = frame.assign(_priority=forward)
+            else:
+                frame = frame.assign(_priority=delta.abs())
+            frame = frame.sort_values(["_priority", "action_date"], ascending=[True, True])
+    else:
+        frame = frame.sort_values("action_date", ascending=False)
+    if frame.empty:
+        return None
+    return _synthesized_snapshot_row_from_outcome_row(
+        frame.iloc[0].to_dict(),
+        company_id=company_id,
+        as_of_time=str(snapshot_as_of_time or ""),
+        outcomes_path=outcomes_path,
+    )
+
+
+def _target_context_lines(row: Dict[str, Any], bundle: Dict[str, Any]) -> List[str]:
+    features = row.get("features") or {}
+    support = bundle["state_vector_v1"]["support"]
+    proxy = [key for key in _STATE_VECTOR_V1_FEATURES if (support.get(key) or {}).get("support_mode") == "proxy_missing_component"]
+    missing = [
+        key
+        for key in _STATE_VECTOR_V1_FEATURES
+        if (support.get(key) or {}).get("support_mode") in {None, "unsupported"}
+        and _is_missing(bundle["state_vector_v1"]["values"].get(key))
+    ]
+    sector = (features['taxonomy.sector'] or {}).get("value")
+    subsector = (features.get("taxonomy.subsector") or {}).get("value")
+    regime = (features.get("capital_structure.retirement_obligation_regime") or {}).get("value")
+    return [
+        f"- Sector: `{sector}`",
+        f"- Subsector: `{subsector}`",
+        f"- Retirement regime: `{regime}`",
+        f"- Proxy compact features: {', '.join(f'`{key}`' for key in proxy) if proxy else '`None`'}",
+        f"- Missing compact features: {', '.join(f'`{key}`' for key in missing) if missing else '`None`'}",
+    ]
+
+
+def _resolve_metric_record(features: Dict[str, Any], aliases: tuple[str, ...]) -> tuple[str, Dict[str, Any]]:
+    for alias in aliases:
+        record = features.get(alias)
+        if isinstance(record, dict) and record.get("value") is not None:
+            return alias, record
+    for alias in aliases:
+        record = features.get(alias)
+        if isinstance(record, dict):
+            return alias, record
+    return aliases[0], {}
+
+
