@@ -215,3 +215,79 @@ def _pack_outcomes(pack: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
+def _iter_distribution_rows(
+    *,
+    run_id: str,
+    candidate: Dict[str, Any],
+    pack: Dict[str, Any],
+    regime_label: str,
+    outcome_distributions: Dict[str, Any],
+    source: str,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    candidate_id = _norm_str(candidate.get("candidate_id"))
+    action_type = _norm_str(candidate.get("action_type"))
+    action_id = _norm_str(candidate.get("action_id"))
+    action_subtype = _norm_str(candidate.get("action_subtype"))
+    sector = _candidate_sector(candidate, pack)
+    confidence = _to_float(pack.get("precedent_confidence"))
+    if confidence is None:
+        confidence = _to_float(pack.get("calibration_confidence")) or 0.0
+    mismatch = pack.get("mismatch_diagnostics", {}) if isinstance(pack.get("mismatch_diagnostics"), dict) else {}
+    out_of_sample = bool(mismatch.get("out_of_sample_flag", False))
+    retrieval_tier = _norm_str(mismatch.get("retrieval_tier"))
+    low_precedent_coverage = bool(mismatch.get("low_precedent_coverage", False))
+    exact_support_ratio = float(_to_float(mismatch.get("exact_support_ratio")) or 0.0)
+    top_similarity_mean = float(_to_float(mismatch.get("top_similarity_mean")) or 0.0)
+    top_action_match_score = float(_to_float(mismatch.get("top_action_match_score")) or 0.0)
+
+    for horizon_key in _HORIZON_KEYS:
+        metric_set = outcome_distributions.get(horizon_key, {}) if isinstance(outcome_distributions, dict) else {}
+        if not isinstance(metric_set, dict):
+            continue
+        for metric in _METRIC_KEYS:
+            dist = metric_set.get(metric, {})
+            if not isinstance(dist, dict):
+                continue
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "candidate_id": candidate_id,
+                    "action_type": action_type,
+                    "action_subtype": action_subtype,
+                    "action_id": action_id,
+                    "sector": sector,
+                    "regime_label": _norm_str(regime_label),
+                    "time_horizon": horizon_key.replace("horizon_", ""),
+                    "metric": metric,
+                    "mean": _to_float(dist.get("mean")),
+                    "median": _to_float(dist.get("median")),
+                    "p10": _to_float(dist.get("p10")),
+                    "p25": _to_float(dist.get("p25")),
+                    "p75": _to_float(dist.get("p75")),
+                    "p90": _to_float(dist.get("p90")),
+                    "sample_size": int(dist.get("sample_size", 0) or 0),
+                    "precedent_confidence": float(confidence),
+                    "out_of_sample_flag": out_of_sample,
+                    "low_precedent_coverage": low_precedent_coverage,
+                    "retrieval_tier": retrieval_tier,
+                    "exact_support_ratio": exact_support_ratio,
+                    "top_similarity_mean": top_similarity_mean,
+                    "top_action_match_score": top_action_match_score,
+                    "source": source,
+                    "query_score": _query_rank_score(
+                        precedent_confidence=float(confidence),
+                        sample_size=int(dist.get("sample_size", 0) or 0),
+                        out_of_sample_flag=out_of_sample,
+                        source=source,
+                        retrieval_tier=retrieval_tier,
+                        low_precedent_coverage=low_precedent_coverage,
+                        exact_support_ratio=exact_support_ratio,
+                        top_similarity_mean=top_similarity_mean,
+                        top_action_match_score=top_action_match_score,
+                    ),
+                }
+            )
+    return rows
+
+
