@@ -1959,3 +1959,237 @@ def cross_validate_pairwise_precedent_quality_weights(
     }
 
 
+def learn_pairwise_precedent_quality_weights(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    holdout_frac: float = 0.33,
+    seed: int = 7,
+    l2_lambda: float = 1.0,
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    include_interactions: bool = False,
+    interaction_feature_names: Optional[Sequence[str]] = None,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    matrix = build_pairwise_matrix(
+        df,
+        feature_names=feature_names,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=include_interactions,
+        interaction_feature_names=interaction_feature_names,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    X = np.asarray(matrix["X"], dtype=float)
+    y = np.asarray(matrix["y"], dtype=float)
+    groups = np.asarray(matrix["groups"], dtype=object)
+    sample_weights = np.asarray(matrix["sample_weights"], dtype=float)
+    selected_features = list(matrix["selected_features"])
+    prior = np.zeros(len(selected_features), dtype=float)
+    base_feature_names = [
+        feature
+        for feature in selected_features
+        if not str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+        and not str(feature).startswith(_PENALTY_FEATURE_PREFIX)
+    ]
+    if base_feature_names:
+        base_prior = load_feature_weight_prior(
+            base_payload_path,
+            scope_key=scope_key,
+            feature_names=base_feature_names,
+        )
+        base_prior_map = {feature: float(base_prior[idx]) for idx, feature in enumerate(base_feature_names)}
+        for idx, feature in enumerate(selected_features):
+            if feature in base_prior_map:
+                prior[idx] = base_prior_map[feature]
+    min_weights = load_feature_weight_floor(feature_names=selected_features)
+    train_mask, holdout_mask = _split_groups(groups, holdout_frac=float(holdout_frac), seed=int(seed))
+    fit = fit_nonnegative_pairwise_logistic(
+        X[train_mask],
+        y[train_mask],
+        prior=prior,
+        sample_weights=sample_weights[train_mask],
+        l2_lambda=float(l2_lambda),
+        learning_rate=float(learning_rate),
+        max_iter=int(max_iter),
+        min_weights=min_weights,
+    )
+    weights = np.asarray(fit["weights"], dtype=float)
+    bias = float(fit["bias"])
+
+    def _metrics(mask: np.ndarray) -> Dict[str, Any]:
+        if int(np.count_nonzero(mask)) == 0:
+            return {}
+        return _evaluate_fit(
+            X[mask],
+            y[mask],
+            weights=weights,
+            bias=bias,
+            prior=prior,
+            sample_weights=sample_weights[mask],
+        )
+
+    train_metrics = _metrics(train_mask)
+    holdout_metrics = _metrics(holdout_mask)
+    feature_signal: Dict[str, Any] = {}
+    positive_rows = df.to_dict(orient="records")
+    for idx, feature in enumerate(selected_features):
+        raw_advantage = np.array(
+            [np.nan if _feature_advantage(row, feature) is None else float(_feature_advantage(row, feature)) for row in positive_rows],
+            dtype=float,
+        )
+        valid = np.isfinite(raw_advantage)
+        feature_signal[feature] = {
+            "coverage_rows": int(np.count_nonzero(valid)),
+            "positive_advantage_rate": float(np.mean(raw_advantage[valid] > 0.0)) if bool(np.any(valid)) else None,
+            "mean_advantage": float(np.nanmean(raw_advantage[valid])) if bool(np.any(valid)) else None,
+            "learned_weight": float(weights[idx]),
+            "prior_weight": float(prior[idx]),
+        }
+
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "selected_features": selected_features,
+        "feature_coverage": matrix["feature_coverage"],
+        "pair_count": int(matrix["pair_count"]),
+        "train_group_count": int(len({str(g) for g in groups[train_mask].tolist()})),
+        "holdout_group_count": int(len({str(g) for g in groups[holdout_mask].tolist()})),
+        "train_metrics": train_metrics,
+        "holdout_metrics": holdout_metrics,
+        "feature_signal": feature_signal,
+        "weights": {feature: float(weights[idx]) for idx, feature in enumerate(selected_features)},
+        "prior_weights": {feature: float(prior[idx]) for idx, feature in enumerate(selected_features)},
+        "bias": bias,
+        "learning_rate": float(learning_rate),
+        "l2_lambda": float(l2_lambda),
+        "max_iter": int(max_iter),
+        "seed": int(seed),
+        "feature_transforms": {
+            feature: dict(_normalize_transform_spec(dict(transform_specs or {}).get(feature)))
+            for feature in selected_features
+        },
+        "pair_weight_mode": _normalize_pair_weight_mode(pair_weight_mode),
+    }
+
+
+def search_pairwise_interactions_from_supervision(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    l2_grid: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 4.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    max_interaction_terms: int = 6,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    base_cv = cross_validate_pairwise_precedent_quality_weights(
+        dataset_path,
+        scope_key=scope_key,
+        base_payload_path=base_payload_path,
+        feature_names=feature_names,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        l2_grid=l2_grid,
+        learning_rate=float(learning_rate),
+        max_iter=int(max_iter),
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=False,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    base_selected_features = list(base_cv["selected_features"])
+    interaction_matrix = build_pairwise_matrix(
+        df,
+        feature_names=base_selected_features,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=True,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    candidate_interactions = [
+        str(feature)
+        for feature in interaction_matrix["selected_features"]
+        if str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+    ]
+    current_cv = base_cv
+    current_selected_interactions: List[str] = []
+    remaining_interactions = list(candidate_interactions)
+    search_steps: List[Dict[str, Any]] = []
+    max_terms = max(0, int(max_interaction_terms))
+    for _ in range(min(max_terms, len(remaining_interactions))):
+        best_candidate_name: Optional[str] = None
+        best_candidate_cv: Optional[Dict[str, Any]] = None
+        best_candidate_sort_key: Optional[Tuple[float, float, float]] = None
+        for candidate_name in remaining_interactions:
+            candidate_cv = cross_validate_pairwise_precedent_quality_weights(
+                dataset_path,
+                scope_key=scope_key,
+                base_payload_path=base_payload_path,
+                feature_names=base_selected_features,
+                min_feature_coverage_rows=min_feature_coverage_rows,
+                l2_grid=l2_grid,
+                learning_rate=float(learning_rate),
+                max_iter=int(max_iter),
+                transform_specs=transform_specs,
+                pair_weight_mode=pair_weight_mode,
+                include_interactions=True,
+                interaction_feature_names=current_selected_interactions + [candidate_name],
+                penalty_feature_specs=penalty_feature_specs,
+            )
+            candidate_sort_key = _cv_evaluation_sort_key(candidate_cv["best_evaluation"])
+            if best_candidate_sort_key is None or candidate_sort_key > best_candidate_sort_key:
+                best_candidate_name = candidate_name
+                best_candidate_cv = candidate_cv
+                best_candidate_sort_key = candidate_sort_key
+        if best_candidate_name is None or best_candidate_cv is None or best_candidate_sort_key is None:
+            break
+        current_sort_key = _cv_evaluation_sort_key(current_cv["best_evaluation"])
+        if best_candidate_sort_key <= current_sort_key:
+            break
+        current_eval = dict(current_cv["best_evaluation"] or {})
+        best_eval = dict(best_candidate_cv["best_evaluation"] or {})
+        current_selected_interactions.append(best_candidate_name)
+        remaining_interactions = [
+            name for name in remaining_interactions if name != best_candidate_name
+        ]
+        current_cv = best_candidate_cv
+        search_steps.append(
+            {
+                "added_interaction": best_candidate_name,
+                "selected_interactions": list(current_selected_interactions),
+                "best_evaluation": best_eval,
+                "incremental_log_loss_improvement": float(best_eval.get("mean_log_loss_improvement") or 0.0)
+                - float(current_eval.get("mean_log_loss_improvement") or 0.0),
+                "incremental_accuracy_improvement": float(best_eval.get("mean_accuracy_improvement") or 0.0)
+                - float(current_eval.get("mean_accuracy_improvement") or 0.0),
+                "incremental_positive_margin_improvement": float(best_eval.get("mean_positive_margin_improvement") or 0.0)
+                - float(current_eval.get("mean_positive_margin_improvement") or 0.0),
+            }
+        )
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "base_selected_features": base_selected_features,
+        "candidate_interaction_count": int(len(candidate_interactions)),
+        "chosen_interactions": list(current_selected_interactions),
+        "base_evaluation": dict(base_cv["best_evaluation"] or {}),
+        "best_evaluation": dict(current_cv["best_evaluation"] or {}),
+        "steps": search_steps,
+    }
+
+

@@ -99,3 +99,49 @@ def test_coordinate_search_scope_configuration_respects_custom_group_grid_values
     assert float(search["best_config"]["group_weights"]["valuation"]) == 1.3
 
 
+def test_coordinate_search_scope_configuration_can_target_specific_feature_weights_only():
+    objective = {
+        "objective_order": [
+            {"metric": "mean_alignment_score", "direction": "maximize"},
+        ],
+        "search_space": {
+            "optimize_group_weights": False,
+            "optimize_feature_relative_weights": True,
+            "feature_relative_weight_features": [
+                "state_vector_v1.size_log_revenue",
+                "state_vector_v1.profitability",
+            ],
+            "within_group_relative_weights": {"min": 0.8, "max": 1.2},
+            "optimize_gates": False,
+            "optimize_penalties": False,
+            "optimize_blend_weights": False,
+        },
+    }
+
+    seen_feature_weights = []
+    seen_group_weights = []
+
+    def evaluate_scope_config(scope_config):
+        seen_feature_weights.append(
+            (
+                float(scope_config["feature_relative_weights"]["state_vector_v1.size_log_revenue"]),
+                float(scope_config["feature_relative_weights"]["state_vector_v1.profitability"]),
+            )
+        )
+        seen_group_weights.append(float(scope_config["group_weights"]["identity"]))
+        profitability_weight = float(scope_config["feature_relative_weights"]["state_vector_v1.profitability"])
+        alignment = 1.0 if abs(profitability_weight - 1.2) <= 1e-12 else 0.0
+        return {"aggregate": {"mean_alignment_score": alignment}}
+
+    search = coordinate_search_scope_configuration(
+        scope_key="capital_structure",
+        objective_config=objective,
+        evaluate_scope_config=evaluate_scope_config,
+        max_rounds=1,
+    )
+    assert float(search["best_config"]["feature_relative_weights"]["state_vector_v1.profitability"]) == 1.2
+    assert sorted(set(seen_group_weights)) == [1.05]
+    assert all(weight_pair[0] in {0.8, 1.0, 1.2} for weight_pair in seen_feature_weights)
+    assert all(weight_pair[1] in {0.8, 1.0, 1.2} for weight_pair in seen_feature_weights)
+
+
