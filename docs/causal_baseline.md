@@ -39,3 +39,29 @@ Post-patch targeted validation:
     - `causal_model_support_score = 0.857544`
     - `causal_model_min_oos_r2 = 0.091365`
 
+## Intentional Exception
+
+`capital_structure.revolver_draw_or_resize` is intentionally excluded from production causal blending.
+
+Reason:
+
+- targeted rescue training with subtype-aware loan/revolver cells still failed out-of-sample quality gates
+- the rescue artifact is:
+  - `./data/models/causal_impact_model_v5_6_revolver_rescue.json`
+  - `./data/models/causal_impact_model_v5_6_revolver_rescue.model_card.json`
+- resulting loan/revolver cells remained disabled with negative OOS R2
+
+Representative rescue results:
+
+- `loan_issuance::all`
+  - `n_valid = 219`
+  - `oos_r2 = -0.6314524314607071` for `value_creation`
+- `loan_issuance::revolver_line_1_yr`
+  - `n_valid = 106`
+  - `oos_r2 = -1.0` across objectives
+
+Policy:
+
+- keep `capital_structure.revolver_draw_or_resize` precedent-driven for now
+- do not re-enable causal support unless a future model clears the existing OOS quality gate
+

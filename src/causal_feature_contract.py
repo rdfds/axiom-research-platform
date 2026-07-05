@@ -192,7 +192,7 @@ def primary_legacy_alias(name: str) -> Optional[str]:
     return aliases[1] if len(aliases) > 1 else None
 
 
-def resolve_mapping_value(mapping: Mapping[str, Any], feature_name: str, default: Any = None) :
+def resolve_mapping_value(mapping: Mapping[str, Any], feature_name: str, default: Any = None) -> Any:
     if not isinstance(mapping, Mapping):
         return default
     for alias in feature_aliases(feature_name):
