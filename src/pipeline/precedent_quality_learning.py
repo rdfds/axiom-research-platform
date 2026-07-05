@@ -2786,3 +2786,120 @@ def search_target_regime_mixture_from_supervision(
     }
 
 
+def build_scope_payload_with_pairwise_weights(
+    base_payload_path: str | Path,
+    *,
+    scope_key: str,
+    learned_weights: Dict[str, float],
+    learned_feature_transforms: Optional[Dict[str, Dict[str, Any]]] = None,
+    feature_transform_mode: Optional[str] = None,
+    latent_regime_model: Optional[Dict[str, Any]] = None,
+    target_regime_payload: Optional[Dict[str, Any]] = None,
+    second_stage_reranker: Optional[Dict[str, Any]] = None,
+    outcome_aware_reranker: Optional[Dict[str, Any]] = None,
+    notes: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    payload = json.loads(Path(base_payload_path).read_text())
+    scopes = dict(payload.get("scopes", {}) or {})
+    scope = dict(_scope_config_from_payload(payload, scope_key) or {})
+    scope["scope_key"] = _clean_scope_key(scope_key)
+    normalized_transform_mode = _normalize_feature_transform_mode(
+        feature_transform_mode if feature_transform_mode is not None else scope.get("feature_transform_mode")
+    )
+    scope["feature_transform_mode"] = normalized_transform_mode
+    feature_relative_weights = dict(scope.get("feature_relative_weights", {}) or {})
+    interaction_weights: Dict[str, float] = {}
+    learned_penalties = dict(scope.get("penalties", {}) or {})
+    latent_regime_penalty_weight: Optional[float] = None
+    for key, value in dict(learned_weights or {}).items():
+        key_text = str(key)
+        if key_text.startswith(_INTERACTION_FEATURE_PREFIX):
+            interaction_weights[key_text] = float(value)
+        elif key_text.startswith(_PENALTY_FEATURE_PREFIX):
+            penalty_name = _parse_penalty_feature_name(key_text)
+            if penalty_name == "size_gap_excess":
+                learned_penalties["size_penalty_weight"] = float(value)
+            elif penalty_name == "primary_burden_gap_excess":
+                learned_penalties["burden_penalty_weight"] = float(value)
+        elif key_text.startswith(_LATENT_REGIME_FEATURE_PREFIX):
+            if key_text == _LATENT_REGIME_SIMILARITY_FEATURE:
+                latent_regime_penalty_weight = float(value)
+        else:
+            feature_relative_weights[key_text] = float(value)
+    scope["feature_relative_weights"] = feature_relative_weights
+    feature_transforms = (
+        {}
+        if feature_transform_mode is not None and normalized_transform_mode == "identity"
+        else dict(scope.get("feature_transforms", {}) or {})
+    )
+    feature_transforms.update(
+        {
+            str(k): dict(_normalize_transform_spec(v))
+            for k, v in dict(learned_feature_transforms or {}).items()
+            if _normalize_transform_spec(v)
+        }
+    )
+    if feature_transforms:
+        scope["feature_transforms"] = feature_transforms
+    elif "feature_transforms" in scope:
+        del scope["feature_transforms"]
+    if interaction_weights:
+        interaction_terms = []
+        for feature_name, weight in interaction_weights.items():
+            parsed = _parse_interaction_feature_name(feature_name)
+            if parsed is None:
+                continue
+            interaction_terms.append(
+                {
+                    "features": [parsed[0], parsed[1]],
+                    "weight": float(weight),
+                }
+            )
+        scope["interaction_terms"] = interaction_terms
+    if learned_penalties:
+        scope["penalties"] = learned_penalties
+    if isinstance(latent_regime_model, dict) and latent_regime_penalty_weight is not None and latent_regime_penalty_weight > 0.0:
+        scope["latent_regime_model"] = dict(latent_regime_model)
+        scope["latent_regime_penalty_weight"] = float(latent_regime_penalty_weight)
+        scope["latent_regime_feature_name"] = _LATENT_REGIME_SIMILARITY_FEATURE
+    if isinstance(target_regime_payload, dict) and isinstance(target_regime_payload.get("model"), dict):
+        scope["target_regime_mixture"] = {
+            "model": dict(target_regime_payload.get("model") or {}),
+            "regimes": list(target_regime_payload.get("regimes") or []),
+        }
+    if isinstance(second_stage_reranker, dict):
+        feature_weights = {
+            str(key): float(value)
+            for key, value in dict(second_stage_reranker.get("feature_weights", {}) or {}).items()
+            if str(key) in set(_second_stage_reranker_feature_names()) and _clean_numeric(value) is not None and float(value) > 0.0
+        }
+        if feature_weights:
+            scope["second_stage_reranker"] = {
+                "feature_weights": feature_weights,
+                "bias": float(_clean_numeric(second_stage_reranker.get("bias")) or 0.0),
+                "shortlist_size": int(_clean_numeric(second_stage_reranker.get("shortlist_size")) or 80),
+            }
+    if isinstance(outcome_aware_reranker, dict):
+        feature_weights = {
+            str(key): float(value)
+            for key, value in dict(outcome_aware_reranker.get("feature_weights", {}) or {}).items()
+            if str(key) in set(_outcome_aware_reranker_feature_names()) and _clean_numeric(value) is not None and float(value) > 0.0
+        }
+        if feature_weights:
+            scope["outcome_aware_reranker"] = {
+                "feature_weights": feature_weights,
+                "bias": float(_clean_numeric(outcome_aware_reranker.get("bias")) or 0.0),
+                "shortlist_size": int(_clean_numeric(outcome_aware_reranker.get("shortlist_size")) or 40),
+            }
+    # Pairwise-learned scope payloads are produced as runtime candidates by default so
+    # previews and promotion checks exercise the same weighted-distance stack they would use live.
+    scope["use_in_runtime"] = True
+    scope["default_enabled"] = True
+    scope["pairwise_precedent_quality_learning"] = dict(notes or {})
+    scopes[_clean_scope_key(scope_key)] = scope
+    payload["scopes"] = scopes
+    payload.setdefault("notes", {})
+    payload["notes"]["pairwise_precedent_quality_learning_scope"] = _clean_scope_key(scope_key)
+    return payload
+
+
