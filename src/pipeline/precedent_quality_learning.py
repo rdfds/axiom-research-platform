@@ -2380,7 +2380,7 @@ def search_latent_regime_models_from_supervision(
             )
         )
         chosen_l2 = float(
-            np.median([float(item['l2_lambda'] or 1.0) for item in fold_metrics])
+            np.median([float(item.get("l2_lambda") or 1.0) for item in fold_metrics])
         )
         evaluations.append(
             {

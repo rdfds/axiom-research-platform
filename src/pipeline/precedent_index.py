@@ -97,3 +97,31 @@ def _norm_gvkey(v: Any) -> str:
     return s
 
 
+def _sic2_to_sector_label(sic2: int) -> str:
+    if 1 <= sic2 <= 9:
+        return "AGRICULTURE"
+    if 10 <= sic2 <= 14:
+        return "ENERGY"
+    if 15 <= sic2 <= 17:
+        return "CONSTRUCTION"
+    if 20 <= sic2 <= 39:
+        return "MANUFACTURING"
+    if 40 <= sic2 <= 47:
+        return "TRANSPORT_COMM"
+    if 48 <= sic2 <= 49:
+        return "UTILITIES"
+    if 50 <= sic2 <= 51:
+        return "WHOLESALE"
+    if 52 <= sic2 <= 59:
+        return "RETAIL"
+    if 60 <= sic2 <= 67:
+        return "FINANCIALS"
+    if 70 <= sic2 <= 79:
+        return "SERVICES"
+    if 80 <= sic2 <= 89:
+        return "HEALTH_EDU_SERVICES"
+    if 90 <= sic2 <= 99:
+        return "PUBLIC_OTHER"
+    return "UNKNOWN"
+
+
