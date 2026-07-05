@@ -19,3 +19,11 @@ def _default_model_path() -> str:
     return str(repo_root / "data" / "models" / "causal_impact_model_v5_5_hybrid.json")
 
 
+DEFAULT_PRESET: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("platform_acquisition", ("mna.platform_acquisition",)),
+    ("tuck_in_acquisition", ("mna.tuck_in_acquisition",)),
+    ("special_dividend", ("capital_return.special_dividend",)),
+    ("dividend_initiate", ("capital_return.dividend_initiate",)),
+)
+
+
