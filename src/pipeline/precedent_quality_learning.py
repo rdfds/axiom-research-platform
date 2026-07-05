@@ -2193,3 +2193,596 @@ def search_pairwise_interactions_from_supervision(
     }
 
 
+def search_latent_regime_models_from_supervision(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    l2_grid: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 4.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    include_interactions: bool = False,
+    interaction_feature_names: Optional[Sequence[str]] = None,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+    n_cluster_grid: Sequence[int] = (2, 3, 4, 5, 6),
+    seed: int = 7,
+    latent_max_iter: int = 100,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    if not rows:
+        raise ValueError("pairwise supervision dataset is empty")
+
+    base_matrix = build_pairwise_matrix(
+        df,
+        feature_names=feature_names,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=include_interactions,
+        interaction_feature_names=interaction_feature_names,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    base_selected_features = list(base_matrix["selected_features"])
+    base_feature_names = [
+        feature
+        for feature in base_selected_features
+        if not str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+        and not str(feature).startswith(_PENALTY_FEATURE_PREFIX)
+        and not str(feature).startswith(_LATENT_REGIME_FEATURE_PREFIX)
+    ]
+    all_selected_features = list(base_selected_features) + [_LATENT_REGIME_SIMILARITY_FEATURE]
+
+    base_prior = load_feature_weight_prior(
+        base_payload_path,
+        scope_key=scope_key,
+        feature_names=base_feature_names,
+    )
+    base_prior_map = {feature: float(base_prior[idx]) for idx, feature in enumerate(base_feature_names)}
+    prior = np.zeros(len(all_selected_features), dtype=float)
+    for idx, feature in enumerate(all_selected_features):
+        if feature in base_prior_map:
+            prior[idx] = base_prior_map[feature]
+    min_weights = load_feature_weight_floor(feature_names=all_selected_features)
+
+    unique_groups = np.array(sorted({_pairwise_group_key(row) for row in rows}), dtype=object)
+    if unique_groups.size < 2:
+        raise ValueError("Need at least two distinct group cases for latent-regime cross-validation")
+
+    evaluations: List[Dict[str, Any]] = []
+    full_models: Dict[int, Dict[str, Any]] = {}
+    cluster_values = sorted({max(1, int(value)) for value in list(n_cluster_grid or [])})
+    for n_clusters in cluster_values:
+        fold_metrics: List[Dict[str, Any]] = []
+        fold_weights: List[np.ndarray] = []
+        for held_out_group in unique_groups.tolist():
+            train_rows = [row for row in rows if _pairwise_group_key(row) != held_out_group]
+            latent_model = _fit_latent_regime_model_from_rows(
+                train_rows,
+                feature_names=base_feature_names,
+                n_clusters=int(n_clusters),
+                seed=int(seed),
+                max_iter=int(latent_max_iter),
+            )
+            if latent_model is None:
+                continue
+            matrix = build_pairwise_matrix(
+                df,
+                feature_names=base_selected_features,
+                min_feature_coverage_rows=min_feature_coverage_rows,
+                transform_specs=transform_specs,
+                pair_weight_mode=pair_weight_mode,
+                include_interactions=include_interactions,
+                interaction_feature_names=interaction_feature_names,
+                penalty_feature_specs=penalty_feature_specs,
+                include_latent_regime=True,
+                latent_regime_model=latent_model,
+                latent_feature_names=[_LATENT_REGIME_SIMILARITY_FEATURE],
+                enforce_feature_names=True,
+            )
+            selected_features = list(matrix["selected_features"])
+            if selected_features != all_selected_features:
+                raise ValueError("latent regime CV selected_features drifted across folds")
+            X = np.asarray(matrix["X"], dtype=float)
+            y = np.asarray(matrix["y"], dtype=float)
+            groups = np.asarray(matrix["groups"], dtype=object)
+            sample_weights = np.asarray(matrix["sample_weights"], dtype=float)
+            holdout_mask = np.array([str(group) == held_out_group for group in groups.tolist()], dtype=bool)
+            train_mask = ~holdout_mask
+            fit = fit_nonnegative_pairwise_logistic(
+                X[train_mask],
+                y[train_mask],
+                prior=prior,
+                sample_weights=sample_weights[train_mask],
+                l2_lambda=float(1.0),
+                learning_rate=float(learning_rate),
+                max_iter=int(max_iter),
+                min_weights=min_weights,
+            )
+            best_fit = fit
+            best_eval = _evaluate_fit(
+                X[holdout_mask],
+                y[holdout_mask],
+                weights=np.asarray(fit["weights"], dtype=float),
+                bias=float(fit["bias"]),
+                prior=prior,
+                sample_weights=sample_weights[holdout_mask],
+            )
+            best_l2 = 1.0
+            best_sort_key = (
+                float(best_eval.get("pair_log_loss_prior") or 0.0) - float(best_eval.get("pair_log_loss") or 0.0),
+                float(best_eval.get("pair_accuracy") or 0.0) - float(best_eval.get("pair_accuracy_prior") or 0.0),
+                float(best_eval.get("positive_margin_mean") or 0.0) - float(best_eval.get("positive_margin_mean_prior") or 0.0),
+            )
+            for l2_lambda in [float(value) for value in l2_grid]:
+                if abs(l2_lambda - 1.0) < 1e-12:
+                    continue
+                fit = fit_nonnegative_pairwise_logistic(
+                    X[train_mask],
+                    y[train_mask],
+                    prior=prior,
+                    sample_weights=sample_weights[train_mask],
+                    l2_lambda=l2_lambda,
+                    learning_rate=float(learning_rate),
+                    max_iter=int(max_iter),
+                    min_weights=min_weights,
+                )
+                metrics = _evaluate_fit(
+                    X[holdout_mask],
+                    y[holdout_mask],
+                    weights=np.asarray(fit["weights"], dtype=float),
+                    bias=float(fit["bias"]),
+                    prior=prior,
+                    sample_weights=sample_weights[holdout_mask],
+                )
+                candidate_sort_key = (
+                    float(metrics.get("pair_log_loss_prior") or 0.0) - float(metrics.get("pair_log_loss") or 0.0),
+                    float(metrics.get("pair_accuracy") or 0.0) - float(metrics.get("pair_accuracy_prior") or 0.0),
+                    float(metrics.get("positive_margin_mean") or 0.0) - float(metrics.get("positive_margin_mean_prior") or 0.0),
+                )
+                if candidate_sort_key > best_sort_key:
+                    best_fit = fit
+                    best_eval = metrics
+                    best_l2 = l2_lambda
+                    best_sort_key = candidate_sort_key
+            fold_weights.append(np.asarray(best_fit["weights"], dtype=float))
+            best_eval["held_out_group"] = str(held_out_group)
+            best_eval["l2_lambda"] = float(best_l2)
+            fold_metrics.append(best_eval)
+
+        if not fold_metrics:
+            continue
+        mean_weights = np.mean(np.stack(fold_weights), axis=0)
+        avg_log_loss = float(np.mean([float(item["pair_log_loss"]) for item in fold_metrics]))
+        avg_prior_log_loss = float(np.mean([float(item["pair_log_loss_prior"]) for item in fold_metrics]))
+        avg_accuracy = float(np.mean([float(item["pair_accuracy"]) for item in fold_metrics]))
+        avg_prior_accuracy = float(np.mean([float(item["pair_accuracy_prior"]) for item in fold_metrics]))
+        avg_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean") is not None
+                ]
+            )
+        )
+        avg_prior_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean_prior"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean_prior") is not None
+                ]
+            )
+        )
+        chosen_l2 = float(
+            np.median([float(item['l2_lambda'] or 1.0) for item in fold_metrics])
+        )
+        evaluations.append(
+            {
+                "latent_regime_n_clusters": int(n_clusters),
+                "l2_lambda": chosen_l2,
+                "fold_count": len(fold_metrics),
+                "mean_pair_accuracy": avg_accuracy,
+                "mean_pair_accuracy_prior": avg_prior_accuracy,
+                "mean_pair_log_loss": avg_log_loss,
+                "mean_pair_log_loss_prior": avg_prior_log_loss,
+                "mean_positive_margin": avg_margin,
+                "mean_positive_margin_prior": avg_prior_margin,
+                "mean_log_loss_improvement": avg_prior_log_loss - avg_log_loss,
+                "mean_accuracy_improvement": avg_accuracy - avg_prior_accuracy,
+                "mean_positive_margin_improvement": avg_margin - avg_prior_margin,
+                "mean_weights": {
+                    feature: float(mean_weights[idx]) for idx, feature in enumerate(all_selected_features)
+                },
+                "fold_metrics": fold_metrics,
+            }
+        )
+        full_model = _fit_latent_regime_model_from_rows(
+            rows,
+            feature_names=base_feature_names,
+            n_clusters=int(n_clusters),
+            seed=int(seed),
+            max_iter=int(latent_max_iter),
+        )
+        if full_model is not None:
+            full_models[int(n_clusters)] = full_model
+
+    if not evaluations:
+        raise ValueError("No latent regime evaluations produced")
+
+    best_evaluation = sorted(evaluations, key=_cv_evaluation_sort_key, reverse=True)[0]
+    chosen_clusters = int(best_evaluation["latent_regime_n_clusters"])
+    chosen_model = full_models.get(chosen_clusters)
+    if chosen_model is None:
+        raise ValueError("latent regime search did not produce a full model for the chosen cluster count")
+    full_matrix = build_pairwise_matrix(
+        df,
+        feature_names=base_selected_features,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=include_interactions,
+        interaction_feature_names=interaction_feature_names,
+        penalty_feature_specs=penalty_feature_specs,
+        include_latent_regime=True,
+        latent_regime_model=chosen_model,
+        latent_feature_names=[_LATENT_REGIME_SIMILARITY_FEATURE],
+        enforce_feature_names=True,
+    )
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "selected_features": list(full_matrix["selected_features"]),
+        "feature_coverage": dict(full_matrix["feature_coverage"]),
+        "pair_count": int(full_matrix["pair_count"]),
+        "group_count": int(unique_groups.size),
+        "evaluations": evaluations,
+        "best_evaluation": best_evaluation,
+        "chosen_latent_regime_n_clusters": chosen_clusters,
+        "chosen_latent_feature_name": _LATENT_REGIME_SIMILARITY_FEATURE,
+        "chosen_latent_regime_model": chosen_model,
+        "base_selected_features": base_selected_features,
+        "latent_regime_seed": int(seed),
+        "latent_regime_max_iter": int(latent_max_iter),
+    }
+
+
+def search_target_regime_mixture_from_supervision(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    l2_grid: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 4.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    include_interactions: bool = False,
+    interaction_feature_names: Optional[Sequence[str]] = None,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+    n_cluster_grid: Sequence[int] = (2, 3, 4, 5, 6),
+    seed: int = 7,
+    latent_max_iter: int = 100,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    if not rows:
+        raise ValueError("pairwise supervision dataset is empty")
+
+    active_transform_specs = None if transform_specs is None else dict(transform_specs)
+    if active_transform_specs is None:
+        active_transform_specs = load_feature_transform_prior(
+            base_payload_path,
+            scope_key=scope_key,
+            feature_names=feature_names,
+        )
+
+    base_matrix = build_pairwise_matrix(
+        df,
+        feature_names=feature_names,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=active_transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=include_interactions,
+        interaction_feature_names=interaction_feature_names,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    selected_features = list(base_matrix["selected_features"])
+    base_feature_names = [
+        feature
+        for feature in selected_features
+        if not str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+        and not str(feature).startswith(_PENALTY_FEATURE_PREFIX)
+        and not str(feature).startswith(_LATENT_REGIME_FEATURE_PREFIX)
+    ]
+    unique_groups = np.array(sorted({_pairwise_group_key(row) for row in rows}), dtype=object)
+    if unique_groups.size < 2:
+        raise ValueError("Need at least two distinct group cases for target-regime cross-validation")
+
+    evaluations: List[Dict[str, Any]] = []
+    full_models: Dict[int, Dict[str, Any]] = {}
+    full_fit_lookup: Dict[int, Dict[str, Any]] = {}
+    full_matrix_lookup: Dict[int, Dict[str, Any]] = {}
+    cluster_values = sorted({max(1, int(value)) for value in list(n_cluster_grid or [])})
+    for n_clusters in cluster_values:
+        fold_metrics: List[Dict[str, Any]] = []
+        regime_weight_means: List[np.ndarray] = []
+        regime_bias_means: List[np.ndarray] = []
+        fold_selected_features: Optional[List[str]] = None
+        for held_out_group in unique_groups.tolist():
+            train_rows = [row for row in rows if _pairwise_group_key(row) != held_out_group]
+            latent_model = _fit_target_latent_regime_model_from_rows(
+                train_rows,
+                feature_names=base_feature_names,
+                n_clusters=int(n_clusters),
+                seed=int(seed),
+                max_iter=int(latent_max_iter),
+            )
+            if latent_model is None:
+                continue
+            fold_matrix = build_pairwise_matrix(
+                df,
+                feature_names=base_feature_names,
+                min_feature_coverage_rows=min_feature_coverage_rows,
+                transform_specs=active_transform_specs,
+                pair_weight_mode=pair_weight_mode,
+                include_interactions=include_interactions,
+                interaction_feature_names=interaction_feature_names,
+                penalty_feature_specs=penalty_feature_specs,
+                include_latent_regime=True,
+                latent_regime_model=latent_model,
+                latent_feature_names=[_LATENT_REGIME_SIMILARITY_FEATURE],
+                enforce_feature_names=True,
+            )
+            fold_selected_features = list(fold_matrix["selected_features"])
+            X = np.asarray(fold_matrix["X"], dtype=float)
+            y = np.asarray(fold_matrix["y"], dtype=float)
+            groups = np.asarray(fold_matrix["groups"], dtype=object)
+            sample_weights = np.asarray(fold_matrix["sample_weights"], dtype=float)
+            base_prior = load_feature_weight_prior(
+                base_payload_path,
+                scope_key=scope_key,
+                feature_names=fold_selected_features,
+            )
+            min_weights = load_feature_weight_floor(feature_names=fold_selected_features)
+            row_memberships = _target_regime_memberships_for_rows(rows, model=latent_model)
+            duplicated_memberships = np.vstack([row_memberships, row_memberships])
+            holdout_mask = np.array([str(group) == held_out_group for group in groups.tolist()], dtype=bool)
+            train_mask = ~holdout_mask
+            best_fit: Optional[Dict[str, Any]] = None
+            best_eval: Optional[Dict[str, Any]] = None
+            best_l2 = None
+            best_sort_key: Optional[Tuple[float, float, float]] = None
+            for l2_lambda in [float(value) for value in l2_grid]:
+                global_fit = fit_nonnegative_pairwise_logistic(
+                    X[train_mask],
+                    y[train_mask],
+                    prior=base_prior,
+                    sample_weights=sample_weights[train_mask],
+                    l2_lambda=l2_lambda,
+                    learning_rate=float(learning_rate),
+                    max_iter=int(max_iter),
+                    min_weights=min_weights,
+                )
+                fit = _fit_regime_conditioned_weights(
+                    X[train_mask],
+                    y[train_mask],
+                    target_memberships=duplicated_memberships[train_mask],
+                    prior=np.asarray(global_fit["weights"], dtype=float),
+                    sample_weights=sample_weights[train_mask],
+                    l2_lambda=l2_lambda,
+                    learning_rate=float(learning_rate),
+                    max_iter=int(max_iter),
+                    min_weights=min_weights,
+                )
+                metrics = _evaluate_regime_conditioned_fit(
+                    X[holdout_mask],
+                    y[holdout_mask],
+                    target_memberships=duplicated_memberships[holdout_mask],
+                    regime_weights=np.asarray(fit["regime_weights"], dtype=float),
+                    regime_biases=np.asarray(fit["regime_biases"], dtype=float),
+                    prior=np.asarray(global_fit["weights"], dtype=float),
+                    sample_weights=sample_weights[holdout_mask],
+                )
+                candidate_sort_key = (
+                    float(metrics.get("pair_log_loss_prior") or 0.0) - float(metrics.get("pair_log_loss") or 0.0),
+                    float(metrics.get("pair_accuracy") or 0.0) - float(metrics.get("pair_accuracy_prior") or 0.0),
+                    float(metrics.get("positive_margin_mean") or 0.0) - float(metrics.get("positive_margin_mean_prior") or 0.0),
+                )
+                if best_sort_key is None or candidate_sort_key > best_sort_key:
+                    best_fit = fit
+                    best_eval = metrics
+                    best_l2 = l2_lambda
+                    best_sort_key = candidate_sort_key
+            if best_fit is None or best_eval is None or best_l2 is None:
+                continue
+            regime_weight_means.append(np.asarray(best_fit["regime_weights"], dtype=float))
+            regime_bias_means.append(np.asarray(best_fit["regime_biases"], dtype=float))
+            best_eval["held_out_group"] = str(held_out_group)
+            best_eval["l2_lambda"] = float(best_l2)
+            fold_metrics.append(best_eval)
+
+        if not fold_metrics:
+            continue
+        avg_log_loss = float(np.mean([float(item["pair_log_loss"]) for item in fold_metrics]))
+        avg_prior_log_loss = float(np.mean([float(item["pair_log_loss_prior"]) for item in fold_metrics]))
+        avg_accuracy = float(np.mean([float(item["pair_accuracy"]) for item in fold_metrics]))
+        avg_prior_accuracy = float(np.mean([float(item["pair_accuracy_prior"]) for item in fold_metrics]))
+        avg_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean") is not None
+                ]
+            )
+        )
+        avg_prior_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean_prior"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean_prior") is not None
+                ]
+            )
+        )
+        chosen_l2 = float(np.median([float(item.get("l2_lambda") or 1.0) for item in fold_metrics]))
+        mean_regime_weights = np.mean(np.stack(regime_weight_means, axis=0), axis=0)
+        mean_regime_biases = np.mean(np.stack(regime_bias_means, axis=0), axis=0)
+        evaluations.append(
+            {
+                "target_regime_n_clusters": int(n_clusters),
+                "l2_lambda": chosen_l2,
+                "fold_count": len(fold_metrics),
+                "mean_pair_accuracy": avg_accuracy,
+                "mean_pair_accuracy_prior": avg_prior_accuracy,
+                "mean_pair_log_loss": avg_log_loss,
+                "mean_pair_log_loss_prior": avg_prior_log_loss,
+                "mean_positive_margin": avg_margin,
+                "mean_positive_margin_prior": avg_prior_margin,
+                "mean_log_loss_improvement": avg_prior_log_loss - avg_log_loss,
+                "mean_accuracy_improvement": avg_accuracy - avg_prior_accuracy,
+                "mean_positive_margin_improvement": avg_margin - avg_prior_margin,
+                "mean_regime_feature_weights": [
+                    {
+                        "cluster": int(cluster_idx),
+                        "weights": {
+                            feature: float(mean_regime_weights[cluster_idx, idx])
+                            for idx, feature in enumerate(fold_selected_features or [])
+                        },
+                        "bias": float(mean_regime_biases[cluster_idx]),
+                    }
+                    for cluster_idx in range(mean_regime_weights.shape[0])
+                ],
+                "fold_metrics": fold_metrics,
+            }
+        )
+        full_model = _fit_target_latent_regime_model_from_rows(
+            rows,
+            feature_names=base_feature_names,
+            n_clusters=int(n_clusters),
+            seed=int(seed),
+            max_iter=int(latent_max_iter),
+        )
+        if full_model is None:
+            continue
+        full_matrix = build_pairwise_matrix(
+            df,
+            feature_names=base_feature_names,
+            min_feature_coverage_rows=min_feature_coverage_rows,
+            transform_specs=active_transform_specs,
+            pair_weight_mode=pair_weight_mode,
+            include_interactions=include_interactions,
+            interaction_feature_names=interaction_feature_names,
+            penalty_feature_specs=penalty_feature_specs,
+            include_latent_regime=True,
+            latent_regime_model=full_model,
+            latent_feature_names=[_LATENT_REGIME_SIMILARITY_FEATURE],
+            enforce_feature_names=True,
+        )
+        X = np.asarray(full_matrix["X"], dtype=float)
+        y = np.asarray(full_matrix["y"], dtype=float)
+        sample_weights = np.asarray(full_matrix["sample_weights"], dtype=float)
+        base_prior = load_feature_weight_prior(
+            base_payload_path,
+            scope_key=scope_key,
+            feature_names=list(full_matrix["selected_features"]),
+        )
+        min_weights = load_feature_weight_floor(feature_names=list(full_matrix["selected_features"]))
+        full_memberships = _target_regime_memberships_for_rows(rows, model=full_model)
+        duplicated_full_memberships = np.vstack([full_memberships, full_memberships])
+        global_fit = fit_nonnegative_pairwise_logistic(
+            X,
+            y,
+            prior=base_prior,
+            sample_weights=sample_weights,
+            l2_lambda=chosen_l2,
+            learning_rate=float(learning_rate),
+            max_iter=int(max_iter),
+            min_weights=min_weights,
+        )
+        full_fit = _fit_regime_conditioned_weights(
+            X,
+            y,
+            target_memberships=duplicated_full_memberships,
+            prior=np.asarray(global_fit["weights"], dtype=float),
+            sample_weights=sample_weights,
+            l2_lambda=chosen_l2,
+            learning_rate=float(learning_rate),
+            max_iter=int(max_iter),
+            min_weights=min_weights,
+        )
+        full_models[int(n_clusters)] = full_model
+        full_fit_lookup[int(n_clusters)] = full_fit
+        full_matrix_lookup[int(n_clusters)] = full_matrix
+
+    if not evaluations:
+        raise ValueError("No target-regime evaluations produced")
+
+    best_evaluation = sorted(evaluations, key=_cv_evaluation_sort_key, reverse=True)[0]
+    chosen_clusters = int(best_evaluation["target_regime_n_clusters"])
+    chosen_model = full_models.get(chosen_clusters)
+    chosen_fit = full_fit_lookup.get(chosen_clusters)
+    chosen_matrix = full_matrix_lookup.get(chosen_clusters)
+    if chosen_model is None or chosen_fit is None or chosen_matrix is None:
+        raise ValueError("target-regime search did not produce a full model for the chosen cluster count")
+
+    regime_payload = []
+    regime_weights = np.asarray(chosen_fit["regime_weights"], dtype=float)
+    regime_biases = np.asarray(chosen_fit["regime_biases"], dtype=float)
+    chosen_selected_features = list(chosen_matrix["selected_features"])
+    for cluster_idx in range(regime_weights.shape[0]):
+        feature_relative_weights: Dict[str, float] = {}
+        interaction_terms: List[Dict[str, Any]] = []
+        latent_regime_penalty_weight = 0.0
+        for feature_idx, feature_name in enumerate(chosen_selected_features):
+            weight_value = float(regime_weights[cluster_idx, feature_idx])
+            feature_text = str(feature_name)
+            if feature_text.startswith(_INTERACTION_FEATURE_PREFIX):
+                parsed = _parse_interaction_feature_name(feature_text)
+                if parsed is None:
+                    continue
+                interaction_terms.append(
+                    {
+                        "features": [parsed[0], parsed[1]],
+                        "weight": weight_value,
+                    }
+                )
+            elif feature_text == _LATENT_REGIME_SIMILARITY_FEATURE:
+                latent_regime_penalty_weight = weight_value
+            else:
+                feature_relative_weights[feature_text] = weight_value
+        regime_entry = {
+            "cluster": int(cluster_idx),
+            "bias": float(regime_biases[cluster_idx]),
+            "feature_relative_weights": feature_relative_weights,
+            "interaction_terms": interaction_terms,
+        }
+        if latent_regime_penalty_weight > 0.0:
+            regime_entry["latent_regime_penalty_weight"] = float(latent_regime_penalty_weight)
+        regime_payload.append(regime_entry)
+
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "selected_features": chosen_selected_features,
+        "feature_coverage": dict(chosen_matrix["feature_coverage"]),
+        "pair_count": int(chosen_matrix["pair_count"]),
+        "group_count": int(unique_groups.size),
+        "evaluations": evaluations,
+        "best_evaluation": best_evaluation,
+        "chosen_target_regime_n_clusters": chosen_clusters,
+        "chosen_target_regime_model": chosen_model,
+        "chosen_target_regime_payload": regime_payload,
+        "latent_regime_seed": int(seed),
+        "latent_regime_max_iter": int(latent_max_iter),
+    }
+
+
