@@ -257,3 +257,55 @@ def _safe_float(value: Any) -> float | None:
     return out
 
 
+def _feature_record(
+    value: Any,
+    *,
+    support_mode: str = "historical_outcome_fallback",
+    quality_flags: list[str] | tuple[str, ...] = (),
+) -> Dict[str, Any]:
+    record = {
+        "value": value,
+        "support_mode": support_mode,
+    }
+    flags = [str(flag) for flag in quality_flags if flag]
+    if flags:
+        record["quality_flags"] = flags
+    return record
+
+
+def _action_params_from_outcome_row(outcome_row: Dict[str, Any]) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for key in (
+        "amount_usd",
+        "amount",
+        "transaction_value_usd",
+        "deal_value_usd",
+        "estimated_proceeds_usd",
+        "draw_amount_usd",
+        "resize_amount_usd",
+        "amount_refinanced_usd",
+        "action_size",
+    ):
+        value = _safe_float(outcome_row.get(key))
+        if value is None:
+            continue
+        params["amount_usd"] = value
+        params["action_size"] = value
+        break
+    raw_subtype = str(outcome_row.get("raw_action_subtype") or outcome_row.get("action_subtype") or "").strip()
+    if raw_subtype:
+        params["source_action_subtype"] = raw_subtype
+        effective_subtype = _effective_action_subtype(
+            outcome_row.get("normalized_action_id") or outcome_row.get("action_id"),
+            raw_subtype,
+            {"source_action_subtype": raw_subtype},
+        )
+        if effective_subtype == "refinancing_term_loan_family":
+            params["instrument_type"] = "term_loan"
+        elif effective_subtype == "refinancing_revolver_family":
+            params["instrument_type"] = "revolver"
+        elif effective_subtype == "refinancing_bond_family":
+            params["instrument_type"] = "bond"
+    return params
+
+

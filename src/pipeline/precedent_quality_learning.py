@@ -1065,7 +1065,7 @@ def build_second_stage_reranker_matrix(
         competitor_action_id = str(row.get("competitor_action_id") or "")
         if same_action_only and anchor_action_id and competitor_action_id and competitor_action_id != anchor_action_id:
             continue
-        target_compact = dict(row['target_compact'] or {})
+        target_compact = dict(row.get("target_compact") or {})
         positive_compact = dict(row.get("positive_compact") or {})
         negative_compact = dict(row.get("negative_compact") or {})
         if not target_compact or not positive_compact or not negative_compact:
