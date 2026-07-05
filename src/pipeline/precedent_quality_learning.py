@@ -1441,3 +1441,521 @@ def build_outcome_aware_reranker_matrix(
     }
 
 
+def cross_validate_outcome_aware_reranker(
+    dataset_path: str | Path,
+    *,
+    outcomes_path: str | Path,
+    pair_weight_mode: str = "uniform",
+    same_action_only: bool = True,
+    l2_grid: Sequence[float] = (0.1, 0.25, 0.5, 1.0, 2.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    outcomes_df = pd.read_parquet(outcomes_path)
+    matrix = build_outcome_aware_reranker_matrix(
+        df,
+        outcomes_df=outcomes_df,
+        pair_weight_mode=pair_weight_mode,
+        same_action_only=same_action_only,
+    )
+    X = np.asarray(matrix["X"], dtype=float)
+    y = np.asarray(matrix["y"], dtype=float)
+    groups = np.asarray(matrix["groups"], dtype=object)
+    sample_weights = np.asarray(matrix["sample_weights"], dtype=float)
+    selected_features = list(matrix["selected_features"])
+    prior = np.ones(len(selected_features), dtype=float)
+    min_weights = np.zeros(len(selected_features), dtype=float)
+    unique_groups = np.array(sorted({str(group) for group in groups.tolist()}), dtype=object)
+    if unique_groups.size < 2:
+        raise ValueError("Need at least two distinct group cases for outcome-aware reranker cross-validation")
+
+    evaluations: List[Dict[str, Any]] = []
+    for l2_lambda in [float(value) for value in l2_grid]:
+        fold_metrics: List[Dict[str, Any]] = []
+        fold_weights: List[np.ndarray] = []
+        fold_biases: List[float] = []
+        for held_out_group in unique_groups.tolist():
+            holdout_mask = np.array([str(group) == held_out_group for group in groups.tolist()], dtype=bool)
+            train_mask = ~holdout_mask
+            fit = fit_nonnegative_pairwise_logistic(
+                X[train_mask],
+                y[train_mask],
+                prior=prior,
+                sample_weights=sample_weights[train_mask],
+                l2_lambda=l2_lambda,
+                learning_rate=float(learning_rate),
+                max_iter=int(max_iter),
+                min_weights=min_weights,
+            )
+            fold_weights.append(np.asarray(fit["weights"], dtype=float))
+            fold_biases.append(float(fit["bias"]))
+            metrics = _evaluate_fit(
+                X[holdout_mask],
+                y[holdout_mask],
+                weights=np.asarray(fit["weights"], dtype=float),
+                bias=float(fit["bias"]),
+                prior=prior,
+                sample_weights=sample_weights[holdout_mask],
+            )
+            metrics["held_out_group"] = str(held_out_group)
+            fold_metrics.append(metrics)
+
+        mean_weights = np.mean(np.stack(fold_weights), axis=0)
+        mean_bias = float(np.mean(np.asarray(fold_biases, dtype=float))) if fold_biases else 0.0
+        avg_log_loss = float(np.mean([float(item["pair_log_loss"]) for item in fold_metrics]))
+        avg_prior_log_loss = float(np.mean([float(item["pair_log_loss_prior"]) for item in fold_metrics]))
+        avg_accuracy = float(np.mean([float(item["pair_accuracy"]) for item in fold_metrics]))
+        avg_prior_accuracy = float(np.mean([float(item["pair_accuracy_prior"]) for item in fold_metrics]))
+        avg_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean") is not None
+                ]
+            )
+        )
+        avg_prior_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean_prior"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean_prior") is not None
+                ]
+            )
+        )
+        evaluations.append(
+            {
+                "l2_lambda": l2_lambda,
+                "fold_count": len(fold_metrics),
+                "mean_pair_accuracy": avg_accuracy,
+                "mean_pair_accuracy_prior": avg_prior_accuracy,
+                "mean_pair_log_loss": avg_log_loss,
+                "mean_pair_log_loss_prior": avg_prior_log_loss,
+                "mean_positive_margin": avg_margin,
+                "mean_positive_margin_prior": avg_prior_margin,
+                "mean_log_loss_improvement": avg_prior_log_loss - avg_log_loss,
+                "mean_accuracy_improvement": avg_accuracy - avg_prior_accuracy,
+                "mean_positive_margin_improvement": avg_margin - avg_prior_margin,
+                "mean_weights": {
+                    feature: float(mean_weights[idx]) for idx, feature in enumerate(selected_features)
+                },
+                "mean_bias": mean_bias,
+                "fold_metrics": fold_metrics,
+            }
+        )
+    best_evaluation = sorted(evaluations, key=_cv_evaluation_sort_key, reverse=True)[0]
+    return {
+        "dataset_path": str(dataset_path),
+        "outcomes_path": str(outcomes_path),
+        "selected_features": selected_features,
+        "feature_coverage": matrix["feature_coverage"],
+        "pair_count": int(matrix["pair_count"]),
+        "group_count": int(unique_groups.size),
+        "pair_weight_mode": _normalize_pair_weight_mode(pair_weight_mode),
+        "same_action_only": bool(same_action_only),
+        "evaluations": evaluations,
+        "best_evaluation": best_evaluation,
+    }
+
+
+def learn_feature_transforms_from_pairwise_supervision(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    l2_grid: Sequence[float] = (0.25, 1.0, 4.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 2000,
+    feature_transform_mode: Optional[str] = None,
+    pair_weight_mode: str = "uniform",
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    rows = [dict(row) for row in df.to_dict(orient="records")]
+    candidate_features = list(feature_names or _feature_names())
+    default_specs = _feature_transform_prior(
+        base_payload_path,
+        scope_key=scope_key,
+        feature_names=candidate_features,
+        feature_transform_mode=feature_transform_mode,
+    )
+    base_matrix = build_pairwise_matrix(
+        df,
+        feature_names=candidate_features,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=default_specs,
+        pair_weight_mode=pair_weight_mode,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    selected_features = list(base_matrix["selected_features"])
+    chosen_specs = {feature: dict(default_specs.get(feature, {})) for feature in selected_features}
+    search_results: Dict[str, Any] = {}
+
+    def _sort_key(row: Dict[str, Any]) -> Tuple[float, float, float]:
+        return (
+            -float(row.get("mean_pair_log_loss") or 0.0),
+            float(row.get("mean_pair_accuracy") or 0.0),
+            float(row.get("mean_positive_margin") or 0.0),
+        )
+
+    for feature in selected_features:
+        candidates = _feature_transform_candidates(
+            rows,
+            feature,
+            base_spec=chosen_specs.get(feature, default_specs.get(feature, {})),
+        )
+        best_spec = dict(chosen_specs.get(feature, {}))
+        best_eval: Optional[Dict[str, Any]] = None
+        candidate_evals: List[Dict[str, Any]] = []
+        for candidate_spec in candidates:
+            candidate_transform_specs = {
+                name: dict(spec)
+                for name, spec in chosen_specs.items()
+            }
+            candidate_transform_specs[feature] = dict(candidate_spec)
+            cv = cross_validate_pairwise_precedent_quality_weights(
+                dataset_path,
+                scope_key=scope_key,
+                base_payload_path=base_payload_path,
+                feature_names=selected_features,
+                min_feature_coverage_rows=min_feature_coverage_rows,
+                l2_grid=l2_grid,
+                learning_rate=learning_rate,
+                max_iter=max_iter,
+                transform_specs=candidate_transform_specs,
+                pair_weight_mode=pair_weight_mode,
+                penalty_feature_specs=penalty_feature_specs,
+            )
+            evaluation = dict(cv["best_evaluation"] or {})
+            evaluation["transform_spec"] = dict(candidate_spec)
+            candidate_evals.append(evaluation)
+            if best_eval is None or _sort_key(evaluation) > _sort_key(best_eval):
+                best_eval = evaluation
+                best_spec = dict(candidate_spec)
+        search_results[feature] = {
+            "base_spec": dict(default_specs.get(feature, {})),
+            "chosen_spec": dict(best_spec),
+            "changed": _transform_spec_key(best_spec) != _transform_spec_key(default_specs.get(feature, {})),
+            "candidate_evaluations": candidate_evals,
+        }
+        chosen_specs[feature] = dict(best_spec)
+
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "selected_features": selected_features,
+        "default_feature_transforms": {feature: dict(default_specs.get(feature, {})) for feature in selected_features},
+        "chosen_feature_transforms": {feature: dict(chosen_specs.get(feature, {})) for feature in selected_features},
+        "search_results": search_results,
+    }
+
+
+def _sigmoid(z: np.ndarray) -> np.ndarray:
+    clipped = np.clip(z, -30.0, 30.0)
+    return 1.0 / (1.0 + np.exp(-clipped))
+
+
+def _log_loss(y_true: np.ndarray, prob: np.ndarray, sample_weights: Optional[np.ndarray] = None) -> float:
+    p = np.clip(np.asarray(prob, dtype=float), 1e-9, 1.0 - 1e-9)
+    y = np.asarray(y_true, dtype=float)
+    losses = -(y * np.log(p) + (1.0 - y) * np.log(1.0 - p))
+    if sample_weights is None:
+        return float(np.mean(losses))
+    weights = np.asarray(sample_weights, dtype=float)
+    total = float(np.sum(weights))
+    if total <= 0.0:
+        return float(np.mean(losses))
+    return float(np.sum(losses * weights) / total)
+
+
+def _pair_accuracy(y_true: np.ndarray, prob: np.ndarray, sample_weights: Optional[np.ndarray] = None) -> float:
+    pred = (np.asarray(prob, dtype=float) >= 0.5).astype(float)
+    y = np.asarray(y_true, dtype=float)
+    correct = (pred == y).astype(float)
+    if sample_weights is None:
+        return float(np.mean(correct))
+    weights = np.asarray(sample_weights, dtype=float)
+    total = float(np.sum(weights))
+    if total <= 0.0:
+        return float(np.mean(correct))
+    return float(np.sum(correct * weights) / total)
+
+
+def _split_groups(groups: np.ndarray, holdout_frac: float, seed: int) -> Tuple[np.ndarray, np.ndarray]:
+    unique_groups = np.array(sorted({str(group) for group in groups.tolist()}), dtype=object)
+    if unique_groups.size < 2:
+        mask = np.ones(groups.shape[0], dtype=bool)
+        return mask, ~mask
+    rng = np.random.default_rng(seed)
+    shuffled = unique_groups.copy()
+    rng.shuffle(shuffled)
+    holdout_n = max(1, int(round(unique_groups.size * float(holdout_frac))))
+    holdout_n = min(holdout_n, max(1, unique_groups.size - 1))
+    holdout_groups = set(shuffled[:holdout_n].tolist())
+    holdout_mask = np.array([str(group) in holdout_groups for group in groups.tolist()], dtype=bool)
+    train_mask = ~holdout_mask
+    return train_mask, holdout_mask
+
+
+def fit_nonnegative_pairwise_logistic(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    prior: np.ndarray,
+    sample_weights: Optional[np.ndarray] = None,
+    l2_lambda: float = 1.0,
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    min_weights: Optional[np.ndarray] = None,
+) -> Dict[str, Any]:
+    weights = np.array(prior, dtype=float, copy=True)
+    weights = np.clip(weights, 0.0, None)
+    min_weight_arr = (
+        np.asarray(min_weights, dtype=float)
+        if min_weights is not None
+        else np.full(weights.shape[0], 0.25, dtype=float)
+    )
+    min_weight_arr = np.clip(min_weight_arr, 0.0, None)
+    bias = 0.0
+    row_weights = np.asarray(sample_weights, dtype=float) if sample_weights is not None else np.ones(X.shape[0], dtype=float)
+    total_weight = float(np.sum(row_weights))
+    if total_weight <= 0.0:
+        row_weights = np.ones(X.shape[0], dtype=float)
+        total_weight = float(X.shape[0])
+    normalized_weights = row_weights / total_weight
+    prev_objective: Optional[float] = None
+    stalled_checks = 0
+    check_interval = 50
+    objective_tol = 1e-7
+    max_stalled_checks = 5
+    for step in range(max(1, int(max_iter))):
+        logits = bias + X @ weights
+        prob = _sigmoid(logits)
+        error = prob - y
+        weighted_error = normalized_weights * error
+        grad_w = X.T @ weighted_error + float(l2_lambda) * (weights - prior)
+        grad_b = float(np.sum(weighted_error))
+        step_lr = float(learning_rate) / (1.0 + 0.0015 * float(step))
+        weights = np.clip(weights - step_lr * grad_w, 0.0, None)
+        bias -= step_lr * grad_b
+        if ((step + 1) % check_interval) == 0:
+            clipped_prob = np.clip(prob, 1e-9, 1.0 - 1e-9)
+            weighted_log_loss = -float(
+                np.sum(
+                    normalized_weights
+                    * (
+                        y * np.log(clipped_prob)
+                        + (1.0 - y) * np.log(1.0 - clipped_prob)
+                    )
+                )
+            )
+            regularization = 0.5 * float(l2_lambda) * float(np.sum(np.square(weights - prior)))
+            objective = weighted_log_loss + regularization
+            if prev_objective is not None and (prev_objective - objective) <= objective_tol:
+                stalled_checks += 1
+                if stalled_checks >= max_stalled_checks:
+                    break
+            else:
+                stalled_checks = 0
+            prev_objective = objective
+    positive = weights[weights > 0.0]
+    if positive.size:
+        weights = weights / float(np.mean(positive))
+    else:
+        weights = np.array(prior, dtype=float, copy=True)
+    max_weight_arr = np.full(weights.shape[0], 4.0, dtype=float)
+    weights = np.minimum(np.maximum(weights, min_weight_arr), max_weight_arr)
+    return {"weights": weights, "bias": float(bias)}
+
+
+def _evaluate_fit(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    weights: np.ndarray,
+    bias: float,
+    prior: np.ndarray,
+    sample_weights: Optional[np.ndarray] = None,
+) -> Dict[str, Any]:
+    logits = bias + X @ weights
+    prob = _sigmoid(logits)
+    prior_prob = _sigmoid(X @ prior)
+    positive_mask = y == 1.0
+    margin_values = (X[positive_mask] @ weights) if int(np.count_nonzero(positive_mask)) else np.empty(0)
+    prior_margin_values = (X[positive_mask] @ prior) if int(np.count_nonzero(positive_mask)) else np.empty(0)
+    positive_weights = (
+        np.asarray(sample_weights, dtype=float)[positive_mask]
+        if sample_weights is not None and int(np.count_nonzero(positive_mask))
+        else None
+    )
+    def _weighted_mean(values: np.ndarray, weights_arr: Optional[np.ndarray]) -> Optional[float]:
+        if values.size == 0:
+            return None
+        if weights_arr is None:
+            return float(np.mean(values))
+        total = float(np.sum(weights_arr))
+        if total <= 0.0:
+            return float(np.mean(values))
+        return float(np.sum(values * weights_arr) / total)
+    return {
+        "pair_accuracy": _pair_accuracy(y, prob, sample_weights=sample_weights),
+        "pair_log_loss": _log_loss(y, prob, sample_weights=sample_weights),
+        "pair_accuracy_prior": _pair_accuracy(y, prior_prob, sample_weights=sample_weights),
+        "pair_log_loss_prior": _log_loss(y, prior_prob, sample_weights=sample_weights),
+        "positive_margin_mean": _weighted_mean(margin_values, positive_weights),
+        "positive_margin_mean_prior": _weighted_mean(prior_margin_values, positive_weights),
+        "positive_margin_positive_rate": _weighted_mean((margin_values > 0.0).astype(float), positive_weights) if margin_values.size else None,
+        "positive_margin_positive_rate_prior": _weighted_mean((prior_margin_values > 0.0).astype(float), positive_weights) if prior_margin_values.size else None,
+        "n_rows": int(X.shape[0]),
+        "n_positive_rows": int(np.count_nonzero(positive_mask)),
+    }
+
+
+def cross_validate_pairwise_precedent_quality_weights(
+    dataset_path: str | Path,
+    *,
+    scope_key: str,
+    base_payload_path: str | Path,
+    feature_names: Optional[Sequence[str]] = None,
+    min_feature_coverage_rows: int = 20,
+    l2_grid: Sequence[float] = (0.25, 0.5, 1.0, 2.0, 4.0),
+    learning_rate: float = 0.05,
+    max_iter: int = 4000,
+    transform_specs: Optional[Dict[str, Dict[str, Any]]] = None,
+    pair_weight_mode: str = "uniform",
+    include_interactions: bool = False,
+    interaction_feature_names: Optional[Sequence[str]] = None,
+    penalty_feature_specs: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    df = load_pairwise_supervision(dataset_path)
+    matrix = build_pairwise_matrix(
+        df,
+        feature_names=feature_names,
+        min_feature_coverage_rows=min_feature_coverage_rows,
+        transform_specs=transform_specs,
+        pair_weight_mode=pair_weight_mode,
+        include_interactions=include_interactions,
+        interaction_feature_names=interaction_feature_names,
+        penalty_feature_specs=penalty_feature_specs,
+    )
+    X = np.asarray(matrix["X"], dtype=float)
+    y = np.asarray(matrix["y"], dtype=float)
+    groups = np.asarray(matrix["groups"], dtype=object)
+    sample_weights = np.asarray(matrix["sample_weights"], dtype=float)
+    selected_features = list(matrix["selected_features"])
+    prior = np.zeros(len(selected_features), dtype=float)
+    base_feature_names = [
+        feature
+        for feature in selected_features
+        if not str(feature).startswith(_INTERACTION_FEATURE_PREFIX)
+        and not str(feature).startswith(_PENALTY_FEATURE_PREFIX)
+    ]
+    if base_feature_names:
+        base_prior = load_feature_weight_prior(
+            base_payload_path,
+            scope_key=scope_key,
+            feature_names=base_feature_names,
+        )
+        base_prior_map = {feature: float(base_prior[idx]) for idx, feature in enumerate(base_feature_names)}
+        for idx, feature in enumerate(selected_features):
+            if feature in base_prior_map:
+                prior[idx] = base_prior_map[feature]
+    min_weights = load_feature_weight_floor(feature_names=selected_features)
+    unique_groups = np.array(sorted({str(group) for group in groups.tolist()}), dtype=object)
+    if unique_groups.size < 2:
+        raise ValueError("Need at least two distinct group cases for cross-validation")
+
+    evaluations: List[Dict[str, Any]] = []
+    for l2_lambda in [float(value) for value in l2_grid]:
+        fold_metrics: List[Dict[str, Any]] = []
+        fold_weights: List[np.ndarray] = []
+        for held_out_group in unique_groups.tolist():
+            holdout_mask = np.array([str(group) == held_out_group for group in groups.tolist()], dtype=bool)
+            train_mask = ~holdout_mask
+            fit = fit_nonnegative_pairwise_logistic(
+                X[train_mask],
+                y[train_mask],
+                prior=prior,
+                sample_weights=sample_weights[train_mask],
+                l2_lambda=l2_lambda,
+                learning_rate=float(learning_rate),
+                max_iter=int(max_iter),
+                min_weights=min_weights,
+            )
+            fold_weights.append(np.asarray(fit["weights"], dtype=float))
+            metrics = _evaluate_fit(
+                X[holdout_mask],
+                y[holdout_mask],
+                weights=np.asarray(fit["weights"], dtype=float),
+                bias=float(fit["bias"]),
+                prior=prior,
+                sample_weights=sample_weights[holdout_mask],
+            )
+            metrics["held_out_group"] = str(held_out_group)
+            fold_metrics.append(metrics)
+
+        mean_weights = np.mean(np.stack(fold_weights), axis=0)
+        avg_log_loss = float(np.mean([float(item["pair_log_loss"]) for item in fold_metrics]))
+        avg_prior_log_loss = float(np.mean([float(item["pair_log_loss_prior"]) for item in fold_metrics]))
+        avg_accuracy = float(np.mean([float(item["pair_accuracy"]) for item in fold_metrics]))
+        avg_prior_accuracy = float(np.mean([float(item["pair_accuracy_prior"]) for item in fold_metrics]))
+        avg_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean") is not None
+                ]
+            )
+        )
+        avg_prior_margin = float(
+            np.mean(
+                [
+                    float(item["positive_margin_mean_prior"])
+                    for item in fold_metrics
+                    if item.get("positive_margin_mean_prior") is not None
+                ]
+            )
+        )
+        evaluations.append(
+            {
+                "l2_lambda": l2_lambda,
+                "fold_count": len(fold_metrics),
+                "mean_pair_accuracy": avg_accuracy,
+                "mean_pair_accuracy_prior": avg_prior_accuracy,
+                "mean_pair_log_loss": avg_log_loss,
+                "mean_pair_log_loss_prior": avg_prior_log_loss,
+                "mean_positive_margin": avg_margin,
+                "mean_positive_margin_prior": avg_prior_margin,
+                "mean_log_loss_improvement": avg_prior_log_loss - avg_log_loss,
+                "mean_accuracy_improvement": avg_accuracy - avg_prior_accuracy,
+                "mean_positive_margin_improvement": avg_margin - avg_prior_margin,
+                "mean_weights": {
+                    feature: float(mean_weights[idx]) for idx, feature in enumerate(selected_features)
+                },
+                "fold_metrics": fold_metrics,
+            }
+        )
+
+    best_evaluation = sorted(evaluations, key=_cv_evaluation_sort_key, reverse=True)[0]
+    return {
+        "scope_key": _clean_scope_key(scope_key),
+        "dataset_path": str(dataset_path),
+        "selected_features": selected_features,
+        "feature_coverage": matrix["feature_coverage"],
+        "pair_count": int(matrix["pair_count"]),
+        "group_count": int(unique_groups.size),
+        "evaluations": evaluations,
+        "best_evaluation": best_evaluation,
+        "feature_transforms": {
+            feature: dict(_normalize_transform_spec(dict(transform_specs or {}).get(feature)))
+            for feature in selected_features
+        },
+        "pair_weight_mode": _normalize_pair_weight_mode(pair_weight_mode),
+    }
+
+

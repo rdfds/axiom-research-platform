@@ -88,3 +88,12 @@ def _query_rank_score(
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _norm_gvkey(v: Any) -> str:
+    s = _norm_str(v)
+    if not s:
+        return ""
+    if s.isdigit():
+        return s.zfill(6)
+    return s
+
+
