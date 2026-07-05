@@ -309,3 +309,71 @@ def _action_params_from_outcome_row(outcome_row: Dict[str, Any]) -> Dict[str, An
     return params
 
 
+@lru_cache(maxsize=2048)
+def _historical_company_taxonomy_from_outcomes(
+    outcomes_path_text: str,
+    company_id: str,
+    action_id: str,
+    ticker: str,
+) -> Dict[str, str]:
+    outcomes_path = Path(str(outcomes_path_text or ""))
+    company_id_text = str(company_id or "").strip()
+    action_id_text = str(action_id or "").strip()
+    ticker_text = str(ticker or "").strip().upper()
+    if not outcomes_path.exists() or (not company_id_text and not ticker_text):
+        return {}
+
+    clauses = []
+    params: List[str] = [str(outcomes_path)]
+    if company_id_text:
+        clauses.append("CAST(company_id AS VARCHAR) = ?")
+        params.append(company_id_text)
+    elif ticker_text:
+        clauses.append("UPPER(CAST(ticker AS VARCHAR)) = ?")
+        params.append(ticker_text)
+    if action_id_text:
+        clauses.append("CAST(normalized_action_id AS VARCHAR) = ?")
+        params.append(action_id_text)
+    query = "SELECT * FROM read_parquet(?)"
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    try:
+        frame = duckdb.execute(query, params).df()
+    except Exception:
+        return {}
+    if frame.empty:
+        return {}
+    frame = _enrich_missing_historical_taxonomy(frame)
+    frame = augment_precedent_state_vector_columns(frame)
+
+    sector_votes: Dict[str, int] = {}
+    subsector_votes: Dict[str, int] = {}
+    for row in frame.to_dict(orient="records"):
+        sector = str(
+            row.get("taxonomy.sector")
+            or row.get("sector")
+            or row.get("base_sector")
+            or ""
+        ).strip()
+        subsector = str(
+            row.get("taxonomy.subsector")
+            or row.get("subsector")
+            or row.get("industry")
+            or row.get("base_industry")
+            or ""
+        ).strip()
+        if sector:
+            sector_votes[sector] = sector_votes.get(sector, 0) + 1
+        if subsector:
+            subsector_votes[subsector] = subsector_votes.get(subsector, 0) + 1
+
+    best_sector = max(sector_votes.items(), key=lambda item: item[1])[0] if sector_votes else ""
+    best_subsector = max(subsector_votes.items(), key=lambda item: item[1])[0] if subsector_votes else ""
+    if not best_sector and not best_subsector:
+        return {}
+    return {
+        "taxonomy.sector": best_sector,
+        "taxonomy.subsector": best_subsector,
+    }
+
+
