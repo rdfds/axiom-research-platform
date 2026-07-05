@@ -125,3 +125,46 @@ def _sic2_to_sector_label(sic2: int) -> str:
     return "UNKNOWN"
 
 
+@lru_cache(maxsize=1)
+def _load_gvkey_sector_map() -> Dict[str, str]:
+    path = os.environ.get("PRECEDENT_SECTOR_MAP_PATH", "").strip()
+    if path:
+        p = Path(path)
+    else:
+        p = _REPO_ROOT / "data" / "curated" / "bond_issuances_fisd.parquet"
+    if not p.exists():
+        return {}
+    try:
+        df = pd.read_parquet(p, columns=["gvkey", "SIC_CODE"])
+    except Exception:
+        return {}
+    if df.empty:
+        return {}
+    df["gvkey"] = df["gvkey"].map(_norm_gvkey)
+    df["sic"] = pd.to_numeric(df["SIC_CODE"], errors="coerce")
+    df = df[df["gvkey"] != ""]
+    df = df[df["sic"].notna()]
+    if df.empty:
+        return {}
+    df["sic2"] = (df["sic"] // 100).astype("Int64")
+    df = df[df["sic2"].notna()]
+    if df.empty:
+        return {}
+    # Mode SIC2 per gvkey.
+    mode = (
+        df.groupby(["gvkey", "sic2"], as_index=False)
+        .size()
+        .sort_values(["gvkey", "size"], ascending=[True, False])
+        .drop_duplicates(subset=["gvkey"], keep="first")
+    )
+    out: Dict[str, str] = {}
+    for _, row in mode.iterrows():
+        gv = _norm_gvkey(row.get("gvkey"))
+        try:
+            sic2 = int(row.get("sic2"))
+        except Exception:
+            continue
+        out[gv] = _sic2_to_sector_label(sic2)
+    return out
+
+
