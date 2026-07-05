@@ -2903,3 +2903,7 @@ def build_scope_payload_with_pairwise_weights(
     return payload
 
 
+def write_json(payload: Dict[str, Any], out_path: str | Path) -> None:
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

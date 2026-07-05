@@ -87,7 +87,7 @@ def _load_candidates_from_feasibility(path: Path) -> List[Dict[str, Any]]:
 
 def _load_candidates_from_candidate_set(path: Path) -> List[Dict[str, Any]]:
     payload = json.loads(path.read_text())
-    return [dict(row or {}) for row in payload['candidates'] if isinstance(row, dict)]
+    return [dict(row or {}) for row in payload.get("candidates", []) if isinstance(row, dict)]
 
 
 def main() -> None:
