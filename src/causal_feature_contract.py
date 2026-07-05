@@ -226,3 +226,64 @@ def normalize_feature_value(feature_name: str, value: Any) -> Optional[float]:
     return float(out)
 
 
+def build_contract_feature_map(
+    feature_source: Mapping[str, Any],
+    *,
+    params: Optional[Mapping[str, Any]] = None,
+    regime: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    source = feature_source if isinstance(feature_source, Mapping) else {}
+    for feature_name in FEATURE_ORDER:
+        out[feature_name] = resolve_mapping_value(source, feature_name, default=None)
+
+    params_map = params if isinstance(params, Mapping) else {}
+    regime_map = regime if isinstance(regime, Mapping) else {}
+
+    raw_market_cap = resolve_mapping_value(source, "scale.market_cap", default=out.get("scale.market_cap"))
+    size_abs = None
+    raw_size_abs = params_map.get("size_absolute_usd")
+    if raw_size_abs is not None:
+        size_abs = raw_size_abs
+    else:
+        try:
+            size_pct = float(params_map.get("size_pct_market_cap")) if params_map.get("size_pct_market_cap") is not None else None
+        except Exception:
+            size_pct = None
+        try:
+            market_cap = float(raw_market_cap) if raw_market_cap is not None else None
+        except Exception:
+            market_cap = None
+        if size_pct is not None and market_cap is not None:
+            size_abs = size_pct * market_cap
+    if size_abs is not None:
+        out["action.size_absolute_usd"] = size_abs
+
+    funding_mix = params_map.get("funding_mix")
+    if isinstance(funding_mix, Mapping):
+        out["action.funding_mix_cash"] = funding_mix.get("cash", out.get("action.funding_mix_cash"))
+        out["action.funding_mix_debt"] = funding_mix.get("debt", out.get("action.funding_mix_debt"))
+        out["action.funding_mix_equity"] = funding_mix.get("equity", out.get("action.funding_mix_equity"))
+
+    credit_regime = str(regime_map.get("credit_regime", "")).strip().lower()
+    vol_regime = str(regime_map.get("vol_regime", "")).strip().lower()
+    if credit_regime:
+        out["regime.credit_tight"] = 1.0 if credit_regime == "tight" else 0.0
+    if vol_regime:
+        out["regime.vol_high"] = 1.0 if vol_regime == "high" else 0.0
+
+    retirement_regime = None
+    for key in RETIREMENT_REGIME_SOURCE_KEYS:
+        if key not in source:
+            continue
+        candidate = _feature_value(source.get(key))
+        if candidate is None:
+            continue
+        retirement_regime = str(candidate).strip()
+        if retirement_regime:
+            break
+        retirement_regime = None
+    if retirement_regime:
+        for feature_name, target_regime in RETIREMENT_REGIME_ONE_HOT_FEATURES.items():
+            out[feature_name] = 1.0 if retirement_regime == target_regime else 0.0
+    return out
