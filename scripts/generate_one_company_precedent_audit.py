@@ -377,3 +377,154 @@ def _historical_company_taxonomy_from_outcomes(
     }
 
 
+def _synthesized_snapshot_row_from_outcome_row(
+    outcome_row: Dict[str, Any],
+    *,
+    company_id: str,
+    as_of_time: str,
+    outcomes_path: Path,
+) -> Dict[str, Any]:
+    frame = _enrich_missing_historical_taxonomy(pd.DataFrame([dict(outcome_row)]))
+    frame = backfill_historical_price_window_metrics(frame)
+    frame = augment_precedent_state_vector_columns(frame)
+    row = frame.iloc[0].to_dict()
+
+    def _scaled_monetary(field_name: str) -> float | None:
+        value = _safe_float(row.get(field_name))
+        if value is None:
+            return None
+        return value * 1_000_000.0
+
+    def _derived_feature(value: Any) -> Dict[str, Any]:
+        return _feature_record(value, support_mode="historical_outcome_fallback_derived")
+
+    revenue = _scaled_monetary("base_revenue_ttm")
+    revenue_lag = _scaled_monetary("base_revenue_ttm_lag_1y")
+    ebitda = _scaled_monetary("base_ebitda_ttm")
+    total_debt = _scaled_monetary("base_total_debt")
+    net_debt = _scaled_monetary("base_net_debt")
+    cash = _scaled_monetary("base_cash")
+    available_liquidity = _scaled_monetary("base_available_liquidity")
+    current_debt = _scaled_monetary("base_current_debt")
+    interest_expense = _scaled_monetary("base_interest_expense")
+    market_cap = _scaled_monetary("base_market_cap")
+    ev_ebitda = _safe_float(row.get("base_ev_ebitda"))
+    fcf_margin = _safe_float(row.get("base_fcf_margin"))
+    free_cash_flow = (
+        revenue * fcf_margin
+        if revenue is not None and fcf_margin is not None
+        else None
+    )
+    enterprise_value_from_components = (
+        market_cap + total_debt - cash
+        if market_cap is not None and total_debt is not None and cash is not None
+        else None
+    )
+    enterprise_value_from_multiple = (
+        ebitda * ev_ebitda
+        if ebitda is not None and ev_ebitda is not None
+        else None
+    )
+    enterprise_value = enterprise_value_from_components
+    if enterprise_value is None:
+        enterprise_value = enterprise_value_from_multiple
+    interest_coverage = (
+        ebitda / interest_expense
+        if ebitda is not None and interest_expense not in (None, 0.0) and interest_expense > 0.0
+        else None
+    )
+    sector = str(
+        row.get("taxonomy.sector")
+        or row.get("sector")
+        or row.get("base_sector")
+        or ""
+    ).strip()
+    subsector = str(
+        row.get("taxonomy.subsector")
+        or row.get("subsector")
+        or row.get("industry")
+        or row.get("base_industry")
+        or ""
+    ).strip()
+    if not sector or not subsector:
+        allow_sec_identity_heuristics = (
+            str(row.get("normalized_action_id") or outcome_row.get("normalized_action_id") or "").strip().lower()
+            == "capital_structure.equity_issuance"
+        )
+        ticker_taxonomy = _historical_taxonomy_for_ticker(
+            str(row.get("ticker") or ""),
+            allow_sec_identity_heuristics=allow_sec_identity_heuristics,
+        )
+        if not sector:
+            sector = str(ticker_taxonomy.get("taxonomy.sector") or "").strip()
+        if not subsector:
+            subsector = str(ticker_taxonomy.get("taxonomy.subsector") or "").strip()
+    if not sector or not subsector:
+        company_history_taxonomy = _historical_company_taxonomy_from_outcomes(
+            str(outcomes_path),
+            str(company_id or ""),
+            str(row.get("normalized_action_id") or outcome_row.get("normalized_action_id") or ""),
+            str(row.get("ticker") or ""),
+        )
+        if not sector:
+            sector = str(company_history_taxonomy.get("taxonomy.sector") or "").strip()
+        if not subsector:
+            subsector = str(company_history_taxonomy.get("taxonomy.subsector") or "").strip()
+
+    features: Dict[str, Dict[str, Any]] = {
+        "operating.revenue_ttm_provider_direct": _feature_record(revenue),
+        "operating.revenue_ttm_lag_1y": _feature_record(revenue_lag),
+        "operating.ebitda_ltm_provider_direct": _feature_record(ebitda),
+        "operating.ebitda_margin_ttm": _feature_record(row.get("base_margin")),
+        "cash_flow.free_cash_flow_ttm": _feature_record(free_cash_flow),
+        "capital_structure.total_debt_provider_direct": _feature_record(total_debt),
+        "capital_structure.net_debt_normalized": _feature_record(net_debt),
+        "liquidity.cash_and_short_term_investments_provider_direct": _feature_record(cash),
+        "liquidity.available_liquidity_normalized": _feature_record(available_liquidity),
+        "capital_structure.current_debt_statement_direct": _feature_record(current_debt),
+        "capital_structure.current_debt_provider_direct": _derived_feature(current_debt),
+        "capital_structure.debt_due_next_24m": _feature_record(
+            current_debt,
+            support_mode="proxy_missing_component",
+            quality_flags=["current_debt_fallback"],
+        ),
+        "capital_structure.interest_expense_statement_direct": _feature_record(interest_expense),
+        "capital_structure.interest_coverage": _derived_feature(interest_coverage),
+        "market.market_cap_provider_direct": _feature_record(market_cap),
+        "market.enterprise_value": _derived_feature(enterprise_value),
+        "market.enterprise_value_provider_direct": _derived_feature(enterprise_value),
+        "market.ev_ebitda": _feature_record(ev_ebitda),
+        "market.fcf_yield": _feature_record(row.get("base_fcf_yield")),
+        "market.volatility_30d": _feature_record(row.get("base_volatility_30d")),
+        "market.volatility_90d": _feature_record(row.get("base_volatility_90d")),
+        "market.drawdown_90d": _feature_record(row.get("base_drawdown_90d")),
+        "market.momentum_60d": _feature_record(row.get("base_momentum_60d")),
+        "market.vix": _feature_record(row.get("macro_vix")),
+        "market.credit_spread_level": _feature_record(row.get("base_credit_spread_level")),
+        "market.credit_window_proxy": _feature_record(row.get("base_credit_window_proxy")),
+        "market.equity_window_proxy": _feature_record(row.get("base_equity_window_proxy")),
+        "macro.fed_funds_effective": _feature_record(row.get("macro_fed_funds_effective")),
+        "macro.hy_oas": _feature_record(row.get("macro_hy_oas")),
+        "macro.ig_oas": _feature_record(row.get("macro_ig_oas")),
+        "macro.real_gdp_growth_yoy": _feature_record(row.get("macro_real_gdp_growth_yoy")),
+        "macro.sofr": _feature_record(row.get("macro_sofr")),
+        "macro.ust_10y_yield": _feature_record(row.get("macro_rate_10y")),
+        "macro.ust_2y_yield": _feature_record(row.get("macro_rate_2y")),
+        "operating.revenue_yoy_last_q": _feature_record(row.get("base_revenue_growth_yoy")),
+        "taxonomy.sector": _feature_record(sector),
+        "taxonomy.subsector": _feature_record(subsector),
+    }
+    for feature in _STATE_VECTOR_V1_FEATURES:
+        features[feature] = _feature_record(row.get(feature))
+
+    return {
+        "company_id": str(company_id or ""),
+        "as_of_time": str(as_of_time or ""),
+        "snapshot_id": f"historical_outcome_fallback:{company_id}:{as_of_time}",
+        "action_params": _action_params_from_outcome_row(outcome_row),
+        "features": features,
+        "snapshot_catalog_source": "historical_outcome_fallback",
+        "snapshot_catalog_path": str(outcomes_path),
+    }
+
+

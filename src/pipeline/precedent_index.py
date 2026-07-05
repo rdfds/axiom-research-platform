@@ -168,3 +168,50 @@ def _load_gvkey_sector_map() -> Dict[str, str]:
     return out
 
 
+def _candidate_sector(candidate: Dict[str, Any], pack: Dict[str, Any]) -> str:
+    direct = _norm_str(
+        candidate.get("sector")
+        or candidate.get("gics_sector")
+        or candidate.get("sector_name")
+    )
+    if direct:
+        return direct
+    cohorts = pack.get("cohorts") if isinstance(pack.get("cohorts"), list) else pack.get("retrieved_cohorts", [])
+    sectors: List[str] = []
+    cohort_company_ids: List[str] = []
+    for c in cohorts or []:
+        if not isinstance(c, dict):
+            continue
+        cid = _norm_gvkey(c.get("company_id"))
+        if cid:
+            cohort_company_ids.append(cid)
+        ksf = c.get("key_state_features", {}) if isinstance(c.get("key_state_features"), dict) else {}
+        s = _norm_str(ksf.get("base_sector"))
+        if s:
+            sectors.append(s)
+    if sectors:
+        mode = Counter(sectors).most_common(1)
+        if mode:
+            return mode[0][0]
+
+    # Fallback: infer sector from cohort gvkeys via SIC->sector mapping.
+    sec_map = _load_gvkey_sector_map()
+    mapped = [sec_map.get(g, "") for g in cohort_company_ids]
+    mapped = [m for m in mapped if m and m != "UNKNOWN"]
+    if mapped:
+        mode = Counter(mapped).most_common(1)
+        if mode:
+            return mode[0][0]
+    return ""
+
+
+def _pack_outcomes(pack: Dict[str, Any]) -> Dict[str, Any]:
+    d = pack.get("outcome_distributions")
+    if isinstance(d, dict):
+        return d
+    d = pack.get("distributions")
+    if isinstance(d, dict):
+        return d
+    return {}
+
+

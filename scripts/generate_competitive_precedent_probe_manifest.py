@@ -140,3 +140,57 @@ def _select_competitive_cases(
     }
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate a competitive precedent probe manifest.")
+    parser.add_argument("--source-manifest", required=True)
+    parser.add_argument("--search-root", required=True)
+    parser.add_argument("--eval-id", default="001")
+    parser.add_argument("--eval-prefix", default="capital_structure")
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--label", required=True)
+    parser.add_argument("--selection-method", default="competitive_precedent_probe")
+    parser.add_argument("--min-distinct-actions", type=int, default=2)
+    parser.add_argument("--require-anchor-family-present", action="store_true")
+    parser.add_argument("--require-anchor-action-present", action="store_true")
+    parser.add_argument("--limit", type=int)
+    args = parser.parse_args()
+
+    source_manifest_path = Path(args.source_manifest)
+    source_manifest = _load_json(source_manifest_path)
+    selection = _select_competitive_cases(
+        cases=list(source_manifest.get("cases", []) or []),
+        search_root=Path(args.search_root),
+        eval_id=args.eval_id,
+        eval_prefix=str(args.eval_prefix or "capital_structure").strip(),
+        min_distinct_actions=args.min_distinct_actions,
+        require_anchor_family_present=args.require_anchor_family_present,
+        require_anchor_action_present=args.require_anchor_action_present,
+        limit=args.limit,
+    )
+
+    output = {
+        "manifest_generated_at": source_manifest.get("manifest_generated_at"),
+        "label": args.label,
+        "selection_method": args.selection_method,
+        "selection_source_manifest": str(source_manifest_path),
+        "selection_source_search_root": args.search_root,
+        "selection_eval_id": args.eval_id,
+        "selection_eval_prefix": str(args.eval_prefix or "capital_structure").strip(),
+        "selection_filters": {
+            "min_distinct_actions": args.min_distinct_actions,
+            "require_anchor_family_present": args.require_anchor_family_present,
+            "require_anchor_action_present": args.require_anchor_action_present,
+            "limit": args.limit,
+        },
+        "analysis_count": selection["analysis_count"],
+        "case_count": selection["selected_count"],
+        "selection_rankings": selection["selection_rankings"],
+        "cases": selection["cases"],
+    }
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(output, indent=2))
+    print(out_path)
+
+
