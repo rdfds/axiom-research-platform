@@ -108,3 +108,20 @@ def _write_snapshot(tmp_path: Path, features: dict) -> tuple[Path, dict]:
     return root, row
 
 
+def _make_run(tmp_path: Path, snapshot_root: Path) -> object:
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+    run = store.get_run(run_id)
+    assert run is not None
+    return run
+
+

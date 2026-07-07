@@ -65,3 +65,22 @@ def _feature_record(features: Dict[str, Any], feature_name: str) -> Optional[Dic
     return raw if isinstance(raw, dict) else None
 
 
+def _feature_is_hard_blocked(raw: Any) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    support_mode = str(raw.get("support_mode") or "").strip().lower()
+    applicability_status = str(raw.get("applicability_status") or "").strip().lower()
+    quality_flags = {
+        str(flag).strip().lower()
+        for flag in (raw.get("quality_flags") or [])
+        if flag is not None
+    }
+    if support_mode == "unsupported":
+        return True
+    if applicability_status in {"unsupported", "diagnostic"}:
+        return True
+    if "unsupported_metric" in quality_flags or "sector_native_metrics_required" in quality_flags:
+        return True
+    return False
+
+
