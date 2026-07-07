@@ -27,3 +27,23 @@ DEFAULT_PRESET: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 )
 
 
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Benchmark targeted causal routing on an existing run")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--runs-root", default="data/recommendation_runs")
+    p.add_argument("--snapshot-root", default=None)
+    p.add_argument("--snapshot-path", default=None)
+    p.add_argument("--model-path", default=None)
+    p.add_argument("--feasibility-path", default=None)
+    p.add_argument("--candidate-set-path", default=None)
+    p.add_argument("--artifact-prefix", default="causal_bench")
+    p.add_argument("--out", default=None)
+    p.add_argument(
+        "--slice",
+        action="append",
+        default=[],
+        help="Custom slice as label=action_id[,action_id2,...]. If omitted, uses the built-in targeted preset.",
+    )
+    return p.parse_args()
+
+
