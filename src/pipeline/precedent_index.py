@@ -291,3 +291,76 @@ def _iter_distribution_rows(
     return rows
 
 
+def build_precedent_index(run_id: str, precedent_matches: List[Dict[str, Any]]) -> Dict[str, Any]:
+    rows: List[Dict[str, Any]] = []
+    candidate_rows: List[Dict[str, Any]] = []
+    for item in precedent_matches or []:
+        candidate = item.get("candidate", {}) if isinstance(item, dict) else {}
+        pack = item.get("precedent_pack", {}) if isinstance(item, dict) else {}
+        if not isinstance(candidate, dict) or not isinstance(pack, dict):
+            continue
+
+        mismatch = pack.get("mismatch_diagnostics", {}) if isinstance(pack.get("mismatch_diagnostics"), dict) else {}
+        conf = _to_float(pack.get("precedent_confidence"))
+        if conf is None:
+            conf = _to_float(pack.get("calibration_confidence")) or 0.0
+
+        candidate_rows.append(
+            {
+                "run_id": _norm_str(run_id),
+                "candidate_id": _norm_str(candidate.get("candidate_id")),
+                "action_type": _norm_str(candidate.get("action_type")),
+                "action_subtype": _norm_str(candidate.get("action_subtype")),
+                "action_id": _norm_str(candidate.get("action_id")),
+                "sector": _candidate_sector(candidate, pack),
+                "precedent_confidence": float(conf),
+                "out_of_sample_flag": bool(mismatch.get("out_of_sample_flag", False)),
+                "cohort_size": int(mismatch.get("cohort_size", 0) or 0),
+                "low_precedent_coverage": bool(mismatch.get("low_precedent_coverage", False)),
+                "retrieval_tier": _norm_str(mismatch.get("retrieval_tier")),
+                "exact_match_count": int(mismatch.get("exact_match_count", 0) or 0),
+                "minimum_exact_support": int(mismatch.get("minimum_exact_support", 0) or 0),
+                "exact_support_ratio": float(_to_float(mismatch.get("exact_support_ratio")) or 0.0),
+                "top_similarity_mean": float(_to_float(mismatch.get("top_similarity_mean")) or 0.0),
+                "top_action_match_score": float(_to_float(mismatch.get("top_action_match_score")) or 0.0),
+            }
+        )
+
+        overall = _pack_outcomes(pack)
+        rows.extend(
+            _iter_distribution_rows(
+                run_id=_norm_str(run_id),
+                candidate=candidate,
+                pack=pack,
+                regime_label="all",
+                outcome_distributions=overall,
+                source="overall",
+            )
+        )
+        for rs in pack.get("regime_splits", []) if isinstance(pack.get("regime_splits"), list) else []:
+            if not isinstance(rs, dict):
+                continue
+            rows.extend(
+                _iter_distribution_rows(
+                    run_id=_norm_str(run_id),
+                    candidate=candidate,
+                    pack=pack,
+                    regime_label=_norm_str(rs.get("regime_label")),
+                    outcome_distributions=rs.get("outcome_distributions", {}) if isinstance(rs.get("outcome_distributions"), dict) else {},
+                    source="regime_split",
+                )
+            )
+
+    return {
+        "run_id": _norm_str(run_id),
+        "index_version": INDEX_VERSION,
+        "generated_at": _now_iso(),
+        "candidate_rows": candidate_rows,
+        "distribution_rows": rows,
+        "counts": {
+            "candidates": len(candidate_rows),
+            "distribution_rows": len(rows),
+        },
+    }
+
+

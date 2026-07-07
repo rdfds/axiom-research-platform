@@ -65,3 +65,15 @@ Policy:
 - keep `capital_structure.revolver_draw_or_resize` precedent-driven for now
 - do not re-enable causal support unless a future model clears the existing OOS quality gate
 
+## Notes
+
+- This is a modeling limitation, not a routing bug.
+- The current causal stack is strong for:
+  - core capital return
+  - core capital structure
+  - platform/tuck-in M&A
+  - special dividend
+- Revolver remains the main causal exception in otherwise standard finance actions.
+- broader non-regression monitoring is documented in:
+  - `./docs/model_monitoring.md`
+

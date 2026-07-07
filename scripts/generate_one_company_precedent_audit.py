@@ -606,3 +606,28 @@ def _resolve_metric_record(features: Dict[str, Any], aliases: tuple[str, ...]) -
     return aliases[0], {}
 
 
+def _target_raw_table(row: Dict[str, Any]) -> str:
+    features = row.get("features") or {}
+    lines = ["| Raw metric | Value | Support | Resolved from |", "|---|---:|---|---|"]
+    for metric, aliases in TARGET_RAW_METRIC_SPECS:
+        resolved_metric, record = _resolve_metric_record(features, aliases)
+        lines.append(
+            f"| `{metric}` | {_fmt_value(record.get('value'))} | `{record.get('support_mode') or 'unsupported'}` | `{resolved_metric}` |"
+        )
+    return "\n".join(lines)
+
+
+def _compact_table(values: Dict[str, Any]) -> str:
+    lines = ["| Compact feature | Value |", "|---|---:|"]
+    for key in _STATE_VECTOR_V1_FEATURES:
+        lines.append(f"| `{key}` | {_fmt_value(values.get(key))} |")
+    return "\n".join(lines)
+
+
+def _compact_comparison_table(target_values: Dict[str, Any], match_row: pd.Series) -> str:
+    lines = ["| Compact feature | Target | Match |", "|---|---:|---:|"]
+    for key in _STATE_VECTOR_V1_FEATURES:
+        lines.append(f"| `{key}` | {_fmt_value(target_values.get(key))} | {_fmt_value(match_row.get(key))} |")
+    return "\n".join(lines)
+
+
