@@ -40,3 +40,28 @@ def _round_num(v: float) -> float:
     return float(round(float(v), 12))
 
 
+def _json_safe(v: Any) -> Any:
+    if isinstance(v, dict):
+        return {str(k): _json_safe(v[k]) for k in sorted(v.keys(), key=str)}
+    if isinstance(v, list):
+        return [_json_safe(x) for x in v]
+    if isinstance(v, tuple):
+        return [_json_safe(x) for x in v]
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return _round_num(v)
+    return v
+
+
+def _candidate_signature(action_id: str, parameters: Dict[str, Any]) -> str:
+    norm = _json_safe(parameters)
+    key = f"{action_id}|{json.dumps(norm, sort_keys=True, separators=(',', ':'), ensure_ascii=True)}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def _feature_record(features: Dict[str, Any], feature_name: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(features, dict):
+        return None
+    raw = features.get(feature_name)
+    return raw if isinstance(raw, dict) else None
+
+
