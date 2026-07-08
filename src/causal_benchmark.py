@@ -102,3 +102,47 @@ def summarize_model_card(card: Dict[str, Any]) -> Dict[str, Any]:
     return summary
 
 
+def evaluate_summary_thresholds(
+    summary: Dict[str, Any],
+    min_enabled_cells: int = 10,
+    min_enabled_rate: float = 0.10,
+    min_enabled_oos_r2_mean: float = 0.05,
+    required_objectives: Optional[List[str]] = None,
+    required_objective_min_enabled: int = 1,
+    required_objective_min_oos_r2_mean: float = 0.0,
+) -> Dict[str, Any]:
+    req_objs = list(required_objectives or [])
+    totals = dict(summary.get("totals", {}) or {})
+    objectives = dict(summary.get("objectives", {}) or {})
+    failures: List[str] = []
+
+    enabled_cells = int(_to_float(totals.get("enabled_cells"), 0.0) or 0.0)
+    enabled_rate = float(_to_float(totals.get("enabled_rate"), 0.0) or 0.0)
+    enabled_oos_mean = _to_float(totals.get("enabled_oos_r2_mean"))
+
+    if enabled_cells < int(min_enabled_cells):
+        failures.append(f"enabled_cells<{int(min_enabled_cells)}")
+    if enabled_rate < float(min_enabled_rate):
+        failures.append(f"enabled_rate<{float(min_enabled_rate):.3f}")
+    if enabled_oos_mean is None:
+        failures.append("enabled_oos_r2_mean_unavailable")
+    elif float(enabled_oos_mean) < float(min_enabled_oos_r2_mean):
+        failures.append(f"enabled_oos_r2_mean<{float(min_enabled_oos_r2_mean):.3f}")
+
+    for objective_name in req_objs:
+        obj = dict(objectives.get(objective_name, {}) or {})
+        obj_enabled = int(_to_float(obj.get("enabled_cells"), 0.0) or 0.0)
+        obj_oos_mean = _to_float(obj.get("enabled_oos_r2_mean"))
+        if obj_enabled < int(required_objective_min_enabled):
+            failures.append(f"{objective_name}.enabled<{int(required_objective_min_enabled)}")
+        if obj_oos_mean is None:
+            failures.append(f"{objective_name}.enabled_oos_r2_mean_unavailable")
+        elif float(obj_oos_mean) < float(required_objective_min_oos_r2_mean):
+            failures.append(f"{objective_name}.enabled_oos_r2_mean<{float(required_objective_min_oos_r2_mean):.3f}")
+
+    return {
+        "pass": len(failures) == 0,
+        "failures": failures,
+    }
+
+
