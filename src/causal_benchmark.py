@@ -35,3 +35,8 @@ def _quantile(values: List[float], q: float) -> float:
     return float(xs[lo] * (1.0 - w) + xs[hi] * w)
 
 
+def load_model_card(path: str | Path) -> Dict[str, Any]:
+    p = Path(path)
+    return dict(json.loads(p.read_text()) or {})
+
+

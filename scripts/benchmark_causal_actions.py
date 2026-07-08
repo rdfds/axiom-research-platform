@@ -47,3 +47,24 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _artifact_path(runs_root: Path, run_id: str, name: str) -> Path:
+    return runs_root / "artifacts" / f"run_id={run_id}" / name
+
+
+def _metadata_config(run: Any) -> Dict[str, Any]:
+    metadata = dict(getattr(run, "metadata", {}) or {})
+    return dict(metadata.get("config", {}) or {})
+
+
+def _resolve_path(explicit: Optional[str], cfg: Dict[str, Any], key: str) -> Optional[str]:
+    if explicit:
+        return str(explicit)
+    create_cfg = dict(cfg.get("create", {}) or {})
+    value = create_cfg.get(key)
+    if value:
+        return str(value)
+    if key == "model_path":
+        return _default_model_path()
+    return None
+
+
