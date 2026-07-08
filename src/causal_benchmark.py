@@ -146,3 +146,60 @@ def evaluate_summary_thresholds(
     }
 
 
+def compare_summaries(champion: Dict[str, Any], challenger: Dict[str, Any]) -> Dict[str, Any]:
+    champ_tot = dict(champion.get("totals", {}) or {})
+    chall_tot = dict(challenger.get("totals", {}) or {})
+    champ_obj = dict(champion.get("objectives", {}) or {})
+    chall_obj = dict(challenger.get("objectives", {}) or {})
+    all_obj = sorted(set(champ_obj.keys()) | set(chall_obj.keys()))
+
+    by_objective: Dict[str, Any] = {}
+    better = 0
+    comparable = 0
+    for obj in all_obj:
+        c = dict(champ_obj.get(obj, {}) or {})
+        d = dict(chall_obj.get(obj, {}) or {})
+        c_mean = _to_float(c.get("enabled_oos_r2_mean"))
+        d_mean = _to_float(d.get("enabled_oos_r2_mean"))
+        if c_mean is not None and d_mean is not None:
+            comparable += 1
+            if d_mean > c_mean:
+                better += 1
+        by_objective[obj] = {
+            "delta_enabled_cells": int(_to_float(d.get("enabled_cells"), 0.0) or 0.0)
+            - int(_to_float(c.get("enabled_cells"), 0.0) or 0.0),
+            "delta_enabled_oos_r2_mean": round(float((d_mean or 0.0) - (c_mean or 0.0)), 6)
+            if c_mean is not None and d_mean is not None
+            else None,
+        }
+
+    return {
+        "totals": {
+            "delta_enabled_cells": int(_to_float(chall_tot.get("enabled_cells"), 0.0) or 0.0)
+            - int(_to_float(champ_tot.get("enabled_cells"), 0.0) or 0.0),
+            "delta_enabled_rate": round(
+                float(_to_float(chall_tot.get("enabled_rate"), 0.0) or 0.0)
+                - float(_to_float(champ_tot.get("enabled_rate"), 0.0) or 0.0),
+                6,
+            ),
+            "delta_enabled_oos_r2_mean": round(
+                float(_to_float(chall_tot.get("enabled_oos_r2_mean"), 0.0) or 0.0)
+                - float(_to_float(champ_tot.get("enabled_oos_r2_mean"), 0.0) or 0.0),
+                6,
+            )
+            if _to_float(champ_tot.get("enabled_oos_r2_mean")) is not None
+            and _to_float(chall_tot.get("enabled_oos_r2_mean")) is not None
+            else None,
+        },
+        "objectives": by_objective,
+        "challenger_better_objective_fraction": round(float(better / comparable), 6) if comparable > 0 else None,
+    }
+
+
+__all__ = [
+    "compare_summaries",
+    "evaluate_summary_thresholds",
+    "load_model_card",
+    "summarize_model_card",
+]
+
