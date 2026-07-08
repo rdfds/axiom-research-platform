@@ -638,3 +638,7 @@ def _historical_raw_table(match_row: pd.Series) -> str:
     return "\n".join(lines)
 
 
+def _nonnull_compact_count(match_row: pd.Series) -> int:
+    return sum(0 if _is_missing(match_row.get(key)) else 1 for key in _STATE_VECTOR_V1_FEATURES)
+
+
