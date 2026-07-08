@@ -1,0 +1,208 @@
+{
+  "version": "causal_capital_routing_capreturn_rescue_v3_repaired_relaxed",
+  "notes": "Capital routing that preserves the existing buyback/debt mappings from v1 while promoting the repaired relaxed dividend-initiate rescue cell to a real action-specific route.",
+  "status_max_blend_weight": {
+    "enabled": 0.55,
+    "weak_prior_only": 0.12,
+    "blocked": 0.0
+  },
+  "phase_1_scope": {
+    "enabled_actions": [
+      "capital_return.open_market_buyback",
+      "capital_return.dividend_increase",
+      "capital_return.dividend_cut",
+      "capital_return.dividend_initiate",
+      "capital_structure.equity_issuance",
+      "capital_structure.new_debt_issuance",
+      "capital_structure.refinancing"
+    ],
+    "weak_prior_only_actions": [
+      "capital_return.special_dividend"
+    ],
+    "blocked_actions": [
+      "governance.stock_split",
+      "capital_structure.revolver_draw_or_resize",
+      "capital_structure.convertible_issuance",
+      "capital_structure.preferred_issuance",
+      "capital_structure.tender_offer_debt",
+      "capital_structure.exchange_offer",
+      "capital_structure.liability_management_exercise"
+    ]
+  },
+  "actions": {
+    "capital_return.open_market_buyback": {
+      "status": "enabled",
+      "model_action_alias": "buyback",
+      "model_subtype_alias": "buyback",
+      "future_action_aliases": [
+        "buyback"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "notes": "Cleanest capital-return causal cell in the current artifact."
+    },
+    "capital_return.dividend_increase": {
+      "status": "enabled",
+      "model_action_alias": "dividend_increase",
+      "model_subtype_alias": "dividend_increase",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "notes": "Action-specific routing retained; phase-1 objective set stays narrow."
+    },
+    "capital_return.dividend_cut": {
+      "status": "enabled",
+      "model_action_alias": "dividend_cut",
+      "model_subtype_alias": "dividend_cut",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "notes": "Action-specific routing retained; phase-1 objective set stays narrow."
+    },
+    "capital_return.dividend_initiate": {
+      "status": "enabled",
+      "model_action_alias": "dividend_initiate",
+      "model_subtype_alias": "dividend_initiate",
+      "future_action_aliases": [
+        "capital_return.dividend_initiate",
+        "dividend_initiate"
+      ],
+      "objective_allowlist": [
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.22,
+      "strict_gate_overrides": {
+        "min_treated_rows": 750
+      },
+      "notes": "Uses the repaired relaxed dividend-initiate rescue cell while leaving the rest of capital routing aligned with v1."
+    },
+    "capital_return.special_dividend": {
+      "status": "weak_prior_only",
+      "model_action_alias": "dividend_regular",
+      "model_subtype_alias": "regular",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "max_blend_weight": 0.12,
+      "notes": "No durable special-dividend cell in the current artifact; keep contribution minimal."
+    },
+    "capital_structure.equity_issuance": {
+      "status": "enabled",
+      "model_action_alias": "equity_offering_public_proxy",
+      "model_subtype_alias": "share_issuance_proxy",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "future_action_alias": "equity_issuance",
+      "notes": "Runtime remains artifact-compatible until capital-only causal retrain lands."
+    },
+    "capital_structure.new_debt_issuance": {
+      "status": "enabled",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "future_action_aliases": [
+        "debt_bond",
+        "debt_loan"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "future_action_alias": "debt_issuance",
+      "notes": "Keep current artifact alias for now; split debt issuance from refinancing at retrain time."
+    },
+    "capital_structure.refinancing": {
+      "status": "enabled",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "future_action_aliases": [
+        "refinancing",
+        "debt_bond",
+        "debt_loan"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "future_action_alias": "refinancing",
+      "notes": "Phase-1 runtime still queries legacy bond-issuance cells until dedicated refinancing causal cells exist."
+    },
+    "governance.stock_split": {
+      "status": "blocked",
+      "model_action_alias": "cost_program",
+      "model_subtype_alias": "stock_split",
+      "objective_allowlist": [],
+      "notes": "Block causal usage until split-specific causal retraining replaces the current bad governance fallback."
+    },
+    "capital_structure.revolver_draw_or_resize": {
+      "status": "blocked",
+      "model_action_alias": "loan_issuance",
+      "model_subtype_alias": "revolver_line_1_yr",
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Conceptually in-scope but still too noisy for causal activation."
+    },
+    "capital_structure.convertible_issuance": {
+      "status": "blocked",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Blocked until upstream event data and a dedicated causal family exist."
+    },
+    "capital_structure.preferred_issuance": {
+      "status": "blocked",
+      "model_action_alias": "equity_offering_public_proxy",
+      "model_subtype_alias": "share_issuance_proxy",
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Blocked until upstream event data and a dedicated causal family exist."
+    },
+    "capital_structure.tender_offer_debt": {
+      "status": "blocked",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Blocked until upstream liability-management data exists."
+    },
+    "capital_structure.exchange_offer": {
+      "status": "blocked",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Blocked until upstream liability-management data exists."
+    },
+    "capital_structure.liability_management_exercise": {
+      "status": "blocked",
+      "model_action_alias": "bond_issuance",
+      "model_subtype_alias": "unknown",
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "notes": "Blocked until upstream liability-management data exists."
+    }
+  }
+}
