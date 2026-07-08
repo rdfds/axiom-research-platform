@@ -77,3 +77,70 @@ Policy:
 - broader non-regression monitoring is documented in:
   - `./docs/model_monitoring.md`
 
+## Newly Added Actions
+
+The following standard actions were added after the current accepted causal batch:
+
+- `capital_return.dividend_initiate`
+- `mna.go_private_lbo`
+
+Current status:
+
+- `capital_return.dividend_initiate`
+  - ontology, normalization, precedent, and snapshot-gating support exist
+  - targeted causal routing validation now exists against:
+    - source: `/tmp/causal_dividend_initiate_probe.json`
+    - attached benchmark artifact:
+      - `/tmp/recommendation_runs_dividend_initiate_gate_check/artifacts/run_id=e354efc1-6392-456f-ac0f-14731334bf17/CausalBenchmark_causal_dividend_initiate_probe_dividend_initiate.json`
+    - snapshot: `./data/company_state_snapshots/final_run_2026-02-28/keyed/as_of_date=2026-02-28/company_id=0000794619.json`
+    - model: `./data/models/causal_impact_model_v5_5_hybrid.json`
+  - current causal fallback routes to `dividend_regular::regular`
+  - enabled objective cells selected:
+    - `value_creation`
+    - `risk_reduction`
+    - `rating_preservation`
+    - `optionality`
+  - targeted causal routing metrics:
+    - `blend_weight = 0.238987`
+    - `coverage_score = 0.346039`
+    - `model_quality = 0.076831`
+    - `min_oos_r2 = 0.059732`
+    - `support_score = 0.937545`
+    - `out_of_sample_flag = False`
+  - production-style end-to-end validation is still noisy on this machine because the full runner intermittently hits an OpenMP shared-memory error, but the routing and model selection are now validated
+
+- `mna.go_private_lbo`
+  - ontology, normalization, and precedent support exist
+  - causal alias routing exists
+  - targeted causal probe:
+    - source: `/tmp/causal_go_private_lbo_probe.json`
+    - selected model keys:
+      - `acquisition::all` on `value_creation`
+      - `acquisition::all` on `growth`
+    - `coverage_score_mean = 0.362296`
+    - `model_quality_mean = 0.089837`
+    - `support_score_mean = 0.92564`
+    - `blend_weight_mean = 0.247866`
+    - `min_oos_r2_mean = 0.087272`
+    - `oos_rate = 0.0`
+  - formal decision: reject for production causal baseline
+  - reason:
+    - subtype-specific LBO causal cell `acquisition::acquisition_lbo` remains disabled in `./data/models/causal_impact_model_v5_5_hybrid.model_card.json`
+    - current causal support only comes from the broad `acquisition::all` fallback
+    - that is not action-specific enough to approve LBO as a production causal-baseline action
+  - production policy:
+    - `mna.go_private_lbo` is blocklisted in `./config/causal_action_blocklist_prod_v2.txt`
+    - treat it as precedent-supported first, not a causal-baseline action
+
+Operationally:
+
+- both actions are available in the action universe
+- `capital_return.dividend_initiate` now has targeted causal-routing validation
+- `mna.go_private_lbo` is now formally rejected from the production causal baseline and kept precedent-only
+- targeted causal routing harness:
+  - `./scripts/benchmark_causal_actions.py`
+  - built-in preset now includes:
+    - `mna.platform_acquisition`
+    - `mna.tuck_in_acquisition`
+    - `capital_return.special_dividend`
+    - `capital_return.dividend_initiate`
