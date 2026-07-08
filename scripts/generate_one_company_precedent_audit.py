@@ -642,3 +642,158 @@ def _nonnull_compact_count(match_row: pd.Series) -> int:
     return sum(0 if _is_missing(match_row.get(key)) else 1 for key in _STATE_VECTOR_V1_FEATURES)
 
 
+def _compact_feature_scale_map(historical_df: pd.DataFrame) :
+    scales: Dict[str, float] = {}
+    for key in _STATE_VECTOR_V1_FEATURES:
+        if key not in historical_df.columns:
+            scales[key] = 1.0
+            continue
+        series = pd.to_numeric(historical_df.get(key), errors="coerce").dropna()
+        if series.empty:
+            scales[key] = 1.0
+            continue
+        q25 = float(series.quantile(0.25))
+        q75 = float(series.quantile(0.75))
+        iqr = float(q75 - q25)
+        std = float(series.std()) if len(series) > 1 else 0.0
+        scale = iqr if math.isfinite(iqr) and iqr > 1e-8 else std
+        scales[key] = scale if math.isfinite(scale) and scale > 1e-8 else 1.0
+    return scales
+
+
+def _compact_feature_label(feature_name: str) -> str:
+    suffix = str(feature_name).split(".")[-1]
+    return suffix.replace("_", " ")
+
+
+def _match_explanation_lines(
+    *,
+    action_id: str,
+    target_values: Dict[str, Any],
+    match_row: pd.Series,
+    feature_scales: Dict[str, float],
+) -> List[str]:
+    scored: List[Tuple[str, float, float]] = []
+    for key in _STATE_VECTOR_V1_FEATURES:
+        target_value = target_values.get(key)
+        match_value = match_row.get(key)
+        if _is_missing(target_value) or _is_missing(match_value):
+            continue
+        scale = float(feature_scales.get(key, 1.0) or 1.0)
+        gap = abs(float(target_value) - float(match_value)) / max(scale, 1e-8)
+        scored.append((key, gap, 1.0))
+    if not scored:
+        return ["- Why it matched: `insufficient comparable compact features`"]
+
+    closest = sorted(
+        scored,
+        key=lambda item: (-(item[2] / (1.0 + item[1])), item[1], item[0]),
+    )[:3]
+    farthest = sorted(
+        scored,
+        key=lambda item: (-(item[2] * item[1]), item[0]),
+    )[:3]
+
+    def _fmt_feature_triplet(feature_name: str) -> str:
+        return (
+            f"`{_compact_feature_label(feature_name)}` "
+            f"({_fmt_value(target_values.get(feature_name))} vs {_fmt_value(match_row.get(feature_name))})"
+        )
+
+    closest_text = ", ".join(_fmt_feature_triplet(feature_name) for feature_name, _, _ in closest)
+    farthest_text = ", ".join(_fmt_feature_triplet(feature_name) for feature_name, _, _ in farthest)
+    return [
+        f"- Why it matched: {closest_text}",
+        f"- Main gaps: {farthest_text}",
+    ]
+
+
+def _confidence_label(score: float) -> str:
+    if score >= 0.75:
+        return "high"
+    if score >= 0.55:
+        return "medium"
+    return "low"
+
+
+def _locate_match_row(historical_df: pd.DataFrame, case: Any) -> pd.Series:
+    action_date = pd.to_datetime(case.decision_time, utc=True, errors="coerce")
+    if pd.isna(action_date):
+        raise RuntimeError(
+            f"Could not normalize decision_time for company_id={case.company_id} decision_time={case.decision_time}"
+        )
+    action_date = action_date.normalize()
+    mask = historical_df["company_id"].astype(str).eq(str(case.company_id))
+    mask &= pd.to_datetime(historical_df["action_date"], utc=True, errors="coerce").dt.normalize().eq(action_date)
+    normalized_action_id = historical_df.get("normalized_action_id")
+    if normalized_action_id is not None and str(case.action_id or "").strip():
+        id_mask = normalized_action_id.fillna("").astype(str).eq(str(case.action_id))
+        if bool((mask & id_mask).any()):
+            mask &= id_mask
+    matches = historical_df.loc[mask]
+    if matches.empty:
+        raise RuntimeError(
+            f"Could not locate historical row for company_id={case.company_id} action_date={action_date} action_id={case.action_id}"
+        )
+    return matches.iloc[0]
+
+
+def _build_target_payload(row: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    adapted_row, _ = adapt_snapshot(row)
+    adapted_row = attach_model_feature_bundle(adapted_row)
+    bundle = build_model_feature_bundle(adapted_row)
+    precedent_features = dict(feature_view_from_snapshot(adapted_row, view_name="precedent") or {})
+    canonical = dict(bundle.get("canonical", {}) or {})
+    state_meta = dict((bundle.get("state_vector_v1", {}) or {}).get("meta", {}) or {})
+    if precedent_features.get("market_cap") is None:
+        market_cap_value = canonical.get("scale.market_cap")
+        if market_cap_value is not None:
+            precedent_features["market_cap"] = {"value": market_cap_value, "support_mode": "canonical_alias"}
+    if precedent_features.get("sector") is None:
+        sector_value = state_meta.get("sector")
+        if sector_value:
+            precedent_features["sector"] = {"value": sector_value, "support_mode": "canonical_alias"}
+    if precedent_features.get("subsector") is None:
+        subsector_value = state_meta.get("subsector")
+        if subsector_value:
+            precedent_features["subsector"] = {"value": subsector_value, "support_mode": "canonical_alias"}
+    regime = adapted_row.get("regime", {}) if isinstance(adapted_row.get("regime"), dict) else {}
+    return adapted_row, bundle, {
+        "precedent_features": precedent_features,
+        "regime": regime,
+        "target_values": bundle["state_vector_v1"]["values"],
+    }
+
+
+def _target_payload_nonnull_count(payload: Dict[str, Any]) -> int:
+    values = payload.get("target_values") if isinstance(payload, dict) else None
+    if not isinstance(values, dict):
+        return 0
+    count = 0
+    for value in values.values():
+        if value is None:
+            continue
+        if isinstance(value, float) and math.isnan(value):
+            continue
+        count += 1
+    return count
+
+
+def _filter_historical_precedents_as_of(
+    historical_df: pd.DataFrame,
+    *,
+    snapshot_as_of_time: str | None,
+) -> pd.DataFrame:
+    normalized_target_time = _normalize_as_of_time(snapshot_as_of_time)
+    if not normalized_target_time or historical_df.empty or "action_date" not in historical_df.columns:
+        return historical_df
+    target_ts = pd.to_datetime(normalized_target_time, utc=True, errors="coerce")
+    if pd.isna(target_ts):
+        return historical_df
+    action_dates = pd.to_datetime(historical_df["action_date"], utc=True, errors="coerce")
+    filtered = historical_df.loc[action_dates.lt(target_ts)].copy()
+    if filtered.empty:
+        return historical_df
+    return filtered
+
+

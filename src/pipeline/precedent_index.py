@@ -364,3 +364,79 @@ def build_precedent_index(run_id: str, precedent_matches: List[Dict[str, Any]]) 
     }
 
 
+def query_precedent_index(
+    index: Dict[str, Any],
+    *,
+    action_type: Optional[str] = None,
+    action_id: Optional[str] = None,
+    regime: Optional[str] = None,
+    sector: Optional[str] = None,
+    time_horizon: Optional[str] = None,
+    min_sample_size: int = 0,
+    min_precedent_confidence: float = 0.0,
+    exclude_out_of_sample: bool = False,
+    limit: int = 200,
+) -> Dict[str, Any]:
+    rows = index.get("distribution_rows", []) if isinstance(index.get("distribution_rows"), list) else []
+    out = []
+    f_action_type = _norm_lower(action_type)
+    f_action_id = _norm_lower(action_id)
+    f_regime = _norm_lower(regime)
+    f_sector = _norm_lower(sector)
+    f_horizon = _norm_lower(time_horizon)
+    min_n = max(0, int(min_sample_size))
+    min_conf = max(0.0, float(min_precedent_confidence or 0.0))
+    excl_oos = bool(exclude_out_of_sample)
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if f_action_type and _norm_lower(row.get("action_type")) != f_action_type:
+            continue
+        if f_action_id and _norm_lower(row.get("action_id")) != f_action_id:
+            continue
+        if f_regime and _norm_lower(row.get("regime_label")) != f_regime:
+            continue
+        if f_sector and _norm_lower(row.get("sector")) != f_sector:
+            continue
+        if f_horizon and _norm_lower(row.get("time_horizon")) != f_horizon:
+            continue
+        if int(row.get("sample_size", 0) or 0) < min_n:
+            continue
+        if float(_to_float(row.get("precedent_confidence")) or 0.0) < min_conf:
+            continue
+        if excl_oos and bool(row.get("out_of_sample_flag", False)):
+            continue
+        out.append(row)
+    out.sort(
+        key=lambda row: (
+            -float(_to_float(row.get("query_score")) or 0.0),
+            -float(_to_float(row['precedent_confidence']) or 0.0),
+            -int(row.get("sample_size", 0) or 0),
+            _norm_str(row.get("action_id")),
+            _norm_str(row.get("regime_label")),
+            _norm_str(row.get("time_horizon")),
+            _norm_str(row.get("metric")),
+        )
+    )
+    out = out[: max(1, int(limit))]
+
+    return {
+        "run_id": _norm_str(index.get("run_id")),
+        "query": {
+            "action_type": action_type,
+            "action_id": action_id,
+            "regime": regime,
+            "sector": sector,
+            "time_horizon": time_horizon,
+            "min_sample_size": min_n,
+            "min_precedent_confidence": min_conf,
+            "exclude_out_of_sample": excl_oos,
+            "limit": max(1, int(limit)),
+        },
+        "count": len(out),
+        "rows": out,
+    }
+
+
+__all__ = ["INDEX_VERSION", "build_precedent_index", "query_precedent_index"]
