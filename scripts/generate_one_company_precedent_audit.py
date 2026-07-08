@@ -582,7 +582,7 @@ def _target_context_lines(row: Dict[str, Any], bundle: Dict[str, Any]) -> List[s
         if (support.get(key) or {}).get("support_mode") in {None, "unsupported"}
         and _is_missing(bundle["state_vector_v1"]["values"].get(key))
     ]
-    sector = (features['taxonomy.sector'] or {}).get("value")
+    sector = (features.get("taxonomy.sector") or {}).get("value")
     subsector = (features.get("taxonomy.subsector") or {}).get("value")
     regime = (features.get("capital_structure.retirement_obligation_regime") or {}).get("value")
     return [
