@@ -119,3 +119,34 @@ def _mean(values: Iterable[float]) -> float:
     return float(sum(vals) / len(vals))
 
 
+def _print_table(rows: Sequence[Dict[str, Any]]) -> None:
+    headers = (
+        ("label", 22),
+        ("selected_causal_candidates", 6),
+        ("coverage_score_mean", 8),
+        ("model_quality_mean", 8),
+        ("support_score_mean", 8),
+        ("blend_weight_mean", 8),
+        ("oos_rate", 8),
+        ("elapsed_seconds", 8),
+    )
+    header_line = " ".join(f"{name[:width]:<{width}}" for name, width in headers)
+    print(header_line)
+    print("-" * len(header_line))
+    for row in rows:
+        print(
+            " ".join(
+                f"{str(row.get(name, ''))[:width]:<{width}}"
+                for name, width in headers
+            )
+        )
+
+
+def _as_of_datetime(raw: str) -> datetime:
+    s = str(raw).strip()
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
