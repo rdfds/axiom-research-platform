@@ -92,3 +92,30 @@ def _load_candidates_from_feasibility(path: Path) -> List[Dict[str, Any]]:
     return out
 
 
+def _load_candidates_from_candidate_set(path: Path) -> List[Dict[str, Any]]:
+    payload = json.loads(path.read_text())
+    return [dict(row or {}) for row in payload.get("candidates", []) if isinstance(row, dict)]
+
+
+def _parse_slices(values: Sequence[str]) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+    if not values:
+        return DEFAULT_PRESET
+    out: List[Tuple[str, Tuple[str, ...]]] = []
+    for raw in values:
+        label, sep, actions = str(raw).partition("=")
+        if not sep or not label.strip() or not actions.strip():
+            raise SystemExit(f"Invalid --slice value: {raw!r}")
+        action_ids = tuple(a.strip() for a in actions.split(",") if a.strip())
+        if not action_ids:
+            raise SystemExit(f"Invalid --slice value: {raw!r}")
+        out.append((label.strip(), action_ids))
+    return tuple(out)
+
+
+def _mean(values: Iterable[float]) -> float:
+    vals = [float(v) for v in values]
+    if not vals:
+        return 0.0
+    return float(sum(vals) / len(vals))
+
+
