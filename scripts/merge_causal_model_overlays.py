@@ -100,3 +100,28 @@ def _recount_enabled_actions(model_card: Dict[str, Any]) -> None:
         )
 
 
+def _assert_feature_contract_compatible(
+    *,
+    base_payload: Dict[str, Any],
+    overlay_payload: Dict[str, Any],
+    base_model_path: Path,
+    overlay_model_path: Path,
+) :
+    base_feature_order = list(base_payload.get("feature_order", []) or [])
+    overlay_feature_order = list(overlay_payload.get("feature_order", []) or [])
+    if base_feature_order and overlay_feature_order and base_feature_order != overlay_feature_order:
+        raise ValueError(
+            "Cannot merge causal overlays with incompatible feature_order values: "
+            f"{base_model_path} has {len(base_feature_order)} features while "
+            f"{overlay_model_path} has {len(overlay_feature_order)} features."
+        )
+
+    base_transform = dict(base_payload.get("feature_transform_spec", {}) or {})
+    overlay_transform = dict(overlay_payload.get("feature_transform_spec", {}) or {})
+    if base_transform and overlay_transform and base_transform != overlay_transform:
+        raise ValueError(
+            "Cannot merge causal overlays with incompatible feature_transform_spec metadata: "
+            f"{base_model_path} and {overlay_model_path} do not share the same transform contract."
+        )
+
+
