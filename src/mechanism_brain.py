@@ -69,3 +69,23 @@ def _clip(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return float(v)
+    try:
+        out = float(v)
+    except Exception:
+        return default
+    if math.isnan(out) or math.isinf(out):
+        return default
+    return out
+
+
+def _feature_value(raw: Any) -> Any:
+    if isinstance(raw, dict):
+        return raw.get("value")
+    return raw
+
+
