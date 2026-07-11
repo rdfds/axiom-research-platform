@@ -42,7 +42,7 @@ def _load_json(path: Path) -> Dict[str, Any]:
 
 
 def _resolve_bundle_path(model_path: Path, payload: Dict[str, Any]) -> Path | None:
-    raw = str(payload['model_bundle_path'] or "").strip()
+    raw = str(payload.get("model_bundle_path", "") or "").strip()
     if not raw:
         return None
     path = Path(raw)
