@@ -150,3 +150,26 @@ def _as_of_datetime(raw: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _load_snapshot(
+    run: Any,
+    snapshot_root: Optional[str],
+    snapshot_path: Optional[str],
+    entity_identifier_path: str,
+) -> Dict[str, Any]:
+    from src.recommendation_run import _resolve_snapshot, _snapshot_company_aliases
+
+    aliases = _snapshot_company_aliases(
+        str(run.company_id),
+        Path(entity_identifier_path),
+    )
+    return _resolve_snapshot(
+        company_id=str(run.company_id),
+        as_of_time=_as_of_datetime(str(run.as_of_time)),
+        snapshot_root=Path(snapshot_root) if snapshot_root else None,
+        snapshot_path=Path(snapshot_path) if snapshot_path else None,
+        snapshot_builder=None,
+        snapshot_loader=None,
+        aliases=aliases,
+    )
+
+
