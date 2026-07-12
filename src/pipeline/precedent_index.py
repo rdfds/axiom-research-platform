@@ -411,7 +411,7 @@ def query_precedent_index(
     out.sort(
         key=lambda row: (
             -float(_to_float(row.get("query_score")) or 0.0),
-            -float(_to_float(row['precedent_confidence']) or 0.0),
+            -float(_to_float(row.get("precedent_confidence")) or 0.0),
             -int(row.get("sample_size", 0) or 0),
             _norm_str(row.get("action_id")),
             _norm_str(row.get("regime_label")),

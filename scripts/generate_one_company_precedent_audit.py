@@ -797,3 +797,87 @@ def _filter_historical_precedents_as_of(
     return filtered
 
 
+def _retrieve_variant(
+    company_id: str,
+    action_id: str,
+    action_params: Dict[str, Any],
+    candidate_features: Dict[str, Any],
+    candidate_regime: Dict[str, Any],
+    target_values: Dict[str, Any],
+    retrieval_index: Any,
+    historical_df: pd.DataFrame,
+    disable_learned: bool,
+    top_k: int,
+) -> Dict[str, Any]:
+    if disable_learned:
+        os.environ["PRECEDENT_DISABLE_LEARNED_DISTANCE_WEIGHTS"] = "1"
+        os.environ["PRECEDENT_DISABLE_DISTANCE_V2"] = "1"
+    else:
+        os.environ.pop("PRECEDENT_DISABLE_LEARNED_DISTANCE_WEIGHTS", None)
+        os.environ.pop("PRECEDENT_DISABLE_DISTANCE_V2", None)
+    _PRECEDENT_DISTANCE_WEIGHTS_CACHE.clear()
+    _PRECEDENT_DISTANCE_V2_WEIGHTS_CACHE.clear()
+    pack = build_precedent_pack_v2(
+        candidate_id=f"audit:{company_id}",
+        run_id=f"audit:{uuid.uuid4()}",
+        company_id=company_id,
+        action_id=action_id,
+        action_subtype=None,
+        action_params=action_params,
+        candidate_features=candidate_features,
+        candidate_regime=candidate_regime,
+        retrieval_index=retrieval_index,
+        top_k=top_k,
+        min_k=top_k,
+    )
+    feature_scales = _compact_feature_scale_map(historical_df)
+    matches = []
+    for case in pack.retrieved_cohorts[:top_k]:
+        hist_row = _locate_match_row(historical_df, case)
+        matches.append(
+            {
+                "precedent_id": case.precedent_id,
+                "company_id": case.company_id,
+                "action_id": case.action_id,
+                "decision_time": case.decision_time,
+                "similarity_score": float(case.similarity_score),
+                "nonnull_compact_features": _nonnull_compact_count(hist_row),
+                "explanation_lines": _match_explanation_lines(
+                    action_id=action_id,
+                    target_values=target_values,
+                    match_row=hist_row,
+                    feature_scales=feature_scales,
+                ),
+                "historical_row": hist_row,
+            }
+        )
+    return {
+        "state_weight_scope": pack.mismatch_diagnostics.get("state_weight_scope"),
+        "calibration_confidence": float(pack.calibration_confidence),
+        "confidence_label": _confidence_label(float(pack.calibration_confidence)),
+        "out_of_sample_flag": bool(pack.mismatch_diagnostics.get("out_of_sample_flag")),
+        "retrieval_tier": pack.mismatch_diagnostics.get("retrieval_tier"),
+        "exact_match_count": int(pack.mismatch_diagnostics.get("exact_match_count") or 0),
+        "minimum_exact_support": int(pack.mismatch_diagnostics.get("minimum_exact_support") or 0),
+        "top_similarity_mean": pack.mismatch_diagnostics.get("top_similarity_mean"),
+        "top_weighted_feature_coverage": pack.mismatch_diagnostics.get("top_weighted_feature_coverage"),
+        "top_critical_feature_coverage": pack.mismatch_diagnostics.get("top_critical_feature_coverage"),
+        "top_action_match_score": pack.mismatch_diagnostics.get("top_action_match_score"),
+        "matches": matches,
+    }
+
+
+def _confidence_lines(label: str, payload: Dict[str, Any]) -> List[str]:
+    confidence = float(payload.get("calibration_confidence") or 0.0)
+    return [
+        f"- {label} confidence: `{confidence:.4f}` (`{payload.get('confidence_label')}`)",
+        f"- {label} retrieval tier: `{payload.get('retrieval_tier')}`",
+        f"- {label} out-of-sample flag: `{str(bool(payload.get('out_of_sample_flag'))).lower()}`",
+        f"- {label} exact-support depth: `{int(payload.get('exact_match_count') or 0)}` / `{int(payload.get('minimum_exact_support') or 0)}`",
+        f"- {label} top-support similarity mean: `{float(payload.get('top_similarity_mean') or 0.0):.4f}`",
+        f"- {label} top-support weighted coverage: `{float(payload.get('top_weighted_feature_coverage') or 0.0):.4f}`",
+        f"- {label} top-support critical coverage: `{float(payload.get('top_critical_feature_coverage') or 0.0):.4f}`",
+        f"- {label} top-support action match score: `{float(payload.get('top_action_match_score') or 0.0):.4f}`",
+    ]
+
+
