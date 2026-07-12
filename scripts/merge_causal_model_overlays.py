@@ -125,3 +125,108 @@ def _assert_feature_contract_compatible(
         )
 
 
+def merge_models(
+    *,
+    base_model_path: Path,
+    overlay_model_path: Path,
+    selection_path: Path,
+    out_model_path: Path,
+    out_model_card_path: Path,
+) -> Dict[str, Any]:
+    base_payload = _load_json(base_model_path)
+    overlay_payload = _load_json(overlay_model_path)
+    selections = _parse_selection(selection_path)
+    if not selections:
+        raise ValueError(f"No valid overlay selections found in {selection_path}")
+    _assert_feature_contract_compatible(
+        base_payload=base_payload,
+        overlay_payload=overlay_payload,
+        base_model_path=base_model_path,
+        overlay_model_path=overlay_model_path,
+    )
+
+    merged_payload = copy.deepcopy(base_payload)
+    merged_card = copy.deepcopy(dict(base_payload.get("model_card", {}) or {}))
+    overlay_card = dict(overlay_payload.get("model_card", {}) or {})
+
+    base_bundle = _load_bundle(base_model_path, base_payload)
+    overlay_bundle = _load_bundle(overlay_model_path, overlay_payload)
+    merged_bundle = dict(base_bundle)
+
+    replaced: List[Dict[str, str]] = []
+    for objective_name, cell_name in selections:
+        base_objective = dict((merged_payload.get("objectives") or {}).get(objective_name, {}) or {})
+        overlay_objective = dict((overlay_payload.get("objectives") or {}).get(objective_name, {}) or {})
+        base_dr = dict(base_objective.get("dr_models", {}) or {})
+        overlay_dr = dict(overlay_objective.get("dr_models", {}) or {})
+        overlay_model = overlay_dr.get(cell_name)
+        if not isinstance(overlay_model, dict):
+            raise KeyError(f"Overlay model missing objective={objective_name} cell={cell_name}")
+        base_dr[cell_name] = copy.deepcopy(overlay_model)
+        base_objective["dr_models"] = base_dr
+        merged_payload.setdefault("objectives", {})[objective_name] = base_objective
+
+        bundle_key = str(overlay_model.get("bundle_key", "") or "")
+        if bundle_key:
+            if bundle_key not in overlay_bundle:
+                raise KeyError(f"Overlay bundle missing key={bundle_key} for objective={objective_name} cell={cell_name}")
+            merged_bundle[bundle_key] = overlay_bundle[bundle_key]
+
+        merged_objective_card = dict((merged_card.get("objectives") or {}).get(objective_name, {}) or {})
+        overlay_objective_card = dict((overlay_card.get("objectives") or {}).get(objective_name, {}) or {})
+        merged_actions_card = dict(merged_objective_card.get("actions", {}) or {})
+        overlay_actions_card = dict(overlay_objective_card.get("actions", {}) or {})
+        if cell_name in overlay_actions_card:
+            merged_actions_card[cell_name] = copy.deepcopy(overlay_actions_card[cell_name])
+        else:
+            merged_actions_card[cell_name] = {
+                "enabled": bool(overlay_model.get("enabled")),
+                "oos_r2": overlay_model.get("oos_r2"),
+                "gate_reason": overlay_model.get("gate_reason"),
+                "method": overlay_model.get("method"),
+                "n_train": overlay_model.get("n_train"),
+                "n_valid": overlay_model.get("n_valid"),
+                "treated_rows": overlay_model.get("treated_rows"),
+                "control_rows": overlay_model.get("control_rows"),
+                "residual_std": overlay_model.get("residual_std"),
+            }
+        merged_objective_card["actions"] = merged_actions_card
+        merged_card.setdefault("objectives", {})[objective_name] = merged_objective_card
+
+        replaced.append(
+            {
+                "objective": objective_name,
+                "cell": cell_name,
+                "bundle_key": bundle_key,
+            }
+        )
+
+    if merged_bundle:
+        out_bundle_path = out_model_path.with_suffix(".bundle.pkl")
+        out_bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_bundle_path.open("wb") as fh:
+            pickle.dump(merged_bundle, fh)
+        merged_payload["model_bundle_path"] = out_bundle_path.name
+
+    _recount_enabled_actions(merged_card)
+    merged_payload["model_card"] = merged_card
+    merged_payload["merge_metadata"] = {
+        "merged_at": datetime.now(timezone.utc).isoformat(),
+        "base_model_path": str(base_model_path),
+        "overlay_model_path": str(overlay_model_path),
+        "selection_path": str(selection_path),
+        "replaced_cells": replaced,
+    }
+
+    out_model_path.parent.mkdir(parents=True, exist_ok=True)
+    out_model_path.write_text(json.dumps(merged_payload, indent=2))
+    out_model_card_path.parent.mkdir(parents=True, exist_ok=True)
+    out_model_card_path.write_text(json.dumps(merged_card, indent=2))
+    return {
+        "ok": True,
+        "out_model_path": str(out_model_path),
+        "out_model_card_path": str(out_model_card_path),
+        "replaced_cells": replaced,
+    }
+
+
