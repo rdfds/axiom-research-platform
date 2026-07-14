@@ -99,3 +99,44 @@ def _feature_replacement_value(features: Dict[str, Any], feature_name: str, raw:
     return None
 
 
+def _feature_value(features: Dict[str, Any], feature_name: str, default: Any = None) -> Any:
+    if not isinstance(features, dict):
+        return default
+
+    raw = resolve_feature_record(features, feature_name)
+    if raw is not None:
+        replacement_value = _feature_replacement_value(features, feature_name, raw)
+        if replacement_value is not None:
+            return replacement_value
+        if _feature_is_hard_blocked(raw):
+            return default
+        if isinstance(raw, dict) and "value" in raw:
+            return raw.get("value")
+        return raw
+
+    # Nested fallback: allow key lookups against parent feature values.
+    parts = feature_name.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        prefix = ".".join(parts[:i])
+        suffix = parts[i:]
+        if prefix not in features:
+            continue
+        raw = features.get(prefix)
+        if _feature_is_hard_blocked(raw):
+            continue
+        if isinstance(raw, dict) and "value" in raw:
+            raw = raw.get("value")
+        cur = raw
+        ok = True
+        for tok in suffix:
+            if isinstance(cur, dict) and tok in cur:
+                cur = cur[tok]
+            else:
+                ok = False
+                break
+        if ok:
+            return cur
+
+    return default
+
+
