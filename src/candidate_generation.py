@@ -84,3 +84,18 @@ def _feature_is_hard_blocked(raw: Any) -> bool:
     return False
 
 
+def _feature_replacement_value(features: Dict[str, Any], feature_name: str, raw: Any) -> Any:
+    if feature_name != "capital_structure.interest_coverage":
+        return None
+    replacement = _feature_record(features, "capital_structure.fixed_charge_coverage")
+    if not isinstance(replacement, dict) or _feature_is_hard_blocked(replacement):
+        return None
+    replacement_applicability = str(replacement.get("applicability_status") or "").strip().lower()
+    current_applicability = str(raw.get("applicability_status") or "").strip().lower() if isinstance(raw, dict) else ""
+    if replacement_applicability != "primary":
+        return None
+    if _feature_is_hard_blocked(raw) or current_applicability in {"secondary", "diagnostic", "unsupported"}:
+        return replacement.get("value")
+    return None
+
+
