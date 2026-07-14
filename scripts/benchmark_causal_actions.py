@@ -173,3 +173,52 @@ def _load_snapshot(
     )
 
 
+def _slice_summary(
+    label: str,
+    action_ids: Sequence[str],
+    diagnostics_rows: Sequence[Dict[str, Any]],
+    elapsed_seconds: float,
+) -> Dict[str, Any]:
+    coverages: List[float] = []
+    qualities: List[float] = []
+    supports: List[float] = []
+    blends: List[float] = []
+    oos_flags: List[float] = []
+    min_oos_values: List[float] = []
+    selected_key_counts: Dict[str, int] = {}
+    selected_objective_counts: List[float] = []
+
+    for row in diagnostics_rows:
+        diag = dict(row.get("causal_diagnostics", {}) or {})
+        if not diag:
+            continue
+        coverages.append(float(diag.get("coverage_score") or 0.0))
+        qualities.append(float(diag.get("model_quality") or 0.0))
+        supports.append(float(diag.get("support_score") or 0.0))
+        blends.append(float(diag.get("blend_weight") or 0.0))
+        oos_flags.append(1.0 if bool(diag.get("out_of_sample_flag")) else 0.0)
+        if diag.get("min_oos_r2") is not None:
+            min_oos_values.append(float(diag.get("min_oos_r2") or 0.0))
+        objectives = dict(diag.get("selected_models_by_objective") or {})
+        selected_objective_counts.append(float(len(objectives)))
+        for payload in objectives.values():
+            key = str((payload or {}).get("selected_key", "") or "")
+            if key:
+                selected_key_counts[key] = selected_key_counts.get(key, 0) + 1
+
+    return {
+        "label": label,
+        "action_ids": list(action_ids),
+        "selected_causal_candidates": int(len(diagnostics_rows)),
+        "coverage_score_mean": round(_mean(coverages), 6),
+        "model_quality_mean": round(_mean(qualities), 6),
+        "support_score_mean": round(_mean(supports), 6),
+        "blend_weight_mean": round(_mean(blends), 6),
+        "min_oos_r2_mean": round(_mean(min_oos_values), 6) if min_oos_values else None,
+        "selected_objectives_mean": round(_mean(selected_objective_counts), 6),
+        "oos_rate": round(_mean(oos_flags), 6),
+        "selected_model_keys": dict(sorted(selected_key_counts.items())),
+        "elapsed_seconds": round(float(elapsed_seconds), 6),
+    }
+
+

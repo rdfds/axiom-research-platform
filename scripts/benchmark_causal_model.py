@@ -33,3 +33,66 @@ def _parse_args() :
     return p.parse_args()
 
 
+def main() -> None:
+    args = _parse_args()
+    champion_card = load_model_card(args.champion_model_card)
+    champion_summary = summarize_model_card(champion_card)
+    required_objectives: List[str] = list(args.required_objective or [])
+    if not required_objectives:
+        required_objectives = ["value_creation", "risk_reduction"]
+
+    champion_gates = evaluate_summary_thresholds(
+        champion_summary,
+        min_enabled_cells=int(args.min_enabled_cells),
+        min_enabled_rate=float(args.min_enabled_rate),
+        min_enabled_oos_r2_mean=float(args.min_enabled_oos_r2_mean),
+        required_objectives=required_objectives,
+        required_objective_min_enabled=int(args.required_objective_min_enabled),
+        required_objective_min_oos_r2_mean=float(args.required_objective_min_oos_r2_mean),
+    )
+
+    report: Dict[str, Any] = {
+        "ok": True,
+        "champion": {
+            "model_card_path": str(Path(args.champion_model_card)),
+            "summary": champion_summary,
+            "production_gate": champion_gates,
+        },
+        "thresholds": {
+            "min_enabled_cells": int(args.min_enabled_cells),
+            "min_enabled_rate": float(args.min_enabled_rate),
+            "min_enabled_oos_r2_mean": float(args.min_enabled_oos_r2_mean),
+            "required_objectives": required_objectives,
+            "required_objective_min_enabled": int(args.required_objective_min_enabled),
+            "required_objective_min_oos_r2_mean": float(args.required_objective_min_oos_r2_mean),
+        },
+    }
+
+    challenger_path = str(args.challenger_model_card or "").strip()
+    if challenger_path:
+        challenger_card = load_model_card(challenger_path)
+        challenger_summary = summarize_model_card(challenger_card)
+        challenger_gates = evaluate_summary_thresholds(
+            challenger_summary,
+            min_enabled_cells=int(args.min_enabled_cells),
+            min_enabled_rate=float(args.min_enabled_rate),
+            min_enabled_oos_r2_mean=float(args.min_enabled_oos_r2_mean),
+            required_objectives=required_objectives,
+            required_objective_min_enabled=int(args.required_objective_min_enabled),
+            required_objective_min_oos_r2_mean=float(args.required_objective_min_oos_r2_mean),
+        )
+        report["challenger"] = {
+            "model_card_path": str(Path(challenger_path)),
+            "summary": challenger_summary,
+            "production_gate": challenger_gates,
+        }
+        report["comparison"] = compare_summaries(champion_summary, challenger_summary)
+
+    text = json.dumps(report, indent=2)
+    print(text)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+
+
