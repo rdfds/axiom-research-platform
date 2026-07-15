@@ -89,3 +89,7 @@ def _feature_value(raw: Any) -> Any:
     return raw
 
 
+def _extract_feature(features: Dict[str, Any], name: str, default: Any = None) -> Any:
+    return resolve_feature_value(features, name, default=default)
+
+
