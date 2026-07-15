@@ -1,0 +1,50 @@
+{
+  "capital_structure.revolver_draw_or_resize": {
+    "train_patterns": [
+      "loan_issuance.revolver_*"
+    ],
+    "status": "mapped",
+    "notes": "Uses revolver issuance and revolver term-loan analogs from the outcomes dataset."
+  },
+  "capital_return.special_dividend": {
+    "train_patterns": [
+      "dividend_special.*"
+    ],
+    "status": "mapped",
+    "notes": "Uses special dividend subtypes from the outcomes dataset."
+  },
+  "mna.platform_acquisition": {
+    "train_patterns": [
+      "acquisition.*"
+    ],
+    "status": "coarse_analog",
+    "notes": "No direct platform-acquisition subtype exists in the outcomes dataset; broad acquisition analog only."
+  },
+  "mna.tuck_in_acquisition": {
+    "train_patterns": [
+      "acquisition.*"
+    ],
+    "status": "coarse_analog",
+    "notes": "No direct tuck-in subtype exists in the outcomes dataset; broad acquisition analog only."
+  },
+  "governance.activist_settlement": {
+    "train_patterns": [],
+    "status": "unsupported",
+    "notes": "No governance/activism training analogue exists in the current action outcomes taxonomy."
+  },
+  "governance.board_refresh": {
+    "train_patterns": [],
+    "status": "unsupported",
+    "notes": "No board/governance refresh analogue exists in the current action outcomes taxonomy."
+  },
+  "restructuring.working_capital_program": {
+    "train_patterns": [],
+    "status": "unsupported",
+    "notes": "No working-capital-program analogue exists in the current action outcomes taxonomy."
+  },
+  "governance.capital_allocation_policy_reset": {
+    "train_patterns": [],
+    "status": "unsupported",
+    "notes": "Low-support governance action with no training analogue in the current action outcomes taxonomy."
+  }
+}

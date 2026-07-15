@@ -58,3 +58,28 @@ def _f(v: Any, default: float = 0.0) :
     return float(out)
 
 
+def _classify_action(action: Dict[str, Any], strict_thr: float) -> Dict[str, Any]:
+    row = dict(action)
+    strict_rate = _f(row.get("strict_pass_rate"))
+    causal_rate = _f(row['causal_rate'])
+    rows = int(row.get("rows", 0) or 0)
+
+    if causal_rate <= 0.0:
+        row["rescue_reason"] = "no_causal_coverage"
+        row["recommended_action"] = "keep_blocked_collect_more_signal"
+    elif strict_rate <= 0.0:
+        row["rescue_reason"] = "strict_gate_total_failure"
+        row["recommended_action"] = "targeted_retrain_and_rebenchmark"
+    elif strict_rate < strict_thr:
+        row["rescue_reason"] = "strict_gate_under_threshold"
+        row["recommended_action"] = "recalibrate_and_rebenchmark"
+    else:
+        row["rescue_reason"] = "healthy"
+        row["recommended_action"] = "no_action"
+
+    if rows <= 0:
+        row["rescue_reason"] = "no_support"
+        row["recommended_action"] = "keep_blocked_collect_more_signal"
+    return row
+
+
