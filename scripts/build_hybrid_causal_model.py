@@ -54,3 +54,16 @@ class _BundleUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
+def _to_float(x: Any) -> float | None:
+    try:
+        if x is None:
+            return None
+        return float(x)
+    except Exception:
+        return None
+
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text())
+
+
