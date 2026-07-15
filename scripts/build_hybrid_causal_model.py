@@ -46,3 +46,11 @@ class _RidgePredictor:
         return out
 
 
+class _BundleUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str) -> Any:
+        # Legacy training artifacts may pickle _RidgePredictor under __main__.
+        if module == "__main__" and name == "_RidgePredictor":
+            return _RidgePredictor
+        return super().find_class(module, name)
+
+
