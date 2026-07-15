@@ -69,3 +69,12 @@ def _parse_args() :
     return p.parse_args()
 
 
+def _read_action_ids(path: Path) -> List[str]:
+    action_ids: List[str] = []
+    for raw in path.read_text().splitlines():
+        item = raw.strip()
+        if item and not item.startswith("#") and item not in action_ids:
+            action_ids.append(item)
+    return action_ids
+
+
