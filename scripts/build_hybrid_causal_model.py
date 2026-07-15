@@ -67,3 +67,20 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _load_bundle(model_path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
+    bundle_rel = str(payload.get("model_bundle_path", "")).strip()
+    if not bundle_rel:
+        return {}
+    bundle_path = Path(bundle_rel)
+    if not bundle_path.is_absolute():
+        bundle_path = model_path.parent / bundle_path
+    try:
+        with open(bundle_path, "rb") as fh:
+            loaded = pickle.load(fh)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        with open(bundle_path, "rb") as fh:
+            loaded = _BundleUnpickler(fh).load()
+        return loaded if isinstance(loaded, dict) else {}
+
+

@@ -230,3 +230,21 @@ def merge_models(
     }
 
 
+def main() -> None:
+    args = _parse_args()
+    out_model_path = Path(str(args.out_model))
+    out_model_card_path = (
+        Path(str(args.out_model_card))
+        if str(args.out_model_card or "").strip()
+        else out_model_path.with_suffix(".model_card.json")
+    )
+    payload = merge_models(
+        base_model_path=Path(str(args.base_model)),
+        overlay_model_path=Path(str(args.overlay_model)),
+        selection_path=Path(str(args.selection_json)),
+        out_model_path=out_model_path,
+        out_model_card_path=out_model_card_path,
+    )
+    print(json.dumps(payload), flush=True)
+
+

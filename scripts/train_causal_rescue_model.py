@@ -21,7 +21,7 @@ def _default_path(*parts: str) -> str:
     return str(_REPO_ROOT.joinpath(*parts))
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train a targeted causal rescue model for blocked actions.")
     p.add_argument("--audit-json", default="", help="Optional ML audit JSON used to generate rescue actions.")
     p.add_argument("--rescue-actions-file", default="", help="Optional newline-delimited rescue action ids.")
