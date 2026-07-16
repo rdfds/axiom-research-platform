@@ -33,3 +33,13 @@ def _card() -> dict:
     }
 
 
+def test_summarize_model_card_counts_and_oos_stats():
+    summary = summarize_model_card(_card())
+    totals = summary["totals"]
+    assert totals["total_cells"] == 6
+    assert totals["enabled_cells"] == 4
+    assert abs(float(totals["enabled_rate"]) - (4 / 6)) < 1e-6
+    assert totals["enabled_oos_r2_mean"] > 0.10
+    assert summary["objectives"]["growth"]["enabled_cells"] == 0
+
+

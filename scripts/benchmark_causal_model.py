@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.causal_benchmark import compare_summaries, evaluate_summary_thresholds, load_model_card, summarize_model_card
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Benchmark causal model card quality and production readiness.")
     p.add_argument("--champion-model-card", required=True, help="Path to champion model_card.json")
     p.add_argument("--challenger-model-card", default="", help="Optional challenger model_card.json")
