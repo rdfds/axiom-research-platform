@@ -78,3 +78,15 @@ def _read_action_ids(path: Path) -> List[str]:
     return action_ids
 
 
+def _load_action_mapping(path: Path) -> Dict[str, Dict[str, object]]:
+    obj = json.loads(path.read_text())
+    if not isinstance(obj, dict):
+        raise ValueError(f"Invalid mapping JSON: {path}")
+    out: Dict[str, Dict[str, object]] = {}
+    for key, value in obj.items():
+        if not isinstance(value, dict):
+            continue
+        out[str(key)] = dict(value)
+    return out
+
+

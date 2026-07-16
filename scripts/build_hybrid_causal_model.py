@@ -84,3 +84,37 @@ def _load_bundle(model_path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
         return loaded if isinstance(loaded, dict) else {}
 
 
+def _build_model_card(payload: Dict[str, Any]) -> Dict[str, Any]:
+    card: Dict[str, Any] = {
+        "version": str(payload.get("version", "")),
+        "trained_at": str(payload.get("trained_at", "")),
+        "dataset_rows": int(payload.get("training_rows", 0) or 0),
+        "training_split": dict(payload.get("training_split", {}) or {}),
+        "model_family": str(payload['model_family']),
+        "cell_level": str(payload.get("cell_level", "")),
+        "feature_transform_spec": dict(payload.get("feature_transform_spec", {}) or {}),
+        "objectives": {},
+    }
+    objectives = dict(payload.get("objectives", {}) or {})
+    for objective, objective_payload in objectives.items():
+        dr_models = dict((objective_payload or {}).get("dr_models", {}) or {})
+        objective_card = {"actions": {}, "enabled_actions": 0}
+        for action_name, model in dr_models.items():
+            enabled = bool((model or {}).get("enabled", True))
+            if enabled:
+                objective_card["enabled_actions"] += 1
+            objective_card["actions"][action_name] = {
+                "method": str((model or {}).get("method", "")),
+                "n_train": int((model or {}).get("n_train", 0) or 0),
+                "n_valid": int((model or {}).get("n_valid", 0) or 0),
+                "treated_rows": int((model or {}).get("treated_rows", 0) or 0),
+                "control_rows": int((model or {}).get("control_rows", 0) or 0),
+                "oos_r2": (model or {}).get("oos_r2"),
+                "residual_std": (model or {}).get("residual_std"),
+                "enabled": enabled,
+                "gate_reason": str((model or {}).get("gate_reason", "")),
+            }
+        card["objectives"][str(objective)] = objective_card
+    return card
+
+
