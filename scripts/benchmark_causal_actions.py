@@ -222,3 +222,178 @@ def _slice_summary(
     }
 
 
+def main() -> None:
+    t0 = time.time()
+    args = parse_args()
+    slices = _parse_slices(args.slice)
+
+    print(json.dumps({"ok": True, "event": "startup", "stage": "import_causal_benchmark"}), flush=True)
+    from src.causal_impact_model import CausalImpactModel
+    from src.recommendation_run import RecommendationRunStore
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_done",
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+        ),
+        flush=True,
+    )
+
+    runs_root = Path(args.runs_root)
+    store = RecommendationRunStore(runs_root)
+    run = store.get_run(args.run_id)
+    if run is None:
+        raise SystemExit(f"Run not found: {args.run_id}")
+
+    cfg = _metadata_config(run)
+    snapshot_root = _resolve_path(args.snapshot_root, cfg, "snapshot_root")
+    snapshot_path = _resolve_path(args.snapshot_path, cfg, "snapshot_path")
+    model_path = _resolve_path(args.model_path, cfg, "model_path")
+    entity_identifier_path = _resolve_path(None, cfg, "entity_identifier_path") or "data/inputs_layer/entity_identifier.parquet"
+    if not snapshot_root and not snapshot_path:
+        snapshot_root = _infer_snapshot_root(run)
+    if not model_path:
+        model_path = _default_model_path()
+
+    feasibility_path = Path(args.feasibility_path) if args.feasibility_path else _artifact_path(
+        runs_root,
+        args.run_id,
+        "FeasibilityResults.json",
+    )
+    candidate_set_path = Path(args.candidate_set_path) if args.candidate_set_path else _artifact_path(
+        runs_root,
+        args.run_id,
+        "CandidateSet.json",
+    )
+
+    feasible_candidates = _load_candidates_from_feasibility(feasibility_path)
+    all_candidates = _load_candidates_from_candidate_set(candidate_set_path)
+    snapshot = _load_snapshot(run, snapshot_root, snapshot_path, entity_identifier_path)
+    features = dict(snapshot.get("features", {}) or {})
+    regime = dict(snapshot.get("regime", {}) or {})
+    model = CausalImpactModel.from_path(Path(model_path))
+
+    summaries: List[Dict[str, Any]] = []
+    artifacts: Dict[str, Dict[str, str]] = {}
+
+    for label, action_ids in slices:
+        candidate_source = "feasibility_results"
+        selected = [row for row in feasible_candidates if str(row['action_id']) in set(action_ids)]
+        if not selected:
+            candidate_source = "candidate_set"
+            selected = [row for row in all_candidates if str(row.get("action_id", "")) in set(action_ids)]
+
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "benchmark_slice_started",
+                    "label": label,
+                    "action_ids": list(action_ids),
+                    "candidate_source": candidate_source,
+                    "candidate_count": len(selected),
+                }
+            ),
+            flush=True,
+        )
+
+        started = time.time()
+        diagnostics_rows: List[Dict[str, Any]] = []
+        for cand in selected:
+            action_id = str(cand.get("action_id", "") or "")
+            if not action_id:
+                continue
+            action_type = action_id.split(".", 1)[0] if "." in action_id else str(cand.get("action_type", "") or "")
+            action_subtype = action_id.split(".", 1)[1] if "." in action_id else str(cand.get("action_subtype", "") or "")
+            params = dict(cand.get("params") or cand.get("parameters") or {})
+            diag = model.diagnose(
+                action_id=action_id,
+                action_type=action_type,
+                action_subtype=action_subtype,
+                params=params,
+                features=features,
+                regime=regime,
+            )
+            if diag is None:
+                continue
+            diagnostics_rows.append(
+                {
+                    "candidate": cand,
+                    "causal_diagnostics": {
+                        "action_alias": diag.action_alias,
+                        "subtype_alias": diag.subtype_alias,
+                        "blend_weight": diag.blend_weight,
+                        "coverage_score": diag.coverage_score,
+                        "n_train": diag.n_train,
+                        "model_version": diag.model_version,
+                        "model_quality": diag.model_quality,
+                        "support_score": diag.support_score,
+                        "out_of_sample_flag": diag.out_of_sample_flag,
+                        "min_oos_r2": diag.min_oos_r2,
+                        "min_treated_rows": diag.min_treated_rows,
+                        "min_control_rows": diag.min_control_rows,
+                        "selected_model_keys": list(diag.selected_model_keys),
+                        "selected_models_by_objective": dict(diag.selected_models_by_objective),
+                        "gate_reason": diag.gate_reason,
+                    },
+                }
+            )
+        elapsed = time.time() - started
+        summary = _slice_summary(label, action_ids, diagnostics_rows, elapsed)
+        summary["candidate_count"] = len(selected)
+        summary["candidate_source"] = candidate_source
+        summaries.append(summary)
+
+        tag = f"{args.artifact_prefix}_{label}".strip().replace(" ", "_")
+        bench_key = f"CausalBenchmark_{tag}"
+        bench_path = store.attach_artifact(
+            args.run_id,
+            bench_key,
+            {
+                "run_id": args.run_id,
+                "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "label": label,
+                "action_ids": list(action_ids),
+                "candidate_source": candidate_source,
+                "candidate_count": len(selected),
+                "results": diagnostics_rows,
+                "summary": summary,
+            },
+        )
+        artifacts[label] = {"benchmark_artifact": str(bench_path)}
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "benchmark_slice_completed",
+                    "label": label,
+                    "summary": summary,
+                    "artifacts": artifacts[label],
+                }
+            ),
+            flush=True,
+        )
+
+    payload = {
+        "ok": True,
+        "run_id": args.run_id,
+        "runs_root": str(runs_root),
+        "model_path": str(model_path),
+        "summaries": summaries,
+        "artifacts": artifacts,
+        "elapsed_seconds": round(time.time() - t0, 3),
+    }
+    if args.out:
+        out_path = Path(args.out)
+        out_path.write_text(json.dumps(payload, indent=2))
+        payload["out"] = str(out_path)
+
+    print()
+    _print_table(summaries)
+    print()
+    print(json.dumps(payload, indent=2))
+
+

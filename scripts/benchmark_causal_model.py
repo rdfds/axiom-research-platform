@@ -96,3 +96,6 @@ def main() -> None:
         out.write_text(text)
 
 
+if __name__ == "__main__":
+    main()
+
