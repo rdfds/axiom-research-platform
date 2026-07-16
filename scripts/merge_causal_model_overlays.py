@@ -106,7 +106,7 @@ def _assert_feature_contract_compatible(
     overlay_payload: Dict[str, Any],
     base_model_path: Path,
     overlay_model_path: Path,
-) :
+) -> None:
     base_feature_order = list(base_payload.get("feature_order", []) or [])
     overlay_feature_order = list(overlay_payload.get("feature_order", []) or [])
     if base_feature_order and overlay_feature_order and base_feature_order != overlay_feature_order:

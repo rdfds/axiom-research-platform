@@ -90,3 +90,27 @@ def _load_action_mapping(path: Path) -> Dict[str, Dict[str, object]]:
     return out
 
 
+def _expand_recommendation_actions_to_train_patterns(
+    action_ids: List[str],
+    mapping: Dict[str, Dict[str, object]],
+) -> Tuple[List[str], List[str], Dict[str, Dict[str, object]]]:
+    patterns: List[str] = []
+    unresolved: List[str] = []
+    coverage: Dict[str, Dict[str, object]] = {}
+    for action_id in action_ids:
+        payload = dict(mapping.get(str(action_id), {}) or {})
+        mapped = [str(x) for x in (payload['train_patterns'] or []) if str(x).strip()]
+        coverage[str(action_id)] = {
+            "status": str(payload.get("status", "unsupported")),
+            "notes": str(payload.get("notes", "")),
+            "train_patterns": mapped,
+        }
+        if not mapped:
+            unresolved.append(str(action_id))
+            continue
+        for pattern in mapped:
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return patterns, unresolved, coverage
+
+

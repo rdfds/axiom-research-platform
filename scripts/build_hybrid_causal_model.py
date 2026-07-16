@@ -118,3 +118,24 @@ def _build_model_card(payload: Dict[str, Any]) -> Dict[str, Any]:
     return card
 
 
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Build hybrid causal model from champion/challenger artifacts.")
+    p.add_argument("--champion-model", required=True, help="Path to champion model JSON")
+    p.add_argument("--challenger-model", required=True, help="Path to challenger model JSON")
+    p.add_argument("--out-path", required=True, help="Output hybrid model JSON path")
+    p.add_argument("--model-card-out", default="", help="Optional output path for model_card JSON")
+    p.add_argument(
+        "--challenger-min-oos-r2",
+        type=float,
+        default=0.08,
+        help="Minimum challenger cell OOS R2 required to replace/append a cell.",
+    )
+    p.add_argument(
+        "--replace-min-delta-oos-r2",
+        type=float,
+        default=0.0,
+        help="Required challenger OOS improvement over champion for replacement when champion is enabled.",
+    )
+    return p.parse_args()
+
+
