@@ -140,3 +140,12 @@ def _feature_value(features: Dict[str, Any], feature_name: str, default: Any = N
     return default
 
 
+def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+

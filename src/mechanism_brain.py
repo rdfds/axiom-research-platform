@@ -93,3 +93,12 @@ def _extract_feature(features: Dict[str, Any], name: str, default: Any = None) -
     return resolve_feature_value(features, name, default=default)
 
 
+def _nested_get(obj: Dict[str, Any], path: str, default: Any = None) -> Any:
+    cur: Any = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur
+
+

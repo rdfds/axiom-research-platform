@@ -881,3 +881,73 @@ def _confidence_lines(label: str, payload: Dict[str, Any]) -> List[str]:
     ]
 
 
+def _support_tier_label(
+    *,
+    target_company_id: str,
+    match_company_id: str,
+    similarity_score: float,
+    top_similarity_score: float,
+) -> str:
+    same_company = str(match_company_id or "") == str(target_company_id or "")
+    primary_floor = max(0.40, top_similarity_score - 0.03)
+    secondary_floor = max(0.30, top_similarity_score - 0.08)
+    if same_company:
+        if similarity_score >= primary_floor:
+            return "same_company_history_primary"
+        if similarity_score >= secondary_floor:
+            return "same_company_history_secondary"
+        return "same_company_history_context"
+    if similarity_score >= primary_floor:
+        return "peer_primary"
+    if similarity_score >= secondary_floor:
+        return "peer_secondary"
+    return "context"
+
+
+def _support_tier_summary_lines(
+    *,
+    company_id: str,
+    payload: Dict[str, Any],
+) -> List[str]:
+    matches = list(payload.get("matches") or [])
+    if not matches:
+        return [
+            "- Support summary: `no matches retrieved`",
+        ]
+    top_similarity_score = max(float(match.get("similarity_score") or 0.0) for match in matches)
+    tier_buckets: Dict[str, List[str]] = {}
+    for match in matches:
+        tier_label = _support_tier_label(
+            target_company_id=company_id,
+            match_company_id=str(match.get("company_id") or ""),
+            similarity_score=float(match.get("similarity_score") or 0.0),
+            top_similarity_score=top_similarity_score,
+        )
+        hist_row = match.get("historical_row")
+        ticker = ""
+        if hasattr(hist_row, "get"):
+            ticker = str(hist_row.get("ticker") or "").strip()
+        if not ticker:
+            ticker = str(match.get("company_id") or "")
+        decision_date = str(match.get("decision_time") or "")[:10]
+        label = f"{ticker} ({decision_date})" if decision_date else ticker
+        tier_buckets.setdefault(tier_label, []).append(label)
+    ordered_tiers = (
+        "peer_primary",
+        "same_company_history_primary",
+        "peer_secondary",
+        "same_company_history_secondary",
+        "context",
+        "same_company_history_context",
+    )
+    lines = []
+    for tier in ordered_tiers:
+        values = tier_buckets.get(tier) or []
+        if not values:
+            continue
+        lines.append(f"- {tier.replace('_', ' ').title()}: `{'; '.join(values)}`")
+    if not lines:
+        lines.append("- Support summary: `no tiered support available`")
+    return lines
+
+

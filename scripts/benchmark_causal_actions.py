@@ -281,7 +281,7 @@ def main() -> None:
 
     for label, action_ids in slices:
         candidate_source = "feasibility_results"
-        selected = [row for row in feasible_candidates if str(row['action_id']) in set(action_ids)]
+        selected = [row for row in feasible_candidates if str(row.get("action_id", "")) in set(action_ids)]
         if not selected:
             candidate_source = "candidate_set"
             selected = [row for row in all_candidates if str(row.get("action_id", "")) in set(action_ids)]
