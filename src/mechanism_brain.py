@@ -102,3 +102,15 @@ def _nested_get(obj: Dict[str, Any], path: str, default: Any = None) -> Any:
     return cur
 
 
+def _parse_action_id_tokens(raw: str) -> set[str]:
+    tokens: set[str] = set()
+    text = str(raw or "").strip()
+    if not text:
+        return tokens
+    for part in re.split(r"[,\s]+", text):
+        tok = str(part or "").strip().lower()
+        if tok:
+            tokens.add(tok)
+    return tokens
+
+
