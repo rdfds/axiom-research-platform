@@ -154,3 +154,33 @@ class Blocker:
         return asdict(self)
 
 
+@dataclass
+class Remediation:
+    action_required: str
+    expected_effect: str
+    estimated_delay_days: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class FeasibilityResult:
+    feasibility_status: str
+    pass_probability: float
+    blockers: List[Blocker] = field(default_factory=list)
+    remediation_steps: List[Remediation] = field(default_factory=list)
+    lead_time_prior_days: int = 0
+    gating_signals: List[Signal] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "feasibility_status": self.feasibility_status,
+            "pass_probability": float(self.pass_probability),
+            "blockers": [b.to_dict() for b in self.blockers],
+            "remediation_steps": [r.to_dict() for r in self.remediation_steps],
+            "lead_time_prior_days": int(self.lead_time_prior_days),
+            "gating_signals": [s.to_dict() for s in self.gating_signals],
+        }
+
+
