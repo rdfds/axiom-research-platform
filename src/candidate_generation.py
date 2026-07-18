@@ -149,3 +149,7 @@ def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
         return default
 
 
+def _clip(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+

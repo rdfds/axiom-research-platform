@@ -642,7 +642,7 @@ def _nonnull_compact_count(match_row: pd.Series) -> int:
     return sum(0 if _is_missing(match_row.get(key)) else 1 for key in _STATE_VECTOR_V1_FEATURES)
 
 
-def _compact_feature_scale_map(historical_df: pd.DataFrame) :
+def _compact_feature_scale_map(historical_df: pd.DataFrame) -> Dict[str, float]:
     scales: Dict[str, float] = {}
     for key in _STATE_VECTOR_V1_FEATURES:
         if key not in historical_df.columns:
