@@ -114,3 +114,43 @@ def _parse_action_id_tokens(raw: str) -> set[str]:
     return tokens
 
 
+def _load_action_id_tokens_from_file(path_value: str) -> set[str]:
+    path = Path(str(path_value or "").strip())
+    if not str(path):
+        return set()
+    if not path.exists() or not path.is_file():
+        return set()
+    try:
+        body = path.read_text()
+    except Exception:
+        return set()
+    out: set[str] = set()
+    for line in body.splitlines():
+        line_clean = str(line).split("#", 1)[0].strip()
+        if not line_clean:
+            continue
+        out.update(_parse_action_id_tokens(line_clean))
+    return out
+
+
+@dataclass
+class Signal:
+    feature_name: str
+    value: Any
+    threshold: Any
+    interpretation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class Blocker:
+    blocker_type: str
+    severity: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
