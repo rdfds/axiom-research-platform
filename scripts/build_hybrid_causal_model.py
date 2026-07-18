@@ -90,7 +90,7 @@ def _build_model_card(payload: Dict[str, Any]) -> Dict[str, Any]:
         "trained_at": str(payload.get("trained_at", "")),
         "dataset_rows": int(payload.get("training_rows", 0) or 0),
         "training_split": dict(payload.get("training_split", {}) or {}),
-        "model_family": str(payload['model_family']),
+        "model_family": str(payload.get("model_family", "")),
         "cell_level": str(payload.get("cell_level", "")),
         "feature_transform_spec": dict(payload.get("feature_transform_spec", {}) or {}),
         "objectives": {},

@@ -114,3 +114,37 @@ def _expand_recommendation_actions_to_train_patterns(
     return patterns, unresolved, coverage
 
 
+def materialize_rescue_action_ids(
+    args: argparse.Namespace,
+) -> Tuple[List[str], Path, List[str], List[str], Dict[str, Dict[str, object]]]:
+    if str(args.rescue_actions_file or "").strip():
+        source_path = Path(str(args.rescue_actions_file))
+        recommendation_action_ids = _read_action_ids(source_path)
+    else:
+        if not str(args.audit_json or "").strip():
+            raise ValueError("Either --audit-json or --rescue-actions-file is required.")
+
+        audit = json.loads(Path(str(args.audit_json)).read_text())
+        plan = build_causal_rescue_plan(
+            audit=audit,
+            strict_pass_threshold=float(args.strict_pass_threshold),
+            min_action_rows=int(args.min_action_rows),
+            low_row_blocklist_threshold=int(args.low_row_blocklist_threshold),
+        )
+        recommendation_action_ids = []
+        for row in plan.get("rescue_actions") or []:
+            action_id = str((row or {}).get("action_id", "")).strip()
+            if action_id and action_id not in recommendation_action_ids:
+                recommendation_action_ids.append(action_id)
+
+    mapping = _load_action_mapping(Path(str(args.mapping_path)))
+    train_patterns, unresolved, coverage = _expand_recommendation_actions_to_train_patterns(
+        recommendation_action_ids,
+        mapping,
+    )
+    out_path = Path(str(args.generated_rescue_actions_out))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("".join(f"{pattern}\n" for pattern in train_patterns))
+    return train_patterns, out_path, recommendation_action_ids, unresolved, coverage
+
+
