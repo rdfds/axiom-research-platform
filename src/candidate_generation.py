@@ -171,3 +171,13 @@ def _is_explicit_false(value: Any) -> bool:
     return False
 
 
+def _is_explicit_true(value: Any) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) != 0.0
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return False
+
+
