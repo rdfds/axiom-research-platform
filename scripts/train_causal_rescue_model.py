@@ -148,3 +148,50 @@ def materialize_rescue_action_ids(
     return train_patterns, out_path, recommendation_action_ids, unresolved, coverage
 
 
+def build_rescue_train_command(args: argparse.Namespace, action_ids_path: Path) -> List[str]:
+    cmd: List[str] = [
+        sys.executable,
+        str(_REPO_ROOT / "scripts" / "train_causal_impact_model.py"),
+        "--outcomes-path",
+        str(args.outcomes_path),
+        "--out-path",
+        str(args.out_path),
+        "--model-card-out",
+        str(args.model_card_out),
+        "--train-end-date",
+        str(args.train_end_date),
+        "--validation-start-date",
+        str(args.validation_start_date),
+        "--model-family",
+        str(args.model_family),
+        "--cell-level",
+        str(args.cell_level),
+        "--crossfit-folds",
+        str(int(args.crossfit_folds)),
+        "--dr-min-treated-rows",
+        str(int(args.dr_min_treated_rows)),
+        "--dr-min-control-rows",
+        str(int(args.dr_min_control_rows)),
+        "--min-validation-rows",
+        str(int(args.min_validation_rows)),
+        "--propensity-clip",
+        str(float(args.propensity_clip)),
+        "--gate-min-oos-r2",
+        str(float(args.gate_min_oos_r2)),
+        "--gate-min-train-rows",
+        str(int(args.gate_min_train_rows)),
+        "--gate-min-treated-rows",
+        str(int(args.gate_min_treated_rows)),
+        "--gate-min-control-rows",
+        str(int(args.gate_min_control_rows)),
+        "--progress-every-cells",
+        str(int(args.progress_every_cells)),
+        "--action-id-allowlist-file",
+        str(action_ids_path),
+        "--subtype-target-normalize",
+    ]
+    if bool(args.quiet):
+        cmd.append("--quiet")
+    return cmd
+
+

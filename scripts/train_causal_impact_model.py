@@ -295,3 +295,28 @@ def _parse_action_id_allowlist(raw: str, file_path: str) -> List[str]:
     return tokens
 
 
+def _matches_action_allowlist(action_id: str, allowlist: List[str]) -> bool:
+    if not allowlist:
+        return True
+    aid = _canonical_action_id(action_id)
+    if not aid:
+        return False
+    return any(fnmatchcase(aid, token) for token in allowlist)
+
+
+def _parse_cell_allowlist(raw: str, file_path: str) -> List[str]:
+    tokens: List[str] = []
+
+    def _append_text(text: str) -> None:
+        for piece in str(text or "").replace("\n", ",").split(","):
+            value = str(piece or "").strip().lower()
+            if value and value not in tokens:
+                tokens.append(value)
+
+    if str(raw or "").strip():
+        _append_text(str(raw))
+    if str(file_path or "").strip():
+        _append_text(Path(str(file_path)).read_text())
+    return tokens
+
+
