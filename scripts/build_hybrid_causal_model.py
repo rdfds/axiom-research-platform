@@ -139,3 +139,49 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _validate_compatibility(champion: Dict[str, Any], challenger: Dict[str, Any]) -> None:
+    fields = [
+        "feature_order",
+        "model_family",
+        "cell_level",
+    ]
+    for f in fields:
+        if champion.get(f) != challenger.get(f):
+            raise ValueError(f"incompatible field {f}: champion={champion.get(f)!r} challenger={challenger.get(f)!r}")
+    if dict(champion.get("objectives", {}) or {}).keys() != dict(challenger.get("objectives", {}) or {}).keys():
+        raise ValueError("objective sets differ between champion and challenger")
+
+
+def _pick_source(
+    champion_model: Dict[str, Any] | None,
+    challenger_model: Dict[str, Any] | None,
+    challenger_min_oos_r2: float,
+    replace_min_delta_oos_r2: float,
+) -> str:
+    c = champion_model if isinstance(champion_model, dict) else None
+    h = challenger_model if isinstance(challenger_model, dict) else None
+
+    if h is None:
+        return "champion"
+
+    h_enabled = bool(h.get("enabled", True))
+    h_oos = _to_float(h.get("oos_r2"))
+    h_eligible = h_enabled and h_oos is not None and float(h_oos) >= float(challenger_min_oos_r2)
+    if not h_eligible:
+        return "champion"
+
+    if c is None:
+        return "challenger"
+
+    c_enabled = bool(c.get("enabled", True))
+    if not c_enabled:
+        return "challenger"
+
+    c_oos = _to_float(c.get("oos_r2"))
+    if c_oos is None:
+        return "challenger"
+    if float(h_oos) >= float(c_oos) + float(replace_min_delta_oos_r2):
+        return "challenger"
+    return "champion"
+
+

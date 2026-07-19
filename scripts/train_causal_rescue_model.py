@@ -195,3 +195,12 @@ def build_rescue_train_command(args: argparse.Namespace, action_ids_path: Path) 
     return cmd
 
 
+def _build_runtime_env() -> dict:
+    env = os.environ.copy()
+    env.setdefault("OMP_NUM_THREADS", "1")
+    env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    env.setdefault("MKL_NUM_THREADS", "1")
+    env.setdefault("NUMEXPR_NUM_THREADS", "1")
+    return env
+
+
