@@ -161,3 +161,13 @@ def _default_funding_mixes() -> List[Dict[str, float]]:
     ]
 
 
+def _is_explicit_false(value: Any) -> bool:
+    if value is False:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) == 0.0
+    if isinstance(value, str):
+        return value.strip().lower() in {"false", "0", "no"}
+    return False
+
+
