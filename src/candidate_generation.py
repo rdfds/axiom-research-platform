@@ -153,3 +153,11 @@ def _clip(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def _default_funding_mixes() -> List[Dict[str, float]]:
+    return [
+        {"cash": 1.0, "debt": 0.0, "equity": 0.0},
+        {"cash": 0.7, "debt": 0.3, "equity": 0.0},
+        {"cash": 0.5, "debt": 0.5, "equity": 0.0},
+    ]
+
+
