@@ -184,3 +184,66 @@ class FeasibilityResult:
         }
 
 
+@dataclass
+class Mechanism:
+    mechanism_id: str
+    channel_type: str
+    activation_strength: float
+    positive_signals: List[Signal] = field(default_factory=list)
+    negative_signals: List[Signal] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "mechanism_id": self.mechanism_id,
+            "channel_type": self.channel_type,
+            "activation_strength": float(self.activation_strength),
+            "positive_signals": [s.to_dict() for s in self.positive_signals],
+            "negative_signals": [s.to_dict() for s in self.negative_signals],
+        }
+
+
+@dataclass
+class Interaction:
+    feature_combination: str
+    direction: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class MechanismActivation:
+    mechanisms: List[Mechanism] = field(default_factory=list)
+    key_interactions: List[Interaction] = field(default_factory=list)
+    narrative_explanation: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "mechanisms": [m.to_dict() for m in self.mechanisms],
+            "key_interactions": [k.to_dict() for k in self.key_interactions],
+            "narrative_explanation": self.narrative_explanation,
+        }
+
+
+@dataclass
+class Distribution:
+    median: float
+    p10: float
+    p25: float
+    p75: float
+    p90: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class RegimeImpact:
+    regime_condition: str
+    effect_shift: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+

@@ -74,3 +74,85 @@ def _make_run(tmp_path: Path, snapshot_root: Path, objectives: dict | None = Non
     return run
 
 
+def _candidate(action_id: str, params: dict) -> dict:
+    at, st = action_id.split(".", 1)
+    return {
+        "candidate_id": "cand-1",
+        "candidate_signature": f"sig::{action_id}",
+        "action_id": action_id,
+        "action_type": at,
+        "action_subtype": st,
+        "parameters": params,
+        "params": params,
+        "created_at": "2026-02-28T00:00:00+00:00",
+    }
+
+
+def test_infeasible_action_flagged_for_liquidity_shortfall(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 4.0},
+        "liquidity.available_for_actions": {"value": 50_000_000.0},
+        "market.market_cap": {"value": 1_000_000_000.0},
+        "capital_structure.net_debt": {"value": 300_000_000.0},
+        "operating.ebitda_ttm": {"value": 120_000_000.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.10, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    assert evaluated.feasibility.feasibility_status == "infeasible"
+    assert any(b.blocker_type == "liquidity_shortfall" for b in evaluated.feasibility.blockers)
+
+
+def test_mechanism_brain_uses_capital_structure_debt_liquidity_aliases_when_context_matches(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "normalized_available_liquidity,normalized_net_debt,normalized_net_leverage,normalized_operating_earnings_fill",
+    )
+    features = {
+        "liquidity.runway_months": {"value": 24.0},
+        "liquidity.available_liquidity_normalized": {"value": 300_000_000.0, "support_mode": "exact"},
+        "market.market_cap": {"value": 1_000_000_000.0},
+        "capital_structure.net_debt_normalized": {"value": 300_000_000.0, "support_mode": "exact"},
+        "capital_structure.net_leverage_normalized": {"value": 3.0, "support_mode": "exact"},
+        "operating.operating_earnings_normalized": {"value": 100_000_000.0, "support_mode": "exact"},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_structure.new_debt_issuance",
+                {"size_pct_market_cap": 0.20, "funding_mix": {"cash": 0.0, "debt": 1.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    proforma_signal = next(
+        (sig for sig in evaluated.feasibility.gating_signals if sig.feature_name == "capital_structure.proforma_leverage"),
+        None,
+    )
+    assert proforma_signal is not None
+    assert abs(float(proforma_signal.value) - 5.0) < 1e-6
+
+
