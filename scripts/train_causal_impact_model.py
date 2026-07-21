@@ -320,3 +320,42 @@ def _parse_cell_allowlist(raw: str, file_path: str) -> List[str]:
     return tokens
 
 
+def _matches_cell_allowlist(cell_key: str, allowlist: List[str]) -> bool:
+    if not allowlist:
+        return True
+    key = str(cell_key or "").strip().lower()
+    if not key:
+        return False
+    return any(fnmatchcase(key, token) for token in allowlist)
+
+
+def _with_action_cells(df: pd.DataFrame, cell_level: str) -> pd.DataFrame:
+    out = df.copy()
+    normalized_family = out.get("normalized_action_family", pd.Series("", index=out.index)).astype(str).str.strip().str.lower()
+    normalized_subfamily = out.get("normalized_action_subfamily", pd.Series("", index=out.index)).map(_canonical_subtype)
+    raw_action_type = out.get("action_type", pd.Series("", index=out.index)).astype(str).str.strip().str.lower()
+    raw_subtype = out.get("action_subtype", pd.Series("", index=out.index)).map(_canonical_subtype)
+    action_type = normalized_family.where(normalized_family != "", raw_action_type)
+    subtype = normalized_subfamily.where(normalized_subfamily != "", raw_subtype)
+    normalized_action_id = out.get("normalized_action_id", pd.Series("", index=out.index)).map(_canonical_action_id)
+    existing_action_id = out.get("action_id", pd.Series("", index=out.index)).map(_canonical_action_id)
+    effective_action_id = normalized_action_id.where(normalized_action_id != "", existing_action_id)
+    out["action_type_key"] = action_type
+    out["action_subtype_key"] = subtype
+    out["action_id_key"] = effective_action_id.where(effective_action_id != "", action_type + "." + subtype)
+    if str(cell_level) == "action_subtype":
+        out["action_cell"] = action_type + "::" + subtype
+    else:
+        out["action_cell"] = action_type + "::all"
+    return out
+
+
+def _parse_objective_allowlist(raw: str) -> List[str]:
+    out: List[str] = []
+    for piece in str(raw or "").replace("\n", ",").split(","):
+        value = str(piece or "").strip()
+        if value and value in OBJECTIVES and value not in out:
+            out.append(value)
+    return out
+
+
