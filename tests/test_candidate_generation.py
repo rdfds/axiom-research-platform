@@ -581,3 +581,28 @@ def _coverage_outlier_regular_payer_feature_set() -> dict:
     return features
 
 
+def _financing_anomaly_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 0.27}
+    features["market.market_cap"] = {"value": 24_000_000_000.0}
+    features["market.drawdown_90d"] = {"value": -0.854}
+    features["liquidity.cash"] = {"value": 688_000_000.0}
+    features["liquidity.available_for_actions"] = {"value": 0.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 1_240_000_000.0}
+    features["capital_structure.total_debt"] = {"value": 715_000_000.0}
+    features["capital_structure.net_debt"] = {"value": 27_000_000.0}
+    features["capital_structure.net_leverage"] = {"value": 0.009}
+    features["capital_structure.interest_coverage"] = {"value": 7.4}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 1_250_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 800_000_000.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 2.867132867132867}
+    features["operating.fcf_conversion"] = {"value": 0.95}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.18}
+    features["operating.revenue_yoy_last_q"] = {"value": 0.02}
+    return features
+
+

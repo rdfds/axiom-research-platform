@@ -181,3 +181,30 @@ def _is_explicit_true(value: Any) -> bool:
     return False
 
 
+def _dividend_initiation_nonpayer_signal(features: Dict[str, Any]) -> bool:
+    payer_value = _feature_value(features, "capital_return.dividend_payer_flag")
+    if _is_explicit_true(payer_value):
+        return False
+    if _is_explicit_false(payer_value):
+        return True
+
+    last_dividend_event = str(_feature_value(features, "capital_return.last_dividend_event_type") or "").strip().lower()
+    if last_dividend_event:
+        return False
+
+    payer_record = _feature_record(features, "capital_return.dividend_payer_flag") or {}
+    missing_reason = str(payer_record.get("missing_reason") or "").strip().lower()
+    quality_flags = {
+        str(flag).strip().lower()
+        for flag in (payer_record.get("quality_flags") or [])
+        if flag is not None
+    }
+    return bool(
+        missing_reason == "unavailable"
+        or "event_history_unavailable" in quality_flags
+        or "dividend_event_schema_incomplete" in quality_flags
+        or "dividend_fact_fallback_no_positive_values" in quality_flags
+        or "dividend_fact_fallback_missing_date" in quality_flags
+    )
+
+
