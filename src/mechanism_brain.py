@@ -247,3 +247,101 @@ class RegimeImpact:
         return asdict(self)
 
 
+@dataclass
+class Driver:
+    driver_name: str
+    contribution: float
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ImpactDistribution:
+    objectives: Dict[str, Distribution]
+    regime_sensitivity: List[RegimeImpact]
+    key_drivers: List[Driver]
+    uncertainty_score: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "objectives": {k: v.to_dict() for k, v in self.objectives.items()},
+            "regime_sensitivity": [r.to_dict() for r in self.regime_sensitivity],
+            "key_drivers": [d.to_dict() for d in self.key_drivers],
+            "uncertainty_score": float(self.uncertainty_score),
+        }
+
+
+@dataclass
+class SanityCheck:
+    check_type: str
+    status: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class RiskItem:
+    risk_type: str
+    probability: float
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "risk_type": self.risk_type,
+            "probability": float(self.probability),
+            "explanation": self.explanation,
+        }
+
+
+@dataclass
+class Assumption:
+    assumption_type: str
+    description: str
+    sensitivity: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ActionCandidate:
+    candidate_id: str
+    run_id: str
+    action_id: str
+    action_type: str
+    action_subtype: str
+    parameters: Dict[str, Any]
+    feasibility: FeasibilityResult
+    mechanism_activation: MechanismActivation
+    impact_distribution: ImpactDistribution
+    structural_sanity_flags: List[SanityCheck]
+    risks: List[RiskItem]
+    assumptions: List[Assumption]
+    evaluation_confidence: float
+    created_at: str
+    evaluation_profile: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "candidate_id": self.candidate_id,
+            "run_id": self.run_id,
+            "action_id": self.action_id,
+            "action_type": self.action_type,
+            "action_subtype": self.action_subtype,
+            "parameters": self.parameters,
+            "feasibility": self.feasibility.to_dict(),
+            "mechanism_activation": self.mechanism_activation.to_dict(),
+            "impact_distribution": self.impact_distribution.to_dict(),
+            "structural_sanity_flags": [x.to_dict() for x in self.structural_sanity_flags],
+            "risks": [x.to_dict() for x in self.risks],
+            "assumptions": [x.to_dict() for x in self.assumptions],
+            "evaluation_confidence": float(self.evaluation_confidence),
+            "created_at": self.created_at,
+            "evaluation_profile": dict(self.evaluation_profile or {}),
+        }
+
+
