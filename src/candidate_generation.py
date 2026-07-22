@@ -208,3 +208,45 @@ def _dividend_initiation_nonpayer_signal(features: Dict[str, Any]) -> bool:
     )
 
 
+def _product_params(spec: Dict[str, Any], max_variants: int = 96) -> List[Dict[str, Any]]:
+    if not spec:
+        return [{}]
+    keys = sorted(spec.keys())
+    values: List[List[Any]] = []
+    for k in keys:
+        v = spec[k]
+        if isinstance(v, list):
+            values.append(v if v else [None])
+        else:
+            values.append([v])
+    out: List[Dict[str, Any]] = []
+    for combo in itertools.product(*values):
+        out.append({k: combo[i] for i, k in enumerate(keys) if combo[i] is not None})
+        if len(out) >= max_variants:
+            break
+    return out
+
+
+def _numeric_value_grid(parameter_name: str, parameter_def: Dict[str, Any], *, max_anchor: float) -> List[float]:
+    minimum = _to_float(parameter_def.get("min"), 0.0) or 0.0
+    maximum = _to_float(parameter_def.get("max"), None)
+    unit = str(parameter_def.get("unit", "") or "").lower()
+
+    if unit == "years" or parameter_name in {"tenor_years", "new_tenor_years"}:
+        anchors = [3.0, 5.0, 7.0]
+    elif unit == "months" or parameter_name.endswith("_months"):
+        anchors = [6.0, 12.0, 24.0]
+    elif parameter_name == "leverage_post_close":
+        anchors = [2.0, 2.5, 3.0]
+    else:
+        anchors = [max(minimum, max_anchor * 0.1), max(minimum, max_anchor * 0.2), max(minimum, max_anchor * 0.35)]
+
+    out: List[float] = []
+    for anchor in anchors:
+        value = max(minimum, float(anchor))
+        if maximum is not None:
+            value = min(value, maximum)
+        out.append(_round_num(value))
+    return sorted(set(out))
+
+
