@@ -359,3 +359,33 @@ def _parse_objective_allowlist(raw: str) -> List[str]:
     return out
 
 
+def _load_capital_routing_config(path_value: str) -> Dict[str, Any]:
+    path = Path(str(path_value or "").strip())
+    if not str(path) or not path.exists() or not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _capital_phase1_defaults(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    actions = dict(config['actions'] or {})
+    allow_actions: List[str] = []
+    allow_objectives: List[str] = []
+    for action_id, spec_raw in actions.items():
+        spec = dict(spec_raw or {})
+        status = str(spec.get("status", "") or "").strip().lower()
+        if status not in {"enabled", "weak_prior_only"}:
+            continue
+        normalized_action = _canonical_action_id(action_id)
+        if normalized_action and normalized_action not in allow_actions:
+            allow_actions.append(normalized_action)
+        for objective in list(spec.get("objective_allowlist", []) or []):
+            objective_name = str(objective or "").strip()
+            if objective_name in OBJECTIVES and objective_name not in allow_objectives:
+                allow_objectives.append(objective_name)
+    return allow_actions, allow_objectives
+
+

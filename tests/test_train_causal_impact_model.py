@@ -23,3 +23,29 @@ def test_parse_objective_allowlist_filters_unknown_values():
     assert out == ["value_creation", "risk_reduction", "growth_v2", "optionality_v2"]
 
 
+def test_capital_phase1_defaults_collect_enabled_and_weak_prior_actions():
+    actions, objectives = _capital_phase1_defaults(
+        {
+            "actions": {
+                "capital_return.open_market_buyback": {
+                    "status": "enabled",
+                    "objective_allowlist": ["value_creation", "risk_reduction"],
+                },
+                "capital_return.special_dividend": {
+                    "status": "weak_prior_only",
+                    "objective_allowlist": ["value_creation"],
+                },
+                "governance.stock_split": {
+                    "status": "blocked",
+                    "objective_allowlist": ["value_creation"],
+                },
+            }
+        }
+    )
+    assert actions == [
+        "capital_return.open_market_buyback",
+        "capital_return.special_dividend",
+    ]
+    assert objectives == ["value_creation", "risk_reduction"]
+
+
