@@ -269,3 +269,16 @@ def test_dr_model_preferred_over_legacy_model():
     assert pred.min_control_rows >= 3000
 
 
+def test_out_of_sample_flag_for_extreme_feature_distance():
+    model = CausalImpactModel(_payload(0.25))
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        params={"size_absolute_usd": 10_000_000_000_000_000.0, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 9_999_999_999_999.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert pred.out_of_sample_flag is True
+
+

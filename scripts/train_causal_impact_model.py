@@ -389,3 +389,160 @@ def _capital_phase1_defaults(config: Dict[str, Any]) -> Tuple[List[str], List[st
     return allow_actions, allow_objectives
 
 
+def _winsorize(y: pd.Series, p: float) -> pd.Series:
+    if y.dropna().empty:
+        return y
+    lo = float(y.quantile(p))
+    hi = float(y.quantile(1.0 - p))
+    return y.clip(lower=lo, upper=hi)
+
+
+def _robust_subtype_normalize(y: pd.Series, subtype: pd.Series) -> pd.Series:
+    ys = _to_num(y).astype(float)
+    st = subtype.astype(str).fillna("unknown")
+    out = pd.Series(np.nan, index=ys.index, dtype=float)
+    global_med = float(ys.median()) if ys.notna().any() else 0.0
+    global_mad = float((ys - global_med).abs().median()) if ys.notna().any() else 1.0
+    global_scale = max(1e-6, 1.4826 * global_mad)
+
+    for key, idx in st.groupby(st).groups.items():
+        grp = ys.loc[idx]
+        ok = grp.dropna()
+        if len(ok) < 200:
+            out.loc[idx] = (grp - global_med) / global_scale
+            continue
+        med = float(ok.median())
+        mad = float((ok - med).abs().median())
+        scale = max(1e-6, 1.4826 * mad)
+        out.loc[idx] = (grp - med) / scale
+    return out.clip(-6.0, 6.0)
+
+
+def _signed_log1p_series(y: pd.Series) -> pd.Series:
+    ys = _to_num(y).astype(float)
+    return np.sign(ys) * np.log1p(np.abs(ys))
+
+
+def _robust_component_standardize(y: pd.Series) -> pd.Series:
+    ys = _to_num(y).astype(float)
+    ok = ys.dropna()
+    if ok.empty:
+        return ys
+    med = float(ok.median())
+    mad = float((ok - med).abs().median())
+    scale = max(1e-6, 1.4826 * mad)
+    return ((ys - med) / scale).clip(-6.0, 6.0)
+
+
+def _build_targets(
+    df: pd.DataFrame,
+    normalize_by_subtype: bool = False,
+    subtype_col: Optional[pd.Series] = None,
+) -> Dict[str, pd.Series]:
+    pe_6m = _numeric_series_or_nan(df, "outcome_pe_6m")
+    ev_6m = _numeric_series_or_nan(df, "outcome_ev_ebitda_6m")
+    pe_12m = _numeric_series_or_nan(df, "outcome_pe_12m")
+    ev_12m = _numeric_series_or_nan(df, "outcome_ev_ebitda_12m")
+    val_6m = pd.concat([pe_6m, ev_6m], axis=1).mean(axis=1, skipna=True)
+    val_12m = pd.concat([pe_12m, ev_12m], axis=1).mean(axis=1, skipna=True)
+    # Blend medium-horizon and long-horizon valuation signals for better stability.
+    val = 0.65 * val_12m.fillna(val_6m) + 0.35 * val_6m.fillna(val_12m)
+
+    leverage_delta = _numeric_series_or_nan(df, "leverage_delta")
+    revenue_delta = _numeric_series_or_nan(df, "revenue_delta")
+    margin_delta = _numeric_series_or_nan(df, "margin_delta")
+    eps_delta = _numeric_series_or_nan(df, "eps_delta")
+    roic_delta = _numeric_series_or_nan(df, "roic_delta")
+    fcf_margin_delta = _numeric_series_or_nan(df, "fcf_margin_delta")
+    spread_6m = _numeric_series_or_nan(df, "credit_spread_change_6m")
+    spread_12m = _numeric_series_or_nan(df, "credit_spread_change_12m")
+    rating_6m = _numeric_series_or_nan(df, "rating_migration_6m")
+    rating_12m = _numeric_series_or_nan(df, "rating_migration_12m")
+
+    # Rating migration: positive means upgrade and should improve rating_preservation.
+    rating_signal = pd.concat(
+        [
+            -0.45 * leverage_delta,
+            0.15 * fcf_margin_delta,
+            -0.15 * spread_6m,
+            -0.25 * spread_12m,
+            0.20 * rating_6m,
+            0.45 * rating_12m,
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    optionality_signal = pd.concat(
+        [
+            fcf_margin_delta,
+            -0.25 * leverage_delta,
+            -0.15 * spread_12m,
+            0.20 * val_6m,
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    growth_signal = pd.concat(
+        [
+            revenue_delta,
+            0.6 * margin_delta,
+            0.8 * eps_delta,
+            0.6 * roic_delta,
+            0.4 * fcf_margin_delta,
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    # Experimental label variants for action-specific rescue work:
+    # - growth_v2 dampens heavy-tailed revenue / EPS swings so the target is
+    #   not dominated by a small number of corporate-action outliers.
+    # - optionality_v2 drops sparse spread data and instead focuses on the
+    #   more consistently observed mix of cash-generation, leverage relief,
+    #   and near-term market confidence.
+    growth_signal_v2 = pd.concat(
+        [
+            _robust_component_standardize(_signed_log1p_series(revenue_delta)),
+            0.5 * _robust_component_standardize(_signed_log1p_series(eps_delta)),
+            0.75 * _robust_component_standardize(margin_delta),
+            0.75 * _robust_component_standardize(roic_delta),
+            0.5 * _robust_component_standardize(fcf_margin_delta),
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    risk_signal = pd.concat(
+        [
+            -0.50 * leverage_delta,
+            -0.20 * spread_6m,
+            -0.25 * spread_12m,
+            0.15 * rating_6m,
+            0.25 * rating_12m,
+            0.10 * fcf_margin_delta,
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    optionality_signal_v2 = pd.concat(
+        [
+            0.8 * _robust_component_standardize(fcf_margin_delta),
+            0.8 * _robust_component_standardize(-1.0 * leverage_delta),
+            0.4 * _robust_component_standardize(val_6m),
+        ],
+        axis=1,
+    ).mean(axis=1, skipna=True)
+
+    out = {
+        "value_creation": val,
+        "risk_reduction": risk_signal,
+        "growth": growth_signal,
+        "rating_preservation": rating_signal,
+        "optionality": optionality_signal,
+        "growth_v2": growth_signal_v2,
+        "optionality_v2": optionality_signal_v2,
+    }
+    if normalize_by_subtype and subtype_col is not None:
+        for k, y in list(out.items()):
+            out[k] = _robust_subtype_normalize(y, subtype_col)
+    return out
+
+
