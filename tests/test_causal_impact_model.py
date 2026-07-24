@@ -282,3 +282,68 @@ def test_out_of_sample_flag_for_extreme_feature_distance():
     assert pred.out_of_sample_flag is True
 
 
+def test_capital_routing_config_overrides_action_policy(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "status_max_blend_weight": {"weak_prior_only": 0.07},
+                "actions": {
+                    "capital_structure.refinancing": {
+                        "status": "weak_prior_only",
+                        "model_action_alias": "bond_issuance",
+                        "model_subtype_alias": "unknown",
+                        "objective_allowlist": ["risk_reduction"],
+                    }
+                },
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    payload = _payload(0.25)
+    payload["objectives"]["risk_reduction"] = {
+        "models": {
+            "__global__": {
+                "intercept": 0.03,
+                "coefficients": {
+                    "base_market_cap": 0.0,
+                    "action_size": 0.0,
+                    "funding_mix_cash": 0.0,
+                },
+                "residual_std": 0.03,
+                "n_train": 7000,
+                "n_valid": 800,
+                "treated_rows": 1800,
+                "control_rows": 5200,
+                "r2": 0.25,
+                "oos_r2": 0.12,
+            }
+        }
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_structure.refinancing",
+        action_type="capital_structure",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 0.0, "debt": 1.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert pred.action_status == "weak_prior_only"
+    assert pred.max_blend_weight is not None and abs(pred.max_blend_weight - 0.07) < 1e-6
+    assert pred.objective_allowlist == ["risk_reduction"]
+    assert list(pred.objectives) == ["risk_reduction"]
+    assert action_id_to_outcomes_action_type("capital_structure.refinancing", "capital_structure") == "bond_issuance"
+    assert action_subtype_to_outcomes_subtype(
+        "capital_structure.refinancing",
+        "capital_structure",
+        "",
+    ) == "unknown"
+    policy = get_causal_action_policy("capital_structure.refinancing", "capital_structure", "")
+    assert policy.status == "weak_prior_only"
+
+    load_causal_routing_config.cache_clear()
+
+
