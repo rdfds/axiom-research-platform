@@ -49,3 +49,20 @@ def test_capital_phase1_defaults_collect_enabled_and_weak_prior_actions():
     assert objectives == ["value_creation", "risk_reduction"]
 
 
+def test_with_action_cells_prefers_normalized_action_columns():
+    df = pd.DataFrame(
+        {
+            "action_type": ["dividend"],
+            "action_subtype": ["regular"],
+            "normalized_action_family": ["capital_structure"],
+            "normalized_action_subfamily": ["refinancing"],
+            "normalized_action_id": ["capital_structure.refinancing"],
+        }
+    )
+    out = _with_action_cells(df, cell_level="action_subtype")
+    assert out.loc[0, "action_type_key"] == "capital_structure"
+    assert out.loc[0, "action_subtype_key"] == "refinancing"
+    assert out.loc[0, "action_id_key"] == "capital_structure.refinancing"
+    assert out.loc[0, "action_cell"] == "capital_structure::refinancing"
+
+

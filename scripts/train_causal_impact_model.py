@@ -371,7 +371,7 @@ def _load_capital_routing_config(path_value: str) -> Dict[str, Any]:
 
 
 def _capital_phase1_defaults(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
-    actions = dict(config['actions'] or {})
+    actions = dict(config.get("actions", {}) or {})
     allow_actions: List[str] = []
     allow_objectives: List[str] = []
     for action_id, spec_raw in actions.items():
