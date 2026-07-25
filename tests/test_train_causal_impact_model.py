@@ -66,3 +66,20 @@ def test_with_action_cells_prefers_normalized_action_columns():
     assert out.loc[0, "action_cell"] == "capital_structure::refinancing"
 
 
+def test_cell_scope_mask_limits_subtype_controls_to_same_family():
+    series = pd.Series(
+        [
+            "capital_return",
+            "capital_return",
+            "capital_structure",
+        ]
+    )
+    out = _cell_scope_mask(
+        action_type_series=series,
+        action_type_key="capital_return",
+        subtype_key="buyback",
+        dr_control_scope="action_family",
+    )
+    assert out.tolist() == [True, True, False]
+
+

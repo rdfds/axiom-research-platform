@@ -561,3 +561,54 @@ def _cell_scope_mask(
     return action_type_series.astype(str).eq(str(action_type_key))
 
 
+def _resolve_dr_control_scope(
+    requested_scope: str,
+    capital_phase1_only: bool,
+    argv: Optional[List[str]] = None,
+) -> str:
+    scope = str(requested_scope or "global").strip().lower() or "global"
+    if not capital_phase1_only:
+        return scope
+    argv_tokens = list(argv if argv is not None else sys.argv[1:])
+    scope_explicit = any(
+        token == "--dr-control-scope" or str(token).startswith("--dr-control-scope=")
+        for token in argv_tokens
+    )
+    if scope_explicit:
+        return scope
+    if scope == "global":
+        return "action_family"
+    return scope
+
+
+def _ensure_features(df: pd.DataFrame) -> pd.DataFrame:
+    x = df.copy()
+    for f in FEATURE_ORDER:
+        aliases = list(CAUSAL_FEATURE_ALIASES.get(f, (f,)))
+        series = None
+        for alias in aliases:
+            if alias in x.columns:
+                series = _to_num(x[alias])
+                break
+        if series is None:
+            series = pd.Series(np.nan, index=x.index, dtype=float)
+        s = series
+        # Unit harmonization: inference snapshots may contain dollars / decimals / bps.
+        if f in USD_MILLIONS_FEATURES:
+            # If values look like raw dollars, convert to USD millions.
+            s = s.where(s.abs() < 1e7, s / 1e6)
+        if f in RATE_PERCENT_FEATURES:
+            # Convert decimal rates (e.g., 0.045) into percent units (4.5).
+            s = s.where(s.abs() > 1.0, s * 100.0)
+        if f in OAS_PERCENT_FEATURES:
+            # Convert bps (e.g., 120) into percent-like units (1.2).
+            s = s.where(s.abs() < 50.0, s / 100.0)
+
+        # Heavy-tailed financial features are modeled in signed log space.
+        if f in SIGNED_LOG1P_FEATURES:
+            s = np.sign(s) * np.log1p(np.abs(s))
+
+        x[f] = s
+    return x
+
+

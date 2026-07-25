@@ -204,3 +204,40 @@ def _build_runtime_env() -> dict:
     return env
 
 
+def main() -> None:
+    args = _parse_args()
+    train_patterns, action_ids_path, recommendation_action_ids, unresolved, coverage = materialize_rescue_action_ids(args)
+    if not train_patterns:
+        raise SystemExit(
+            "No trainable rescue patterns resolved from rescue actions. Review dataset taxonomy or mapping table."
+        )
+
+    Path(str(args.out_path)).parent.mkdir(parents=True, exist_ok=True)
+    Path(str(args.model_card_out)).parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = build_rescue_train_command(args, action_ids_path)
+    payload = {
+        "ok": True,
+        "event": "rescue_training_configured",
+        "recommendation_action_count": len(recommendation_action_ids),
+        "recommendation_action_ids": recommendation_action_ids,
+        "train_pattern_count": len(train_patterns),
+        "train_patterns": train_patterns,
+        "unmapped_recommendation_actions": unresolved,
+        "mapping_path": str(args.mapping_path),
+        "mapping_coverage": coverage,
+        "action_ids_path": str(action_ids_path),
+        "out_path": str(args.out_path),
+        "model_card_out": str(args.model_card_out),
+        "command": cmd,
+    }
+    print(json.dumps(payload), flush=True)
+    if bool(args.dry_run):
+        return
+
+    result = subprocess.run(cmd, env=_build_runtime_env(), check=False)
+    raise SystemExit(int(result.returncode))
+
+
+if __name__ == "__main__":
+    main()
