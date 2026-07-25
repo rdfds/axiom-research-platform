@@ -250,3 +250,33 @@ def _numeric_value_grid(parameter_name: str, parameter_def: Dict[str, Any], *, m
     return sorted(set(out))
 
 
+def _candidate_variant_sort_key(candidate: Dict[str, Any]) -> Any:
+    params = dict(candidate.get("parameters", {}) or {})
+    funding_mix = params.get("funding_mix")
+    debt_share = None
+    if isinstance(funding_mix, dict):
+        debt_share = _to_float(funding_mix.get("debt"), 0.0)
+    generation_confidence = _to_float(candidate.get("generation_confidence"), 0.0) or 0.0
+
+    size_pct = _to_float(params.get("size_pct_market_cap"))
+    size_abs = _to_float(params.get("size_absolute_usd"))
+    initial_yield = _to_float(params.get("initial_yield_pct"))
+    percent_change = _to_float(params.get("percent_change"))
+
+    return (
+        str(candidate.get("action_id", "")),
+        -generation_confidence,
+        0 if size_pct is not None else 1,
+        float(size_pct) if size_pct is not None else float("inf"),
+        0 if size_abs is not None else 1,
+        float(size_abs) if size_abs is not None else float("inf"),
+        0 if initial_yield is not None else 1,
+        float(initial_yield) if initial_yield is not None else float("inf"),
+        0 if percent_change is not None else 1,
+        abs(float(percent_change)) if percent_change is not None else float("inf"),
+        float(debt_share) if debt_share is not None else 0.0,
+        str(candidate.get("generation_source", "")),
+        str(candidate.get("candidate_signature", "")),
+    )
+
+

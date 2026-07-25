@@ -951,3 +951,196 @@ def _support_tier_summary_lines(
     return lines
 
 
+def _ambiguity_read_lines(
+    *,
+    company_id: str,
+    payload: Dict[str, Any],
+) -> List[str]:
+    matches = list(payload.get("matches") or [])
+    confidence = float(payload.get("calibration_confidence") or 0.0)
+    if not matches:
+        return ["- No precedent support was retrieved for this target."]
+    scores = [float(match.get("similarity_score") or 0.0) for match in matches]
+    top_score = max(scores)
+    second_score = scores[1] if len(scores) > 1 else None
+    same_company_count = sum(1 for match in matches if str(match.get("company_id") or "") == str(company_id or ""))
+    lines: List[str] = []
+    if confidence < 0.20:
+        lines.append(
+            "- No high-confidence precedent set was found; this read relies on partial analogs rather than a tight peer neighborhood."
+        )
+    elif confidence < 0.35:
+        lines.append(
+            "- Precedent support is usable but still mixed; the top names are better treated as directional analogs than exact comps."
+        )
+    else:
+        lines.append("- Precedent support is reasonably concentrated around the top neighborhood.")
+    if second_score is not None and (top_score - second_score) <= 0.03:
+        lines.append(
+            "- The top scores cluster tightly together, which usually means the model sees several partial analogs instead of one clearly dominant match."
+        )
+    if same_company_count > 0:
+        lines.append(
+            f"- Same-company history contributes `{same_company_count}` of the top `{len(matches)}` learned matches, which is useful context but not a full substitute for external peers."
+        )
+    if float(payload.get("top_critical_feature_coverage") or 0.0) < 0.70:
+        lines.append(
+            "- Critical feature coverage is thin here, so the read should lean more on broad borrower pattern alignment than on any single exact ratio match."
+        )
+    return lines
+
+
+def _render_doc(
+    company_name: str,
+    company_id: str,
+    action_id: str,
+    row: Dict[str, Any],
+    bundle: Dict[str, Any],
+    learned: Dict[str, Any],
+    prior_only: Dict[str, Any],
+    outcomes_path: Path,
+    snapshot_path: Path,
+    snapshot_source_note: str | None,
+    target_snapshot_cutoff_date: str,
+    historical_precedent_cutoff_time: str,
+    cutoff_policy: str,
+) -> str:
+    target_values = bundle["state_vector_v1"]["values"]
+    learned_ids = [match["precedent_id"] for match in learned["matches"]]
+    prior_ids = [match["precedent_id"] for match in prior_only["matches"]]
+    top1_same = learned_ids[:1] == prior_ids[:1]
+    topk_same = learned_ids == prior_ids
+    audit_date = date.today().isoformat()
+    historical_cutoff_label = historical_precedent_cutoff_time or "latest available"
+    lines = [
+        f"# {company_name} Precedent Audit",
+        "",
+        f"This packet shows the target company state and the retrieved precedent matches for `{action_id}`.",
+        "",
+        f"- Audit generated on: `{audit_date}`",
+        f"- Target snapshot cutoff date: `{target_snapshot_cutoff_date or 'latest available'}`",
+        f"- Historical precedent cutoff: `< {historical_cutoff_label}`",
+        f"- Cutoff policy: `{cutoff_policy}`",
+        f"- Company id: `{company_id}`",
+        f"- Snapshot artifact: `{snapshot_path}`",
+        f"- Historical precedent artifact: `{outcomes_path}`",
+        (
+            f"- Snapshot source note: {snapshot_source_note}"
+            if snapshot_source_note
+            else None
+        ),
+        f"- Learned-vs-prior top-1 same: `{str(top1_same).lower()}`",
+        f"- Learned-vs-prior full top-{len(learned['matches'])} same: `{str(topk_same).lower()}`",
+        "",
+        "## Target Compact State Vector",
+        "",
+        _compact_table(target_values),
+        "",
+        "## Target Raw Inputs Behind The Compact Features",
+        "",
+        _target_raw_table(row),
+        "",
+        "## Support Context",
+        "",
+        *_target_context_lines(row, bundle),
+        "",
+        "## Match Confidence",
+        "",
+        *_confidence_lines("Learned", learned),
+        *_confidence_lines("Prior", prior_only),
+        "",
+        "## Support Tiers",
+        "",
+        *_support_tier_summary_lines(company_id=company_id, payload=learned),
+        "",
+        "## Ambiguity Read",
+        "",
+        *_ambiguity_read_lines(company_id=company_id, payload=learned),
+        "",
+        f"## Learned Weights Enabled (`{learned['state_weight_scope']}`)",
+        "",
+    ]
+    learned_top_score = max((float(match.get("similarity_score") or 0.0) for match in learned["matches"]), default=0.0)
+    for idx, payload in enumerate(learned["matches"], start=1):
+        support_tier = _support_tier_label(
+            target_company_id=company_id,
+            match_company_id=str(payload.get("company_id") or ""),
+            similarity_score=float(payload.get("similarity_score") or 0.0),
+            top_similarity_score=learned_top_score,
+        )
+        lines.extend(
+            [
+                f"### Learned Match {idx}",
+                "",
+                f"- Precedent id: `{payload['precedent_id']}`",
+                f"- Historical company id: `{payload['company_id']}`",
+                f"- Action: `{payload['action_id']}`",
+                f"- Decision time: `{payload['decision_time']}`",
+                f"- Similarity score: `{payload['similarity_score']:.6f}`",
+                f"- Support tier: `{support_tier}`",
+                f"- Non-null compact features on match row: `{payload['nonnull_compact_features']}/{len(_STATE_VECTOR_V1_FEATURES)}`",
+                *payload.get("explanation_lines", []),
+                "",
+                _compact_comparison_table(target_values, payload["historical_row"]),
+                "",
+                _historical_raw_table(payload["historical_row"]),
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Prior Only",
+            "",
+        ]
+    )
+    prior_top_score = max((float(match.get("similarity_score") or 0.0) for match in prior_only["matches"]), default=0.0)
+    for idx, payload in enumerate(prior_only["matches"], start=1):
+        support_tier = _support_tier_label(
+            target_company_id=company_id,
+            match_company_id=str(payload.get("company_id") or ""),
+            similarity_score=float(payload.get("similarity_score") or 0.0),
+            top_similarity_score=prior_top_score,
+        )
+        lines.extend(
+            [
+                f"### Prior Match {idx}",
+                "",
+                f"- Precedent id: `{payload['precedent_id']}`",
+                f"- Historical company id: `{payload['company_id']}`",
+                f"- Action: `{payload['action_id']}`",
+                f"- Decision time: `{payload['decision_time']}`",
+                f"- Similarity score: `{payload['similarity_score']:.6f}`",
+                f"- Support tier: `{support_tier}`",
+                f"- Non-null compact features on match row: `{payload['nonnull_compact_features']}/{len(_STATE_VECTOR_V1_FEATURES)}`",
+                *payload.get("explanation_lines", []),
+                "",
+                _compact_comparison_table(target_values, payload["historical_row"]),
+                "",
+                _historical_raw_table(payload["historical_row"]),
+                "",
+            ]
+        )
+    if topk_same:
+        lines.extend(
+            [
+                "## Read",
+                "",
+                "The learned weights did not change the retrieved top match set here; they only nudged similarity scores.",
+                "",
+            ]
+        )
+    else:
+        learned_only = [precedent_id for precedent_id in learned_ids if precedent_id not in prior_ids]
+        prior_only_ids = [precedent_id for precedent_id in prior_ids if precedent_id not in learned_ids]
+        lines.extend(
+            [
+                "## Read",
+                "",
+                f"- Learned-only precedents: `{', '.join(learned_only) if learned_only else 'None'}`",
+                f"- Prior-only precedents: `{', '.join(prior_only_ids) if prior_only_ids else 'None'}`",
+                "",
+            ]
+        )
+    return "\n".join(line for line in lines if line is not None).rstrip() + "\n"
+
+
