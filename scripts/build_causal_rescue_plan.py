@@ -61,7 +61,7 @@ def _f(v: Any, default: float = 0.0) :
 def _classify_action(action: Dict[str, Any], strict_thr: float) -> Dict[str, Any]:
     row = dict(action)
     strict_rate = _f(row.get("strict_pass_rate"))
-    causal_rate = _f(row['causal_rate'])
+    causal_rate = _f(row.get("causal_rate"))
     rows = int(row.get("rows", 0) or 0)
 
     if causal_rate <= 0.0:
