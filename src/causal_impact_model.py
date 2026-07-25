@@ -89,3 +89,32 @@ class _RidgePredictor:
         return out
 
 
+class _BundleUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str) -> Any:
+        # Legacy training artifacts may pickle _RidgePredictor under __main__
+        # when the trainer is executed as a script path.
+        if module == "__main__" and name == "_RidgePredictor":
+            return _RidgePredictor
+        return super().find_class(module, name)
+
+
+def _clip(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def _quantile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    xs = sorted(float(v) for v in values)
+    if len(xs) == 1:
+        return xs[0]
+    qq = _clip(float(q), 0.0, 1.0)
+    pos = qq * (len(xs) - 1)
+    lo = int(math.floor(pos))
+    hi = int(math.ceil(pos))
+    if lo == hi:
+        return xs[lo]
+    w = pos - lo
+    return xs[lo] * (1.0 - w) + xs[hi] * w
+
+

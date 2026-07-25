@@ -546,3 +546,18 @@ def _build_targets(
     return out
 
 
+def _cell_scope_mask(
+    action_type_series: pd.Series,
+    action_type_key: str,
+    subtype_key: str,
+    dr_control_scope: str,
+) -> pd.Series:
+    scope = str(dr_control_scope or "global").strip().lower()
+    if scope != "action_family":
+        return pd.Series(True, index=action_type_series.index, dtype=bool)
+    # Family-level "all" cells need the global pool; otherwise there is no control set.
+    if str(subtype_key or "").strip().lower() == "all":
+        return pd.Series(True, index=action_type_series.index, dtype=bool)
+    return action_type_series.astype(str).eq(str(action_type_key))
+
+

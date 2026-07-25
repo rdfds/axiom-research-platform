@@ -347,3 +347,71 @@ def test_capital_routing_config_overrides_action_policy(tmp_path, monkeypatch):
     load_causal_routing_config.cache_clear()
 
 
+def test_predict_falls_back_to_canonical_action_cells_when_routing_alias_misses(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "actions": {
+                    "capital_structure.equity_issuance": {
+                        "status": "enabled",
+                        "model_action_alias": "equity_offering_public_proxy",
+                        "model_subtype_alias": "share_issuance_proxy",
+                        "future_action_alias": "equity_issuance",
+                        "objective_allowlist": ["risk_reduction"],
+                    }
+                },
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    payload = _payload(0.25)
+    payload["objectives"] = {
+        "risk_reduction": {
+            "models": {
+                "capital_structure::equity_issuance": {
+                    "intercept": 0.08,
+                    "coefficients": {
+                        "base_market_cap": 0.0,
+                        "action_size": 0.0,
+                        "funding_mix_cash": 0.0,
+                    },
+                    "residual_std": 0.02,
+                    "n_train": 6000,
+                    "n_valid": 700,
+                    "treated_rows": 1500,
+                    "control_rows": 4500,
+                    "r2": 0.20,
+                    "oos_r2": 0.11,
+                }
+            }
+        }
+    }
+    model = CausalImpactModel(payload)
+    diag = model.diagnose(
+        action_id="capital_structure.equity_issuance",
+        action_type="capital_structure",
+        action_subtype="equity_issuance",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 0.0, "debt": 0.0, "equity": 1.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert diag is not None
+    assert diag.selected_models_by_objective["risk_reduction"]["selected_key"] == "capital_structure::equity_issuance"
+
+    pred = model.predict(
+        action_id="capital_structure.equity_issuance",
+        action_type="capital_structure",
+        action_subtype="equity_issuance",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 0.0, "debt": 0.0, "equity": 1.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert list(pred.objectives) == ["risk_reduction"]
+
+    load_causal_routing_config.cache_clear()
+
+
