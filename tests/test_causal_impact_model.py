@@ -415,3 +415,139 @@ def test_predict_falls_back_to_canonical_action_cells_when_routing_alias_misses(
     load_causal_routing_config.cache_clear()
 
 
+def test_predict_uses_future_action_alias_list_for_buyback_cells(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "actions": {
+                    "capital_return.open_market_buyback": {
+                        "status": "enabled",
+                        "model_action_alias": "buyback",
+                        "model_subtype_alias": "buyback",
+                        "future_action_aliases": ["buyback"],
+                        "objective_allowlist": ["value_creation"],
+                    }
+                },
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    payload = _payload(0.25)
+    payload["objectives"] = {
+        "value_creation": {
+            "models": {
+                "capital_return::buyback": {
+                    "intercept": 0.12,
+                    "coefficients": {
+                        "base_market_cap": 0.0,
+                        "action_size": 0.0,
+                        "funding_mix_cash": 0.0,
+                    },
+                    "residual_std": 0.02,
+                    "n_train": 7000,
+                    "n_valid": 800,
+                    "treated_rows": 1800,
+                    "control_rows": 5200,
+                    "r2": 0.18,
+                    "oos_r2": 0.09,
+                }
+            }
+        }
+    }
+    model = CausalImpactModel(payload)
+    diag = model.diagnose(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        action_subtype="open_market_buyback",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert diag is not None
+    assert diag.selected_models_by_objective["value_creation"]["selected_key"] == "capital_return::buyback"
+
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        action_subtype="open_market_buyback",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert pred.future_action_aliases == ["buyback"]
+    assert list(pred.objectives) == ["value_creation"]
+
+    load_causal_routing_config.cache_clear()
+
+
+def test_dividend_initiate_policy_can_expose_rating_preservation(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "actions": {
+                    "capital_return.dividend_initiate": {
+                        "status": "enabled",
+                        "model_action_alias": "dividend_initiate",
+                        "model_subtype_alias": "dividend_initiate",
+                        "objective_allowlist": ["rating_preservation"],
+                        "max_blend_weight": 0.22,
+                        "strict_gate_overrides": {"min_treated_rows": 750},
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    payload = _payload(0.25)
+    payload["objectives"] = {
+        "rating_preservation": {
+            "models": {
+                "capital_return::dividend_initiate": {
+                    "intercept": 0.04,
+                    "coefficients": {
+                        "base_market_cap": 0.0,
+                        "action_size": 0.0,
+                        "funding_mix_cash": 0.0,
+                    },
+                    "residual_std": 0.02,
+                    "n_train": 1200,
+                    "n_valid": 80,
+                    "treated_rows": 900,
+                    "control_rows": 40000,
+                    "r2": 0.18,
+                    "oos_r2": 0.12,
+                }
+            }
+        }
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.dividend_initiate",
+        action_type="capital_return",
+        action_subtype="dividend_initiate",
+        params={"size_pct_market_cap": 0.01, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert pred.action_status == "enabled"
+    assert pred.objective_allowlist == ["rating_preservation"]
+    assert pred.max_blend_weight is not None and abs(pred.max_blend_weight - 0.22) < 1e-6
+    assert pred.min_treated_rows_override == 750
+    assert list(pred.objectives) == ["rating_preservation"]
+
+    policy = get_causal_action_policy("capital_return.dividend_initiate", "capital_return", "dividend_initiate")
+    assert policy.model_action_alias == "dividend_initiate"
+    assert policy.model_subtype_alias == "dividend_initiate"
+    assert policy.min_treated_rows_override == 750
+
+    load_causal_routing_config.cache_clear()
+
+

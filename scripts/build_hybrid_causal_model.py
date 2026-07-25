@@ -185,3 +185,22 @@ def _pick_source(
     return "champion"
 
 
+def _resolve_predictor(
+    source: str,
+    objective: str,
+    cell_key: str,
+    model_meta: Dict[str, Any],
+    champion_bundle: Dict[str, Any],
+    challenger_bundle: Dict[str, Any],
+) -> Tuple[Any, str]:
+    src_bundle = champion_bundle if source == "champion" else challenger_bundle
+    src_key = str(model_meta.get("bundle_key", "")).strip()
+    if not src_key:
+        src_key = f"{objective}::{cell_key}"
+    predictor = src_bundle.get(src_key)
+    if predictor is None:
+        return None, ""
+    out_key = f"{source}::{objective}::{cell_key}"
+    return predictor, out_key
+
+
