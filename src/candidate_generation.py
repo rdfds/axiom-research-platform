@@ -280,3 +280,14 @@ def _candidate_variant_sort_key(candidate: Dict[str, Any]) -> Any:
     )
 
 
+@dataclass
+class Precondition:
+    feature_name: str
+    assumed_relation: str
+    value: Any
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
