@@ -1144,3 +1144,143 @@ def _render_doc(
     return "\n".join(line for line in lines if line is not None).rstrip() + "\n"
 
 
+def main() -> None:
+    args = _parse_args()
+    snapshot_path = Path(args.snapshot_row_path or args.snapshot_path)
+    outcomes_path = Path(args.outcomes_path)
+    out_path = Path(args.out_path)
+    snapshot_policy = _resolve_snapshot_policy(str(args.action_id), args.snapshot_as_of_time)
+    target_snapshot_as_of_time = snapshot_policy.get("target_snapshot_as_of_time") or args.snapshot_as_of_time
+    historical_precedent_cutoff_time = snapshot_policy.get("historical_precedent_cutoff_time") or args.snapshot_as_of_time
+    target_snapshot_cutoff_date = str(snapshot_policy.get("target_snapshot_cutoff_date") or "")
+    cutoff_policy = str(snapshot_policy.get("cutoff_policy") or "requested_snapshot_as_of_time")
+    fallback_row = None
+
+    if args.snapshot_row_path:
+        row = _load_snapshot_row_from_json(snapshot_path, company_id=str(args.company_id))
+        snapshot_source_note = args.snapshot_source_note
+        if not target_snapshot_as_of_time and _is_flat_outcome_row(row):
+            inferred_snapshot_time = _normalize_as_of_time(str(row.get("as_of_time") or row.get("action_date") or ""))
+            if inferred_snapshot_time:
+                target_snapshot_as_of_time = inferred_snapshot_time
+                historical_precedent_cutoff_time = inferred_snapshot_time
+                stamp = pd.to_datetime(inferred_snapshot_time, utc=True, errors="coerce")
+                if pd.notna(stamp):
+                    target_snapshot_cutoff_date = str(stamp.date())
+                cutoff_policy = "snapshot_row_action_date"
+        row = _coerce_snapshot_row_for_audit(
+            row,
+            company_id=str(args.company_id),
+            snapshot_as_of_time=target_snapshot_as_of_time,
+            outcomes_path=outcomes_path,
+        )
+        _, bundle, target_payload = _build_target_payload(row)
+    else:
+        snapshot_source_note = args.snapshot_source_note
+        fallback_row = None
+        try:
+            row = _load_snapshot_row(
+                snapshot_path,
+                company_id=str(args.company_id),
+                snapshot_as_of_time=target_snapshot_as_of_time,
+            )
+        except ValueError:
+            fallback_row = _load_historical_outcome_target_row(
+                outcomes_path,
+                action_id=str(args.action_id),
+                company_id=str(args.company_id),
+                snapshot_as_of_time=target_snapshot_as_of_time,
+                source_company_id=str(args.source_company_id or ""),
+                target_ticker=str(args.target_ticker or ""),
+            )
+            if fallback_row is None:
+                raise
+            row = fallback_row
+            _, bundle, target_payload = _build_target_payload(row)
+        else:
+            _, bundle, target_payload = _build_target_payload(row)
+            fallback_row = _load_historical_outcome_target_row(
+                outcomes_path,
+                action_id=str(args.action_id),
+                company_id=str(args.company_id),
+                snapshot_as_of_time=target_snapshot_as_of_time,
+                source_company_id=str(args.source_company_id or ""),
+                target_ticker=str(args.target_ticker or ""),
+            )
+            if fallback_row is not None:
+                _, fallback_bundle, fallback_target_payload = _build_target_payload(fallback_row)
+                if _target_payload_nonnull_count(fallback_target_payload) > _target_payload_nonnull_count(target_payload):
+                    row = fallback_row
+                    bundle = fallback_bundle
+                    target_payload = fallback_target_payload
+                    snapshot_source_note = "historical_outcome_fallback_preferred_for_completeness"
+    if not snapshot_source_note and row.get("snapshot_catalog_source"):
+        source_name = str(row.get("snapshot_catalog_source"))
+        catalog_path = row.get("snapshot_catalog_path")
+        snapshot_source_note = f"{source_name}: {catalog_path}" if catalog_path else source_name
+    try:
+        raw_historical_df = pd.read_parquet(
+            outcomes_path,
+            filters=[[("normalized_action_id", "==", str(args.action_id))]],
+        )
+        if raw_historical_df.empty:
+            raw_historical_df = pd.read_parquet(outcomes_path)
+    except Exception:
+        raw_historical_df = pd.read_parquet(outcomes_path)
+    raw_historical_df = _filter_historical_precedents_as_of(
+        raw_historical_df,
+        snapshot_as_of_time=historical_precedent_cutoff_time,
+    )
+    retrieval_index = build_precedent_retrieval_index(raw_historical_df)
+    historical_df = retrieval_index.df
+    target_action_params = dict(row.get("action_params") or {})
+    if not target_action_params and fallback_row is not None:
+        target_action_params = dict(fallback_row.get("action_params") or {})
+
+    learned = _retrieve_variant(
+        company_id=str(args.company_id),
+        action_id=str(args.action_id),
+        action_params=target_action_params,
+        candidate_features=target_payload["precedent_features"],
+        candidate_regime=target_payload["regime"],
+        target_values=target_payload["target_values"],
+        retrieval_index=retrieval_index,
+        historical_df=historical_df,
+        disable_learned=False,
+        top_k=int(args.top_k),
+    )
+    prior_only = _retrieve_variant(
+        company_id=str(args.company_id),
+        action_id=str(args.action_id),
+        action_params=target_action_params,
+        candidate_features=target_payload["precedent_features"],
+        candidate_regime=target_payload["regime"],
+        target_values=target_payload["target_values"],
+        retrieval_index=retrieval_index,
+        historical_df=historical_df,
+        disable_learned=True,
+        top_k=int(args.top_k),
+    )
+
+    doc = _render_doc(
+        company_name=str(args.company_name),
+        company_id=str(args.company_id),
+        action_id=str(args.action_id),
+        row=row,
+        bundle=bundle,
+        learned=learned,
+        prior_only=prior_only,
+        outcomes_path=outcomes_path,
+        snapshot_path=snapshot_path,
+        snapshot_source_note=snapshot_source_note,
+        target_snapshot_cutoff_date=target_snapshot_cutoff_date,
+        historical_precedent_cutoff_time=str(historical_precedent_cutoff_time or ""),
+        cutoff_policy=cutoff_policy,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(doc)
+    print(json.dumps({"out_path": str(out_path), "top_k": int(args.top_k)}))
+
+
+if __name__ == "__main__":
+    main()
