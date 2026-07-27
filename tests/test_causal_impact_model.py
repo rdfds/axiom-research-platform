@@ -551,3 +551,87 @@ def test_dividend_initiate_policy_can_expose_rating_preservation(tmp_path, monke
     load_causal_routing_config.cache_clear()
 
 
+def test_dividend_initiate_strict_gate_can_anchor_on_primary_objective(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "actions": {
+                    "capital_return.dividend_initiate": {
+                        "status": "enabled",
+                        "model_action_alias": "dividend_initiate",
+                        "model_subtype_alias": "dividend_initiate",
+                        "objective_allowlist": ["growth", "rating_preservation"],
+                        "strict_gate_primary_objectives": ["rating_preservation"],
+                        "max_blend_weight": 0.22,
+                        "strict_gate_overrides": {"min_treated_rows": 750, "min_oos_r2": 0.08},
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    payload = _payload(0.25)
+    payload["objectives"] = {
+        "growth": {
+            "models": {
+                "capital_return::dividend_initiate": {
+                    "intercept": 0.03,
+                    "coefficients": {
+                        "base_market_cap": 0.0,
+                        "action_size": 0.0,
+                        "funding_mix_cash": 0.0,
+                    },
+                    "residual_std": 0.02,
+                    "n_train": 1500,
+                    "n_valid": 80,
+                    "treated_rows": 900,
+                    "control_rows": 40000,
+                    "r2": 0.05,
+                    "oos_r2": 0.02,
+                }
+            }
+        },
+        "rating_preservation": {
+            "models": {
+                "capital_return::dividend_initiate": {
+                    "intercept": 0.04,
+                    "coefficients": {
+                        "base_market_cap": 0.0,
+                        "action_size": 0.0,
+                        "funding_mix_cash": 0.0,
+                    },
+                    "residual_std": 0.02,
+                    "n_train": 1200,
+                    "n_valid": 80,
+                    "treated_rows": 900,
+                    "control_rows": 40000,
+                    "r2": 0.18,
+                    "oos_r2": 0.12,
+                }
+            }
+        },
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.dividend_initiate",
+        action_type="capital_return",
+        action_subtype="dividend_initiate",
+        params={"size_pct_market_cap": 0.01, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert set(pred.objectives) == {"growth", "rating_preservation"}
+    assert pred.strict_gate_primary_objectives == ["rating_preservation"]
+    assert pred.min_oos_r2 is not None and abs(pred.min_oos_r2 - 0.12) < 1e-6
+    assert abs(pred.model_quality - 0.12) < 1e-6
+
+    policy = get_causal_action_policy("capital_return.dividend_initiate", "capital_return", "dividend_initiate")
+    assert policy.strict_gate_primary_objectives == ("rating_preservation",)
+
+    load_causal_routing_config.cache_clear()
+
+
