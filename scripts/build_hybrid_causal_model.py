@@ -204,3 +204,111 @@ def _resolve_predictor(
     return predictor, out_key
 
 
+def main() -> None:
+    args = _parse_args()
+    champion_path = Path(args.champion_model)
+    challenger_path = Path(args.challenger_model)
+    out_path = Path(args.out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    champion_payload = _load_json(champion_path)
+    challenger_payload = _load_json(challenger_path)
+    _validate_compatibility(champion_payload, challenger_payload)
+
+    champion_bundle = _load_bundle(champion_path, champion_payload)
+    challenger_bundle = _load_bundle(challenger_path, challenger_payload)
+
+    out_payload = copy.deepcopy(champion_payload)
+    out_payload["trained_at"] = datetime.now(timezone.utc).isoformat()
+    out_payload["version"] = str(out_payload.get("version", "causal_impact_model_v2")) + "_hybrid"
+    out_payload["hybrid_sources"] = {
+        "champion_model": str(champion_path),
+        "challenger_model": str(challenger_path),
+        "challenger_min_oos_r2": float(args.challenger_min_oos_r2),
+        "replace_min_delta_oos_r2": float(args.replace_min_delta_oos_r2),
+    }
+
+    objectives = dict(out_payload.get("objectives", {}) or {})
+    challenger_objectives = dict(challenger_payload.get("objectives", {}) or {})
+
+    out_bundle: Dict[str, Any] = {}
+    selected_stats = {"champion_cells": 0, "challenger_cells": 0, "bundle_missing_disabled": 0}
+
+    for objective, champion_obj_payload in objectives.items():
+        champion_dr = dict((champion_obj_payload or {}).get("dr_models", {}) or {})
+        challenger_dr = dict((challenger_objectives.get(objective, {}) or {}).get("dr_models", {}) or {})
+        merged_dr: Dict[str, Any] = {}
+
+        all_keys = sorted(set(champion_dr.keys()) | set(challenger_dr.keys()))
+        for cell_key in all_keys:
+            c_model = champion_dr.get(cell_key)
+            h_model = challenger_dr.get(cell_key)
+            source = _pick_source(
+                champion_model=c_model,
+                challenger_model=h_model,
+                challenger_min_oos_r2=float(args.challenger_min_oos_r2),
+                replace_min_delta_oos_r2=float(args.replace_min_delta_oos_r2),
+            )
+            selected = h_model if source == "challenger" else c_model
+            if not isinstance(selected, dict):
+                continue
+
+            selected_copy = copy.deepcopy(selected)
+            selected_copy["hybrid_source"] = source
+            selected_stats[f"{source}_cells"] += 1
+
+            if str(selected_copy.get("model_family", "linear")).lower() == "hgb" and bool(
+                selected_copy.get("enabled", True)
+            ):
+                predictor, out_key = _resolve_predictor(
+                    source=source,
+                    objective=str(objective),
+                    cell_key=str(cell_key),
+                    model_meta=selected_copy,
+                    champion_bundle=champion_bundle,
+                    challenger_bundle=challenger_bundle,
+                )
+                if predictor is None:
+                    selected_copy["enabled"] = False
+                    reason = str(selected_copy.get("gate_reason", "")).strip()
+                    selected_copy["gate_reason"] = (
+                        f"{reason}|bundle_missing" if reason and reason != "pass" else "bundle_missing"
+                    )
+                    selected_stats["bundle_missing_disabled"] += 1
+                else:
+                    selected_copy["bundle_key"] = out_key
+                    out_bundle[out_key] = predictor
+
+            merged_dr[str(cell_key)] = selected_copy
+
+        objective_models = dict((champion_obj_payload or {}).get("models", {}) or {})
+        objectives[objective] = {"models": objective_models, "dr_models": merged_dr}
+
+    out_payload["objectives"] = objectives
+
+    bundle_path = out_path.with_suffix(".bundle.pkl")
+    with open(bundle_path, "wb") as fh:
+        pickle.dump(out_bundle, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    out_payload["model_bundle_path"] = str(bundle_path.name)
+
+    out_card = _build_model_card(out_payload)
+    out_payload["model_card"] = out_card
+    out_path.write_text(json.dumps(out_payload, indent=2))
+
+    if str(args.model_card_out or "").strip():
+        card_path = Path(str(args.model_card_out).strip())
+        card_path.parent.mkdir(parents=True, exist_ok=True)
+        card_path.write_text(json.dumps(out_card, indent=2))
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "out_path": str(out_path),
+                "bundle_path": str(bundle_path),
+                "selected_stats": selected_stats,
+            }
+        )
+    )
+
+
