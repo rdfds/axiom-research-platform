@@ -291,3 +291,13 @@ class Precondition:
         return asdict(self)
 
 
+@dataclass
+class RationaleReference:
+    reference_type: str
+    reference_id: str
+    explanation: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
