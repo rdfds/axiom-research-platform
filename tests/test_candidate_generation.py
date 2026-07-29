@@ -840,3 +840,319 @@ def _market_shutdown_low_debt_regular_payer_feature_set() -> dict:
     return features
 
 
+def _strategic_regular_payer_recap_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "debt_issuance"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 0.34}
+    features["market.market_cap"] = {"value": 1_526_663_300.0}
+    features["market.drawdown_90d"] = {"value": -0.6838145587637251}
+    features["liquidity.cash"] = {"value": 5_246_000.0}
+    features["liquidity.available_for_actions"] = {"value": 0.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 9_000_000.0}
+    features["capital_structure.total_debt"] = {"value": 1_731_521_000.0}
+    features["capital_structure.net_debt"] = {"value": 1_726_275_000.0}
+    features["capital_structure.net_leverage"] = {"value": 8.587450192266557}
+    features["capital_structure.interest_coverage"] = {"value": 9.987831730212076}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.0}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.124}
+    features["operating.fcf_conversion"] = {"value": 0.668251891574596}
+    features["operating.revenue_yoy_last_q"] = {"value": -0.08}
+    return features
+
+
+def _strategic_regular_payer_buyback_feature_set() -> dict:
+    features = _strategic_regular_payer_recap_feature_set()
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    return features
+
+
+def _buyback_regular_payer_recap_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 0.5}
+    features["market.market_cap"] = {"value": 2_486_200_000.0}
+    features["liquidity.cash"] = {"value": 556_400_000.0}
+    features["liquidity.available_for_actions"] = {"value": 541_196_000.0}
+    features["liquidity.runway_months"] = {"value": 60.0}
+    features["capital_structure.total_debt"] = {"value": 999_000_000.0}
+    features["capital_structure.net_debt"] = {"value": 442_600_000.0}
+    features["capital_structure.net_leverage"] = {"value": 3.842013888888889}
+    features["capital_structure.interest_coverage"] = {"value": 8.51937984496124}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 187_500_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.18768768768768768}
+    features["operating.fcf_conversion"] = {"value": 0.8237847222222222}
+    return features
+
+
+def _strategic_nonpayer_recap_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 2.0 / 3.0}
+    features["market.market_cap"] = {"value": 5_663_112_000.0}
+    features["market.drawdown_90d"] = {"value": -0.8511376783648283}
+    features["liquidity.cash"] = {"value": 372_000_000.0}
+    features["liquidity.available_for_actions"] = {"value": 343_785_000.0}
+    features["liquidity.runway_months"] = {"value": 60.0}
+    features["capital_structure.total_debt"] = {"value": 238_700_000.0}
+    features["capital_structure.net_debt"] = {"value": -133_300_000.0}
+    features["capital_structure.net_leverage"] = {"value": -1.9777448071216617}
+    features["capital_structure.interest_coverage"] = {"value": 98.875}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 1_025_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 4.294093003770423}
+    features["operating.fcf_conversion"] = {"value": 1.4792284866468843}
+    return features
+
+
+def _low_quality_strategic_nonpayer_feature_set() -> dict:
+    features = _strategic_nonpayer_recap_feature_set()
+    features["capital_structure.interest_coverage"] = {"value": 3.0}
+    features["operating.fcf_conversion"] = {"value": 0.3}
+    return features
+
+
+def _growth_missing_liquidity_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["market.credit_window_proxy"] = {"value": 0.7}
+    features["market.equity_window_proxy"] = {"value": 0.7}
+    features["market.ev_ebitda_vs_peer_z"] = {"value": -0.2}
+    features["market.fcf_yield_percentile_peers"] = {"value": 0.4}
+    features["liquidity.available_for_actions"] = {"value": 1_500_000_000.0}
+    features["market.market_cap"] = {"value": 40_000_000_000.0}
+    features["operating.revenue_cagr_3y"] = {"value": None}
+    features["strategic.intent_vector"] = {"value": {"pursue_mna_priority": 0.0}}
+    features["strategic.intent.pursue_mna_priority"] = {"value": 0.0}
+    features["strategic.segment_count"] = {"value": 1}
+    features["strategic.segment_references"] = {"value": ["segment_A"]}
+    features["peer_context.consolidation_wave_score"] = {"value": 0.0}
+    return features
+
+
+def _dividend_cut_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 2.0 / 3.0}
+    features["market.market_cap"] = {"value": 15_265_996_999.999998}
+    features["liquidity.cash"] = {"value": 100_110_000.0}
+    features["liquidity.available_for_actions"] = {"value": 0.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 139_113_480.0}
+    features["capital_structure.total_debt"] = {"value": 940_785_000.0}
+    features["capital_structure.net_debt"] = {"value": 840_675_000.0}
+    features["capital_structure.net_leverage"] = {"value": 5.921706054309161}
+    features["capital_structure.interest_coverage"] = {"value": 5.097834857450242}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.0}
+    features["operating.fcf_conversion"] = {"value": 0.5368506321980769}
+    return features
+
+
+def _maturity_wall_dividend_cut_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 2.0 / 3.0}
+    features["market.market_cap"] = {"value": 5_519_486_050.0}
+    features["market.drawdown_90d"] = {"value": -0.8821873460482793}
+    features["market.volatility_90d"] = {"value": 2.2166079812258888}
+    features["liquidity.cash"] = {"value": 184_496_000.0}
+    features["liquidity.available_for_actions"] = {"value": 75_493_550.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 109_002_450.0}
+    features["liquidity.runway_months"] = {"value": 60.0}
+    features["capital_structure.total_debt"] = {"value": 344_589_000.0}
+    features["capital_structure.net_debt"] = {"value": 160_093_000.0}
+    features["capital_structure.net_leverage"] = {"value": 7.082820864487015}
+    features["capital_structure.interest_coverage"] = {"value": 4.5796644771879995}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 350_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 1.0157027647429255}
+    features["operating.fcf_conversion"] = {"value": 4.917887006149626}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.006220869347432099}
+    features["operating.revenue_yoy_last_q"] = {"value": 3.145202416332491}
+    return features
+
+
+def _buyback_reset_dividend_cut_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    features["market.market_cap"] = {"value": 41_542_328_467.2}
+    features["market.credit_window_proxy"] = {"value": None}
+    features["market.equity_window_proxy"] = {"value": 0.5093425745784695}
+    features["liquidity.cash"] = {"value": None}
+    features["liquidity.available_for_actions"] = {"value": None}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": None}
+    features["capital_structure.total_debt"] = {"value": 7_317_000_000.0}
+    features["capital_structure.net_debt"] = {"value": None}
+    features["capital_structure.net_leverage"] = {"value": None}
+    features["capital_structure.interest_coverage"] = {"value": 6.881533101045296}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 500_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.06833401667350007}
+    features["operating.fcf_conversion"] = {"value": -0.7716455696202532}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.13789010682119668}
+    return features
+
+
+def _real_financing_stress_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 0.52}
+    features["market.market_cap"] = {"value": 4_500_000_000.0}
+    features["market.drawdown_90d"] = {"value": -0.78}
+    features["liquidity.cash"] = {"value": 110_000_000.0}
+    features["liquidity.available_for_actions"] = {"value": 15_000_000.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 150_000_000.0}
+    features["capital_structure.total_debt"] = {"value": 2_400_000_000.0}
+    features["capital_structure.net_debt"] = {"value": 2_290_000_000.0}
+    features["capital_structure.net_leverage"] = {"value": 6.4}
+    features["capital_structure.interest_coverage"] = {"value": 1.1}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 500_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 400_000_000.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.375}
+    features["capital_structure.rating_state"] = {"value": {"rating": "BB", "outlook": "neg"}}
+    features["operating.fcf_conversion"] = {"value": 0.18}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.07}
+    features["operating.revenue_yoy_last_q"] = {"value": -0.08}
+    return features
+
+
+def _mild_maturity_wall_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.7899059015422136}
+    features["market.equity_window_proxy"] = {"value": 0.7602797553111594}
+    features["market.market_cap"] = {"value": 25_931_450_290.88}
+    features["market.drawdown_90d"] = {"value": -0.06351573520828346}
+    features["market.volatility_90d"] = {"value": 0.32334714253693525}
+    features["liquidity.cash"] = {"value": 397_200_000.0}
+    features["liquidity.available_for_actions"] = {"value": 1_147_200_000.0}
+    features["capital_structure.total_debt"] = {"value": 1_568_100_000.0}
+    features["capital_structure.net_debt"] = {"value": 1_170_900_000.0}
+    features["capital_structure.net_leverage"] = {"value": 0.8801774035931744}
+    features["capital_structure.interest_coverage"] = {"value": 19.1685878962536}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 200_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 200_000_000.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.2550857725910337}
+    features["operating.fcf_conversion"] = {"value": 0.4118619860181914}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.23635071511059785}
+    features["operating.revenue_yoy_last_q"] = {"value": None}
+    return features
+
+
+def _continuity_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 2.0 / 3.0}
+    features["market.market_cap"] = {"value": 2_632_476_600.0}
+    features["market.drawdown_90d"] = {"value": -0.9906321315850718}
+    features["market.volatility_90d"] = {"value": 228.45575104408334}
+    features["liquidity.cash"] = {"value": 87_000.0}
+    features["liquidity.available_for_actions"] = {"value": 0.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 27_609_990.0}
+    features["liquidity.runway_months"] = {"value": 60.0}
+    features["capital_structure.total_debt"] = {"value": 204_484_000.0}
+    features["capital_structure.net_debt"] = {"value": 204_397_000.0}
+    features["capital_structure.net_leverage"] = {"value": 2.3577105417969157}
+    features["capital_structure.interest_coverage"] = {"value": 16.1884695531373}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.0}
+    features["operating.fcf_conversion"] = {"value": 0.7942625125442654}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.0941974263663261}
+    features["operating.revenue_yoy_last_q"] = {"value": 2.7011851571831302}
+    return features
+
+
+def _net_cash_continuity_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.credit_window_proxy"] = {"value": 0.0}
+    features["market.equity_window_proxy"] = {"value": 0.45790279372368925}
+    features["market.market_cap"] = {"value": 5_201_162_941.8}
+    features["market.drawdown_90d"] = {"value": -0.7253012048192771}
+    features["market.volatility_90d"] = {"value": 2.551628756369442}
+    features["liquidity.cash"] = {"value": 179_317_000.0}
+    features["liquidity.available_for_actions"] = {"value": 148_406_470.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 30_910_530.0}
+    features["liquidity.runway_months"] = {"value": 60.0}
+    features["capital_structure.total_debt"] = {"value": 0.0}
+    features["capital_structure.net_debt"] = {"value": -179_317_000.0}
+    features["capital_structure.net_leverage"] = {"value": -2.011024257853242}
+    features["capital_structure.interest_coverage"] = {"value": 446.7471264367816}
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": None}
+    features["operating.fcf_conversion"] = {"value": 0.3904359236040239}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.08654041195670213}
+    features["operating.revenue_yoy_last_q"] = {"value": None}
+    return features
+
+
+def _healthy_low_growth_regular_payer_feature_set() -> dict:
+    features = _dividend_confidence_feature_set()
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["operating.revenue_cagr_3y"] = {"value": -0.20}
+    features["strategic.intent_vector"] = {"value": {"pursue_mna_priority": 0.0}}
+    features["strategic.intent.pursue_mna_priority"] = {"value": 0.0}
+    features["strategic.segment_count"] = {"value": 1}
+    features["market.conglomerate_discount_signal"] = {"value": 0.0}
+    return features
+
+
+def _high_coverage_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    features["market.market_cap"] = {"value": 47_340_149_525.55}
+    features["market.credit_window_proxy"] = {"value": 0.7184835168640267}
+    features["market.equity_window_proxy"] = {"value": 0.6355018752847249}
+    features["market.drawdown_90d"] = {"value": -0.0966395080903435}
+    features["market.volatility_90d"] = {"value": 0.35249623981431105}
+    features["liquidity.available_for_actions"] = {"value": 1_970_300_000.0}
+    features["liquidity.cash"] = {"value": 470_300_000.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 49_525_000.0}
+    features["capital_structure.total_debt"] = {"value": 3_224_000_000.0}
+    features["capital_structure.net_debt"] = {"value": 2_753_700_000.0}
+    features["capital_structure.net_leverage"] = {"value": 1.713565650280025}
+    features["capital_structure.interest_coverage"] = {"value": 40.994897959183675}
+    features["capital_structure.debt_due_0_12m"] = {"value": 300_000_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.09305210918114144}
+    features["operating.fcf_conversion"] = {"value": 0.18481642812694463}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.1926396547590506}
+    features["operating.revenue_cagr_3y"] = {"value": 0.05551837854168662}
+    return features
+
+

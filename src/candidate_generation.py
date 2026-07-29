@@ -301,3 +301,28 @@ class RationaleReference:
         return asdict(self)
 
 
+@dataclass
+class ActionCandidateDraft:
+    candidate_id: str
+    run_id: str
+    action_type: str
+    action_subtype: str
+    action_id: str
+    parameters: Dict[str, Any]
+    assumed_preconditions: List[Precondition]
+    generation_source: str
+    rationale_refs: List[RationaleReference]
+    generation_confidence: float
+    created_at: str
+    candidate_signature: str
+    params: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        out = asdict(self)
+        out["assumed_preconditions"] = [p.to_dict() for p in self.assumed_preconditions]
+        out["rationale_refs"] = [r.to_dict() for r in self.rationale_refs]
+        if not out["params"]:
+            out["params"] = dict(self.parameters)
+        return out
+
+
