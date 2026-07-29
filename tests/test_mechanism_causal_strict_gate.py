@@ -11,3 +11,12 @@ class _DummyRegistry:
         return {"action_id": action_id}
 
 
+class _StubCausalModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def predict(self, **kwargs):  # noqa: D401
+        self.calls += 1
+        return {"unexpected": True, "kwargs": kwargs}
+
+
