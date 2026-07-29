@@ -20,3 +20,16 @@ class _StubCausalModel:
         return {"unexpected": True, "kwargs": kwargs}
 
 
+def _brain() -> MechanismBrain:
+    return MechanismBrain(
+        action_registry=_DummyRegistry(),
+        causal_model=None,
+        causal_quality_floor=0.10,
+        causal_support_floor=0.35,
+        causal_min_train_rows=1000,
+        causal_min_oos_r2=0.0,
+        causal_min_treated_rows=1000,
+        causal_min_control_rows=5000,
+    )
+
+
