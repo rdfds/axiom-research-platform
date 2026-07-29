@@ -49,3 +49,6 @@ def main() -> None:
     print(json.dumps({"ok": True, "run_id": run.run_id, "out": str(out_path)}))
 
 
+if __name__ == "__main__":
+    main()
+
