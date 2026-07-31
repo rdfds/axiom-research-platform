@@ -612,3 +612,37 @@ def _ensure_features(df: pd.DataFrame) -> pd.DataFrame:
     return x
 
 
+def _feature_stats(df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+    out: Dict[str, Dict[str, float]] = {}
+    for f in FEATURE_ORDER:
+        s = _to_num(df[f])
+        med = float(s.median()) if not s.dropna().empty else 0.0
+        mean = float(s.mean()) if not s.dropna().empty else med
+        std = float(s.std(ddof=0)) if not s.dropna().empty else 1.0
+        if not np.isfinite(std) or std <= 1e-12:
+            std = 1.0
+        out[f] = {"mean": mean, "std": std, "median": med}
+    return out
+
+
+def _standardize(df: pd.DataFrame, stats: Dict[str, Dict[str, float]]) -> np.ndarray:
+    cols = []
+    for f in FEATURE_ORDER:
+        st = stats[f]
+        s = _to_num(df[f]).fillna(float(st["median"]))
+        cols.append(((s - float(st["mean"])) / float(st["std"])).to_numpy(dtype=float))
+    return np.column_stack(cols)
+
+
+def _fit_ridge(X: np.ndarray, y: np.ndarray, alpha: float) -> Tuple[np.ndarray, float]:
+    n, p = X.shape
+    Xt = np.column_stack([np.ones(n), X])
+    eye = np.eye(p + 1, dtype=float)
+    eye[0, 0] = 0.0  # no penalty on intercept
+    beta = np.linalg.solve(Xt.T @ Xt + alpha * eye, Xt.T @ y)
+    preds = Xt @ beta
+    resid = y - preds
+    resid_std = float(np.sqrt(np.mean(np.square(resid)))) if len(resid) else 0.0
+    return beta, resid_std
+
+

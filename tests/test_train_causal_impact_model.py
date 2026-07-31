@@ -83,3 +83,23 @@ def test_cell_scope_mask_limits_subtype_controls_to_same_family():
     assert out.tolist() == [True, True, False]
 
 
+def test_cell_scope_mask_keeps_family_all_cells_global():
+    series = pd.Series(["capital_return", "capital_structure"])
+    out = _cell_scope_mask(
+        action_type_series=series,
+        action_type_key="capital_return",
+        subtype_key="all",
+        dr_control_scope="action_family",
+    )
+    assert out.tolist() == [True, True]
+
+
+def test_resolve_dr_control_scope_auto_switches_for_capital_phase1_defaults():
+    out = _resolve_dr_control_scope(
+        requested_scope="global",
+        capital_phase1_only=True,
+        argv=[],
+    )
+    assert out == "action_family"
+
+
