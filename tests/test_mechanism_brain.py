@@ -301,3 +301,42 @@ def test_deleveraging_equity_issuance_can_stay_feasible_in_high_vol_when_window_
     )
 
 
+def test_mechanism_rules_trigger_buyback_interaction(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 20.0},
+        "liquidity.available_for_actions": {"value": 250_000_000.0},
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "capital_structure.net_debt": {"value": 200_000_000.0},
+        "capital_structure.net_leverage": {"value": 1.5},
+        "operating.ebitda_ttm": {"value": 130_000_000.0},
+        "operating.fcf_conversion": {"value": 0.45},
+        "market.ev_ebitda_vs_peer_z": {"value": -1.3},
+        "market.fcf_yield_percentile_peers": {"value": 80.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    undervaluation = None
+    for mech in evaluated.mechanism_activation.mechanisms:
+        if mech.mechanism_id == "undervaluation_arbitrage":
+            undervaluation = mech
+            break
+    assert undervaluation is not None
+    assert undervaluation.activation_strength > 0.7
+    assert any(i.direction == "positive" for i in evaluated.mechanism_activation.key_interactions)
+
+

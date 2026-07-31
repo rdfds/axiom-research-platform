@@ -758,7 +758,7 @@ class MechanismBrain:
                 )
             )
             if dividend_continuity_liquidity_exception:
-                annualized_cash_commitment = _to_float(params['annualized_cash_commitment_usd'], 0.0) or 0.0
+                annualized_cash_commitment = _to_float(params.get("annualized_cash_commitment_usd"), 0.0) or 0.0
                 signals.append(
                     Signal(
                         feature_name="capital_return.incremental_quarterly_cash_commitment_usd",
