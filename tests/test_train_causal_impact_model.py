@@ -103,3 +103,40 @@ def test_resolve_dr_control_scope_auto_switches_for_capital_phase1_defaults():
     assert out == "action_family"
 
 
+def test_resolve_dr_control_scope_respects_explicit_global_override():
+    out = _resolve_dr_control_scope(
+        requested_scope="global",
+        capital_phase1_only=True,
+        argv=["--capital-phase1-only", "--dr-control-scope", "global"],
+    )
+    assert out == "global"
+
+
+def test_resolve_outcomes_path_prefers_richer_default_candidates(monkeypatch, tmp_path: Path):
+    legacy = tmp_path / "action_outcomes.parquet"
+    rich = tmp_path / "action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+    legacy.write_text("legacy")
+    rich.write_text("rich")
+    monkeypatch.setattr(
+        "scripts.train_causal_impact_model._DEFAULT_OUTCOMES_CANDIDATES",
+        (rich, legacy),
+    )
+    assert _resolve_outcomes_path("") == rich
+
+
+def test_validate_action_allowlist_coverage_raises_on_missing_explicit_action():
+    df = pd.DataFrame({"action_id_key": ["capital_return.dividend_increase", "capital_return.dividend_initiate"]})
+    try:
+        _validate_action_allowlist_coverage(
+            df,
+            [
+                "capital_return.open_market_buyback",
+                "capital_return.dividend_initiate",
+            ],
+        )
+    except ValueError as exc:
+        assert "capital_return.open_market_buyback" in str(exc)
+    else:
+        raise AssertionError("expected missing explicit action to raise")
+
+

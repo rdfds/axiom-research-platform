@@ -646,3 +646,18 @@ def _fit_ridge(X: np.ndarray, y: np.ndarray, alpha: float) -> Tuple[np.ndarray, 
     return beta, resid_std
 
 
+def _linear_predict(beta: np.ndarray, X: np.ndarray) -> np.ndarray:
+    return np.column_stack([np.ones(len(X)), X]) @ beta
+
+
+def _sigmoid(z: np.ndarray) -> np.ndarray:
+    zc = np.clip(z, -30.0, 30.0)
+    return 1.0 / (1.0 + np.exp(-zc))
+
+
+def _fit_propensity_ridge(X: np.ndarray, t: np.ndarray, alpha: float) -> np.ndarray:
+    # Ridge on binary labels, then calibrated through sigmoid at prediction time.
+    beta, _ = _fit_ridge(X, t.astype(float), alpha)
+    return beta
+
+
