@@ -48,7 +48,7 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _f(v: Any, default: float = 0.0) :
+def _f(v: Any, default: float = 0.0) -> float:
     try:
         out = float(v)
     except Exception:
