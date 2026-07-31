@@ -773,3 +773,77 @@ def test_disabled_subtype_cell_falls_back_to_enabled_all_cell():
     assert pred.objectives["value_creation"]["median"] < 0.2
 
 
+def test_hgb_bundle_model_prediction(tmp_path: Path):
+    payload = _payload(0.2)
+    payload["model_bundle_path"] = "bundle.pkl"
+    payload["objectives"]["value_creation"]["dr_models"] = {
+        "buyback::buyback": {
+            "method": "dr_aipw_hgb_v1",
+            "model_family": "hgb",
+            "bundle_key": "value_creation::buyback::buyback",
+            "residual_std": 0.02,
+            "n_train": 10000,
+            "n_valid": 1000,
+            "treated_rows": 2000,
+            "control_rows": 8000,
+            "r2": 0.3,
+            "oos_r2": 0.2,
+            "enabled": True,
+        }
+    }
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps(payload))
+    bundle = {"value_creation::buyback::buyback": _DummyPredictor(0.12)}
+    with open(tmp_path / "bundle.pkl", "wb") as fh:
+        pickle.dump(bundle, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+    model = CausalImpactModel.from_path(model_path)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        action_subtype="open_market_buyback",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert abs(pred.objectives["value_creation"]["median"] - 0.12) < 1e-6
+
+
+def test_hgb_bundle_model_prediction_falls_back_when_predict_raises(tmp_path: Path):
+    payload = _payload(0.2)
+    payload["model_bundle_path"] = "bundle.pkl"
+    payload["objectives"]["value_creation"]["dr_models"] = {
+        "buyback::buyback": {
+            "method": "dr_aipw_hgb_v1",
+            "model_family": "hgb",
+            "bundle_key": "value_creation::buyback::buyback",
+            "residual_std": 0.02,
+            "n_train": 10000,
+            "n_valid": 1000,
+            "treated_rows": 2000,
+            "control_rows": 8000,
+            "r2": 0.3,
+            "oos_r2": 0.2,
+            "enabled": True,
+        }
+    }
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps(payload))
+    bundle = {"value_creation::buyback::buyback": _FailingHGBPredictor()}
+    with open(tmp_path / "bundle.pkl", "wb") as fh:
+        pickle.dump(bundle, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+    model = CausalImpactModel.from_path(model_path)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        action_subtype="open_market_buyback",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 1_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert abs(pred.objectives["value_creation"]["median"] - 1.2) < 1e-6
+
+
