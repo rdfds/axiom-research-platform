@@ -1098,3 +1098,137 @@ def test_action_id_mapping_aligns_runtime_to_outcomes_taxonomy():
     assert action_id_to_outcomes_action_type("capital_structure.equity_issuance") == "equity_offering_public_proxy"
 
 
+def test_min_objective_oos_filter_removes_weak_objective(monkeypatch):
+    payload = _payload(0.02)
+    payload["objectives"]["risk_reduction"] = {
+        "models": {
+            "__global__": {
+                "intercept": 0.03,
+                "coefficients": {
+                    "base_market_cap": 0.0,
+                    "action_size": 0.0,
+                    "funding_mix_cash": 0.0,
+                },
+                "residual_std": 0.03,
+                "n_train": 5000,
+                "n_valid": 600,
+                "r2": 0.25,
+                "oos_r2": 0.20,
+            }
+        }
+    }
+    monkeypatch.setenv("CAUSAL_MIN_OBJECTIVE_OOS_R2", "0.05")
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert "value_creation" not in pred.objectives
+    assert "risk_reduction" in pred.objectives
+    assert pred.min_oos_r2 is not None and pred.min_oos_r2 >= 0.20
+
+
+def test_standardized_feature_vector_uses_global_runtime_aliases_without_action_context(monkeypatch):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "normalized_net_debt,normalized_net_leverage,pe_ratio_compatibility_alias,ust_10y_alias,ust_2y_alias,sofr_compatibility_fallback,credit_ig_alias,credit_hy_alias",
+    )
+    payload = {
+        "version": "causal_alias_test_v1",
+        "feature_order": [
+            "base_leverage",
+            "base_pe",
+            "macro_rate_10y",
+            "macro_rate_2y",
+            "macro_sofr",
+            "macro_ig_oas",
+            "macro_hy_oas",
+            "macro_vix",
+        ],
+        "feature_stats": {
+            "base_leverage": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "base_pe": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_rate_10y": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_rate_2y": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_sofr": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_ig_oas": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_hy_oas": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro_vix": {"mean": 0.0, "std": 1.0, "median": 0.0},
+        },
+        "objectives": {},
+    }
+    model = CausalImpactModel(payload)
+    vector = model._standardized_feature_vector(
+        params={"funding_mix": {"cash": 1.0}},
+        features={
+            "capital_structure.net_leverage_normalized": {"value": 2.1, "support_mode": "exact"},
+            "market.pe_ratio": {"value": 17.5, "support_mode": "exact"},
+            "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+            "macro.ust_2y_yield": {"value": 4.25, "support_mode": "exact"},
+            "macro.sofr": {"value": 4.49, "support_mode": "exact"},
+            "macro.ig_oas": {"value": 1.02, "support_mode": "exact"},
+            "macro.hy_oas": {"value": 3.44, "support_mode": "exact"},
+            "market.vix": {"value": 18.2, "support_mode": "exact"},
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+
+    assert vector is not None
+    assert vector["base_leverage"] == 2.1
+    assert vector["base_pe"] == 17.5
+    assert vector["macro_rate_10y"] == 4.58
+    assert vector["macro_rate_2y"] == 4.25
+    assert vector["macro_sofr"] == 4.49
+    assert vector["macro_ig_oas"] == 1.02
+    assert vector["macro_hy_oas"] == 3.44
+    assert vector["macro_vix"] == 18.2
+
+
+def test_standardized_feature_vector_supports_canonical_contract_feature_order():
+    payload = {
+        "version": "causal_contract_test_v1",
+        "feature_order": [
+            "scale.market_cap",
+            "capital.net_leverage",
+            "macro.ust_10y_yield",
+            "action.size_absolute_usd",
+        ],
+        "feature_stats": {
+            "scale.market_cap": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.net_leverage": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "macro.ust_10y_yield": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "action.size_absolute_usd": {"mean": 0.0, "std": 1.0, "median": 0.0},
+        },
+        "feature_transform_spec": {
+            "usd_millions_features": ["scale.market_cap", "action.size_absolute_usd"],
+            "rate_percent_features": ["macro.ust_10y_yield"],
+            "oas_percent_features": [],
+            "signed_log1p_features": [],
+        },
+        "objectives": {},
+    }
+    model = CausalImpactModel(payload)
+    vector = model._standardized_feature_vector(
+        params={"size_pct_market_cap": 0.05},
+        features={
+            "features": {
+                "market.market_cap": {"value": 2_000_000_000.0, "support_mode": "exact"},
+                "capital_structure.net_leverage": {"value": 2.4, "support_mode": "exact"},
+                "macro.ust_10y_yield": {"value": 4.58, "support_mode": "exact"},
+            }
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+
+    assert vector is not None
+    assert vector["scale.market_cap"] > 0.0
+    assert vector["capital.net_leverage"] == 2.4
+    assert vector["macro.ust_10y_yield"] == 4.58
+    assert vector["action.size_absolute_usd"] > 0.0
+
+
