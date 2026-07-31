@@ -193,3 +193,73 @@ def test_proforma_leverage_calculation_and_breach(tmp_path: Path):
     assert evaluated.feasibility.feasibility_status == "infeasible"
 
 
+def test_dividend_continuity_exception_softens_liquidity_shortfall(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 3.0},
+        "liquidity.available_for_actions": {"value": 0.0},
+        "liquidity.cash": {"value": 3_625_000.0},
+        "market.market_cap": {"value": 3_006_115_060.0},
+        "capital_structure.total_debt": {"value": 814_582_000.0},
+        "capital_structure.net_debt": {"value": 810_957_000.0},
+        "capital_structure.net_leverage": {"value": 2.90},
+        "capital_structure.interest_coverage": {"value": 3.35},
+        "capital_structure.debt_due_0_12m": {"value": 0.0},
+        "capital_structure.debt_due_12_24m": {"value": 0.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.0},
+        "strategic.intent.return_capital_priority": {"value": 1.0},
+        "strategic.last_action_type": {"value": "buyback"},
+        "strategic.action_frequency_24m": {"value": 0.2916666667},
+        "strategic.recent_actions_count_24m": {"value": 7.0},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[_candidate("capital_return.dividend_increase", {"annualized_cash_commitment_usd": 3_006_115.06, "percent_change": 0.02})],
+    )[0]
+
+    liquidity_blockers = [b for b in evaluated.feasibility.blockers if b.blocker_type == "liquidity_shortfall"]
+    assert liquidity_blockers
+    assert all(b.severity == "soft" for b in liquidity_blockers)
+    assert evaluated.feasibility.feasibility_status == "conditional"
+    assert any(s.feature_name == "capital_return.incremental_quarterly_cash_commitment_usd" for s in evaluated.feasibility.gating_signals)
+
+
+def test_dividend_continuity_exception_does_not_apply_to_large_commitment(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 3.0},
+        "liquidity.available_for_actions": {"value": 0.0},
+        "liquidity.cash": {"value": 3_625_000.0},
+        "market.market_cap": {"value": 3_006_115_060.0},
+        "capital_structure.total_debt": {"value": 814_582_000.0},
+        "capital_structure.net_debt": {"value": 810_957_000.0},
+        "capital_structure.net_leverage": {"value": 2.90},
+        "capital_structure.interest_coverage": {"value": 3.35},
+        "capital_structure.debt_due_0_12m": {"value": 0.0},
+        "capital_structure.debt_due_12_24m": {"value": 0.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.0},
+        "strategic.intent.return_capital_priority": {"value": 1.0},
+        "strategic.last_action_type": {"value": "buyback"},
+        "strategic.action_frequency_24m": {"value": 0.2916666667},
+        "strategic.recent_actions_count_24m": {"value": 7.0},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[_candidate("capital_return.dividend_increase", {"annualized_cash_commitment_usd": 15_030_575.30, "percent_change": 0.08})],
+    )[0]
+
+    assert evaluated.feasibility.feasibility_status == "infeasible"
+    assert any(b.blocker_type == "liquidity_shortfall" and b.severity == "hard" for b in evaluated.feasibility.blockers)
+    assert not any(s.feature_name == "capital_return.incremental_quarterly_cash_commitment_usd" for s in evaluated.feasibility.gating_signals)
+
+

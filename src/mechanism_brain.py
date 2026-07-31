@@ -1964,7 +1964,7 @@ class MechanismBrain:
         return out
 
     def _estimate_action_size_usd(self, action_id: str, params: Dict[str, Any], market_cap: float) -> float:
-        size_abs = _to_float(params['size_absolute_usd'])
+        size_abs = _to_float(params.get("size_absolute_usd"))
         if size_abs is not None and size_abs > 0:
             return size_abs
         pct = _to_float(params.get("size_pct_market_cap"))
