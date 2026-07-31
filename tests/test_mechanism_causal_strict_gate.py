@@ -50,3 +50,26 @@ def test_strict_causal_gate_passes_when_all_thresholds_met():
     assert reason == "pass"
 
 
+def test_strict_causal_gate_fails_on_oos_and_support_and_counts():
+    brain = _brain()
+    ok, reason = brain._passes_strict_causal_gate(
+        {
+            "model_quality": 0.08,
+            "support_score": 0.10,
+            "n_train": 600,
+            "out_of_sample_flag": True,
+            "min_oos_r2": -0.02,
+            "min_treated_rows": 200,
+            "min_control_rows": 3000,
+        }
+    )
+    assert ok is False
+    assert "out_of_support" in reason
+    assert "quality<0.10" in reason
+    assert "support<0.35" in reason
+    assert "n_train<1000" in reason
+    assert "oos_r2<0.00" in reason
+    assert "treated<1000" in reason
+    assert "control<5000" in reason
+
+
