@@ -156,3 +156,40 @@ def test_mechanism_brain_uses_capital_structure_debt_liquidity_aliases_when_cont
     assert abs(float(proforma_signal.value) - 5.0) < 1e-6
 
 
+def test_proforma_leverage_calculation_and_breach(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 24.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 1_000_000_000.0},
+        "capital_structure.net_debt": {"value": 300_000_000.0},
+        "capital_structure.net_leverage": {"value": 3.0},
+        "operating.ebitda_ttm": {"value": 100_000_000.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.20, "funding_mix": {"cash": 0.0, "debt": 1.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    proforma_signal = None
+    for sig in evaluated.feasibility.gating_signals:
+        if sig.feature_name == "capital_structure.proforma_leverage":
+            proforma_signal = sig
+            break
+    assert proforma_signal is not None
+    assert abs(float(proforma_signal.value) - 5.0) < 1e-6
+    assert any(b.blocker_type == "leverage_breach" for b in evaluated.feasibility.blockers)
+    assert evaluated.feasibility.feasibility_status == "infeasible"
+
+
