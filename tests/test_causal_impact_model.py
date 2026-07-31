@@ -1232,3 +1232,68 @@ def test_standardized_feature_vector_supports_canonical_contract_feature_order()
     assert vector["action.size_absolute_usd"] > 0.0
 
 
+def test_standardized_feature_vector_supports_retirement_aware_contract_features():
+    payload = {
+        "version": "causal_retirement_contract_test_v1",
+        "feature_order": [
+            "capital.net_pension_liability",
+            "capital.combined_retirement_liability",
+            "capital.net_debt_including_retirement",
+            "capital.net_leverage_including_retirement",
+            "capital.retirement_regime_combined_retirement_only",
+            "capital.retirement_regime_pension_exact",
+        ],
+        "feature_stats": {
+            "capital.net_pension_liability": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.combined_retirement_liability": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.net_debt_including_retirement": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.net_leverage_including_retirement": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.retirement_regime_combined_retirement_only": {"mean": 0.0, "std": 1.0, "median": 0.0},
+            "capital.retirement_regime_pension_exact": {"mean": 0.0, "std": 1.0, "median": 0.0},
+        },
+        "feature_transform_spec": {
+            "usd_millions_features": [
+                "capital.net_pension_liability",
+                "capital.combined_retirement_liability",
+                "capital.net_debt_including_retirement",
+            ],
+            "rate_percent_features": [],
+            "oas_percent_features": [],
+            "signed_log1p_features": [],
+        },
+        "objectives": {},
+    }
+    model = CausalImpactModel(payload)
+    vector = model._standardized_feature_vector(
+        params={},
+        features={
+            "features": {
+                "capital_structure.net_pension_liability": {"value": 120_000_000.0, "support_mode": "exact"},
+                "capital_structure.combined_retirement_liability": {
+                    "value": 150_000_000.0,
+                    "support_mode": "exact",
+                },
+                "capital_structure.net_debt_including_retirement": {
+                    "value": 900_000_000.0,
+                    "support_mode": "proxy_missing_component",
+                },
+                "capital_structure.net_leverage_including_retirement": {
+                    "value": 2.7,
+                    "support_mode": "proxy_missing_component",
+                },
+                "capital_structure.retirement_obligation_regime": {
+                    "value": "combined_retirement_only",
+                    "support_mode": "exact",
+                },
+            }
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+
+    assert vector is not None
+    assert vector["capital.net_pension_liability"] == 120.0
+    assert vector["capital.combined_retirement_liability"] == 150.0
+    assert vector["capital.net_debt_including_retirement"] == 900.0
+    assert vector["capital.net_leverage_including_retirement"] == 2.7
+    assert vector["capital.retirement_regime_combined_retirement_only"] == 1.0
+    assert vector["capital.retirement_regime_pension_exact"] == 0.0
