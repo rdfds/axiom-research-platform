@@ -326,3 +326,14 @@ class ActionCandidateDraft:
         return out
 
 
+@dataclass
+class PlaybookTemplate:
+    playbook_id: str
+    label: str
+    trigger_conditions: List[str]
+    action_sequence_template: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
