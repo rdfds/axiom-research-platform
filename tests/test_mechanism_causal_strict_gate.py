@@ -33,3 +33,20 @@ def _brain() -> MechanismBrain:
     )
 
 
+def test_strict_causal_gate_passes_when_all_thresholds_met():
+    brain = _brain()
+    ok, reason = brain._passes_strict_causal_gate(
+        {
+            "model_quality": 0.20,
+            "support_score": 0.60,
+            "n_train": 5000,
+            "out_of_sample_flag": False,
+            "min_oos_r2": 0.05,
+            "min_treated_rows": 1500,
+            "min_control_rows": 8000,
+        }
+    )
+    assert ok is True
+    assert reason == "pass"
+
+

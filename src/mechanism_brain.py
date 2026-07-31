@@ -2271,3 +2271,24 @@ class MechanismBrain:
         return "value_creation"
 
 
+def evaluate_action_candidates(
+    run: Any,
+    state_snapshot: Dict[str, Any],
+    candidates: Sequence[Dict[str, Any]],
+    action_registry: Any,
+    peer_set: Optional[Dict[str, Any]] = None,
+    extracted_facts: Optional[List[Dict[str, Any]]] = None,
+    event_store: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    brain = MechanismBrain(action_registry=action_registry)
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=state_snapshot,
+        candidates=candidates,
+        peer_set=peer_set,
+        extracted_facts=extracted_facts,
+        event_store=event_store,
+    )
+    return [x.to_dict() for x in evaluated]
+
+
