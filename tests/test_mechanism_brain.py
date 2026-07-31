@@ -263,3 +263,41 @@ def test_dividend_continuity_exception_does_not_apply_to_large_commitment(tmp_pa
     assert not any(s.feature_name == "capital_return.incremental_quarterly_cash_commitment_usd" for s in evaluated.feasibility.gating_signals)
 
 
+def test_deleveraging_equity_issuance_can_stay_feasible_in_high_vol_when_window_is_still_open(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 18.0},
+        "liquidity.available_for_actions": {"value": 50_000_000.0},
+        "market.market_cap": {"value": 800_000_000.0},
+        "market.equity_window_proxy": {"value": 0.32},
+        "market.credit_window_proxy": {"value": 0.10},
+        "capital_structure.total_debt": {"value": 350_000_000.0},
+        "capital_structure.net_debt": {"value": 320_000_000.0},
+        "capital_structure.net_leverage": {"value": 3.6},
+        "capital_structure.interest_coverage": {"value": 5.4},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.18},
+        "operating.ebitda_ttm": {"value": 90_000_000.0},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    snapshot["regime"]["vol_regime"] = "high"
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_structure.equity_issuance",
+                {"amount_usd": 100_000_000.0, "use_of_proceeds": "deleveraging"},
+            )
+        ],
+    )[0]
+
+    assert evaluated.feasibility.feasibility_status == "feasible"
+    assert not any(
+        b.blocker_type == "market_access_closed" and "Equity-dependent action" in b.explanation
+        for b in evaluated.feasibility.blockers
+    )
+
+
