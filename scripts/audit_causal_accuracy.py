@@ -32,3 +32,21 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return dict(json.loads(path.read_text()) or {})
 
 
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Audit causal accuracy/coverage from completed run artifacts.")
+    p.add_argument(
+        "--runs-roots",
+        nargs="+",
+        default=["/tmp/recommendation_runs_v4_clean", "/tmp/recommendation_runs_fresh"],
+        help="Run roots to scan (each must contain runs/ and artifacts/).",
+    )
+    p.add_argument(
+        "--run-ids-file",
+        default="",
+        help="Optional text file with run IDs to include (one run_id per line, or 'CIK RUN_ID' pairs).",
+    )
+    p.add_argument("--out", default="/tmp/causal_accuracy_audit.json", help="Output JSON path.")
+    p.add_argument("--min-action-rows", type=int, default=50, help="Minimum rows to report action-level stats.")
+    return p.parse_args()
+
+

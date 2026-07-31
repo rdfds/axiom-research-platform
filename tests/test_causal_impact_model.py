@@ -940,3 +940,161 @@ def test_feature_transform_spec_applies_unit_harmonization_and_signed_log():
     assert abs(pred.objectives["value_creation"]["median"] - 2.208658) < 1e-5
 
 
+def test_full_snapshot_input_uses_bundle_canonical_macro_metrics():
+    payload = {
+        "version": "causal_test_bundle_macro",
+        "feature_order": ["macro_rate_10y", "macro_ig_oas", "macro_hy_oas", "macro_vix"],
+        "feature_stats": {
+            "macro_rate_10y": {"mean": 4.0, "std": 1.0, "median": 4.0},
+            "macro_ig_oas": {"mean": 1.0, "std": 1.0, "median": 1.0},
+            "macro_hy_oas": {"mean": 3.0, "std": 1.0, "median": 3.0},
+            "macro_vix": {"mean": 20.0, "std": 10.0, "median": 20.0},
+        },
+        "objectives": {
+            "value_creation": {
+                "models": {
+                    "__global__": {
+                        "intercept": 0.0,
+                        "coefficients": {
+                            "macro_rate_10y": 1.0,
+                            "macro_ig_oas": 1.0,
+                            "macro_hy_oas": 1.0,
+                            "macro_vix": 1.0,
+                        },
+                        "residual_std": 1e-6,
+                        "n_train": 5000,
+                        "n_valid": 600,
+                        "r2": 0.2,
+                        "oos_r2": 0.1,
+                    }
+                }
+            }
+        },
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={
+            "company_id": "0000123456",
+            "features": {
+                "macro.ust_10y_yield": {"value": 4.5, "support_mode": "exact"},
+                "macro.ig_oas": {"value": 1.2, "support_mode": "exact"},
+                "macro.hy_oas": {"value": 3.4, "support_mode": "exact"},
+                "market.vix": {"value": 25.0, "support_mode": "exact"},
+            },
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    # z_10y=(4.5-4.0)=0.5
+    # z_ig=(1.2-1.0)=0.2
+    # z_hy=(3.4-3.0)=0.4
+    # z_vix=(25-20)/10=0.5
+    assert abs(pred.objectives["value_creation"]["median"] - 1.6) < 1e-6
+
+
+def test_legacy_artifact_without_transform_spec_uses_unit_harmonization_defaults():
+    payload = {
+        "version": "causal_test_legacy",
+        "feature_order": ["base_market_cap", "macro_rate_10y", "macro_ig_oas"],
+        # No feature_transform_spec on purpose (legacy artifact).
+        "feature_stats": {
+            # Legacy artifact expects market cap in USD millions (no signed-log).
+            "base_market_cap": {"mean": 1_500_000.0, "std": 500_000.0, "median": 1_500_000.0},
+            # Legacy artifact expects rates in percent.
+            "macro_rate_10y": {"mean": 3.0, "std": 1.0, "median": 3.0},
+            # Legacy artifact expects OAS in percent.
+            "macro_ig_oas": {"mean": 1.0, "std": 1.0, "median": 1.0},
+        },
+        "objectives": {
+            "value_creation": {
+                "models": {
+                    "__global__": {
+                        "intercept": 0.0,
+                        "coefficients": {
+                            "base_market_cap": 1.0,
+                            "macro_rate_10y": 1.0,
+                            "macro_ig_oas": 1.0,
+                        },
+                        "residual_std": 1e-6,
+                        "n_train": 5000,
+                        "n_valid": 600,
+                        "r2": 0.2,
+                        "oos_r2": 0.1,
+                    }
+                }
+            }
+        },
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={
+            "market.market_cap": {"value": 2_000_000_000_000.0},  # dollars -> 2,000,000 millions
+            "macro.rate_10y": {"value": 0.04},  # decimal -> percent
+            "market.ig_oas": {"value": 120.0},  # bps -> percent
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    # z_market_cap=(2,000,000-1,500,000)/500,000=1.0
+    # z_rate=(4.0-3.0)=1.0
+    # z_ig=(1.2-1.0)=0.2
+    assert abs(pred.objectives["value_creation"]["median"] - 2.2) < 1e-5
+
+
+def test_bundle_unpickles_legacy_main_ridge_predictor(tmp_path: Path):
+    payload = _payload(0.2)
+    payload["model_bundle_path"] = "bundle.pkl"
+    payload["objectives"]["value_creation"]["dr_models"] = {
+        "buyback::buyback": {
+            "method": "dr_aipw_hgb_v1",
+            "model_family": "hgb",
+            "bundle_key": "value_creation::buyback::buyback",
+            "residual_std": 1e-6,
+            "n_train": 10000,
+            "n_valid": 1000,
+            "treated_rows": 2000,
+            "control_rows": 8000,
+            "r2": 0.3,
+            "oos_r2": 0.2,
+            "enabled": True,
+        }
+    }
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps(payload))
+
+    # Simulate old bundle objects pickled as __main__._RidgePredictor.
+    Legacy = type("_RidgePredictor", (), {})
+    Legacy.__module__ = "__main__"
+    setattr(__main__, "_RidgePredictor", Legacy)
+    legacy_obj = Legacy()
+    legacy_obj.beta = [0.12, 0.0, 0.0, 0.0]
+    with open(tmp_path / "bundle.pkl", "wb") as fh:
+        pickle.dump({"value_creation::buyback::buyback": legacy_obj}, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    delattr(__main__, "_RidgePredictor")
+
+    model = CausalImpactModel.from_path(model_path)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        action_subtype="open_market_buyback",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert abs(pred.objectives["value_creation"]["median"] - 0.12) < 1e-6
+
+
+def test_action_id_mapping_aligns_runtime_to_outcomes_taxonomy():
+    assert action_id_to_outcomes_action_type("capital_structure.new_debt_issuance") == "bond_issuance"
+    assert action_id_to_outcomes_action_type("capital_structure.refinancing") == "bond_issuance"
+    assert action_id_to_outcomes_action_type("capital_structure.revolver_draw_or_resize") == "loan_issuance"
+    assert action_id_to_outcomes_action_type("capital_structure.equity_issuance") == "equity_offering_public_proxy"
+
+

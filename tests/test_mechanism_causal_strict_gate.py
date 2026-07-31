@@ -73,3 +73,20 @@ def test_strict_causal_gate_fails_on_oos_and_support_and_counts():
     assert "control<5000" in reason
 
 
+def test_strict_causal_gate_fails_when_oos_unavailable():
+    brain = _brain()
+    ok, reason = brain._passes_strict_causal_gate(
+        {
+            "model_quality": 0.30,
+            "support_score": 0.70,
+            "n_train": 3000,
+            "out_of_sample_flag": False,
+            "min_oos_r2": None,
+            "min_treated_rows": 2000,
+            "min_control_rows": 9000,
+        }
+    )
+    assert ok is False
+    assert "oos_unavailable" in reason
+
+

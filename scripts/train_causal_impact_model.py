@@ -661,3 +661,59 @@ def _fit_propensity_ridge(X: np.ndarray, t: np.ndarray, alpha: float) -> np.ndar
     return beta
 
 
+def _resolve_split_masks(
+    df: pd.DataFrame,
+    validation_fraction: float,
+    train_end_date: str,
+    validation_start_date: str,
+) -> Tuple[pd.Series, pd.Series, Dict[str, Any]]:
+    frac = max(0.05, min(0.40, float(validation_fraction)))
+    n = len(df)
+    if n == 0:
+        empty = pd.Series([], dtype=bool)
+        return empty, empty, {"method": "empty"}
+
+    train_end = pd.to_datetime(train_end_date, errors="coerce", utc=True) if train_end_date else pd.NaT
+    val_start = pd.to_datetime(validation_start_date, errors="coerce", utc=True) if validation_start_date else pd.NaT
+    dates = pd.to_datetime(df.get("action_date"), errors="coerce", utc=True)
+    has_date = dates.notna()
+    meta: Dict[str, Any] = {"validation_fraction": frac}
+
+    if has_date.sum() >= 100:
+        if pd.notna(val_start):
+            train_mask = (dates < val_start) | (~has_date)
+            valid_mask = (dates >= val_start) & has_date
+            meta.update({"method": "calendar_start", "validation_start": val_start.isoformat()})
+        else:
+            if pd.notna(train_end):
+                cutoff = train_end
+                meta["method"] = "calendar_end"
+            else:
+                cutoff = dates[has_date].quantile(1.0 - frac)
+                meta["method"] = "date_quantile"
+            train_mask = (dates <= cutoff) | (~has_date)
+            valid_mask = (dates > cutoff) & has_date
+            meta["split_cutoff"] = cutoff.isoformat()
+
+        if int(train_mask.sum()) >= 200 and int(valid_mask.sum()) >= 50:
+            meta["train_rows"] = int(train_mask.sum())
+            meta["validation_rows"] = int(valid_mask.sum())
+            return train_mask.astype(bool), valid_mask.astype(bool), meta
+
+    # Deterministic fallback when dates are too sparse.
+    cut = int(round((1.0 - frac) * n))
+    cut = max(1, min(n - 1, cut))
+    idx = np.arange(n)
+    train_mask = pd.Series(idx < cut, index=df.index)
+    valid_mask = pd.Series(idx >= cut, index=df.index)
+    meta.update(
+        {
+            "method": "index_fallback",
+            "split_index": int(cut),
+            "train_rows": int(train_mask.sum()),
+            "validation_rows": int(valid_mask.sum()),
+        }
+    )
+    return train_mask.astype(bool), valid_mask.astype(bool), meta
+
+
