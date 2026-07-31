@@ -337,3 +337,51 @@ class PlaybookTemplate:
         return asdict(self)
 
 
+class PlaybookRegistry:
+    def __init__(self, templates: Sequence[PlaybookTemplate]) -> None:
+        self.templates = list(templates)
+        self._by_id = {x.playbook_id: x for x in self.templates}
+
+    def get(self, playbook_id: str) -> Optional[PlaybookTemplate]:
+        return self._by_id.get(playbook_id)
+
+    @classmethod
+    def default(cls) -> "PlaybookRegistry":
+        return cls(
+            [
+                PlaybookTemplate(
+                    playbook_id="deleveraging_playbook",
+                    label="Deleveraging Playbook",
+                    trigger_conditions=["capital_structure.net_leverage high OR rating pressure high"],
+                    action_sequence_template=[
+                        "portfolio.divestiture_partial",
+                        "portfolio.divestiture_full",
+                        "capital_structure.refinancing",
+                        "capital_structure.equity_issuance",
+                        "restructuring.working_capital_program",
+                    ],
+                ),
+                PlaybookTemplate(
+                    playbook_id="simplification_playbook",
+                    label="Simplification Playbook",
+                    trigger_conditions=["segment_count high AND conglomerate discount signal"],
+                    action_sequence_template=[
+                        "portfolio.spin_off",
+                        "portfolio.divestiture_partial",
+                        "portfolio.divestiture_full",
+                        "governance.capital_allocation_policy_reset",
+                    ],
+                ),
+                PlaybookTemplate(
+                    playbook_id="growth_substitution_playbook",
+                    label="Growth Substitution Playbook",
+                    trigger_conditions=["organic growth weak AND balance sheet capacity available"],
+                    action_sequence_template=[
+                        "mna.tuck_in_acquisition",
+                        "mna.platform_acquisition",
+                    ],
+                ),
+            ]
+        )
+
+
