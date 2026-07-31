@@ -847,3 +847,96 @@ def test_hgb_bundle_model_prediction_falls_back_when_predict_raises(tmp_path: Pa
     assert abs(pred.objectives["value_creation"]["median"] - 1.2) < 1e-6
 
 
+def test_subtype_keyed_model_fallback_when_action_alias_differs():
+    payload = _payload(0.2)
+    payload["objectives"]["value_creation"]["dr_models"] = {
+        "dividend_increase::dividend_increase": {
+            "method": "dr_aipw_hgb_v1",
+            "model_family": "linear",
+            "intercept": 0.11,
+            "coefficients": {
+                "base_market_cap": 0.0,
+                "action_size": 0.0,
+                "funding_mix_cash": 0.0,
+            },
+            "residual_std": 0.01,
+            "n_train": 10000,
+            "n_valid": 1000,
+            "treated_rows": 2000,
+            "control_rows": 8000,
+            "r2": 0.3,
+            "oos_r2": 0.2,
+            "enabled": True,
+        }
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.dividend_increase",
+        action_type="capital_return",
+        action_subtype="dividend_increase",
+        params={"size_pct_market_cap": 0.03, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={"market.market_cap": {"value": 2_000_000_000.0}},
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    assert abs(pred.objectives["value_creation"]["median"] - 0.11) < 1e-6
+
+
+def test_feature_transform_spec_applies_unit_harmonization_and_signed_log():
+    payload = {
+        "version": "causal_test_v2",
+        "feature_order": ["base_market_cap", "macro_rate_10y", "macro_ig_oas"],
+        "feature_transform_spec": {
+            "usd_millions_features": ["base_market_cap"],
+            "rate_percent_features": ["macro_rate_10y"],
+            "oas_percent_features": ["macro_ig_oas"],
+            "signed_log1p_features": ["base_market_cap"],
+        },
+        "feature_stats": {
+            # Expect transformed market cap around log1p(2_000_000) ~= 14.508658
+            "base_market_cap": {"mean": 13.5, "std": 1.0, "median": 13.5},
+            # Expect 0.045 -> 4.5 after rate unit harmonization.
+            "macro_rate_10y": {"mean": 3.5, "std": 1.0, "median": 3.5},
+            # Expect 120 -> 1.2 after OAS harmonization.
+            "macro_ig_oas": {"mean": 1.0, "std": 1.0, "median": 1.0},
+        },
+        "objectives": {
+            "value_creation": {
+                "models": {
+                    "__global__": {
+                        "intercept": 0.0,
+                        "coefficients": {
+                            "base_market_cap": 1.0,
+                            "macro_rate_10y": 1.0,
+                            "macro_ig_oas": 1.0,
+                        },
+                        "residual_std": 1e-6,
+                        "n_train": 5000,
+                        "n_valid": 600,
+                        "r2": 0.45,
+                        "oos_r2": 0.25,
+                    }
+                }
+            }
+        },
+    }
+    model = CausalImpactModel(payload)
+    pred = model.predict(
+        action_id="capital_return.open_market_buyback",
+        action_type="capital_return",
+        params={"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+        features={
+            "market.market_cap": {"value": 2_000_000_000_000.0},  # dollars -> 2,000,000 millions
+            "macro.rate_10y": {"value": 0.045},  # decimal -> percent
+            "market.ig_oas": {"value": 120.0},  # bps -> percent
+        },
+        regime={"credit_regime": "neutral", "vol_regime": "normal"},
+    )
+    assert pred is not None
+    # Expected standardized sum:
+    # z_market_cap ~ (log1p(2,000,000)-13.5) = 1.008658...
+    # z_rate = (4.5-3.5)=1
+    # z_ig = (1.2-1.0)=0.2
+    assert abs(pred.objectives["value_creation"]["median"] - 2.208658) < 1e-5
+
+

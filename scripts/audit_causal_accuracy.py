@@ -28,3 +28,7 @@ def _to_float(v: Any, default: float = 0.0) -> float:
     return float(out)
 
 
+def _load_json(path: Path) -> Dict[str, Any]:
+    return dict(json.loads(path.read_text()) or {})
+
+
