@@ -340,3 +340,29 @@ def test_mechanism_rules_trigger_buyback_interaction(tmp_path: Path):
     assert any(i.direction == "positive" for i in evaluated.mechanism_activation.key_interactions)
 
 
+def test_impact_distributions_are_well_formed(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 18.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 2_500_000_000.0},
+        "capital_structure.net_debt": {"value": 500_000_000.0},
+        "capital_structure.net_leverage": {"value": 2.8},
+        "operating.ebitda_ttm": {"value": 180_000_000.0},
+        "capital_structure.interest_coverage": {"value": 3.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.30},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[_candidate("capital_structure.refinancing", {"amount": 250_000_000.0, "new_tenor_years": 5})],
+    )[0]
+
+    for dist in evaluated.impact_distribution.objectives.values():
+        assert dist.p10 <= dist.p25 <= dist.median <= dist.p75 <= dist.p90
+
+
