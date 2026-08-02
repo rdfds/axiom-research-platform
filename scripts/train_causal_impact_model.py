@@ -730,3 +730,19 @@ def _r2(y: np.ndarray, yhat: np.ndarray) -> float:
     return float(max(-1.0, min(1.0, r2)))
 
 
+def _temporal_fold_ids(dates: pd.Series, folds: int) -> np.ndarray:
+    n = len(dates)
+    if n == 0:
+        return np.array([], dtype=int)
+    f = max(2, int(folds))
+    idx = np.arange(n, dtype=int)
+    d = pd.to_datetime(dates, errors="coerce", utc=True)
+    # Stable fallback for missing dates: keep original order.
+    sort_key = d.fillna(pd.Timestamp("1970-01-01", tz="UTC"))
+    order = np.argsort(sort_key.to_numpy())
+    fold_ids = np.zeros(n, dtype=int)
+    for fold, part in enumerate(np.array_split(order, f)):
+        fold_ids[part] = fold
+    return fold_ids
+
+

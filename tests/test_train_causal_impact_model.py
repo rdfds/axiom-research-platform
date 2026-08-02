@@ -140,3 +140,33 @@ def test_validate_action_allowlist_coverage_raises_on_missing_explicit_action():
         raise AssertionError("expected missing explicit action to raise")
 
 
+def test_validate_action_allowlist_coverage_allows_wildcards():
+    df = pd.DataFrame({"action_id_key": ["capital_return.dividend_increase", "capital_return.dividend_initiate"]})
+    _validate_action_allowlist_coverage(df, ["capital_return.*"])
+
+
+def test_build_targets_growth_v2_dampens_eps_outlier_influence():
+    df = pd.DataFrame(
+        {
+            "outcome_pe_6m": [0.0, 0.0],
+            "outcome_ev_ebitda_6m": [0.0, 0.0],
+            "outcome_pe_12m": [0.0, 0.0],
+            "outcome_ev_ebitda_12m": [0.0, 0.0],
+            "leverage_delta": [0.0, 0.0],
+            "revenue_delta": [0.10, 0.10],
+            "margin_delta": [0.02, 0.02],
+            "eps_delta": [0.20, 250.0],
+            "roic_delta": [0.01, 0.01],
+            "fcf_margin_delta": [0.03, 0.03],
+            "credit_spread_change_6m": [0.0, 0.0],
+            "credit_spread_change_12m": [0.0, 0.0],
+            "rating_migration_6m": [0.0, 0.0],
+            "rating_migration_12m": [0.0, 0.0],
+        }
+    )
+    out = _build_targets(df)
+    base_gap = abs(float(out["growth"].iloc[1]) - float(out["growth"].iloc[0]))
+    v2_gap = abs(float(out["growth_v2"].iloc[1]) - float(out["growth_v2"].iloc[0]))
+    assert v2_gap < base_gap
+
+
