@@ -366,3 +366,79 @@ def test_impact_distributions_are_well_formed(tmp_path: Path):
         assert dist.p10 <= dist.p25 <= dist.median <= dist.p75 <= dist.p90
 
 
+def test_sanity_checks_trigger_objective_contradiction(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 20.0},
+        "liquidity.available_for_actions": {"value": 400_000_000.0},
+        "market.market_cap": {"value": 1_500_000_000.0},
+        "capital_structure.net_debt": {"value": 250_000_000.0},
+        "operating.ebitda_ttm": {"value": 150_000_000.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(
+        tmp_path,
+        snapshot_root,
+        objectives={
+            "value_creation_weight": 0.1,
+            "risk_reduction_weight": 0.6,
+            "growth_weight": 0.1,
+            "rating_preservation_weight": 0.1,
+            "optionality_weight": 0.1,
+        },
+    )
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.10, "funding_mix": {"cash": 0.0, "debt": 1.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    contradiction = [s for s in evaluated.structural_sanity_flags if s.check_type == "objective_contradiction"]
+    assert contradiction
+    assert contradiction[0].status == "fail"
+
+
+def test_negative_revisions_warn_on_capital_return_actions(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 20.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "capital_structure.net_debt": {"value": 250_000_000.0},
+        "capital_structure.net_leverage": {"value": 1.8},
+        "operating.ebitda_ttm": {"value": 150_000_000.0},
+        "operating.fcf_conversion": {"value": 0.35},
+        "market.ev_ebitda_vs_peer_z": {"value": -1.2},
+        "market.fcf_yield_percentile_peers": {"value": 0.82},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+        "expectations.analyst_coverage_count": {"value": 11.0},
+        "expectations.revision_signal": {"value": -0.09},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    expectation_checks = [s for s in evaluated.structural_sanity_flags if s.check_type == "expectations_contradiction"]
+    assert expectation_checks
+    assert expectation_checks[0].status == "warning"
+
+
