@@ -182,3 +182,57 @@ def test_predict_causal_impact_skips_model_call_for_blocked_action(monkeypatch):
     assert stub.calls == 0
 
 
+def test_predict_causal_impact_skips_model_call_for_global_block(monkeypatch):
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST", "*")
+    stub = _StubCausalModel()
+    brain = MechanismBrain(
+        action_registry=_DummyRegistry(),
+        causal_model=stub,
+    )
+    out = brain._predict_causal_impact(
+        action_id="capital_structure.equity_issuance",
+        action_type="capital_structure",
+        action_subtype="equity_issuance",
+        params={},
+        features={},
+        regime={},
+    )
+    assert out is None
+    assert stub.calls == 0
+
+
+def test_causal_action_blocked_by_routing_config(tmp_path, monkeypatch):
+    routing_path = tmp_path / "causal_capital_routing_v1.json"
+    routing_path.write_text(
+        json.dumps(
+            {
+                "actions": {
+                    "governance.stock_split": {
+                        "status": "blocked",
+                        "model_action_alias": "cost_program",
+                        "model_subtype_alias": "stock_split",
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("CAUSAL_ROUTING_CONFIG_PATH", str(routing_path))
+    load_causal_routing_config.cache_clear()
+
+    stub = _StubCausalModel()
+    brain = MechanismBrain(
+        action_registry=_DummyRegistry(),
+        causal_model=stub,
+    )
+    out = brain._predict_causal_impact(
+        action_id="governance.stock_split",
+        action_type="governance",
+        action_subtype="stock_split",
+        params={},
+        features={},
+        regime={},
+    )
+    assert out is None
+    assert stub.calls == 0
+
+    load_causal_routing_config.cache_clear()

@@ -442,3 +442,114 @@ def test_negative_revisions_warn_on_capital_return_actions(tmp_path: Path):
     assert expectation_checks[0].status == "warning"
 
 
+def test_positive_revisions_improve_capital_return_value_creation_signal(tmp_path: Path):
+    base_features = {
+        "liquidity.runway_months": {"value": 20.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "capital_structure.net_debt": {"value": 250_000_000.0},
+        "capital_structure.net_leverage": {"value": 1.8},
+        "operating.ebitda_ttm": {"value": 150_000_000.0},
+        "operating.fcf_conversion": {"value": 0.35},
+        "market.ev_ebitda_vs_peer_z": {"value": -1.2},
+        "market.fcf_yield_percentile_peers": {"value": 0.82},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+        "expectations.analyst_coverage_count": {"value": 11.0},
+    }
+
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    negative_features = dict(base_features)
+    negative_features["expectations.revision_signal"] = {"value": -0.08}
+    negative_root, negative_snapshot = _write_snapshot(tmp_path / "negative", negative_features)
+    negative_run = _make_run(tmp_path / "negative", negative_root)
+    negative_eval = brain.evaluate_candidate_set(
+        run=negative_run,
+        state_snapshot=negative_snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    positive_features = dict(base_features)
+    positive_features["expectations.revision_signal"] = {"value": 0.08}
+    positive_root, positive_snapshot = _write_snapshot(tmp_path / "positive", positive_features)
+    positive_run = _make_run(tmp_path / "positive", positive_root)
+    positive_eval = brain.evaluate_candidate_set(
+        run=positive_run,
+        state_snapshot=positive_snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    assert (
+        positive_eval.impact_distribution.objectives["value_creation"].median
+        > negative_eval.impact_distribution.objectives["value_creation"].median
+    )
+    driver_names = [d.driver_name for d in positive_eval.impact_distribution.key_drivers]
+    assert "expectations_revision_signal" in driver_names
+
+
+def test_crowded_holder_base_improves_capital_return_value_creation_signal(tmp_path: Path):
+    base_features = {
+        "liquidity.runway_months": {"value": 20.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "capital_structure.net_debt": {"value": 250_000_000.0},
+        "capital_structure.net_leverage": {"value": 1.8},
+        "operating.ebitda_ttm": {"value": 150_000_000.0},
+        "operating.fcf_conversion": {"value": 0.35},
+        "market.ev_ebitda_vs_peer_z": {"value": -1.2},
+        "market.fcf_yield_percentile_peers": {"value": 0.82},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.10},
+    }
+
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    plain_root, plain_snapshot = _write_snapshot(tmp_path / "plain", dict(base_features))
+    plain_run = _make_run(tmp_path / "plain", plain_root)
+    plain_eval = brain.evaluate_candidate_set(
+        run=plain_run,
+        state_snapshot=plain_snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    crowded_features = dict(base_features)
+    crowded_features["ownership_governance.crowding_signal"] = {"value": 0.82}
+    crowded_features["ownership_governance.institutional_pct"] = {"value": 0.78}
+    crowded_features["ownership_governance.top5_holder_pct"] = {"value": 0.52}
+    crowded_root, crowded_snapshot = _write_snapshot(tmp_path / "crowded", crowded_features)
+    crowded_run = _make_run(tmp_path / "crowded", crowded_root)
+    crowded_eval = brain.evaluate_candidate_set(
+        run=crowded_run,
+        state_snapshot=crowded_snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    assert (
+        crowded_eval.impact_distribution.objectives["value_creation"].median
+        > plain_eval.impact_distribution.objectives["value_creation"].median
+    )
+    driver_names = [d.driver_name for d in crowded_eval.impact_distribution.key_drivers]
+    assert "ownership_positioning_signal" in driver_names
+
+
