@@ -29,3 +29,20 @@ def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
     return out
 
 
+def _driver_map(action_candidate: Dict[str, Any]) -> Dict[str, float]:
+    impact = dict(action_candidate.get("impact_distribution", {}) or {})
+    drivers = list(impact.get("key_drivers", []) or [])
+    out: Dict[str, float] = {}
+    for d in drivers:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("driver_name", "")).strip()
+        if not name:
+            continue
+        val = _to_float(d.get("contribution"))
+        if val is None:
+            continue
+        out[name] = float(val)
+    return out
+
+
