@@ -50,3 +50,7 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _is_causal_row(driver_names: set[str]) -> bool:
+    return bool(driver_names & _CAUSAL_DRIVER_NAMES)
+
+

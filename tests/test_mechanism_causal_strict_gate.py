@@ -90,3 +90,95 @@ def test_strict_causal_gate_fails_when_oos_unavailable():
     assert "oos_unavailable" in reason
 
 
+def test_strict_causal_gate_honors_action_specific_threshold_overrides():
+    brain = _brain()
+    ok, reason = brain._passes_strict_causal_gate(
+        {
+            "model_quality": 0.12,
+            "support_score": 0.40,
+            "n_train": 2500,
+            "out_of_sample_flag": False,
+            "min_oos_r2": 0.08,
+            "min_treated_rows": 900,
+            "min_control_rows": 7000,
+            "min_treated_rows_override": 750,
+            "quality_floor_override": 0.11,
+        }
+    )
+    assert ok is True
+    assert reason == "pass"
+
+
+def test_causal_action_blocklist_env_supports_exact_and_prefix(monkeypatch):
+    monkeypatch.setenv(
+        "CAUSAL_ACTION_BLOCKLIST",
+        "capital_return.special_dividend,mna.*",
+    )
+    brain = _brain()
+    assert brain._is_causal_action_blocked(
+        action_id="capital_return.special_dividend",
+        action_type="capital_return",
+        action_subtype="special_dividend",
+    )
+    assert brain._is_causal_action_blocked(
+        action_id="mna.platform_acquisition",
+        action_type="mna",
+        action_subtype="platform_acquisition",
+    )
+    assert not brain._is_causal_action_blocked(
+        action_id="capital_return.dividend_increase",
+        action_type="capital_return",
+        action_subtype="dividend_increase",
+    )
+
+
+def test_causal_action_blocklist_path_supports_comments(tmp_path, monkeypatch):
+    blocklist = tmp_path / "causal_action_blocklist.txt"
+    blocklist.write_text(
+        "\n".join(
+            [
+                "# blocked actions",
+                "capital_structure.revolver_draw_or_resize",
+                "governance.board_refresh # keep on fallback",
+            ]
+        )
+    )
+    monkeypatch.delenv("CAUSAL_ACTION_BLOCKLIST", raising=False)
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST_PATH", str(blocklist))
+    brain = _brain()
+    assert brain._is_causal_action_blocked(
+        action_id="capital_structure.revolver_draw_or_resize",
+        action_type="capital_structure",
+        action_subtype="revolver_draw_or_resize",
+    )
+    assert brain._is_causal_action_blocked(
+        action_id="governance.board_refresh",
+        action_type="governance",
+        action_subtype="board_refresh",
+    )
+    assert not brain._is_causal_action_blocked(
+        action_id="capital_return.dividend_increase",
+        action_type="capital_return",
+        action_subtype="dividend_increase",
+    )
+
+
+def test_predict_causal_impact_skips_model_call_for_blocked_action(monkeypatch):
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST", "capital_return.special_dividend")
+    stub = _StubCausalModel()
+    brain = MechanismBrain(
+        action_registry=_DummyRegistry(),
+        causal_model=stub,
+    )
+    out = brain._predict_causal_impact(
+        action_id="capital_return.special_dividend",
+        action_type="capital_return",
+        action_subtype="special_dividend",
+        params={},
+        features={},
+        regime={},
+    )
+    assert out is None
+    assert stub.calls == 0
+
+

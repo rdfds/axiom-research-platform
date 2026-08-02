@@ -717,3 +717,16 @@ def _resolve_split_masks(
     return train_mask.astype(bool), valid_mask.astype(bool), meta
 
 
+def _r2(y: np.ndarray, yhat: np.ndarray) -> float:
+    if len(y) == 0:
+        return 0.0
+    denom = float(np.sum((y - np.mean(y)) ** 2))
+    if denom <= 1e-12:
+        return 0.0
+    num = float(np.sum((y - yhat) ** 2))
+    r2 = 1.0 - (num / denom)
+    if not np.isfinite(r2):
+        return 0.0
+    return float(max(-1.0, min(1.0, r2)))
+
+
