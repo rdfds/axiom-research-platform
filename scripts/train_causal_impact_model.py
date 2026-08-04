@@ -1262,3 +1262,244 @@ def _fit_dr_models_for_target(
     return out
 
 
+def main() -> None:
+    args = _parse_args()
+    outcomes_path = _resolve_outcomes_path(args.outcomes_path)
+    out_path = Path(args.out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    quiet = bool(args.quiet)
+
+    if not quiet:
+        _log(f"loading outcomes from {outcomes_path}")
+    raw = pd.read_parquet(outcomes_path)
+    if raw.empty:
+        raise ValueError("outcomes dataset is empty")
+    if not quiet:
+        _log(f"loaded rows={len(raw)}")
+
+    raw = _with_action_cells(raw, cell_level=str(args.cell_level))
+    action_id_allowlist = _parse_action_id_allowlist(args.action_id_allowlist, args.action_id_allowlist_file)
+    cell_allowlist = _parse_cell_allowlist(args.cell_allowlist, args.cell_allowlist_file)
+    objective_allowlist = _parse_objective_allowlist(args.objective_allowlist)
+    dr_control_scope = _resolve_dr_control_scope(
+        requested_scope=str(args.dr_control_scope or "global"),
+        capital_phase1_only=bool(args.capital_phase1_only),
+    )
+    if bool(args.capital_phase1_only):
+        routing_config = _load_capital_routing_config(args.capital_routing_config_path)
+        phase1_actions, phase1_objectives = _capital_phase1_defaults(routing_config)
+        if phase1_actions and not action_id_allowlist:
+            action_id_allowlist = list(phase1_actions)
+        if phase1_objectives and not objective_allowlist:
+            objective_allowlist = list(phase1_objectives)
+    selected_objectives = list(objective_allowlist or OBJECTIVES)
+    if action_id_allowlist:
+        mask = raw.get("action_id_key", pd.Series("", index=raw.index)).map(
+            lambda x: _matches_action_allowlist(str(x), action_id_allowlist)
+        )
+        raw = raw[mask].reset_index(drop=True)
+        if raw.empty:
+            raise ValueError("action-id allowlist removed all rows from outcomes dataset")
+        _validate_action_allowlist_coverage(raw, action_id_allowlist)
+        if not quiet:
+            _log(
+                f"applied action-id allowlist entries={len(action_id_allowlist)} rows={len(raw)} "
+                f"cells={int(raw.get('action_cell', pd.Series(dtype=str)).nunique())}"
+            )
+    df = _ensure_features(raw)
+    if not quiet:
+        distinct_cells = int(raw.get("action_cell", pd.Series(dtype=str)).nunique())
+        _log(f"prepared features, distinct action cells={distinct_cells}")
+    train_mask, valid_mask, split_meta = _resolve_split_masks(
+        raw,
+        validation_fraction=float(args.validation_fraction),
+        train_end_date=str(args.train_end_date or "").strip(),
+        validation_start_date=str(args.validation_start_date or "").strip(),
+    )
+    if not quiet:
+        _log(
+            "split resolved "
+            f"method={split_meta.get('method')} train_rows={int(train_mask.sum())} valid_rows={int(valid_mask.sum())}"
+        )
+    normalize_by_subtype = bool(args.subtype_target_normalize) or str(args.cell_level) == "action_subtype"
+    targets = _build_targets(
+        raw,
+        normalize_by_subtype=normalize_by_subtype,
+        subtype_col=raw.get("action_subtype_key"),
+    )
+    for k, y in list(targets.items()):
+        targets[k] = _winsorize(_to_num(y), float(args.winsor_pct))
+
+    stats = _feature_stats(df.loc[train_mask])
+    bundle_models: Dict[str, Any] = {}
+
+    payload: Dict[str, Any] = {
+        "version": "causal_impact_model_v3_bundle_contract",
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "training_rows": int(len(df)),
+        "resolved_outcomes_path": str(outcomes_path),
+        "training_split": split_meta,
+        "model_family": str(args.model_family),
+        "cell_level": str(args.cell_level),
+        "action_id_allowlist": list(action_id_allowlist),
+        "objective_allowlist": list(selected_objectives),
+        "dr_control_scope": str(dr_control_scope),
+        "subtype_target_normalize": bool(normalize_by_subtype),
+        "feature_order": FEATURE_ORDER,
+        "feature_contract": {
+            "version": CAUSAL_FEATURE_CONTRACT_VERSION,
+            "aliases": {key: list(value) for key, value in CAUSAL_FEATURE_ALIASES.items()},
+        },
+        "feature_transform_spec": {
+            "usd_millions_features": sorted(USD_MILLIONS_FEATURES),
+            "rate_percent_features": sorted(RATE_PERCENT_FEATURES),
+            "oas_percent_features": sorted(OAS_PERCENT_FEATURES),
+            "signed_log1p_features": sorted(SIGNED_LOG1P_FEATURES),
+        },
+        "feature_stats": stats,
+        "objectives": {},
+    }
+    model_card: Dict[str, Any] = {
+        "version": "causal_impact_model_v3_bundle_contract",
+        "trained_at": payload["trained_at"],
+        "dataset_rows": int(len(df)),
+        "resolved_outcomes_path": str(outcomes_path),
+        "training_split": split_meta,
+        "model_family": str(args.model_family),
+        "cell_level": str(args.cell_level),
+        "action_id_allowlist": list(action_id_allowlist),
+        "cell_allowlist": list(cell_allowlist),
+        "objective_allowlist": list(selected_objectives),
+        "dr_control_scope": str(dr_control_scope),
+        "feature_contract": dict(payload["feature_contract"]),
+        "feature_transform_spec": dict(payload["feature_transform_spec"]),
+        "objectives": {},
+    }
+
+    for objective in selected_objectives:
+        if not quiet:
+            _log(f"objective={objective} training start family={args.model_family}")
+        if str(args.model_family) == "linear":
+            baseline_models = _fit_models_for_target(
+                df=df,
+                y=targets[objective],
+                stats=stats,
+                min_rows_per_action=int(args.min_rows_per_action),
+                alpha=float(args.ridge_alpha),
+                train_mask=train_mask,
+                valid_mask=valid_mask,
+                min_validation_rows=int(args.min_validation_rows),
+            )
+            dr_models = _fit_dr_models_for_target(
+                df=df,
+                y=targets[objective],
+                stats=stats,
+                train_mask=train_mask,
+                valid_mask=valid_mask,
+                alpha=float(args.ridge_alpha),
+                crossfit_folds=int(args.crossfit_folds),
+                dr_min_treated_rows=int(args.dr_min_treated_rows),
+                dr_min_control_rows=int(args.dr_min_control_rows),
+                min_validation_rows=int(args.min_validation_rows),
+                propensity_clip=float(args.propensity_clip),
+                dr_control_scope=str(dr_control_scope),
+            )
+            merged = dict(baseline_models or {})
+            merged.update(dr_models or {})
+        else:
+            dr_models, objective_bundle = _fit_dr_models_for_target_hgb(
+                df=raw,
+                y=targets[objective],
+                stats=stats,
+                train_mask=train_mask,
+                valid_mask=valid_mask,
+                crossfit_folds=int(args.crossfit_folds),
+                dr_min_treated_rows=int(args.dr_min_treated_rows),
+                dr_min_control_rows=int(args.dr_min_control_rows),
+                min_validation_rows=int(args.min_validation_rows),
+                propensity_clip=float(args.propensity_clip),
+                gate_min_oos_r2=float(args.gate_min_oos_r2),
+                gate_min_train_rows=int(args.gate_min_train_rows),
+                gate_min_treated_rows=int(args.gate_min_treated_rows),
+                gate_min_control_rows=int(args.gate_min_control_rows),
+                cell_level=str(args.cell_level),
+                cell_allowlist=list(cell_allowlist),
+                dr_control_scope=str(dr_control_scope),
+                progress_every_cells=int(args.progress_every_cells),
+                log_prefix=f"objective={objective}",
+                quiet=quiet,
+            )
+            merged = {"models": {}, **dict(dr_models or {})}
+            for k, v in dict(objective_bundle or {}).items():
+                bundle_models[f"{objective}::{k}"] = v
+                if k in (merged.get("dr_models") or {}):
+                    merged["dr_models"][k]["bundle_key"] = f"{objective}::{k}"
+
+        payload["objectives"][objective] = merged
+
+        objective_card = {"actions": {}, "enabled_actions": 0}
+        for action_name, model in dict((merged.get("dr_models") or {})).items():
+            enabled = bool(model.get("enabled", True))
+            if enabled:
+                objective_card["enabled_actions"] += 1
+            objective_card["actions"][action_name] = {
+                "method": str(model.get("method", "")),
+                "n_train": int(model.get("n_train", 0) or 0),
+                "n_valid": int(model.get("n_valid", 0) or 0),
+                "treated_rows": int(model.get("treated_rows", 0) or 0),
+                "control_rows": int(model.get("control_rows", 0) or 0),
+                "oos_r2": model.get("oos_r2"),
+                "residual_std": model.get("residual_std"),
+                "enabled": enabled,
+                "gate_reason": str(model.get("gate_reason", "")),
+            }
+        model_card["objectives"][objective] = objective_card
+        if not quiet:
+            _log(
+                f"objective={objective} done cells={len(objective_card['actions'])} "
+                f"enabled={int(objective_card['enabled_actions'])}"
+            )
+
+    if str(args.model_family) == "hgb" and not bool(args.skip_bundle_write):
+        bundle_path = out_path.with_suffix(".bundle.pkl")
+        with open(bundle_path, "wb") as fh:
+            pickle.dump(bundle_models, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        payload["model_bundle_path"] = str(bundle_path.name)
+        if not quiet:
+            _log(f"wrote HGB bundle models={len(bundle_models)} to {bundle_path}")
+    elif str(args.model_family) == "hgb" and bool(args.skip_bundle_write) and not quiet:
+        _log("skipping HGB bundle write per --skip-bundle-write")
+
+    payload["model_card"] = model_card
+
+    out_path.write_text(json.dumps(payload, indent=2))
+    if not quiet:
+        _log(f"wrote model artifact to {out_path}")
+    if str(args.model_card_out or "").strip():
+        card_path = Path(str(args.model_card_out).strip())
+        card_path.parent.mkdir(parents=True, exist_ok=True)
+        card_path.write_text(json.dumps(model_card, indent=2))
+        if not quiet:
+            _log(f"wrote model card to {card_path}")
+    model_count = sum(
+        len((payload["objectives"][o] or {}).get("models", {}))
+        + len((payload["objectives"][o] or {}).get("dr_models", {}))
+        for o in selected_objectives
+    )
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "out_path": str(out_path),
+                "training_rows": int(len(df)),
+                "models": int(model_count),
+                "dr_models": int(
+                    sum(len((payload["objectives"][o] or {}).get("dr_models", {})) for o in selected_objectives)
+                ),
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

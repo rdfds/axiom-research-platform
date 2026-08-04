@@ -195,3 +195,5 @@ def main() -> None:
     print(json.dumps({"ok": True, "out": str(out_path), "runs_analyzed": len(run_rows), "actions_reported": len(action_report)}))
 
 
+if __name__ == "__main__":
+    main()

@@ -60,3 +60,7 @@ def _quantile(values: List[float], q: float) -> float:
     return float(xs[lo] * (1.0 - w) + xs[hi] * w)
 
 
+def _safe_ratio(num: int, den: int) -> float:
+    return float(num) / float(den) if den > 0 else 0.0
+
+
