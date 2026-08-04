@@ -43,3 +43,19 @@ def test_summarize_model_card_counts_and_oos_stats():
     assert summary["objectives"]["growth"]["enabled_cells"] == 0
 
 
+def test_evaluate_summary_thresholds_detects_failures():
+    summary = summarize_model_card(_card())
+    gates = evaluate_summary_thresholds(
+        summary,
+        min_enabled_cells=5,
+        min_enabled_rate=0.80,
+        min_enabled_oos_r2_mean=0.15,
+        required_objectives=["value_creation", "growth"],
+        required_objective_min_enabled=1,
+        required_objective_min_oos_r2_mean=0.05,
+    )
+    assert gates["pass"] is False
+    assert "enabled_cells<5" in gates["failures"]
+    assert "growth.enabled<1" in gates["failures"]
+
+

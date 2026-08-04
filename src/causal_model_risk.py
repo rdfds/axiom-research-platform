@@ -46,3 +46,17 @@ def _driver_map(action_candidate: Dict[str, Any]) -> Dict[str, float]:
     return out
 
 
+def _quantile(values: List[float], q: float) -> float:
+    if not values:
+        return 0.0
+    xs = sorted(values)
+    if len(xs) == 1:
+        return float(xs[0])
+    qq = max(0.0, min(1.0, float(q)))
+    pos = qq * (len(xs) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(xs) - 1)
+    w = pos - lo
+    return float(xs[lo] * (1.0 - w) + xs[hi] * w)
+
+

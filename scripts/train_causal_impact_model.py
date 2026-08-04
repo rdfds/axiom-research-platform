@@ -746,3 +746,519 @@ def _temporal_fold_ids(dates: pd.Series, folds: int) -> np.ndarray:
     return fold_ids
 
 
+def _fit_hgb_regressor(
+    X: np.ndarray,
+    y: np.ndarray,
+    variant: str = "balanced",
+) -> HistGradientBoostingRegressor:
+    v = str(variant or "balanced").strip().lower()
+    if v == "conservative":
+        cfg = {
+            "learning_rate": 0.035,
+            "max_depth": 3,
+            "max_leaf_nodes": 21,
+            "min_samples_leaf": 80,
+            "max_iter": 220,
+            "l2_regularization": 0.4,
+        }
+    elif v == "expressive":
+        cfg = {
+            "learning_rate": 0.06,
+            "max_depth": 6,
+            "max_leaf_nodes": 63,
+            "min_samples_leaf": 20,
+            "max_iter": 380,
+            "l2_regularization": 0.05,
+        }
+    else:
+        cfg = {
+            "learning_rate": 0.05,
+            "max_depth": 4,
+            "max_leaf_nodes": 31,
+            "min_samples_leaf": 30,
+            "max_iter": 300,
+            "l2_regularization": 0.1,
+        }
+    model = HistGradientBoostingRegressor(
+        loss="squared_error",
+        random_state=42,
+        **cfg,
+    )
+    model.fit(X, y)
+    return model
+
+
+def _fit_hgb_classifier(X: np.ndarray, y: np.ndarray) -> HistGradientBoostingClassifier:
+    model = HistGradientBoostingClassifier(
+        learning_rate=0.05,
+        max_depth=4,
+        max_leaf_nodes=31,
+        min_samples_leaf=30,
+        max_iter=250,
+        l2_regularization=0.1,
+        random_state=42,
+    )
+    model.fit(X, y.astype(int))
+    return model
+
+
+def _fit_dr_models_for_target_hgb(
+    df: pd.DataFrame,
+    y: pd.Series,
+    stats: Dict[str, Dict[str, float]],
+    train_mask: pd.Series,
+    valid_mask: pd.Series,
+    crossfit_folds: int,
+    dr_min_treated_rows: int,
+    dr_min_control_rows: int,
+    min_validation_rows: int,
+    propensity_clip: float,
+    gate_min_oos_r2: float,
+    gate_min_train_rows: int,
+    gate_min_treated_rows: int,
+    gate_min_control_rows: int,
+    cell_level: str,
+    cell_allowlist: List[str],
+    dr_control_scope: str,
+    progress_every_cells: int = 1,
+    log_prefix: str = "",
+    quiet: bool = False,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    out: Dict[str, Any] = {"dr_models": {}}
+    bundle: Dict[str, Any] = {}
+
+    base = _ensure_features(df)
+    yy = _to_num(y)
+    train_ok = yy.notna() & train_mask
+    valid_ok = yy.notna() & valid_mask
+    if int(train_ok.sum()) < max(2000, dr_min_treated_rows + dr_min_control_rows):
+        return out, bundle
+
+    X_all = _standardize(base, stats)
+    y_all = yy.to_numpy(dtype=float)
+    action_type_series = df.get("action_type_key", pd.Series("", index=df.index)).astype(str)
+    cell_series = df.get("action_cell", pd.Series("", index=df.index)).astype(str)
+    date_series = pd.to_datetime(df.get("action_date"), errors="coerce", utc=True)
+
+    train_indices = np.where(train_ok.to_numpy(dtype=bool))[0]
+    valid_indices = np.where(valid_ok.to_numpy(dtype=bool))[0]
+    if len(train_indices) == 0:
+        return out, bundle
+
+    candidate_cells = sorted(set(cell_series.loc[train_ok].dropna().tolist()))
+    if str(cell_level) == "action_subtype":
+        candidate_cells.extend(f"{t}::all" for t in sorted(set(action_type_series.loc[train_ok].dropna().tolist())))
+    candidate_cells = sorted(set(candidate_cells))
+    if cell_allowlist:
+        candidate_cells = [c for c in candidate_cells if _matches_cell_allowlist(c, cell_allowlist)]
+        if not quiet:
+            _log(f"{log_prefix} filtered candidate_cells={len(candidate_cells)} via cell allowlist")
+
+    clip = min(0.20, max(0.01, float(propensity_clip)))
+    folds = max(2, int(crossfit_folds))
+
+    if not quiet:
+        _log(f"{log_prefix} candidate_cells={len(candidate_cells)}")
+    progress_n = max(0, int(progress_every_cells))
+
+    for idx, cell_key in enumerate(candidate_cells, start=1):
+        if not quiet and progress_n > 0 and (idx == 1 or idx % progress_n == 0 or idx == len(candidate_cells)):
+            _log(f"{log_prefix} processing cell {idx}/{len(candidate_cells)} key={cell_key}")
+        if "::" not in str(cell_key):
+            continue
+        action_type_key, subtype_key = str(cell_key).split("::", 1)
+        if subtype_key == "all":
+            t_all = (action_type_series.to_numpy(dtype=str) == str(action_type_key)).astype(float)
+        else:
+            t_all = (cell_series.to_numpy(dtype=str) == str(cell_key)).astype(float)
+
+        scope_mask = _cell_scope_mask(
+            action_type_series=action_type_series,
+            action_type_key=str(action_type_key),
+            subtype_key=str(subtype_key),
+            dr_control_scope=str(dr_control_scope),
+        )
+        train_scope = train_ok & scope_mask
+        valid_scope = valid_ok & scope_mask
+
+        train_indices_scoped = np.where(train_scope.to_numpy(dtype=bool))[0]
+        valid_indices_scoped = np.where(valid_scope.to_numpy(dtype=bool))[0]
+        if len(train_indices_scoped) == 0:
+            continue
+
+        t_train = t_all[train_indices_scoped]
+        treated_rows = int(np.sum(t_train == 1.0))
+        control_rows = int(np.sum(t_train == 0.0))
+        if treated_rows < int(dr_min_treated_rows) or control_rows < int(dr_min_control_rows):
+            continue
+
+        X_train = X_all[train_indices_scoped]
+        y_train = y_all[train_indices_scoped]
+        n_train = len(train_indices_scoped)
+        fold_ids = _temporal_fold_ids(date_series.iloc[train_indices_scoped], folds)
+        psi = np.zeros(n_train, dtype=float)
+        usable = np.ones(n_train, dtype=bool)
+
+        for fold in range(folds):
+            hold = fold_ids == fold
+            if not np.any(hold):
+                continue
+            hold_dates = pd.to_datetime(date_series.iloc[train_indices_scoped][hold], errors="coerce", utc=True)
+            cutoff = hold_dates.min() if hold_dates.notna().any() else pd.NaT
+            if pd.notna(cutoff):
+                fit = pd.to_datetime(date_series.iloc[train_indices_scoped], errors="coerce", utc=True) < cutoff
+                fit = np.asarray(fit, dtype=bool)
+            else:
+                fit = ~hold
+            if np.sum(fit) < 300:
+                fit = ~hold
+            if np.sum(fit) < 300:
+                usable[hold] = False
+                continue
+
+            X_fit = X_train[fit]
+            y_fit = y_train[fit]
+            t_fit = t_train[fit]
+            treat_fit = t_fit == 1.0
+            ctrl_fit = t_fit == 0.0
+            if int(np.sum(treat_fit)) < 80 or int(np.sum(ctrl_fit)) < 80:
+                usable[hold] = False
+                continue
+
+            e_model = _fit_hgb_classifier(X_fit, t_fit)
+            e_hat = e_model.predict_proba(X_train[hold])[:, 1]
+            e_hat = np.clip(e_hat, clip, 1.0 - clip)
+
+            m1_model = _fit_hgb_regressor(X_fit[treat_fit], y_fit[treat_fit])
+            m0_model = _fit_hgb_regressor(X_fit[ctrl_fit], y_fit[ctrl_fit])
+            m1 = m1_model.predict(X_train[hold])
+            m0 = m0_model.predict(X_train[hold])
+
+            yh = y_train[hold]
+            th = t_train[hold]
+            psi_hold = m1 - m0 + th * (yh - m1) / e_hat - (1.0 - th) * (yh - m0) / (1.0 - e_hat)
+            psi[hold] = psi_hold
+
+        if int(np.sum(usable)) < max(500, int(0.5 * n_train)):
+            continue
+
+        X_tau = X_train[usable]
+        psi_tau = psi[usable]
+        # OOS metric uses treated rows in validation period.
+        n_valid = 0
+        valid_treated = np.array([], dtype=int)
+        m0_all = None
+        if len(valid_indices_scoped) > 0:
+            valid_treated = valid_indices_scoped[t_all[valid_indices_scoped] == 1.0]
+            n_valid = int(len(valid_treated))
+            if n_valid >= int(min_validation_rows):
+                control_fit_all = t_train == 0.0
+                if int(np.sum(control_fit_all)) >= 100:
+                    m0_all = _fit_hgb_regressor(X_train[control_fit_all], y_train[control_fit_all])
+        X_valid_t = X_all[valid_treated] if len(valid_treated) else np.zeros((0, X_all.shape[1]), dtype=float)
+        y_valid_t = y_all[valid_treated] if len(valid_treated) else np.zeros((0,), dtype=float)
+
+        challengers: List[Tuple[str, Any, str]] = []
+        for hgb_variant in ("conservative", "balanced", "expressive"):
+            challengers.append(
+                (
+                    f"hgb_{hgb_variant}",
+                    _fit_hgb_regressor(X_tau, psi_tau, variant=hgb_variant),
+                    "hgb",
+                )
+            )
+        ridge_beta, _ = _fit_ridge(X_tau, psi_tau, alpha=2.0)
+        challengers.append(("ridge", _RidgePredictor(ridge_beta), "ridge"))
+
+        best_name = ""
+        best_kind = ""
+        best_model = None
+        best_train_r2 = -1e9
+        best_oos_r2 = None
+        best_resid_std = None
+        best_score = -1e9
+
+        for cand_name, cand_model, cand_kind in challengers:
+            tau_hat_train = np.asarray(cand_model.predict(X_train), dtype=float)
+            train_r2 = float(_r2(psi_tau, np.asarray(cand_model.predict(X_tau), dtype=float)))
+            tau_resid = psi - tau_hat_train
+            resid_std_tau = float(np.sqrt(np.mean(np.square(tau_resid[usable])))) if np.any(usable) else 0.2
+            resid_std_tau = float(max(1e-6, resid_std_tau))
+
+            oos_r2 = None
+            if m0_all is not None and len(valid_treated) >= int(min_validation_rows):
+                yhat_valid_t = np.asarray(m0_all.predict(X_valid_t), dtype=float) + np.asarray(
+                    cand_model.predict(X_valid_t), dtype=float
+                )
+                oos_r2 = float(_r2(y_valid_t, yhat_valid_t))
+
+            # Prefer true OOS ranking when available; fallback to train fit.
+            rank_score = float(oos_r2) if oos_r2 is not None else (float(train_r2) - 2.0)
+            if rank_score > best_score:
+                best_score = rank_score
+                best_name = str(cand_name)
+                best_kind = str(cand_kind)
+                best_model = cand_model
+                best_train_r2 = float(train_r2)
+                best_oos_r2 = float(oos_r2) if oos_r2 is not None else None
+                best_resid_std = float(resid_std_tau)
+
+        if best_model is None:
+            continue
+
+        enabled = (
+            best_oos_r2 is not None
+            and float(best_oos_r2) >= float(gate_min_oos_r2)
+            and int(n_train) >= int(gate_min_train_rows)
+            and int(treated_rows) >= int(gate_min_treated_rows)
+            and int(control_rows) >= int(gate_min_control_rows)
+        )
+        fail_reasons = []
+        if best_oos_r2 is None:
+            fail_reasons.append("oos_unavailable")
+        elif float(best_oos_r2) < float(gate_min_oos_r2):
+            fail_reasons.append(f"oos_r2<{float(gate_min_oos_r2):.3f}")
+        if int(n_train) < int(gate_min_train_rows):
+            fail_reasons.append(f"n_train<{int(gate_min_train_rows)}")
+        if int(treated_rows) < int(gate_min_treated_rows):
+            fail_reasons.append(f"treated<{int(gate_min_treated_rows)}")
+        if int(control_rows) < int(gate_min_control_rows):
+            fail_reasons.append(f"control<{int(gate_min_control_rows)}")
+
+        bundle_key = str(cell_key)
+        bundle[bundle_key] = best_model
+        out["dr_models"][str(cell_key)] = {
+            "method": "dr_aipw_hgb_v1",
+            "model_family": "hgb",
+            "bundle_key": bundle_key,
+            "challenger_selected": str(best_name),
+            "challenger_kind": str(best_kind),
+            "residual_std": float(best_resid_std or 0.2),
+            "n_train": int(n_train),
+            "n_valid": int(n_valid),
+            "treated_rows": int(treated_rows),
+            "control_rows": int(control_rows),
+            "propensity_clip": float(clip),
+            "crossfit_folds": int(folds),
+            "r2": float(best_train_r2),
+            "oos_r2": float(best_oos_r2) if best_oos_r2 is not None else None,
+            "enabled": bool(enabled),
+            "gate_reason": "pass" if enabled else "|".join(fail_reasons),
+            "action_type_key": str(action_type_key),
+            "action_subtype_key": str(subtype_key),
+        }
+    if not quiet:
+        enabled_count = sum(1 for m in (out.get("dr_models") or {}).values() if bool(m.get("enabled", True)))
+        _log(f"{log_prefix} completed cells={len(out.get('dr_models', {}))} enabled={enabled_count}")
+    return out, bundle
+
+def _fit_models_for_target(
+    df: pd.DataFrame,
+    y: pd.Series,
+    stats: Dict[str, Dict[str, float]],
+    min_rows_per_action: int,
+    alpha: float,
+    train_mask: pd.Series,
+    valid_mask: pd.Series,
+    min_validation_rows: int,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"models": {}}
+    base = _ensure_features(df)
+    yy = _to_num(y)
+
+    # Global model
+    train_ok = yy.notna() & train_mask
+    valid_ok = yy.notna() & valid_mask
+    dfg = base.loc[train_ok]
+    yg = yy.loc[train_ok].to_numpy(dtype=float)
+    if len(dfg) >= 200:
+        Xg = _standardize(dfg, stats)
+        beta, resid_std = _fit_ridge(Xg, yg, alpha)
+        yhat = np.column_stack([np.ones(len(Xg)), Xg]) @ beta
+        oos_r2 = None
+        if int(valid_ok.sum()) >= int(min_validation_rows):
+            Xv = _standardize(base.loc[valid_ok], stats)
+            yv = yy.loc[valid_ok].to_numpy(dtype=float)
+            yhat_v = np.column_stack([np.ones(len(Xv)), Xv]) @ beta
+            oos_r2 = float(_r2(yv, yhat_v))
+        out["models"]["__global__"] = {
+            "intercept": float(beta[0]),
+            "coefficients": {f: float(beta[i + 1]) for i, f in enumerate(FEATURE_ORDER)},
+            "residual_std": float(max(1e-6, resid_std)),
+            "n_train": int(len(yg)),
+            "n_valid": int(valid_ok.sum()),
+            "r2": float(_r2(yg, yhat)),
+            "oos_r2": float(oos_r2) if oos_r2 is not None else None,
+        }
+
+    # Action-specific models
+    action_types = sorted(set(str(v) for v in df.get("action_type", pd.Series(dtype=str)).dropna().tolist()))
+    for action_type in action_types:
+        m_train = train_ok & (df["action_type"].astype(str) == action_type)
+        m_valid = valid_ok & (df["action_type"].astype(str) == action_type)
+        dfa = base.loc[m_train]
+        ya = yy.loc[m_train].to_numpy(dtype=float)
+        if len(dfa) < int(min_rows_per_action):
+            continue
+        Xa = _standardize(dfa, stats)
+        beta, resid_std = _fit_ridge(Xa, ya, alpha)
+        yhat = np.column_stack([np.ones(len(Xa)), Xa]) @ beta
+        oos_r2 = None
+        if int(m_valid.sum()) >= int(min_validation_rows):
+            Xv = _standardize(base.loc[m_valid], stats)
+            yv = yy.loc[m_valid].to_numpy(dtype=float)
+            yhat_v = np.column_stack([np.ones(len(Xv)), Xv]) @ beta
+            oos_r2 = float(_r2(yv, yhat_v))
+        out["models"][action_type] = {
+            "intercept": float(beta[0]),
+            "coefficients": {f: float(beta[i + 1]) for i, f in enumerate(FEATURE_ORDER)},
+            "residual_std": float(max(1e-6, resid_std)),
+            "n_train": int(len(ya)),
+            "n_valid": int(m_valid.sum()),
+            "r2": float(_r2(ya, yhat)),
+            "oos_r2": float(oos_r2) if oos_r2 is not None else None,
+        }
+    return out
+
+
+def _fit_dr_models_for_target(
+    df: pd.DataFrame,
+    y: pd.Series,
+    stats: Dict[str, Dict[str, float]],
+    train_mask: pd.Series,
+    valid_mask: pd.Series,
+    alpha: float,
+    crossfit_folds: int,
+    dr_min_treated_rows: int,
+    dr_min_control_rows: int,
+    min_validation_rows: int,
+    propensity_clip: float,
+    dr_control_scope: str,
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"dr_models": {}}
+    base = _ensure_features(df)
+    yy = _to_num(y)
+    action_series = df.get("action_type", pd.Series(dtype=str)).astype(str)
+
+    train_ok = yy.notna() & train_mask
+    valid_ok = yy.notna() & valid_mask
+    if int(train_ok.sum()) < max(1000, dr_min_treated_rows + dr_min_control_rows):
+        return out
+
+    X_all = _standardize(base, stats)
+    y_all = yy.to_numpy(dtype=float)
+    train_indices = np.where(train_ok.to_numpy(dtype=bool))[0]
+    valid_indices = np.where(valid_ok.to_numpy(dtype=bool))[0]
+    if len(train_indices) == 0:
+        return out
+
+    action_types = sorted(set(action_series.loc[train_ok].dropna().tolist()))
+    folds = max(2, int(crossfit_folds))
+    clip = min(0.2, max(0.01, float(propensity_clip)))
+
+    for action_type in action_types:
+        t_all = (action_series.to_numpy(dtype=str) == str(action_type)).astype(float)
+        scope_mask = _cell_scope_mask(
+            action_type_series=action_series,
+            action_type_key=str(action_type),
+            subtype_key="all",
+            dr_control_scope=str(dr_control_scope),
+        )
+        train_scope = train_ok & scope_mask
+        valid_scope = valid_ok & scope_mask
+        train_indices_scoped = np.where(train_scope.to_numpy(dtype=bool))[0]
+        valid_indices_scoped = np.where(valid_scope.to_numpy(dtype=bool))[0]
+        if len(train_indices_scoped) == 0:
+            continue
+        t_train = t_all[train_indices_scoped]
+        treated_rows = int(np.sum(t_train == 1.0))
+        control_rows = int(np.sum(t_train == 0.0))
+        if treated_rows < int(dr_min_treated_rows) or control_rows < int(dr_min_control_rows):
+            continue
+
+        X_train = X_all[train_indices_scoped]
+        y_train = y_all[train_indices_scoped]
+        n_train = len(train_indices_scoped)
+        fold_ids = np.arange(n_train) % folds
+        psi = np.zeros(n_train, dtype=float)
+        usable = np.ones(n_train, dtype=bool)
+
+        for fold in range(folds):
+            hold = fold_ids == fold
+            fit = ~hold
+            if not np.any(hold) or np.sum(fit) < 100:
+                continue
+
+            X_fit = X_train[fit]
+            y_fit = y_train[fit]
+            t_fit = t_train[fit]
+
+            treat_fit = t_fit == 1.0
+            ctrl_fit = t_fit == 0.0
+            if int(np.sum(treat_fit)) < 50 or int(np.sum(ctrl_fit)) < 50:
+                usable[hold] = False
+                continue
+
+            beta_e = _fit_propensity_ridge(X_fit, t_fit, alpha=max(0.1, alpha))
+            e_hat = _sigmoid(_linear_predict(beta_e, X_train[hold]))
+            e_hat = np.clip(e_hat, clip, 1.0 - clip)
+
+            beta_m1, _ = _fit_ridge(X_fit[treat_fit], y_fit[treat_fit], alpha)
+            beta_m0, _ = _fit_ridge(X_fit[ctrl_fit], y_fit[ctrl_fit], alpha)
+            m1 = _linear_predict(beta_m1, X_train[hold])
+            m0 = _linear_predict(beta_m0, X_train[hold])
+
+            yh = y_train[hold]
+            th = t_train[hold]
+            psi_hold = m1 - m0 + th * (yh - m1) / e_hat - (1.0 - th) * (yh - m0) / (1.0 - e_hat)
+            psi[hold] = psi_hold
+
+        if int(np.sum(usable)) < max(200, int(0.5 * n_train)):
+            continue
+
+        X_tau = X_train[usable]
+        psi_tau = psi[usable]
+        beta_tau, resid_std = _fit_ridge(X_tau, psi_tau, alpha)
+        tau_hat_train = _linear_predict(beta_tau, X_train)
+        tau_resid = psi - tau_hat_train
+        resid_std_tau = float(np.sqrt(np.mean(np.square(tau_resid[usable])))) if np.any(usable) else float(resid_std)
+        resid_std_tau = float(max(1e-6, resid_std_tau))
+
+        # Out-of-sample treated-only calibration metric.
+        oos_r2 = None
+        n_valid = 0
+        if len(valid_indices_scoped) > 0:
+            valid_treated = valid_indices_scoped[t_all[valid_indices_scoped] == 1.0]
+            n_valid = int(len(valid_treated))
+            if n_valid >= int(min_validation_rows):
+                X_fit_all = X_train
+                y_fit_all = y_train
+                t_fit_all = t_train
+                treat_all = t_fit_all == 1.0
+                ctrl_all = t_fit_all == 0.0
+                if int(np.sum(treat_all)) >= 100 and int(np.sum(ctrl_all)) >= 100:
+                    beta_m0_all, _ = _fit_ridge(X_fit_all[ctrl_all], y_fit_all[ctrl_all], alpha)
+                    X_valid_t = X_all[valid_treated]
+                    y_valid_t = y_all[valid_treated]
+                    yhat_valid_t = _linear_predict(beta_m0_all, X_valid_t) + _linear_predict(beta_tau, X_valid_t)
+                    oos_r2 = float(_r2(y_valid_t, yhat_valid_t))
+
+        out["dr_models"][str(action_type)] = {
+            "method": "dr_aipw_ridge_v1",
+            "intercept": float(beta_tau[0]),
+            "coefficients": {f: float(beta_tau[i + 1]) for i, f in enumerate(FEATURE_ORDER)},
+            "residual_std": float(resid_std_tau),
+            "n_train": int(n_train),
+            "n_valid": int(n_valid),
+            "treated_rows": int(treated_rows),
+            "control_rows": int(control_rows),
+            "propensity_clip": float(clip),
+            "crossfit_folds": int(folds),
+            "r2": float(_r2(psi_tau, _linear_predict(beta_tau, X_tau))),
+            "oos_r2": float(oos_r2) if oos_r2 is not None else None,
+            "ate_train": float(np.mean(tau_hat_train)),
+        }
+
+    return out
+
+
