@@ -59,3 +59,13 @@ def test_evaluate_summary_thresholds_detects_failures():
     assert "growth.enabled<1" in gates["failures"]
 
 
+def test_compare_summaries_reports_improvement():
+    champ = summarize_model_card(_card())
+    upgraded = _card()
+    upgraded["objectives"]["value_creation"]["actions"]["a::y"]["oos_r2"] = 0.18
+    upgraded["objectives"]["growth"]["actions"]["c::x"] = {"enabled": True, "oos_r2": 0.12}
+    chall = summarize_model_card(upgraded)
+    cmp = compare_summaries(champ, chall)
+    assert cmp["totals"]["delta_enabled_cells"] == 1
+    assert cmp["totals"]["delta_enabled_oos_r2_mean"] > 0.0
+    assert cmp["challenger_better_objective_fraction"] is not None
