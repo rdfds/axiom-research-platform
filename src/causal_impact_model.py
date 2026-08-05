@@ -118,3 +118,16 @@ def _quantile(values: list[float], q: float) -> float:
     return xs[lo] * (1.0 - w) + xs[hi] * w
 
 
+def _scalar_float(value: Any) -> Optional[float]:
+    raw = _to_float(value)
+    if raw is not None:
+        return float(raw)
+    try:
+        seq = list(value)  # type: ignore[arg-type]
+    except Exception:
+        return None
+    if not seq:
+        return None
+    return _scalar_float(seq[0])
+
+

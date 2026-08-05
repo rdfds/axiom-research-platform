@@ -170,3 +170,27 @@ def test_build_targets_growth_v2_dampens_eps_outlier_influence():
     assert v2_gap < base_gap
 
 
+def test_build_targets_optionality_v2_ignores_sparse_spread_shock():
+    df = pd.DataFrame(
+        {
+            "outcome_pe_6m": [0.05, 0.05],
+            "outcome_ev_ebitda_6m": [0.10, 0.10],
+            "outcome_pe_12m": [0.0, 0.0],
+            "outcome_ev_ebitda_12m": [0.0, 0.0],
+            "leverage_delta": [0.10, 0.10],
+            "revenue_delta": [0.0, 0.0],
+            "margin_delta": [0.0, 0.0],
+            "eps_delta": [0.0, 0.0],
+            "roic_delta": [0.0, 0.0],
+            "fcf_margin_delta": [0.02, 0.02],
+            "credit_spread_change_6m": [0.0, 0.0],
+            "credit_spread_change_12m": [0.0, 400.0],
+            "rating_migration_6m": [0.0, 0.0],
+            "rating_migration_12m": [0.0, 0.0],
+        }
+    )
+    out = _build_targets(df)
+    base_gap = abs(float(out["optionality"].iloc[1]) - float(out["optionality"].iloc[0]))
+    v2_gap = abs(float(out["optionality_v2"].iloc[1]) - float(out["optionality_v2"].iloc[0]))
+    assert base_gap > 0.0
+    assert v2_gap == 0.0
