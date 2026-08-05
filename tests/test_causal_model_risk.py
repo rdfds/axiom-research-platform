@@ -25,3 +25,27 @@ def _row(action_id: str, quality: float, support: float, mode: float, oos: bool,
     }
 
 
+def test_build_causal_model_risk_report_summary():
+    run = SimpleNamespace(
+        run_id="r1",
+        company_id="0000320193",
+        as_of_time="2026-02-28T00:00:00+00:00",
+        frozen_state=SimpleNamespace(snapshot_hash="abc"),
+        model_versions=SimpleNamespace(mechanism_model_version="mechanism_model_v2_causal+mode_standalone"),
+    )
+    rows = [
+        _row("capital_return.open_market_buyback", quality=0.2, support=0.7, mode=1.0, oos=False, feasible=True),
+        _row("capital_return.open_market_buyback", quality=-0.4, support=0.1, mode=0.0, oos=True, feasible=False),
+    ]
+    report = build_causal_model_risk_report(run=run, snapshot={"regime": {"credit_regime": "neutral"}}, feasibility_results=rows)
+    s = report["summary"]
+    assert s["total_candidates"] == 2
+    assert s["feasible_candidates"] == 1
+    assert s["causal_present_rate"] == 1.0
+    assert s["standalone_applied_rate"] == 0.5
+    assert s["standalone_fallback_rate"] == 0.5
+    assert s["oos_penalty_rate"] == 0.5
+    assert report["causal_mode"] == "standalone"
+    assert isinstance(report["action_breakdown"], list) and report["action_breakdown"]
+
+
