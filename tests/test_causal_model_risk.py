@@ -49,3 +49,17 @@ def test_build_causal_model_risk_report_summary():
     assert isinstance(report["action_breakdown"], list) and report["action_breakdown"]
 
 
+def test_build_causal_model_risk_report_with_previous():
+    run = SimpleNamespace(
+        run_id="r2",
+        company_id="0000320193",
+        as_of_time="2026-02-28T00:00:00+00:00",
+        frozen_state=SimpleNamespace(snapshot_hash="def"),
+        model_versions=SimpleNamespace(mechanism_model_version="mechanism_model_v2_causal+mode_standalone"),
+    )
+    rows = [_row("capital_structure.refinancing", quality=0.1, support=0.6, mode=1.0, oos=False)]
+    prev = {"generated_at": "2026-03-07T00:00:00Z", "summary": {"low_quality_rate": 0.5, "low_support_rate": 0.5, "oos_penalty_rate": 0.5}}
+    report = build_causal_model_risk_report(run=run, snapshot={}, feasibility_results=rows, previous_report=prev)
+    mon = report["challenger_monitoring"]
+    assert mon["has_previous_report"] is True
+    assert mon["delta_low_quality_rate"] < 0
