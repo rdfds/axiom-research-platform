@@ -1,0 +1,4521 @@
+{
+  "metadata": {
+    "scope": "consumer_industrials_wave1",
+    "description": "Self-contained synthetic goldens for consumer and industrial market-adjusted metric conventions.",
+    "primary_credit_anchor": "fitch_corporate_rating_criteria_2024",
+    "expected_archetype_count": 19
+  },
+  "cases": [
+    {
+      "case_id": "lease_heavy_specialty_retail",
+      "description": "lease_heavy market metric golden",
+      "company_id": "LEASECO",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "lease_heavy",
+        "sector": "Consumer Discretionary",
+        "subsector": "Specialty Retail",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "LEASECO",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "LEASECO",
+            "sector": "Consumer Discretionary",
+            "subsector": "Specialty Retail",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Specialty Retail",
+            "sic": "5331"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 140.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": true,
+            "lease_liabilities": 40.0,
+            "included_lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 105.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 140.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.9736842105263157,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 105.0,
+            "ebitda": 50.0,
+            "ebitdar": 53.2,
+            "lease_fixed_charge": 3.2,
+            "denominator_policy": "ebitdar"
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities"
+          ]
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 40.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 4.030303030303031,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "ebitdar": 53.2,
+            "interest_expense": 10.0,
+            "lease_fixed_charge": 3.2
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "consumer_grocery_retail",
+      "description": "consumer_grocery_retail market metric golden",
+      "company_id": "GROC",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "consumer_grocery_retail",
+        "sector": "Consumer Staples",
+        "subsector": "Food Retail",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "GROC",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "GROC",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "GROC",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "GROC",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "GROC",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "GROC",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "GROC",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "GROC",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "GROC",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "GROC",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "GROC",
+            "sector": "Consumer Staples",
+            "subsector": "Food Retail",
+            "gics_sector": "Consumer Staples",
+            "gics_sub_industry": "Food Retail",
+            "sic": "5411"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 140.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": true,
+            "lease_liabilities": 40.0,
+            "included_lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 105.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 140.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.9736842105263157,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 105.0,
+            "ebitda": 50.0,
+            "ebitdar": 53.2,
+            "lease_fixed_charge": 3.2,
+            "denominator_policy": "ebitdar"
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities"
+          ]
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 4.030303030303031,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "ebitdar": 53.2,
+            "interest_expense": 10.0,
+            "lease_fixed_charge": 3.2
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "consumer_internet_retail",
+      "description": "consumer_internet_retail market metric golden",
+      "company_id": "ECOM",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "consumer_internet_retail",
+        "sector": "Consumer Discretionary",
+        "subsector": "Internet & Direct Marketing Retail",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "ECOM",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "ECOM",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "ECOM",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "ECOM",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "ECOM",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "ECOM",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "ECOM",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "ECOM",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "ECOM",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "ECOM",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "ECOM",
+            "sector": "Consumer Discretionary",
+            "subsector": "Internet & Direct Marketing Retail",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Internet & Direct Marketing Retail",
+            "sic": "5961"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 40.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "consumer_branded_staples",
+      "description": "consumer_branded_staples market metric golden",
+      "company_id": "STPL",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "consumer_branded_staples",
+        "sector": "Consumer Staples",
+        "subsector": "Packaged Foods",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "STPL",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "STPL",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "STPL",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "STPL",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "STPL",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "STPL",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "STPL",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "STPL",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "STPL",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "STPL",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "STPL",
+            "sector": "Consumer Staples",
+            "subsector": "Packaged Foods",
+            "gics_sector": "Consumer Staples",
+            "gics_sub_industry": "Packaged Foods",
+            "sic": "2090"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 20.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "consumer_apparel_luxury",
+      "description": "consumer_apparel_luxury market metric golden",
+      "company_id": "LUXY",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "consumer_apparel_luxury",
+        "sector": "Consumer Discretionary",
+        "subsector": "Apparel, Accessories & Luxury Goods",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "LUXY",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "LUXY",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "LUXY",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "LUXY",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "LUXY",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "LUXY",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "LUXY",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "LUXY",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "LUXY",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "LUXY",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "LUXY",
+            "sector": "Consumer Discretionary",
+            "subsector": "Apparel, Accessories & Luxury Goods",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Apparel, Accessories & Luxury Goods",
+            "sic": "2330"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "consumer_durables",
+      "description": "consumer_durables market metric golden",
+      "company_id": "DURA",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "consumer_durables",
+        "sector": "Consumer Discretionary",
+        "subsector": "Household Durables",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "DURA",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "DURA",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "DURA",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "DURA",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "DURA",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "DURA",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "DURA",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "DURA",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "DURA",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "DURA",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "DURA",
+            "sector": "Consumer Discretionary",
+            "subsector": "Household Durables",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Household Durables",
+            "sic": "2510"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "diversified_consumer_services",
+      "description": "diversified_consumer_services market metric golden",
+      "company_id": "SERV",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "diversified_consumer_services",
+        "sector": "Consumer Discretionary",
+        "subsector": "Diversified Consumer Services",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "SERV",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "SERV",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "SERV",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "SERV",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "SERV",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "SERV",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "SERV",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "SERV",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "SERV",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "SERV",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "SERV",
+            "sector": "Consumer Discretionary",
+            "subsector": "Diversified Consumer Services",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Diversified Consumer Services",
+            "sic": "7299"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "automotive_oem",
+      "description": "automotive_oem market metric golden",
+      "company_id": "AUTO",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "automotive_oem",
+        "sector": "Consumer Discretionary",
+        "subsector": "Automobiles",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "AUTO",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "AUTO",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "AUTO",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "AUTO",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "AUTO",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "AUTO",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "AUTO",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "AUTO",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "AUTO",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "AUTO",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "AUTO",
+            "sector": "Consumer Discretionary",
+            "subsector": "Automobiles",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Automobiles",
+            "sic": "3711"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "auto_components",
+      "description": "auto_components market metric golden",
+      "company_id": "AUTP",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "auto_components",
+        "sector": "Consumer Discretionary",
+        "subsector": "Automobile Components",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "AUTP",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "AUTP",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "AUTP",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "AUTP",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "AUTP",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "AUTP",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "AUTP",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "AUTP",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "AUTP",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "AUTP",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "AUTP",
+            "sector": "Consumer Discretionary",
+            "subsector": "Automobile Components",
+            "gics_sector": "Consumer Discretionary",
+            "gics_sub_industry": "Automobile Components",
+            "sic": "3714"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "aerospace_defense",
+      "description": "aerospace_defense market metric golden",
+      "company_id": "AERO",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "aerospace_defense",
+        "sector": "Industrials",
+        "subsector": "Aerospace & Defense",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "AERO",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "AERO",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "AERO",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "AERO",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "AERO",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "AERO",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "AERO",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "AERO",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "AERO",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "AERO",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "AERO",
+            "sector": "Industrials",
+            "subsector": "Aerospace & Defense",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Aerospace & Defense",
+            "sic": "3721"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "machinery_capital_goods",
+      "description": "machinery_capital_goods market metric golden",
+      "company_id": "MACHCO",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "machinery_capital_goods",
+        "sector": "Industrials",
+        "subsector": "Machinery",
+        "override_level_applied": "sector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "MACHCO",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "MACHCO",
+            "legal_name": "MACHCO Holdings"
+          }
+        ],
+        "entity_identifiers": [
+          {
+            "entity_id": "MACHCO",
+            "identifier_type": "ticker",
+            "identifier_value": "MACH"
+          },
+          {
+            "entity_id": "MACHCO",
+            "identifier_type": "cik",
+            "identifier_value": "MACHCO"
+          }
+        ],
+        "taxonomy_reference": [
+          {
+            "Instrument": "MACH.N",
+            "Company Common Name": "MACHCO Holdings",
+            "GICS Sector Name": "Industrials",
+            "GICS Industry Name": "Machinery"
+          }
+        ]
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "industrial_distributors",
+      "description": "industrial_distributors market metric golden",
+      "company_id": "DIST",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "industrial_distributors",
+        "sector": "Industrials",
+        "subsector": "Trading Companies & Distributors",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "DIST",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "DIST",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "DIST",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "DIST",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "DIST",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "DIST",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "DIST",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "DIST",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "DIST",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "DIST",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "DIST",
+            "sector": "Industrials",
+            "subsector": "Trading Companies & Distributors",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Trading Companies & Distributors",
+            "sic": "5080"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "packaging_containers",
+      "description": "packaging_containers market metric golden",
+      "company_id": "PACK",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "packaging_containers",
+        "sector": "Industrials",
+        "subsector": "Metal, Glass & Plastic Containers",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "PACK",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "PACK",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "PACK",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "PACK",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "PACK",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "PACK",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "PACK",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "PACK",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "PACK",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "PACK",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "PACK",
+            "sector": "Industrials",
+            "subsector": "Metal, Glass & Plastic Containers",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Metal, Glass & Plastic Containers",
+            "sic": "3411"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 20.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "building_products",
+      "description": "building_products market metric golden",
+      "company_id": "BLDG",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "building_products",
+        "sector": "Industrials",
+        "subsector": "Building Products",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "BLDG",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "BLDG",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "BLDG",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "BLDG",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "BLDG",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "BLDG",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "BLDG",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "BLDG",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "BLDG",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "BLDG",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "BLDG",
+            "sector": "Industrials",
+            "subsector": "Building Products",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Building Products",
+            "sic": "2430"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "transport_logistics",
+      "description": "transport_logistics market metric golden",
+      "company_id": "TRNS",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "transport_logistics",
+        "sector": "Industrials",
+        "subsector": "Air Freight & Logistics",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "TRNS",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "TRNS",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "TRNS",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "TRNS",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "TRNS",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "TRNS",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "TRNS",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "TRNS",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "TRNS",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "TRNS",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "TRNS",
+            "sector": "Industrials",
+            "subsector": "Air Freight & Logistics",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Air Freight & Logistics",
+            "sic": "4213"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 140.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": true,
+            "lease_liabilities": 40.0,
+            "included_lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 105.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 140.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.9736842105263157,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 105.0,
+            "ebitda": 50.0,
+            "ebitdar": 53.2,
+            "lease_fixed_charge": 3.2,
+            "denominator_policy": "ebitdar"
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities"
+          ]
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 4.030303030303031,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "ebitdar": 53.2,
+            "interest_expense": 10.0,
+            "lease_fixed_charge": 3.2
+          },
+          "quality_flags_contains": [
+            "lease_expense_estimated_from_liabilities",
+            "lease_fixed_charge_proxy_from_liability",
+            "fixed_charge_coverage_preferred"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "professional_services",
+      "description": "professional_services market metric golden",
+      "company_id": "PROF",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "professional_services",
+        "sector": "Industrials",
+        "subsector": "Professional Services",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "PROF",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "PROF",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "PROF",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "PROF",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "PROF",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "PROF",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "PROF",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "PROF",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "PROF",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "PROF",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "PROF",
+            "sector": "Industrials",
+            "subsector": "Professional Services",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Professional Services",
+            "sic": "7370"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 40.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "commercial_services",
+      "description": "commercial_services market metric golden",
+      "company_id": "COMM",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "commercial_services",
+        "sector": "Industrials",
+        "subsector": "Commercial Services & Supplies",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "COMM",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "COMM",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "COMM",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "COMM",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "COMM",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "COMM",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "COMM",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "COMM",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "COMM",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "COMM",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "COMM",
+            "sector": "Industrials",
+            "subsector": "Commercial Services & Supplies",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Commercial Services & Supplies",
+            "sic": "7340"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 30.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "construction_engineering",
+      "description": "construction_engineering market metric golden",
+      "company_id": "CNST",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "construction_engineering",
+        "sector": "Industrials",
+        "subsector": "Construction & Engineering",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "CNST",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "CNST",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "CNST",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "CNST",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "CNST",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "CNST",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "CNST",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "CNST",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "CNST",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "CNST",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "CNST",
+            "sector": "Industrials",
+            "subsector": "Construction & Engineering",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Construction & Engineering",
+            "sic": "1623"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 20.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    },
+    {
+      "case_id": "industrial_conglomerates",
+      "description": "industrial_conglomerates market metric golden",
+      "company_id": "CONG",
+      "as_of_date": "2026-02-28",
+      "expected_taxonomy": {
+        "archetype": "industrial_conglomerates",
+        "sector": "Industrials",
+        "subsector": "Industrial Conglomerates",
+        "override_level_applied": "subsector",
+        "support_mode": "exact"
+      },
+      "inputs": {
+        "facts": [
+          {
+            "fact_id": "cash",
+            "entity_id": "CONG",
+            "fact_type": "financial.cash",
+            "fact_value": 40.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "restricted_cash",
+            "entity_id": "CONG",
+            "fact_type": "financial.restricted_cash",
+            "fact_value": 5.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "debt",
+            "entity_id": "CONG",
+            "fact_type": "financial.total_debt",
+            "fact_value": 100.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_current",
+            "entity_id": "CONG",
+            "fact_type": "financial.lease_liability_current",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "lease_long",
+            "entity_id": "CONG",
+            "fact_type": "financial.lease_liability_noncurrent",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "pension",
+            "entity_id": "CONG",
+            "fact_type": "financial.unfunded_pension",
+            "fact_value": 80.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebitda",
+            "entity_id": "CONG",
+            "fact_type": "financial.ebitda",
+            "fact_value": 50.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "ebit",
+            "entity_id": "CONG",
+            "fact_type": "financial.ebit",
+            "fact_value": 30.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "interest",
+            "entity_id": "CONG",
+            "fact_type": "financial.interest_expense",
+            "fact_value": 10.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          },
+          {
+            "fact_id": "revenue",
+            "entity_id": "CONG",
+            "fact_type": "financial.revenue",
+            "fact_value": 1000.0,
+            "confidence_score": 0.9,
+            "source_type": "SEC",
+            "published_at": "2026-02-01T00:00:00Z",
+            "ingested_at": "2026-02-01T00:00:00Z",
+            "valid_from": "2026-02-01T00:00:00Z",
+            "valid_to": null
+          }
+        ],
+        "entity": [
+          {
+            "entity_id": "CONG",
+            "sector": "Industrials",
+            "subsector": "Industrial Conglomerates",
+            "gics_sector": "Industrials",
+            "gics_sub_industry": "Industrial Conglomerates",
+            "sic": "3812"
+          }
+        ],
+        "entity_identifiers": [],
+        "taxonomy_reference": []
+      },
+      "metrics": {
+        "capital_structure.total_debt_market": {
+          "exists": true,
+          "expected_value": 100.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "reported_debt": 100.0,
+            "lease_adjusted_metrics": false,
+            "lease_liabilities": 40.0,
+            "unfunded_pension": 80.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_debt_market": {
+          "exists": true,
+          "expected_value": 65.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "economic_debt": 100.0,
+            "usable_cash_market": 35.0,
+            "restricted_cash": 5.0
+          },
+          "quality_flags_contains": [
+            "pension_excluded_from_debt"
+          ]
+        },
+        "capital_structure.net_leverage_market": {
+          "exists": true,
+          "expected_value": 1.3,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "component_breakdown_contains": {
+            "net_debt_market": 65.0,
+            "ebitda": 50.0,
+            "ebitdar": 50.0,
+            "denominator_policy": "ebitda"
+          }
+        },
+        "liquidity.available_for_actions_market": {
+          "exists": true,
+          "expected_value": 35.0,
+          "expected_support_mode": "proxy",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "market",
+          "expected_fallback_used": "heuristic",
+          "component_breakdown_contains": {
+            "usable_cash_market": 35.0,
+            "minimum_cash_policy_proxy": 25.0
+          },
+          "quality_flags_contains": [
+            "minimum_cash_policy_proxy_not_applied_to_market_view"
+          ]
+        },
+        "capital_structure.interest_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "primary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitda": 50.0,
+            "interest_expense": 10.0
+          }
+        },
+        "capital_structure.fixed_charge_coverage": {
+          "exists": true,
+          "expected_value": 5.0,
+          "expected_support_mode": "exact",
+          "expected_applicability_status": "secondary",
+          "expected_view_type": "decision",
+          "component_breakdown_contains": {
+            "ebitdar": 50.0,
+            "interest_expense": 10.0
+          }
+        }
+      }
+    }
+  ]
+}

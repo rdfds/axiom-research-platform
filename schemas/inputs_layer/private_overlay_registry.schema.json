@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PrivateOverlayRegistryRecord",
+  "type": "object",
+  "description": "Private overlays for internal constraints and projections.",
+  "properties": {
+    "overlay_id": { "type": "string" },
+    "entity_id": { "type": "string" },
+    "overlay_type": { "type": "string" },
+    "overlay_version": { "type": "string" },
+    "author_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "payload": { "type": "object" },
+    "source_id": { "type": "string" },
+    "source_type": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "raw_pointer": { "type": "string" }
+  },
+  "required": [
+    "overlay_id",
+    "entity_id",
+    "overlay_type",
+    "overlay_version",
+    "author_id",
+    "created_at",
+    "payload",
+    "source_id",
+    "source_type",
+    "published_at",
+    "ingested_at",
+    "confidence_score",
+    "raw_pointer"
+  ],
+  "additionalProperties": true
+}

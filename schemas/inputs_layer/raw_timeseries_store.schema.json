@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RawTimeSeriesStoreRecord",
+  "type": "object",
+  "description": "Point-in-time time series observations with provenance.",
+  "properties": {
+    "series_id": { "type": "string" },
+    "series_type": { "type": "string" },
+    "entity_id": { "type": ["string", "null"] },
+    "entity_id_type": { "type": ["string", "null"] },
+    "date": { "type": "string", "format": "date-time" },
+    "value": { "type": "number" },
+    "unit": { "type": ["string", "null"] },
+    "currency": { "type": ["string", "null"] },
+    "frequency": { "type": ["string", "null"] },
+    "published_at": { "type": "string", "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "raw_pointer": { "type": "string" },
+    "revision_flag": { "type": ["boolean", "null"] },
+    "release_lag_days": { "type": ["integer", "null"] }
+  },
+  "required": [
+    "series_id",
+    "series_type",
+    "entity_id",
+    "date",
+    "value",
+    "published_at",
+    "ingested_at",
+    "confidence_score",
+    "raw_pointer"
+  ],
+  "additionalProperties": true
+}

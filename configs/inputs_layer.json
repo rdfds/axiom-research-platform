@@ -1,0 +1,119 @@
+{
+  "datasets": [
+    {
+      "name": "RawDocumentStore",
+      "path": "data/inputs_layer/raw_documents",
+      "schema": "schemas/inputs_layer/raw_document_store.schema.json",
+      "required": false
+    },
+    {
+      "name": "RawTimeSeriesStore",
+      "path": "data/inputs_layer/raw_timeseries.parquet",
+      "schema": "schemas/inputs_layer/raw_timeseries_store.schema.json",
+      "required": false
+    },
+    {
+      "name": "RawEventItems",
+      "path": "data/inputs_layer/raw_event_items.parquet",
+      "schema": "schemas/inputs_layer/raw_event_items.schema.json",
+      "required": false
+    },
+    {
+      "name": "EventRegistry",
+      "path": "data/inputs_layer/event_registry_enriched.parquet",
+      "schema": "schemas/inputs_layer/event_registry.schema.json",
+      "required": false
+    },
+    {
+      "name": "ExtractedFactRegistry",
+      "path": "data/inputs_layer/extracted_fact_registry_enriched",
+      "schema": "schemas/inputs_layer/extracted_fact_registry.schema.json",
+      "required": false
+    },
+    {
+      "name": "EntityGraph",
+      "path": "data/inputs_layer/entity_graph.parquet",
+      "schema": "schemas/inputs_layer/entity_graph.schema.json",
+      "required": false
+    },
+    {
+      "name": "Entity",
+      "path": "data/inputs_layer/entity.parquet",
+      "schema": "schemas/inputs_layer/entity.schema.json",
+      "required": false
+    },
+    {
+      "name": "EntityIdentifier",
+      "path": "data/inputs_layer/entity_identifier.parquet",
+      "schema": "schemas/inputs_layer/entity_identifier.schema.json",
+      "required": false
+    },
+    {
+      "name": "EntityRelationship",
+      "path": "data/inputs_layer/entity_relationship.parquet",
+      "schema": "schemas/inputs_layer/entity_relationship.schema.json",
+      "required": false
+    },
+    {
+      "name": "EntityCorrectionLog",
+      "path": "data/inputs_layer/entity_correction_log.parquet",
+      "schema": "schemas/inputs_layer/entity_correction_log.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateOverlayRegistry",
+      "path": "data/inputs_layer/private_overlay_registry.parquet",
+      "schema": "schemas/inputs_layer/private_overlay_registry.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateCovenantPackages",
+      "path": "data/inputs_layer/private_covenant_packages.parquet",
+      "schema": "schemas/inputs_layer/private_covenant_packages.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateDebtSchedule",
+      "path": "data/inputs_layer/private_debt_schedule.parquet",
+      "schema": "schemas/inputs_layer/private_debt_schedule.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateProjections",
+      "path": "data/inputs_layer/private_projections.parquet",
+      "schema": "schemas/inputs_layer/private_projections.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateSegmentKPIs",
+      "path": "data/inputs_layer/private_segment_kpis.parquet",
+      "schema": "schemas/inputs_layer/private_segment_kpis.schema.json",
+      "required": false
+    },
+    {
+      "name": "PrivateBoardConstraints",
+      "path": "data/inputs_layer/private_board_constraints.parquet",
+      "schema": "schemas/inputs_layer/private_board_constraints.schema.json",
+      "required": false
+    },
+    {
+      "name": "NewsRegulatoryEvents",
+      "path": "data/inputs_layer/news_regulatory_events.parquet",
+      "schema": "schemas/inputs_layer/news_regulatory_events.schema.json",
+      "required": false
+    },
+    {
+      "name": "EventStore",
+      "path": "data/inputs_layer/event_store.parquet",
+      "schema": "schemas/inputs_layer/event_store.schema.json",
+      "required": false
+    },
+    {
+      "name": "CitationIndex",
+      "path": "data/inputs_layer/citation_index",
+      "schema": "schemas/inputs_layer/citation_index.schema.json",
+      "required": false
+    }
+  ],
+  "output_log_path": "data/inputs_layer/data_integrity_log.parquet"
+}

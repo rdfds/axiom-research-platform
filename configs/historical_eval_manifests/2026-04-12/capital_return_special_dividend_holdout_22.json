@@ -1,0 +1,362 @@
+{
+  "manifest_generated_at": "2026-04-12T16:44:40.500189+00:00",
+  "label": "capital_return.special_dividend_holdout_22",
+  "source_outcomes_path": "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet",
+  "selection_method": "latest_unique_company_case_by_action_date_desc",
+  "selection_rankings": [
+    {
+      "company_id": "061122",
+      "company_name": "DIT",
+      "ticker": "DIT",
+      "as_of_time": "2024-12-30T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "222111",
+      "company_name": "PBR",
+      "ticker": "PBR",
+      "as_of_time": "2024-12-27T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "201140",
+      "company_name": "ABEV",
+      "ticker": "ABEV",
+      "as_of_time": "2024-12-23T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "008253",
+      "company_name": "PCAR",
+      "ticker": "PCAR",
+      "as_of_time": "2024-12-20T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "200512",
+      "company_name": "SUZ",
+      "ticker": "SUZ",
+      "as_of_time": "2024-12-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "205942",
+      "company_name": "BRFS",
+      "ticker": "BRFS",
+      "as_of_time": "2024-12-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "184133",
+      "company_name": "PPSI",
+      "ticker": "PPSI",
+      "as_of_time": "2024-12-17T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "003964",
+      "company_name": "DDS",
+      "ticker": "DDS",
+      "as_of_time": "2024-12-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "028844",
+      "company_name": "KOF",
+      "ticker": "KOF",
+      "as_of_time": "2024-12-06T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "110039",
+      "company_name": "AMKR",
+      "ticker": "AMKR",
+      "as_of_time": "2024-12-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004498",
+      "company_name": "IIIN",
+      "ticker": "IIIN",
+      "as_of_time": "2024-11-29T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "220546",
+      "company_name": "EQNR",
+      "ticker": "EQNR",
+      "as_of_time": "2024-11-19T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "011455",
+      "company_name": "WEYS",
+      "ticker": "WEYS",
+      "as_of_time": "2024-11-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004418",
+      "company_name": "ENZ",
+      "ticker": "ENZ",
+      "as_of_time": "2024-11-15T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "020338",
+      "company_name": "PRMW",
+      "ticker": "PRMW",
+      "as_of_time": "2024-11-05T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "176914",
+      "company_name": "CQP",
+      "ticker": "CQP",
+      "as_of_time": "2024-11-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004390",
+      "company_name": "EBF",
+      "ticker": "EBF",
+      "as_of_time": "2024-10-11T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "148349",
+      "company_name": "TDG",
+      "ticker": "TDG",
+      "as_of_time": "2024-10-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "007295",
+      "company_name": "EVI",
+      "ticker": "EVI",
+      "as_of_time": "2024-09-26T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "035018",
+      "company_name": "GHSI",
+      "ticker": "GHSI",
+      "as_of_time": "2024-09-24T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "034259",
+      "company_name": "UTZ",
+      "ticker": "UTZ",
+      "as_of_time": "2024-09-16T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "016486",
+      "company_name": "BCC",
+      "ticker": "BCC",
+      "as_of_time": "2024-09-03T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    }
+  ],
+  "cases": [
+    {
+      "company_id": "061122",
+      "company_name": "DIT",
+      "ticker": "DIT",
+      "as_of_time": "2024-12-30T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "222111",
+      "company_name": "PBR",
+      "ticker": "PBR",
+      "as_of_time": "2024-12-27T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "201140",
+      "company_name": "ABEV",
+      "ticker": "ABEV",
+      "as_of_time": "2024-12-23T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "008253",
+      "company_name": "PCAR",
+      "ticker": "PCAR",
+      "as_of_time": "2024-12-20T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "200512",
+      "company_name": "SUZ",
+      "ticker": "SUZ",
+      "as_of_time": "2024-12-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "205942",
+      "company_name": "BRFS",
+      "ticker": "BRFS",
+      "as_of_time": "2024-12-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "184133",
+      "company_name": "PPSI",
+      "ticker": "PPSI",
+      "as_of_time": "2024-12-17T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "003964",
+      "company_name": "DDS",
+      "ticker": "DDS",
+      "as_of_time": "2024-12-13T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "028844",
+      "company_name": "KOF",
+      "ticker": "KOF",
+      "as_of_time": "2024-12-06T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "110039",
+      "company_name": "AMKR",
+      "ticker": "AMKR",
+      "as_of_time": "2024-12-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004498",
+      "company_name": "IIIN",
+      "ticker": "IIIN",
+      "as_of_time": "2024-11-29T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "220546",
+      "company_name": "EQNR",
+      "ticker": "EQNR",
+      "as_of_time": "2024-11-19T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "011455",
+      "company_name": "WEYS",
+      "ticker": "WEYS",
+      "as_of_time": "2024-11-18T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004418",
+      "company_name": "ENZ",
+      "ticker": "ENZ",
+      "as_of_time": "2024-11-15T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "020338",
+      "company_name": "PRMW",
+      "ticker": "PRMW",
+      "as_of_time": "2024-11-05T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "176914",
+      "company_name": "CQP",
+      "ticker": "CQP",
+      "as_of_time": "2024-11-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "004390",
+      "company_name": "EBF",
+      "ticker": "EBF",
+      "as_of_time": "2024-10-11T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "148349",
+      "company_name": "TDG",
+      "ticker": "TDG",
+      "as_of_time": "2024-10-04T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "007295",
+      "company_name": "EVI",
+      "ticker": "EVI",
+      "as_of_time": "2024-09-26T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "035018",
+      "company_name": "GHSI",
+      "ticker": "GHSI",
+      "as_of_time": "2024-09-24T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "034259",
+      "company_name": "UTZ",
+      "ticker": "UTZ",
+      "as_of_time": "2024-09-16T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    },
+    {
+      "company_id": "016486",
+      "company_name": "BCC",
+      "ticker": "BCC",
+      "as_of_time": "2024-09-03T00:00:00+00:00",
+      "anchor_action_id": "capital_return.special_dividend",
+      "selection_note": "latest_unique_company_case_by_action_date"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InputReference",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_type": {"type": "string"},
+    "artifact_id": {"type": "string"},
+    "source": {"type": ["string", "null"]},
+    "published_at": {"type": ["string", "null"], "format": "date-time"},
+    "ingested_at": {"type": ["string", "null"], "format": "date-time"},
+    "hash": {"type": ["string", "null"]}
+  },
+  "required": ["artifact_type", "artifact_id"]
+}

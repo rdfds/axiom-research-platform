@@ -1,0 +1,18 @@
+[project]
+name = "axiom-v1"
+version = "0.1.0"
+description = "Corporate finance intelligence engine for valuation, precedent retrieval, and CFO action evidence."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "duckdb>=0.10.0",
+  "numpy>=1.24.0",
+  "pandas>=2.0.0",
+  "pyarrow>=12.0.0",
+  "scikit-learn>=1.3.0"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

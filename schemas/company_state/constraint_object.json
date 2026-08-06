@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConstraintObject",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string"},
+    "value": {},
+    "hardness": {"type": "string", "enum": ["hard", "soft"]},
+    "confidence": {"type": ["number", "null"]},
+    "valid_from": {"type": ["string", "null"], "format": "date-time"},
+    "valid_to": {"type": ["string", "null"], "format": "date-time"},
+    "evidence": {
+      "type": "array",
+      "items": {"$ref": "input_reference.json"}
+    }
+  },
+  "required": ["name", "hardness", "evidence"]
+}

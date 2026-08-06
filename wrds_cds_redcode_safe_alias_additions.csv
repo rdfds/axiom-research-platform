@@ -1,0 +1,11 @@
+company_id,company_name,equity_ticker,cds_ticker,redcode,shortname,match_type,company_tokens,shortname_tokens
+0000006201,AMERICAN AIRLINES GROUP INC.,AAL,AMERAIAI,025ADX,Amern Airls Group Inc,token_exact_abbrev,AMERICAN AIRLINES,AMERICAN AIRLINES
+0001637459,Kraft Heinz Co,KHC,KRAFHEI,5F07CP,Kraft Heinz Foods Co,token_subset_one_extra,KRAFT HEINZ,KRAFT HEINZ FOODS
+0001103982,"MONDELEZ INTERNATIONAL, INC.",MDLZ,MONDINT,669B27,Mondelez Intl Inc,token_exact_abbrev,MONDELEZ INTERNATIONAL,MONDELEZ INTERNATIONAL
+0000789570,MGM Resorts International,MGM,MGMRI,5A831E,MGM Resorts Intl,token_exact_abbrev,MGM RESORTS INTERNATIONAL,MGM RESORTS INTERNATIONAL
+0001413329,Philip Morris International Inc.,PM,MO-PHMI,7I997L,Philip Morris Intl Inc,token_exact_abbrev,PHILIP MORRIS INTERNATIONAL,PHILIP MORRIS INTERNATIONAL
+0001530950,"Post Holdings, Inc.",POST,POSTHOL,7AAB8A,Post Hldgs Inc,token_exact_abbrev,POST,POST
+0001597033,Sabre Corp,SABR,TSG,7FDE95,Sabre Hldgs Corp,token_exact_abbrev,SABRE,SABRE
+0000109177,"Spectrum Brands Holdings, Inc.",SPB,SBI,8CBD8N,Spectrum Brands Inc,token_exact_abbrev,SPECTRUM BRANDS,SPECTRUM BRANDS
+0001260221,TransDigm Group Incorporated,TDG,TRADIG,8HC9AB,Transdigm Inc,token_exact_abbrev,TRANSDIGM,TRANSDIGM
+0000102729,"Valmont Industries, Inc.",VMI,VALMIN,9B2278,Valmont Inds Inc,token_exact_abbrev,VALMONT INDUSTRIES,VALMONT INDUSTRIES

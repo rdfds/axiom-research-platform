@@ -1,0 +1,237 @@
+{
+  "manifest_generated_at": "2026-04-10T15:50:31.617976+00:00",
+  "label": "mna_platform_acquisition_holdout_22",
+  "source_reports": [
+    "./data/curated/action_outcomes_with_credit_ratings.normalized_full.rich_contract_v3.parquet"
+  ],
+  "case_count": 22,
+  "selection_metadata": {
+    "alignment_horizon_days": 365,
+    "lookback_days": 120,
+    "max_cases_per_company": 1,
+    "eligible_rows_before_resolution": 12686,
+    "eligible_rows_after_resolution": 6758
+  },
+  "cases": [
+    {
+      "company_id": "0001560258",
+      "source_company_id": "033614",
+      "ticker": "ECOR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-12-17T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-08-19T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000891014",
+      "source_company_id": "025870",
+      "ticker": "MTX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-26T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-29T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000032604",
+      "source_company_id": "004321",
+      "ticker": "EMR",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-11-05T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-08T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000003197",
+      "source_company_id": "001050",
+      "ticker": "CECO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-10-29T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-07-01T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001601830",
+      "source_company_id": "038474",
+      "ticker": "RXRX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-08-08T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-04-10T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001023024",
+      "source_company_id": "018204",
+      "ticker": "ANIP",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-06-24T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-02-25T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000072331",
+      "source_company_id": "007921",
+      "ticker": "NDSN",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-28T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-29T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000879169",
+      "source_company_id": "029127",
+      "ticker": "INCY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-05-13T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2024-01-14T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001041061",
+      "source_company_id": "065417",
+      "ticker": "YUM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-04-26T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-12-28T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001137091",
+      "source_company_id": "187169",
+      "ticker": "PSIX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-03-28T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-11-29T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001370946",
+      "source_company_id": "008214",
+      "ticker": "OC",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-02-09T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-10-12T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001376339",
+      "source_company_id": "178157",
+      "ticker": "MDXG",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2024-01-22T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-09-24T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000014272",
+      "source_company_id": "002403",
+      "ticker": "BMY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-12-22T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-24T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001590714",
+      "source_company_id": "315318",
+      "ticker": "ESI",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-12-18T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-20T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001783183",
+      "source_company_id": "035728",
+      "ticker": "PHAT",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-12-14T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-08-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001589526",
+      "source_company_id": "023167",
+      "ticker": "BLBD",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-11-17T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-07-20T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000093410",
+      "source_company_id": "002991",
+      "ticker": "CVX",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-10-23T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-06-25T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000034088",
+      "source_company_id": "004503",
+      "ticker": "XOM",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-10-11T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-06-13T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000858877",
+      "source_company_id": "020779",
+      "ticker": "CSCO",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-09-21T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-05-24T00:00:00+00:00"
+    },
+    {
+      "company_id": "0001802665",
+      "source_company_id": "036847",
+      "ticker": "HRMY",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-08-14T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-04-16T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000016732",
+      "source_company_id": "002663",
+      "ticker": "CPB",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-08-07T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-04-09T00:00:00+00:00"
+    },
+    {
+      "company_id": "0000875045",
+      "source_company_id": "024468",
+      "ticker": "BIIB",
+      "mapping_method": "ticker_identifier",
+      "anchor_action_date": "2023-07-28T00:00:00+00:00",
+      "anchor_action_id": "mna.platform_acquisition",
+      "anchor_action_family": "mna",
+      "as_of_time": "2023-03-30T00:00:00+00:00"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExtractedFactRegistryRecord",
+  "type": "object",
+  "description": "Structured facts extracted from documents with citations.",
+  "properties": {
+    "fact_id": { "type": "string" },
+    "document_id": { "type": "string" },
+    "entity_id": { "type": ["string", "null"] },
+    "fact_type": { "type": "string" },
+    "fact_value": { "type": ["string", "number", "boolean", "object", "null"] },
+    "unit": { "type": ["string", "null"] },
+    "context": { "type": ["string", "null"] },
+    "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "citation_span": { "type": ["string", "null"] },
+    "paragraph_index": { "type": ["integer", "null"] },
+    "speaker": { "type": ["string", "null"] },
+    "transcript_timestamp": { "type": ["string", "null"] },
+    "is_qa": { "type": ["boolean", "null"] },
+    "source_id": { "type": "string" },
+    "source_type": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "raw_pointer": { "type": "string" }
+  },
+  "required": [
+    "fact_id",
+    "document_id",
+    "entity_id",
+    "fact_type",
+    "confidence_score",
+    "source_id",
+    "source_type",
+    "published_at",
+    "ingested_at",
+    "raw_pointer"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,358 @@
+{
+  "cases": [
+    {
+      "company_id": "039548",
+      "source_company_id": "039548",
+      "ticker": "OST",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-31 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "038082",
+      "source_company_id": "038082",
+      "ticker": "COEP",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-31 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "032451",
+      "source_company_id": "032451",
+      "ticker": "OPTN",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-31 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "019154",
+      "source_company_id": "019154",
+      "ticker": "CARA",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-31 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "038444",
+      "source_company_id": "038444",
+      "ticker": null,
+      "as_of_time": "2024-12-27T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-27 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "025538",
+      "source_company_id": "025538",
+      "ticker": "SYTA",
+      "as_of_time": "2024-12-27T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-27 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "038160",
+      "source_company_id": "038160",
+      "ticker": null,
+      "as_of_time": "2024-12-24T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-24 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "037576",
+      "source_company_id": "037576",
+      "ticker": "GOEV",
+      "as_of_time": "2024-12-24T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-24 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "020228",
+      "source_company_id": "020228",
+      "ticker": null,
+      "as_of_time": "2024-12-18T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-18 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "017185",
+      "source_company_id": "017185",
+      "ticker": "XXII",
+      "as_of_time": "2024-12-17T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-17 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "008386",
+      "source_company_id": "008386",
+      "ticker": "PATK",
+      "as_of_time": "2024-12-16T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-16 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "039427",
+      "source_company_id": "039427",
+      "ticker": "MNTS",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-13 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "035152",
+      "source_company_id": "035152",
+      "ticker": "DBGI",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-13 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "017998",
+      "source_company_id": "017998",
+      "ticker": "BLUE",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-13 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "036333",
+      "source_company_id": "036333",
+      "ticker": null,
+      "as_of_time": "2024-12-12T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-12 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "043582",
+      "source_company_id": "043582",
+      "ticker": "JL",
+      "as_of_time": "2024-12-10T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-10 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "039160",
+      "source_company_id": "039160",
+      "ticker": "ENSC",
+      "as_of_time": "2024-12-06T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-06 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "022632",
+      "source_company_id": "022632",
+      "ticker": null,
+      "as_of_time": "2024-12-06T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-06 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "037547",
+      "source_company_id": "037547",
+      "ticker": "AGRI",
+      "as_of_time": "2024-12-05T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-05 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "038511",
+      "source_company_id": "038511",
+      "ticker": "RNAZ",
+      "as_of_time": "2024-12-04T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-04 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "027338",
+      "source_company_id": "027338",
+      "ticker": "APVO",
+      "as_of_time": "2024-12-04T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-04 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    },
+    {
+      "company_id": "039879",
+      "source_company_id": "039879",
+      "ticker": "MYNZ",
+      "as_of_time": "2024-12-03T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split",
+      "anchor_action_family": "governance",
+      "anchor_action_date": "2024-12-03 00:00:00",
+      "mapping_method": "outcomes_parquet_reverse_split_holdout",
+      "source_dataset": "/tmp/action_outcomes_with_credit_ratings.normalized_full.rich_contract_with_reverse_split.parquet"
+    }
+  ],
+  "selection_rankings": [
+    {
+      "company_id": "039548",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "038082",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "032451",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "019154",
+      "as_of_time": "2024-12-31T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "038444",
+      "as_of_time": "2024-12-27T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "025538",
+      "as_of_time": "2024-12-27T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "038160",
+      "as_of_time": "2024-12-24T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "037576",
+      "as_of_time": "2024-12-24T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "020228",
+      "as_of_time": "2024-12-18T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "017185",
+      "as_of_time": "2024-12-17T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "008386",
+      "as_of_time": "2024-12-16T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "039427",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "035152",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "017998",
+      "as_of_time": "2024-12-13T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "036333",
+      "as_of_time": "2024-12-12T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "043582",
+      "as_of_time": "2024-12-10T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "039160",
+      "as_of_time": "2024-12-06T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "022632",
+      "as_of_time": "2024-12-06T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "037547",
+      "as_of_time": "2024-12-05T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "038511",
+      "as_of_time": "2024-12-04T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "027338",
+      "as_of_time": "2024-12-04T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    },
+    {
+      "company_id": "039879",
+      "as_of_time": "2024-12-03T00:00:00T00:00:00Z",
+      "anchor_action_id": "governance.reverse_split"
+    }
+  ]
+}

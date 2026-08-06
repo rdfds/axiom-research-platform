@@ -1,0 +1,28 @@
+{
+  "version": "causal_capital_routing_dividend_initiate_candidate_v1",
+  "notes": "Candidate routing for dedicated dividend-initiate causal evaluation. Keeps the scope narrow while allowing a real action-specific rating-preservation cell to clear the strict gate.",
+  "status_max_blend_weight": {
+    "enabled": 0.22,
+    "weak_prior_only": 0.12,
+    "blocked": 0.0
+  },
+  "actions": {
+    "capital_return.dividend_initiate": {
+      "status": "enabled",
+      "model_action_alias": "dividend_initiate",
+      "model_subtype_alias": "dividend_initiate",
+      "future_action_aliases": [
+        "capital_return.dividend_initiate",
+        "dividend_initiate"
+      ],
+      "objective_allowlist": [
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.22,
+      "strict_gate_overrides": {
+        "min_treated_rows": 750
+      },
+      "notes": "Candidate-only routing for the dedicated dividend-initiate rescue cell. We loosen treated-row gating slightly because the underlying cell is otherwise high-quality and action-specific."
+    }
+  }
+}

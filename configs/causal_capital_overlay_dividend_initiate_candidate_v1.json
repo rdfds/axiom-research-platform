@@ -1,0 +1,5 @@
+{
+  "replace_dr_models": [
+    "rating_preservation::capital_return::dividend_initiate"
+  ]
+}

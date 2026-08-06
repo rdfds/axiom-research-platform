@@ -1,0 +1,1510 @@
+{
+  "registry_id": "company_state_input_source_registry_v1",
+  "version": "1.0.0",
+  "as_of_date": "2026-03-18",
+  "scope": "consumer_industrials_company_state_inputs",
+  "source_documents": {
+    "fitch_corporate_rating_criteria_2024": {
+      "title": "Fitch Ratings Corporate Rating Criteria",
+      "owner": "Fitch Ratings",
+      "url": "https://assets.fitchratings.com/downloadFile?reportType=report&sfReport=false&slug=corporate-finance%2Fcorporate-rating-criteria-06-12-2024",
+      "notes": "Primary source for consumer/industrial credit-style debt, leverage, coverage, readily available cash, and liquidity conventions."
+    },
+    "spglobal_msci_gics": {
+      "title": "GICS Methodology",
+      "owner": "S&P Dow Jones Indices / MSCI",
+      "url": "https://www.spglobal.com/spdji/en/landing/topic/gics/",
+      "notes": "Canonical sector/subsector classification used to tailor methodology selection by company."
+    },
+    "lseg_standardized_fundamentals": {
+      "title": "LSEG Standardized Fundamentals",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/financial-data/company-data/fundamentals-data/standardized-fundamentals",
+      "notes": "Point-in-time standardized income statement, balance sheet, cash flow, and detailed footnote items."
+    },
+    "lseg_company_fundamentals": {
+      "title": "LSEG Fundamentals",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/financial-data/company-data/fundamentals-data",
+      "notes": "As-reported and standardized company financials, ratios, analytics, and footnote coverage."
+    },
+    "lseg_corporate_actions": {
+      "title": "LSEG Corporate Actions Data",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/financial-data/corporate-actions-data",
+      "notes": "Canonical source for dividends, buybacks, mergers, divestitures, restructurings, debt events, and other action history."
+    },
+    "lseg_reference_data": {
+      "title": "LSEG Entity and Reference Data",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/financial-data/reference-data/",
+      "notes": "Reference data, ratings, terms and conditions, bond schedules, ownership, and entity linkage support."
+    },
+    "lseg_datascope_pricing": {
+      "title": "LSEG DataScope Plus Securities Database",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/products/datascope-plus-securities-database",
+      "notes": "Bulk official and end-of-day market pricing, cross-asset reference data, and historical security-level observations."
+    },
+    "ftse_russell_ev_definition_2025": {
+      "title": "FTSE Russell LibertyQ US Equity Index Series Ground Rules",
+      "owner": "FTSE Russell / LSEG",
+      "url": "https://www.lseg.com/content/dam/ftse-russell/en_us/documents/ground-rules/libertyq-us-equity-index-series-ground-rules.pdf",
+      "notes": "Public formula reference for enterprise value as full market capitalisation plus net debt."
+    },
+    "ftse_russell_fcf_yield_2025": {
+      "title": "FTSE US Risk Premium Index Series Ground Rules",
+      "owner": "FTSE Russell / LSEG",
+      "url": "https://www.lseg.com/content/dam/ftse-russell/en_us/documents/ground-rules/ftse-us-risk-premium-index-series-ground-rules.pdf",
+      "notes": "Public definition for trailing free cash flow yield as CFO minus CapEx over full market cap."
+    },
+    "sec_non_gaap_guidance_2022": {
+      "title": "SEC Non-GAAP Financial Measures Interpretations",
+      "owner": "SEC",
+      "url": "https://www.sec.gov/rules-regulations/staff-guidance/corporation-finance-interpretations/non-gaap-financial-measures",
+      "notes": "Sets boundaries for company-specific non-GAAP metrics and warns against assuming cross-company comparability."
+    },
+    "sec_form_13f": {
+      "title": "SEC Form 13F",
+      "owner": "SEC",
+      "url": "https://www.sec.gov/submit-filings/forms-index/aboutformsform13fpdf",
+      "notes": "Canonical US institutional holdings disclosure source."
+    },
+    "sec_beneficial_ownership": {
+      "title": "SEC Beneficial Ownership Reporting",
+      "owner": "SEC",
+      "url": "https://www.sec.gov/newsroom/press-releases/2023-219",
+      "notes": "Canonical 13D/13G beneficial ownership regime for control-intent and activist holdings disclosures."
+    },
+    "lseg_ownership_profiles": {
+      "title": "LSEG Ownership, Insiders and Institutional Profiles",
+      "owner": "LSEG",
+      "url": "https://www.lseg.com/en/data-analytics/financial-data/company-data/company-ownership-information-profiles",
+      "notes": "Normalized top holders, institutional ownership, insider ownership, and global ownership coverage."
+    },
+    "ice_bofa_oas_fred": {
+      "title": "ICE BofA US Corporate Index Option-Adjusted Spread",
+      "owner": "ICE Data Indices / FRED",
+      "url": "https://fred.stlouisfed.org/series/BAMLC0A0CM",
+      "notes": "Public benchmark spread series for corporate credit market conditions and percentiles."
+    },
+    "sp500_pe_public_market_series": {
+      "title": "S&P 500 trailing P/E public market valuation series",
+      "owner": "S&P Dow Jones Indices / trusted index data feed",
+      "notes": "Reference source for the S&P 500 trailing twelve-month price-to-earnings multiple."
+    },
+    "fred_dgs10_10y_treasury": {
+      "title": "10-Year Treasury Constant Maturity Rate (DGS10)",
+      "owner": "Federal Reserve Bank of St. Louis / U.S. Treasury",
+      "notes": "Public benchmark for the 10-year U.S. Treasury yield."
+    },
+    "ice_bofa_hy_effective_yield_fred": {
+      "title": "ICE BofA US High Yield Index Effective Yield",
+      "owner": "ICE BofA / FRED",
+      "notes": "Public benchmark for the U.S. high-yield all-in effective yield."
+    },
+    "fred_real_gdp_gdpc1": {
+      "title": "Real Gross Domestic Product (GDPC1)",
+      "owner": "Bureau of Economic Analysis / FRED",
+      "notes": "Public real GDP level series used to derive YoY real GDP growth."
+    }
+  },
+  "owners": {
+    "fitch_credit": {
+      "name": "Fitch credit methodology",
+      "type": "external_canonical",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024"
+    },
+    "gics_taxonomy": {
+      "name": "GICS taxonomy",
+      "type": "external_canonical",
+      "primary_source_document_id": "spglobal_msci_gics"
+    },
+    "issuer_filing_lseg_fundamentals": {
+      "name": "Issuer filings normalized through LSEG fundamentals",
+      "type": "external_filing_normalized",
+      "primary_source_document_id": "lseg_standardized_fundamentals"
+    },
+    "lseg_pricing": {
+      "name": "LSEG official pricing and reference data",
+      "type": "external_provider_standardized",
+      "primary_source_document_id": "lseg_datascope_pricing"
+    },
+    "ftse_russell_equity_methodology": {
+      "name": "FTSE Russell public equity metric methodology",
+      "type": "external_methodology",
+      "primary_source_document_id": "ftse_russell_ev_definition_2025"
+    },
+    "sec_ownership": {
+      "name": "SEC ownership disclosure regime",
+      "type": "external_official",
+      "primary_source_document_id": "sec_form_13f"
+    },
+    "lseg_ownership": {
+      "name": "LSEG ownership profiles",
+      "type": "external_provider_standardized",
+      "primary_source_document_id": "lseg_ownership_profiles"
+    },
+    "lseg_corporate_actions_owner": {
+      "name": "LSEG corporate actions history",
+      "type": "external_provider_standardized",
+      "primary_source_document_id": "lseg_corporate_actions"
+    },
+    "ice_bofa_credit": {
+      "name": "ICE BofA corporate spread benchmark",
+      "type": "external_market_benchmark",
+      "primary_source_document_id": "ice_bofa_oas_fred"
+    },
+    "axiom_internal": {
+      "name": "Axiom internal derived metric",
+      "type": "internal",
+      "primary_source_document_id": null
+    },
+    "axiom_internal_heuristic": {
+      "name": "Axiom internal heuristic",
+      "type": "internal_heuristic",
+      "primary_source_document_id": null
+    },
+    "unsupported_placeholder": {
+      "name": "Unsupported placeholder",
+      "type": "unsupported",
+      "primary_source_document_id": null
+    },
+    "fred_public_macro": {
+      "name": "FRED / public macro series",
+      "description": "Public macroeconomic benchmark series distributed through FRED, including Treasury rates and real GDP."
+    },
+    "sp_index_valuation": {
+      "name": "S&P public equity valuation benchmark",
+      "description": "Public-market valuation benchmark for the S&P 500 index level multiple."
+    }
+  },
+  "metrics": {
+    "capital_return.dividend_payer_flag": {
+      "canonical_owner_id": "lseg_corporate_actions_owner",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use normalized LSEG dividend-event history and a documented recurring-cash-dividend event universe; flag the issuer as a current dividend payer when a recurring dividend event exists within the active lookback window.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "aligned_if_event_history_clean",
+      "company_tailoring": "Issuer-specific recurring dividend event history and recency window.",
+      "notes": "This becomes an externally anchored event-history metric rather than a vague internal label, but the final payer flag still depends on Axiom\u2019s explicit recurrence and recency rule.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "This should be anchored to external dividend history, but the binary lookback label itself is still our normalization choice rather than a universally published market metric.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use trusted external corporate-actions history as the source of truth, but keep the final payer-status roll-up as a documented deterministic house rule because there is no single universal published owner for the boolean flag itself."
+    },
+    "capital_return.last_dividend_event_type": {
+      "canonical_owner_id": "lseg_corporate_actions_owner",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use normalized LSEG dividend-event history and a documented recurring-cash-dividend event universe; select the most recent recurring dividend event type in observable history.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "aligned_with_documented_logic",
+      "company_tailoring": "Issuer-specific action history.",
+      "notes": "This should come directly from normalized dividend event history, with the recurring-event universe and latest-event selection rule kept deterministic and documented.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "Corporate action history should be taken directly from a normalized external actions feed; this is a direct event fact, not a free-form inference.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use trusted external corporate-actions history as the source of truth, but the specific event taxonomy roll-up and lookback logic are still Axiom\u2019s deterministic normalization layer."
+    },
+    "capital_structure.debt_schedule_inconsistency_flag": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Deterministic anomaly flag comparing disclosed debt schedule totals versus debt metrics.",
+      "raw_source_document_ids": [
+        "lseg_reference_data",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Directly tailored to the issuer because it compares that issuer's own schedule and debt totals.",
+      "notes": "This is an internal data-quality control, not a market metric.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is a pure internal QA check comparing disclosed schedule fragments to debt totals; there is no external market owner for the inconsistency flag itself.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "capital_structure.debt_schedule_total": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "filing_native_external",
+      "formula_basis": "Use issuer debt maturity disclosures and normalized schedule fields; ratios are deterministic arithmetic on disclosed maturities and debt.",
+      "raw_source_document_ids": [
+        "lseg_reference_data",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Use issuer-specific debt schedule and instrument terms, not sector averages.",
+      "notes": "These metrics are only as good as debt schedule disclosures. They should not be fabricated when schedules are absent or inconsistent.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.debt_schedule_vs_total_debt": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "filing_native_external",
+      "formula_basis": "Use issuer debt maturity disclosures and normalized schedule fields; ratios are deterministic arithmetic on disclosed maturities and debt.",
+      "raw_source_document_ids": [
+        "lseg_reference_data",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Use issuer-specific debt schedule and instrument terms, not sector averages.",
+      "notes": "These metrics are only as good as debt schedule disclosures. They should not be fabricated when schedules are absent or inconsistent.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.fixed_charge_coverage": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.gross_leverage": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.interest_coverage": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.maturity_wall_ratio_24m": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "filing_native_external",
+      "formula_basis": "Use issuer debt maturity disclosures and normalized schedule fields; ratios are deterministic arithmetic on disclosed maturities and debt.",
+      "raw_source_document_ids": [
+        "lseg_reference_data",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Use issuer-specific debt schedule and instrument terms, not sector averages.",
+      "notes": "These metrics are only as good as debt schedule disclosures. They should not be fabricated when schedules are absent or inconsistent.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.net_debt": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.net_leverage": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.rating_state": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch issuer/family rating state as the canonical rating measure for consumer and industrials.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "needs_feed_normalization",
+      "company_tailoring": "Issuer-specific rating action history and outlook/watch state.",
+      "notes": "This should be driven from a Fitch-only rating feed if we want a strict single-owner rating state; mixed-agency history should be clearly labeled if retained.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "capital_structure.refi_pressure_flag": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Internal rule based on maturity wall, liquidity, and access assumptions.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "lseg_reference_data",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Tailored by issuer maturity profile and liquidity, but still heuristic.",
+      "notes": "There is no single market-standard binary refi-pressure flag. Keep internal or retire from any \u201cmarket-native\u201d layer.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is a recommendation flag synthesizing several inputs; the market reasons about refi pressure, but it does not publish one canonical boolean definition.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "capital_structure.secured_capacity_proxy": {
+      "canonical_owner_id": "unsupported_placeholder",
+      "classification": "unsupported_placeholder",
+      "formula_basis": "No reliable live formula currently implemented.",
+      "raw_source_document_ids": [
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "unsupported",
+      "company_tailoring": "Requires issuer-specific debt document parsing.",
+      "notes": "Should remain unsupported until collateral packages, lien baskets, and security packages are sourced from credit agreements and bond docs.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an internal placeholder until we have a real externally supportable secured-capacity framework for the issuer.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "capital_structure.total_debt": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order balance-sheet or credit input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "liquidity.available_for_actions": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Axiom planning heuristics; not externally standardized market metrics.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Tailored to the issuer state but not to a trusted market owner.",
+      "notes": "These should either stay explicitly internal or be redesigned using a named treasury/credit methodology.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an internal deployment heuristic for recommendations, not a market-standard liquidity metric with a single trusted owner.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "liquidity.cash": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_filing_normalized",
+      "formula_basis": "Use issuer filings and normalized LSEG fundamentals/reference fields directly; no separate market formula beyond correct point-in-time extraction.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "aligned_if_disclosed",
+      "company_tailoring": "Issuer-specific balances and facility availability.",
+      "notes": "These are raw company-state ingredients and should come straight from filings/reference data, not heuristics.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order liquidity input that should come from filings or an external standardized data owner.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "liquidity.liquidity_total": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Deterministic sum of raw liquid resources used inside the state builder.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "needs_policy_decision",
+      "company_tailoring": "Built from issuer cash, marketable securities, and revolver availability.",
+      "notes": "If kept, it should be explicitly labeled as an internal aggregation, not a Fitch market metric.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The market uses the concept of liquidity, but exact roll-up rules vary by issuer and analyst, so this should be externally anchored rather than treated as one canonical published metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "liquidity.marketable_securities": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_filing_normalized",
+      "formula_basis": "Use issuer filings and normalized LSEG fundamentals/reference fields directly; no separate market formula beyond correct point-in-time extraction.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "aligned_if_disclosed",
+      "company_tailoring": "Issuer-specific balances and facility availability.",
+      "notes": "These are raw company-state ingredients and should come straight from filings/reference data, not heuristics.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order liquidity input that should come from filings or an external standardized data owner.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "liquidity.minimum_cash_policy_proxy": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Axiom planning heuristics; not externally standardized market metrics.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Tailored to the issuer state but not to a trusted market owner.",
+      "notes": "These should either stay explicitly internal or be redesigned using a named treasury/credit methodology.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an Axiom reserve heuristic standing in for management cash needs; there is no single trusted external definition for it.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "liquidity.restricted_cash": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_filing_normalized",
+      "formula_basis": "Use issuer filings and normalized LSEG fundamentals/reference fields directly; no separate market formula beyond correct point-in-time extraction.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "aligned_if_disclosed",
+      "company_tailoring": "Issuer-specific balances and facility availability.",
+      "notes": "These are raw company-state ingredients and should come straight from filings/reference data, not heuristics.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order liquidity input that should come from filings or an external standardized data owner.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "liquidity.revolver_undrawn": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_filing_normalized",
+      "formula_basis": "Use issuer filings and normalized LSEG fundamentals/reference fields directly; no separate market formula beyond correct point-in-time extraction.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "aligned_if_disclosed",
+      "company_tailoring": "Issuer-specific balances and facility availability.",
+      "notes": "These are raw company-state ingredients and should come straight from filings/reference data, not heuristics.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order liquidity input that should come from filings or an external standardized data owner.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "liquidity.runway_months": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Axiom planning heuristics; not externally standardized market metrics.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_reference_data"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Tailored to the issuer state but not to a trusted market owner.",
+      "notes": "These should either stay explicitly internal or be redesigned using a named treasury/credit methodology.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "Runway is a useful planning abstraction, but it is not a standard externally owned metric for consumer/industrial issuers.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "liquidity.usable_cash": {
+      "canonical_owner_id": "fitch_credit",
+      "classification": "canonical_external",
+      "formula_basis": "Use Fitch Corporate Rating Criteria; tailor by GICS subsector and only apply lease-adjusted/EBITDAR variants where the subsector treatment requires them.",
+      "raw_source_document_ids": [
+        "fitch_corporate_rating_criteria_2024",
+        "spglobal_msci_gics",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "GICS subsector selects the correct Fitch-style debt and denominator treatment for the issuer.",
+      "notes": "These are the core market-adjusted credit metrics for consumer and industrials. The owner is trusted; outputs still degrade to proxy when restricted cash, lease expense, supplier finance, or hybrid treatment are incomplete.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order liquidity input that should come from filings or an external standardized data owner.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.credit_spread_level": {
+      "canonical_owner_id": "ice_bofa_credit",
+      "classification": "external_market_benchmark",
+      "formula_basis": "Issuer spread if available, benchmark spread otherwise.",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Issuer spread or nearest benchmark spread.",
+      "notes": "This entry intentionally duplicates the benchmark note to make the registry self-contained.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.credit_spread_percentile_2y": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Compute percentile over the issuer or benchmark spread history using a deterministic rolling-window rank.",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Issuer-specific or rating-bucket time series percentile.",
+      "notes": "This is derived from an external spread series, but percentile itself is an internal transformation.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The underlying spread series is external, but the percentile window and normalization choice are ours.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "market.credit_window_proxy": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Internal composite proxies from spreads, valuation, momentum, and volatility; there is no single external owner for these scores.",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred",
+        "lseg_datascope_pricing",
+        "ftse_russell_ev_definition_2025"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific inputs plus market backdrop.",
+      "notes": "Useful internal planning scores, but should never be described as canonical market metrics.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This compresses several market facts into a single score; that score is inherently an internal inference, even if its ingredients are external.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "market.drawdown_90d": {
+      "canonical_owner_id": "lseg_pricing",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use LSEG official close history and compute 90-trading-day drawdown as the minimum price divided by the maximum price over the window minus one.",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_with_documented_formula",
+      "company_tailoring": "Issuer-specific daily price history.",
+      "notes": "This is a direct, fully specified market statistic on trusted price history. The metric should carry the exact rolling-window formula and peak/trough prices in provenance.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use official LSEG close history with an explicit rolling drawdown formula. The formula is the metric definition itself, so Axiom should adopt it directly rather than treating it as a house metric."
+    },
+    "market.enterprise_value": {
+      "canonical_owner_id": "ftse_russell_equity_methodology",
+      "classification": "external_methodology",
+      "formula_basis": "Use FTSE Russell enterprise value definition: full market cap plus net debt; for Axiom that should mean market cap plus Fitch-style net debt.",
+      "raw_source_document_ids": [
+        "ftse_russell_ev_definition_2025",
+        "lseg_datascope_pricing",
+        "fitch_corporate_rating_criteria_2024"
+      ],
+      "current_alignment_status": "needs_rebuild",
+      "company_tailoring": "Issuer-specific market cap and net debt.",
+      "notes": "Current implementation still uses simpler debt/cash inputs in places; canonical EV should be rebuilt from trusted market cap and trusted net debt.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.equity_window_proxy": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Internal composite proxies from spreads, valuation, momentum, and volatility; there is no single external owner for these scores.",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred",
+        "lseg_datascope_pricing",
+        "ftse_russell_ev_definition_2025"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific inputs plus market backdrop.",
+      "notes": "Useful internal planning scores, but should never be described as canonical market metrics.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This compresses several market facts into a single score; that score is inherently an internal inference, even if its ingredients are external.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "market.ev_ebitda": {
+      "canonical_owner_id": "ftse_russell_equity_methodology",
+      "classification": "external_methodology",
+      "formula_basis": "Deterministic EV divided by EBITDA using FTSE-style enterprise value and a trusted EBITDA denominator.",
+      "raw_source_document_ids": [
+        "ftse_russell_ev_definition_2025",
+        "lseg_datascope_pricing",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "needs_rebuild",
+      "company_tailoring": "Issuer-specific valuation using issuer EBITDA and market cap.",
+      "notes": "Should inherit the canonical EV and the agreed EBITDA basis; current implementation should be treated cautiously until EV is rebuilt.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.fcf_yield": {
+      "canonical_owner_id": "ftse_russell_equity_methodology",
+      "classification": "external_methodology",
+      "formula_basis": "Use FTSE Russell trailing 12-month free cash flow yield formula: CFO minus CapEx divided by full market cap.",
+      "raw_source_document_ids": [
+        "ftse_russell_fcf_yield_2025",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Issuer-specific market cap and cash flow statement.",
+      "notes": "This metric needs the raw free cash flow definition to be locked to CFO-CapEx, not a provider black-box free-cash-flow field.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.market_cap": {
+      "canonical_owner_id": "lseg_pricing",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use LSEG provider-reported market capitalization when available; otherwise compute the same standard definition from official close price times point-in-time shares outstanding, preferring diluted shares and falling back to basic shares only when diluted is unavailable.",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing",
+        "lseg_company_fundamentals"
+      ],
+      "current_alignment_status": "aligned_with_external_fallback",
+      "company_tailoring": "Issuer-specific price and share count.",
+      "notes": "This is a first-order external market metric. When the direct provider field is missing, the fallback arithmetic is still the standard market-cap definition rather than a bespoke Axiom construct.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use provider-reported market cap directly when available; when absent, compute the exact same market-standard definition from official close price and point-in-time shares outstanding. That fallback is the definition itself, not a bespoke Axiom metric."
+    },
+    "market.volatility_30d": {
+      "canonical_owner_id": "lseg_pricing",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use LSEG official close history and compute 30-trading-day realized volatility as the population standard deviation of daily returns annualized by sqrt(252).",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_with_documented_formula",
+      "company_tailoring": "Issuer-specific daily price history.",
+      "notes": "This is a direct, fully specified market statistic on trusted price history. The metric should carry the exact rolling-window formula and observation count in provenance.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use official LSEG close history with an explicit rolling realized-volatility formula. The formula is the metric definition itself, so Axiom should adopt it directly rather than treating it as a house metric."
+    },
+    "market.volatility_90d": {
+      "canonical_owner_id": "lseg_pricing",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use LSEG official close history and compute 90-trading-day realized volatility as the population standard deviation of daily returns annualized by sqrt(252).",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_with_documented_formula",
+      "company_tailoring": "Issuer-specific daily price history.",
+      "notes": "This is a direct, fully specified market statistic on trusted price history. The metric should carry the exact rolling-window formula and observation count in provenance.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market or valuation input that should use an external price/feed or a named public methodology.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use official LSEG close history with an explicit rolling realized-volatility formula. The formula is the metric definition itself, so Axiom should adopt it directly rather than treating it as a house metric."
+    },
+    "operating.ebitda_margin_trend_8q": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Internal statistical features on an externally sourced EBITDA-margin time series over the last eight quarters.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Issuer-specific quarter-by-quarter margin path.",
+      "notes": "These are not market-standard published ratios; they are internal features computed from trusted raw operating history.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The underlying margin series is external, but the trend transform and lookback window are our normalization choice.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "operating.ebitda_margin_ttm": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use provider-normalized revenue and EBITDA from issuer filings, matched to the same reporting period when possible, and compute EBITDA divided by revenue as the standardized operating margin definition.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "sec_non_gaap_guidance_2022"
+      ],
+      "current_alignment_status": "aligned_if_period_match_clean",
+      "company_tailoring": "Issuer-specific revenue and EBITDA history.",
+      "notes": "This is an exact external operating ratio when the revenue and EBITDA series are period-matched on standardized filing data; mismatched or thin series should degrade via quality flags rather than silently changing the definition.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order operating metric analysts quote directly from standardized financials, so the definition should remain externally grounded.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use provider-normalized filing revenue and EBITDA matched to the same reporting period. The ratio is the exact standardized operating definition, so Axiom should treat it as adopted external methodology rather than a house metric."
+    },
+    "operating.fcf_conversion": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Deterministic externally anchored formula: (operating cash flow - capex) / EBITDA using point-in-time standardized issuer filings; only fall back to provider-reported FCF when CFO and CapEx are not both available.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "lseg_company_fundamentals"
+      ],
+      "current_alignment_status": "aligned_if_ocf_capex_ebitda_available",
+      "company_tailoring": "Issuer-specific CFO, CapEx, and EBITDA from point-in-time filings.",
+      "notes": "No single universal market-owned FCF-conversion metric exists, so this should be treated as an externally anchored deterministic house metric built from trusted statement inputs.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The raw inputs should be externally sourced and the formula should be locked, but the final conversion ratio is still a house normalization rather than a single externally owned metric.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use external CFO, CapEx, and EBITDA as the truth, but FCF conversion remains a locked deterministic house formula because there is no single universal market owner for the ratio itself."
+    },
+    "operating.margin_volatility_8q": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Internal statistical features on an externally sourced EBITDA-margin time series over the last eight quarters.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Issuer-specific quarter-by-quarter margin path.",
+      "notes": "These are not market-standard published ratios; they are internal features computed from trusted raw operating history.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The underlying margins are external, but the rolling volatility transform is a house normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "operating.revenue_cagr_3y": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use provider-normalized revenue history and compute CAGR from the latest observation to the closest observation roughly three years earlier using point-in-time standardized filing dates.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals",
+        "sec_non_gaap_guidance_2022"
+      ],
+      "current_alignment_status": "aligned_if_3y_history_clean",
+      "company_tailoring": "Issuer-specific revenue and EBITDA history.",
+      "notes": "This is an exact externally grounded growth transform when the revenue history is sufficiently clean and revision-deduped across the three-year window.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order operating metric analysts quote directly from standardized financials, so the definition should remain externally grounded.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use provider-normalized revenue history and compute CAGR from the latest observation to the closest observation roughly three years earlier. This is a direct standardized transform on external historical fundamentals, not a bespoke internal metric."
+    },
+    "operating.revenue_yoy_last_q": {
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use provider-normalized quarterly revenue and compare the latest fiscal quarter to the closest same-quarter observation one year earlier using point-in-time standardized filing dates.",
+      "raw_source_document_ids": [
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "aligned_if_quarter_series_clean",
+      "company_tailoring": "Issuer-specific quarterly revenue history.",
+      "notes": "This is a standard externally grounded operating-growth metric once the quarter history is revision-deduped and matched to the prior-year quarter correctly.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order operating metric analysts quote directly from standardized financials, so the definition should remain externally grounded.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "Use provider-normalized quarterly revenue and compare the latest quarter to the closest same-quarter prior-year observation. That is the standard externally grounded company-comparison definition, so it should be treated as adopted methodology."
+    },
+    "ownership_governance.activist_signal": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Internal score derived from control-intent filings, proxy events, and activism-related events.",
+      "raw_source_document_ids": [
+        "sec_beneficial_ownership",
+        "lseg_corporate_actions",
+        "lseg_ownership_profiles"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific activist and proxy event history.",
+      "notes": "There is no single canonical activist score in the market. Keep as an explicitly internal signal or replace with raw activist-event indicators.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inference about activist relevance or control pressure, not an externally published canonical metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "ownership_governance.institutional_pct": {
+      "canonical_owner_id": "lseg_ownership",
+      "classification": "external_provider_standardized",
+      "formula_basis": "Use normalized ownership/holder files built from SEC 13F, global declarable stakes, and other official shareholding sources; compute percentages deterministically where needed.",
+      "raw_source_document_ids": [
+        "lseg_ownership_profiles",
+        "sec_form_13f",
+        "sec_beneficial_ownership"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Issuer-specific shareholder register / filing set.",
+      "notes": "These are good provider-standardized ownership metrics, but top-holder concentration can still be incomplete if the underlying market has partial disclosure.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order ownership metric that should be driven by official holdings disclosures or a trusted standardized ownership feed.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "ownership_governance.top5_holder_pct": {
+      "canonical_owner_id": "lseg_ownership",
+      "classification": "external_provider_standardized",
+      "formula_basis": "Use normalized ownership/holder files built from SEC 13F, global declarable stakes, and other official shareholding sources; compute percentages deterministically where needed.",
+      "raw_source_document_ids": [
+        "lseg_ownership_profiles",
+        "sec_form_13f",
+        "sec_beneficial_ownership"
+      ],
+      "current_alignment_status": "partial_proxy",
+      "company_tailoring": "Issuer-specific shareholder register / filing set.",
+      "notes": "These are good provider-standardized ownership metrics, but top-holder concentration can still be incomplete if the underlying market has partial disclosure.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order ownership metric that should be driven by official holdings disclosures or a trusted standardized ownership feed.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or official filing regime exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "peer_context.action_rate_band": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative bands should be grounded in external peer data, but the banding thresholds themselves are a house normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.action_rate_percentile": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative percentiles should be grounded in external peer data, but the percentile output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.action_rate_z": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative z-scores should be grounded in external peer data, but the z-score output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.consolidation_wave_score": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "This is a synthesized peer-cycle score built on external event history, not a universally published market metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.leverage_band": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative bands should be grounded in external peer metrics, but the banding thresholds themselves are a house normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.leverage_percentile": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative percentiles should be grounded in external peer metrics, but the percentile output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.leverage_z": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative z-scores should be grounded in external peer metrics, but the z-score output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.margin_band": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative bands should be grounded in external peer metrics, but the banding thresholds themselves are a house normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.margin_percentile": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative percentiles should be grounded in external peer metrics, but the percentile output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.margin_z": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative z-scores should be grounded in external peer metrics, but the z-score output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.peer_actions_rate": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "The underlying event history should be external, but the peer aggregation is our defined context lens.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.valuation_band": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative bands should be grounded in external peer metrics, but the banding thresholds themselves are a house normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.valuation_percentile": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative percentiles should be grounded in external peer metrics, but the percentile output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "peer_context.valuation_z": {
+      "canonical_owner_id": "axiom_internal",
+      "classification": "internal_derived",
+      "formula_basis": "Relative ranking and z-scoring of trusted underlying metrics and corporate action frequency inside a peer set.",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals",
+        "lseg_datascope_pricing"
+      ],
+      "current_alignment_status": "aligned_internal",
+      "company_tailoring": "Tailored through the issuer's peer set and peer distribution.",
+      "notes": "These are proprietary peer-context features, not externally published market metrics. The key requirement is trusted raw inputs and deterministic ranking logic.",
+      "definition_requirement": "can_be_externally_anchored",
+      "definition_requirement_reason": "Peer-relative z-scores should be grounded in external peer metrics, but the z-score output is still our normalization.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.action_fatigue_score": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Heuristic score mapped from recent action count and frequency.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific action intensity.",
+      "notes": "No external market-standard fatigue score exists.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an internal behavioral synthesis over prior actions; there is no single trusted external owner for action-fatigue scoring.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.action_frequency_24m": {
+      "canonical_owner_id": "lseg_corporate_actions_owner",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use normalized LSEG corporate-action history, filter to the documented strategic action universe, count actions in the trailing 24-month window, and divide by 24 months.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "aligned_with_documented_logic",
+      "company_tailoring": "Issuer-specific action history.",
+      "notes": "This should come directly from normalized action history, with the strategic action universe and rolling 24-month window kept deterministic and documented.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a direct action-history fact that should come from a normalized external corporate-actions source.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use trusted external corporate-actions history as the truth, but the rolling count window is still Axiom\u2019s deterministic normalization."
+    },
+    "strategic.intent.deleveraging_priority": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Keyword/mention-based internal scoring across facts and events.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific fact/event corpus, but scored heuristically.",
+      "notes": "These are clearly heuristic intent signals. They should never be represented as market-standard inputs without a redesign.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inferred latent strategic priority, not a directly published external metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.intent.focus_on_core": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Keyword/mention-based internal scoring across facts and events.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific fact/event corpus, but scored heuristically.",
+      "notes": "These are clearly heuristic intent signals. They should never be represented as market-standard inputs without a redesign.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inferred latent strategic priority, not a directly published external metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.intent.pursue_mna_priority": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Keyword/mention-based internal scoring across facts and events.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific fact/event corpus, but scored heuristically.",
+      "notes": "These are clearly heuristic intent signals. They should never be represented as market-standard inputs without a redesign.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inferred latent strategic priority, not a directly published external metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.intent.restructure": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Keyword/mention-based internal scoring across facts and events.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific fact/event corpus, but scored heuristically.",
+      "notes": "These are clearly heuristic intent signals. They should never be represented as market-standard inputs without a redesign.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inferred latent strategic priority, not a directly published external metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.intent.return_capital_priority": {
+      "canonical_owner_id": "axiom_internal_heuristic",
+      "classification": "internal_heuristic",
+      "formula_basis": "Keyword/mention-based internal scoring across facts and events.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions",
+        "lseg_standardized_fundamentals"
+      ],
+      "current_alignment_status": "internal_metric_only",
+      "company_tailoring": "Issuer-specific fact/event corpus, but scored heuristically.",
+      "notes": "These are clearly heuristic intent signals. They should never be represented as market-standard inputs without a redesign.",
+      "definition_requirement": "must_remain_internal_inference",
+      "definition_requirement_reason": "This is an inferred latent strategic priority, not a directly published external metric.",
+      "methodology_execution_decision": "retain_internal_inference",
+      "methodology_execution_reason": "No single trusted external definition exists for this feature. Keep it as an internal inference or control feature and label it explicitly as non-market-native."
+    },
+    "strategic.last_action_type": {
+      "canonical_owner_id": "lseg_corporate_actions_owner",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use normalized LSEG corporate-action history, filter to the documented strategic action universe, and select the most recent action type in the trailing 24-month window.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "aligned_with_documented_logic",
+      "company_tailoring": "Issuer-specific action history.",
+      "notes": "This should come directly from normalized action history, with the strategic action universe and recency selection rule kept deterministic and documented.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a direct action-history fact that should come from a normalized external corporate-actions source.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use trusted external corporate-actions history as the truth, but the specific event taxonomy roll-up and recency selection are still Axiom\u2019s deterministic normalization."
+    },
+    "strategic.recent_actions_count_24m": {
+      "canonical_owner_id": "lseg_corporate_actions_owner",
+      "classification": "external_raw_plus_deterministic_formula",
+      "formula_basis": "Use normalized LSEG corporate-action history and count actions in the documented strategic action universe over the trailing 24-month window.",
+      "raw_source_document_ids": [
+        "lseg_corporate_actions"
+      ],
+      "current_alignment_status": "aligned_with_documented_logic",
+      "company_tailoring": "Issuer-specific action history.",
+      "notes": "This should come directly from normalized action history, with the strategic action universe and rolling 24-month window kept deterministic and documented.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a direct action-history fact that should come from a normalized external corporate-actions source.",
+      "methodology_execution_decision": "keep_externally_anchored_house_formula",
+      "methodology_execution_reason": "Use trusted external corporate-actions history as the truth, but the rolling count window is still Axiom\u2019s deterministic normalization."
+    },
+    "market.pe_ratio": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "issuer_filing_lseg_fundamentals",
+      "formula_basis": "Use the public-equity P/E definition: close price divided by trailing diluted EPS; use provider P/E series directly when available and otherwise compute from point-in-time close price and trailing diluted EPS.",
+      "company_tailoring": "Issuer-specific close price and trailing diluted EPS with positive-EPS eligibility.",
+      "current_alignment_status": "aligned_with_documented_logic",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing",
+        "lseg_standardized_fundamentals"
+      ],
+      "notes": "This is the canonical public-equity valuation multiple for profitable issuers; outputs should be missing when trailing diluted EPS is non-positive.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order public-equity valuation input the market underwrites directly, so Axiom should follow a named external definition rather than a house proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.pe_percentile_peers": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "gics_taxonomy",
+      "formula_basis": "Compute percentile rank of the issuer's P/E ratio versus current GICS subindustry peers on the same as-of date; fall back to GICS industry only when subindustry peer count is insufficient.",
+      "company_tailoring": "Issuer-specific peer set anchored to GICS subindustry and the strict P/E definition.",
+      "current_alignment_status": "aligned_with_documented_logic",
+      "raw_source_document_ids": [
+        "spglobal_msci_gics",
+        "lseg_datascope_pricing",
+        "lseg_standardized_fundamentals"
+      ],
+      "notes": "Peer-relative valuation should use the strict public-equity P/E definition and a deterministic GICS peer fallback rule.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order public-equity valuation positioning input and should use a deterministic peer methodology anchored to external taxonomy and valuation data.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "market.pe_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "lseg_pricing",
+      "formula_basis": "Compute percentile rank of the current issuer P/E ratio versus the issuer's own trailing 10 years of monthly end-of-month P/E observations, using only point-in-time available data.",
+      "company_tailoring": "Issuer-specific valuation history with positive-EPS eligibility for each historical observation.",
+      "current_alignment_status": "aligned_with_documented_logic",
+      "raw_source_document_ids": [
+        "lseg_datascope_pricing",
+        "lseg_standardized_fundamentals"
+      ],
+      "notes": "This gives the stock's current valuation position versus its own public-market history.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order public-equity valuation positioning input and should use a deterministic own-history methodology anchored to external market data.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.sp500_pe_ttm": {
+      "classification": "external_market_benchmark",
+      "canonical_owner_id": "sp_index_valuation",
+      "formula_basis": "Use the headline S&P 500 trailing twelve-month price-to-earnings multiple as the market-wide valuation benchmark.",
+      "company_tailoring": "No issuer tailoring; common market benchmark level.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "sp500_pe_public_market_series"
+      ],
+      "notes": "This is the clean market-wide valuation regime metric for the public-equity backdrop.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market regime variable and should come from a trusted public benchmark rather than an internal proxy.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.sp500_pe_ttm_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "sp_index_valuation",
+      "formula_basis": "Compute percentile rank of the current S&P 500 trailing P/E versus the trailing 10 years of monthly benchmark observations.",
+      "company_tailoring": "No issuer tailoring; deterministic historical percentile on the common benchmark series.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "sp500_pe_public_market_series"
+      ],
+      "notes": "Market-wide valuation levels are most informative when interpreted versus their own history.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order market regime variable and should use a deterministic history transform on a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us10y_treasury_yield": {
+      "classification": "external_market_benchmark",
+      "canonical_owner_id": "fred_public_macro",
+      "formula_basis": "Use the latest available 10-year U.S. Treasury constant-maturity yield.",
+      "company_tailoring": "No issuer tailoring; common market discount-rate benchmark.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "fred_dgs10_10y_treasury"
+      ],
+      "notes": "This is the cleanest single risk-free rate input for equity and valuation framing.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro discount-rate input and should come from a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us10y_treasury_yield_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "fred_public_macro",
+      "formula_basis": "Compute percentile rank of the current 10-year Treasury yield versus the trailing 10 years of monthly observations.",
+      "company_tailoring": "No issuer tailoring; deterministic historical percentile on the common benchmark series.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "fred_dgs10_10y_treasury"
+      ],
+      "notes": "The market usually interprets rates relative to their own cycle history, not just by raw level.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro rate input and should use a deterministic history transform on a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us_ig_oas": {
+      "classification": "external_market_benchmark",
+      "canonical_owner_id": "ice_bofa_credit",
+      "formula_basis": "Use the latest available ICE BofA U.S. Corporate Index option-adjusted spread.",
+      "company_tailoring": "No issuer tailoring; common investment-grade financing benchmark.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred"
+      ],
+      "notes": "This is the clean macro spread input for the investment-grade financing environment.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro financing input and should come from a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us_ig_oas_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "ice_bofa_credit",
+      "formula_basis": "Compute percentile rank of the current ICE BofA U.S. Corporate Index OAS versus the trailing 10 years of monthly observations.",
+      "company_tailoring": "No issuer tailoring; deterministic historical percentile on the common benchmark series.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "ice_bofa_oas_fred"
+      ],
+      "notes": "The spread level matters, but the market interprets it versus the financing cycle history.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro financing input and should use a deterministic history transform on a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us_hy_all_in_yield": {
+      "classification": "external_market_benchmark",
+      "canonical_owner_id": "ice_bofa_credit",
+      "formula_basis": "Use the latest available ICE BofA U.S. High Yield Index effective yield as the all-in risky financing rate.",
+      "company_tailoring": "No issuer tailoring; common risky-financing benchmark.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "ice_bofa_hy_effective_yield_fred"
+      ],
+      "notes": "This captures the all-in cost of high-yield financing more directly than spread alone.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro financing input and should come from a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.us_hy_all_in_yield_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "ice_bofa_credit",
+      "formula_basis": "Compute percentile rank of the current ICE BofA U.S. High Yield Index effective yield versus the trailing 10 years of monthly observations.",
+      "company_tailoring": "No issuer tailoring; deterministic historical percentile on the common benchmark series.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "ice_bofa_hy_effective_yield_fred"
+      ],
+      "notes": "High-yield financing cost is best interpreted relative to cycle history.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro financing input and should use a deterministic history transform on a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.real_gdp_growth_yoy": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "fred_public_macro",
+      "formula_basis": "Use real GDP level data and compute year-over-year growth as `(real_gdp_t / real_gdp_t_minus_4) - 1`.",
+      "company_tailoring": "No issuer tailoring; common macro growth benchmark.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "fred_real_gdp_gdpc1"
+      ],
+      "notes": "Real GDP growth is the clean macro activity-state input for the economic backdrop.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro growth input and should use a trusted public benchmark with a deterministic transform.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    },
+    "macro.real_gdp_growth_yoy_percentile_history": {
+      "classification": "external_raw_plus_deterministic_formula",
+      "canonical_owner_id": "fred_public_macro",
+      "formula_basis": "Compute percentile rank of current real GDP year-over-year growth versus the trailing 10 years of quarterly growth observations.",
+      "company_tailoring": "No issuer tailoring; deterministic historical percentile on the common benchmark series.",
+      "current_alignment_status": "aligned_if_series_available",
+      "raw_source_document_ids": [
+        "fred_real_gdp_gdpc1"
+      ],
+      "notes": "Macro growth should be interpreted relative to the economic cycle history.",
+      "definition_requirement": "must_have_external_definition",
+      "definition_requirement_reason": "This is a first-order macro growth input and should use a deterministic history transform on a trusted public benchmark.",
+      "methodology_execution_decision": "adopt_exact_external_methodology",
+      "methodology_execution_reason": "A named external owner or public benchmark exists for this metric, so Axiom should follow that methodology directly rather than preserving a house definition."
+    }
+  },
+  "coverage_summary": {
+    "metric_count": 80,
+    "external_canonical_metrics": 8,
+    "filing_native_external_metrics": 3,
+    "external_provider_or_methodology_metrics": 36,
+    "internal_derived_metrics": 19,
+    "internal_heuristic_metrics": 13,
+    "unsupported_metrics": 1
+  },
+  "notes": [
+    "This registry is intentionally strict about classifying internal heuristics versus externally anchored metrics.",
+    "A metric can be sourced from a trusted methodology owner and still remain partial_proxy if the issuer disclosures are incomplete.",
+    "If a feature has no credible single external methodology owner, it is labeled internal_derived or internal_heuristic rather than being over-claimed as market-native."
+  ],
+  "definition_requirement_legend": {
+    "must_have_external_definition": "First-order market-underwritten metric. If Axiom uses this in consumer/industrials, the definition should come from a trusted external methodology, official filing regime, or standardized market-data owner.",
+    "can_be_externally_anchored": "Useful market-context transform whose raw ingredients should be external, but the exact roll-up, banding, or window is not dictated by one universal external owner.",
+    "must_remain_internal_inference": "Decision-support abstraction, data-quality control, or latent-intent/regime proxy with no single trusted external definition. Keep it internal and label it as inference."
+  },
+  "methodology_execution_legend": {
+    "adopt_exact_external_methodology": "Use a named trusted external methodology, official filing regime, or provider-standardized definition as the metric definition itself.",
+    "keep_externally_anchored_house_formula": "Use trusted external raw inputs, but keep a documented deterministic Axiom transform because no single external owner cleanly defines the final metric.",
+    "retain_internal_inference": "Keep the metric as an internal inference, control, or strategy feature because no single trusted external definition exists."
+  }
+}

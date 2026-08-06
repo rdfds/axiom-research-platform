@@ -1,0 +1,64 @@
+{
+  "version": "causal_capital_routing_prod_dividend_v1",
+  "notes": "Stable production routing for capital-return causal. Keeps dividend-initiate on the repaired rating-preservation rescue cell and routes buybacks through the repaired capital bundle without enabling experimental growth_v2 live.",
+  "status_max_blend_weight": {
+    "enabled": 0.22,
+    "weak_prior_only": 0.12,
+    "blocked": 0.0
+  },
+  "actions": {
+    "capital_return.open_market_buyback": {
+      "status": "enabled",
+      "model_action_alias": "buyback",
+      "model_subtype_alias": "buyback",
+      "future_action_aliases": [
+        "capital_return.open_market_buyback",
+        "buyback"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "model_artifact_path_override": "./data/models/causal_impact_model_capital_v1_phase1_hgb_subtype_capreturn_rescue_v3_repaired_relaxed.json",
+      "max_blend_weight": 0.16,
+      "notes": "Use the repaired capital-return rescue bundle for buybacks while keeping the blend conservative."
+    },
+    "capital_return.accelerated_share_repurchase": {
+      "status": "enabled",
+      "model_action_alias": "buyback",
+      "model_subtype_alias": "buyback",
+      "future_action_aliases": [
+        "capital_return.accelerated_share_repurchase",
+        "buyback"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "model_artifact_path_override": "./data/models/causal_impact_model_capital_v1_phase1_hgb_subtype_capreturn_rescue_v3_repaired_relaxed.json",
+      "max_blend_weight": 0.16,
+      "notes": "ASR shares the repaired buyback rescue cells and stays under the same conservative blend cap."
+    },
+    "capital_return.dividend_initiate": {
+      "status": "enabled",
+      "model_action_alias": "dividend_initiate",
+      "model_subtype_alias": "dividend_initiate",
+      "future_action_aliases": [
+        "capital_return.dividend_initiate",
+        "dividend_initiate"
+      ],
+      "objective_allowlist": [
+        "rating_preservation"
+      ],
+      "strict_gate_primary_objectives": [
+        "rating_preservation"
+      ],
+      "model_artifact_path_override": "./data/models/causal_impact_model_capital_v1_phase1_hgb_subtype_capreturn_rescue_v3_repaired_relaxed.json",
+      "max_blend_weight": 0.22,
+      "strict_gate_overrides": {
+        "min_treated_rows": 750
+      },
+      "notes": "Production dividend-initiate route: use the repaired, rating-preservation-only rescue cell and keep experimental growth objectives out of the live path."
+    }
+  }
+}

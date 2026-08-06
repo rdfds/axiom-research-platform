@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EntityCorrectionLog",
+  "type": "object",
+  "description": "Manual corrections to entity resolution.",
+  "properties": {
+    "correction_id": { "type": "string" },
+    "entity_id": { "type": "string" },
+    "previous_value": { "type": ["string", "null"] },
+    "new_value": { "type": ["string", "null"] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "reason": { "type": ["string", "null"] },
+    "author": { "type": ["string", "null"] }
+  },
+  "required": ["correction_id", "entity_id", "timestamp"],
+  "additionalProperties": true
+}

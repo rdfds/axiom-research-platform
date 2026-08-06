@@ -1,0 +1,16 @@
+# Sparse / weak-governance families intentionally excluded from production causal blending.
+governance.activist_settlement
+governance.board_refresh
+restructuring.working_capital_program
+governance.capital_allocation_policy_reset
+
+# Intentional exception: revolver causal rescue training produced negative OOS R2
+# across loan/revolver cells in v5_6_revolver_rescue, so keep this action
+# precedent-driven until a future causal model clears the quality gate.
+capital_structure.revolver_draw_or_resize
+
+# Intentional exception: go-private / LBO currently routes only to the broad
+# acquisition::all fallback in production. The subtype-specific
+# acquisition::acquisition_lbo cell is still disabled (oos_unavailable), so do
+# not treat LBO as an accepted causal-baseline action yet.
+mna.go_private_lbo

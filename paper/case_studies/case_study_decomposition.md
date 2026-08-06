@@ -1,0 +1,5 @@
+| ticker       | case_type                    | display_multiple | gap_log             | driver_underwritten_log | residual_log        | coverage_ratio      | reconciliation_error_log |
+| ------------ | ---------------------------- | ---------------- | ------------------- | ----------------------- | ------------------- | ------------------- | ------------------------ |
+| HD           | flagship_driver_underwritten | P/E              | 0.16917778076953388 | 0.06976463648884731     | 0.09941314428068657 | 0.41237469939321236 | 0.0                      |
+| SYN_RESIDUAL | residual_dominant            | P/E              | 0.22                | 0.025                   | 0.195               | 0.1136              | 0.0                      |
+| SYN_MULTI    | multi_driver_underwritten    | EV/EBITDA        | -0.18               | -0.135                  | -0.045              | 0.75                | 0.0                      |

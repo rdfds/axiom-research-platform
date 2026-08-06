@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EntityIdentifier",
+  "type": "object",
+  "description": "Entity identifier with validity window.",
+  "properties": {
+    "entity_id": { "type": "string" },
+    "identifier_type": { "type": "string" },
+    "identifier_value": { "type": "string" },
+    "valid_from": { "type": ["string", "null"], "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time" },
+    "source_id": { "type": ["string", "null"] },
+    "source_type": { "type": ["string", "null"] },
+    "published_at": { "type": ["string", "null"], "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": ["string", "null"], "format": "date-time" },
+    "confidence_score": { "type": ["number", "null"] },
+    "raw_pointer": { "type": ["string", "null"] }
+  },
+  "required": ["entity_id", "identifier_type", "identifier_value"],
+  "additionalProperties": true
+}

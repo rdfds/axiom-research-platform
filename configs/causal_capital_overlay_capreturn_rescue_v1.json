@@ -1,0 +1,10 @@
+{
+  "replace_dr_models": {
+    "value_creation": [
+      "capital_return::buyback"
+    ],
+    "rating_preservation": [
+      "capital_return::dividend_initiate"
+    ]
+  }
+}

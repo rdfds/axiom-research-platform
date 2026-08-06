@@ -1,0 +1,250 @@
+{
+  "registry_id": "consumer_industrials_metric_methodology_registry_v1",
+  "version": 1,
+  "as_of_date": "2026-03-18",
+  "scope": {
+    "sector_scope": [
+      "Consumer Discretionary",
+      "Consumer Staples",
+      "Industrials"
+    ],
+    "objective": "Pick one canonical trusted methodology owner for each core metric, classify the current Axiom implementation, and separate market-native metrics from internal planning metrics.",
+    "selection_rule": "For consumer and industrial issuers, default to Fitch Ratings Corporate Rating Criteria plus the relevant Fitch sector navigator when the sector requires a lease-adjusted or otherwise sector-specific ratio. Use issuer filing-native definitions only when the metric is fundamentally a disclosure-driven schedule metric rather than a rating-agency ratio."
+  },
+  "current_axiom_policy_context": {
+    "metric_policy_id": "market_metric_policy_v1",
+    "current_primary_credit_anchor": "fitch_corporate_rating_criteria_2024",
+    "note": "The live state builder now follows Fitch-native formulas for the core consumer and industrial credit metrics where raw data supports them, while still surfacing proxy status when required raw detail is missing."
+  },
+  "canonical_owners": {
+    "fitch_ratings": {
+      "name": "Fitch Ratings",
+      "owner_type": "rating_agency",
+      "why_this_owner": "Public, sector-aware, formula-explicit credit criteria with a corporate master criteria report and sector navigator framework that can be applied consistently across consumer and industrial issuers.",
+      "documents": {
+        "fitch_corporate_rating_criteria_2024": {
+          "title": "Corporate Rating Criteria",
+          "effective_from": "2024-12-06",
+          "url": "https://assets.fitchratings.com/downloadFile?reportType=report&sfReport=false&slug=corporate-finance%2Fcorporate-rating-criteria-06-12-2024",
+          "relevant_locators": [
+            "Appendix 1: Main Analytical Adjustments",
+            "Appendix 2: Guide to Credit Metrics",
+            "Appendix 8 discussion of Sector Navigators"
+          ]
+        }
+      }
+    },
+    "issuer_filing_native": {
+      "name": "Issuer SEC / annual-report disclosures",
+      "owner_type": "issuer_disclosure",
+      "why_this_owner": "Some metrics are not standardized rating-agency ratios and are most defensible when tied directly to the issuer's contractual maturity footnotes or schedule disclosures."
+    },
+    "axiom_internal": {
+      "name": "Axiom internal planning metric",
+      "owner_type": "internal_policy",
+      "why_this_owner": "Some metrics are useful for action planning but do not have a single trusted external market convention. These should not be presented as canonical market metrics."
+    }
+  },
+  "metrics": {
+    "capital_structure.total_debt": {
+      "label": "Total debt",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use Fitch-defined debt. Start from funded debt and add the debt-like obligations Fitch treats as debt for the issuer, including non-recourse debt, securitisation debt, relevant off-balance-sheet debt, and hybrids net of any equity credit treatment. Apply the sector navigator where lease-adjusted debt is the primary framing.",
+      "current_axiom_formula": "Take reported total debt, then add weighted lease liabilities, supplier finance, preferred equity, convertibles, and unfunded pension using archetype-specific heuristic weights.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2315",
+        "./src/company_state_builder.py:2353"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 1 main debt adjustments and Appendix 2 credit metric guide.",
+      "implementation_gaps": [
+        "Current Axiom uses heuristic weights instead of Fitch component-level classification and equity-credit treatment.",
+        "Current Axiom does not yet separate all debt-like items into explicit Fitch-style include, exclude, or partial-equity-credit buckets."
+      ]
+    },
+    "capital_structure.net_debt": {
+      "label": "Net debt",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Net debt equals Fitch debt minus readily available cash and equivalents.",
+      "current_axiom_formula": "Take Axiom market debt and subtract usable cash market, where usable cash is cash less weighted restricted cash and missing restricted cash defaults to zero.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2400",
+        "./src/company_state_builder.py:2407"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 2 Guide to Credit Metrics, p.33 formula table for net debt and readily available cash.",
+      "implementation_gaps": [
+        "Current Axiom does not yet model readily available cash the way Fitch does for trapped, seasonal, offshore, non-recourse, or marketable-securities balances.",
+        "Current Axiom treats missing restricted cash as zero, which is only a proxy and not an externally anchored treatment."
+      ]
+    },
+    "capital_structure.gross_leverage": {
+      "label": "Gross leverage",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use the Fitch sector-primary gross leverage ratio for the issuer. For most consumer and industrial names this is debt divided by EBITDA. For lease-driven sectors where the sector navigator is lease-adjusted, use lease-adjusted debt divided by EBITDAR.",
+      "current_axiom_formula": "Take Axiom market debt and divide by EBITDA, regardless of whether the sector should be lease-adjusted or otherwise denominator-adjusted.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2440",
+        "./src/company_state_builder.py:2464"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 2 main ratio table plus the criteria's sector navigator selection guidance.",
+      "implementation_gaps": [
+        "Current Axiom does not yet switch to Fitch sector-primary lease-adjusted leverage where required.",
+        "Current Axiom denominator policy is still an archetype heuristic instead of a strict Fitch sector navigator mapping."
+      ]
+    },
+    "capital_structure.net_leverage": {
+      "label": "Net leverage",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use the Fitch sector-primary net leverage ratio for the issuer. For most consumer and industrial names this is net debt divided by EBITDA. For lease-driven sectors where the sector navigator is lease-adjusted, use lease-adjusted debt less readily available cash divided by EBITDAR.",
+      "current_axiom_formula": "Take Axiom market net debt and divide by EBITDA, with no strict Fitch sector-ratio switch.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2468",
+        "./src/company_state_builder.py:2491"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 2 main ratio table plus sector navigator selection guidance.",
+      "implementation_gaps": [
+        "Current Axiom net leverage inherits the net-debt cash proxy gap.",
+        "Current Axiom does not yet enforce Fitch sector-primary lease-adjusted net leverage when required."
+      ]
+    },
+    "capital_structure.interest_coverage": {
+      "label": "Interest coverage",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use Fitch EBITDA interest coverage: EBITDA, adjusted for recurring associate dividends and minority leakage where relevant, divided by interest paid. Treat this as secondary in sectors where fixed-charge coverage is the sector-primary lens.",
+      "current_axiom_formula": "Use EBIT divided by interest expense for both reported and market views.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2511",
+        "./src/company_state_builder.py:2528"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 2 coverage ratio table, p.34-35.",
+      "implementation_gaps": [
+        "Current Axiom uses EBIT rather than Fitch EBITDA-based coverage.",
+        "Current Axiom does not yet incorporate recurring associate dividends, minority leakage, or cash interest framing the way Fitch does."
+      ]
+    },
+    "capital_structure.fixed_charge_coverage": {
+      "label": "Fixed-charge coverage",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use Fitch EBITDAR fixed-charge coverage: EBITDAR, adjusted for recurring associate dividends and minority leakage where relevant, divided by interest paid plus estimated lease expense for capitalised leased assets.",
+      "current_axiom_formula": "Use EBIT divided by interest expense plus lease expense or a lease-expense proxy from lease liabilities.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2513",
+        "./src/company_state_builder.py:2545"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, Appendix 2 coverage ratio table, p.34-35.",
+      "implementation_gaps": [
+        "Current Axiom numerator is EBIT instead of EBITDAR.",
+        "Current Axiom lease expense can be a simple proxy from lease liabilities rather than a Fitch-style estimated lease expense for capitalised leased assets."
+      ]
+    },
+    "liquidity.usable_cash": {
+      "label": "Usable cash",
+      "canonical_owner_id": "fitch_ratings",
+      "primary_source_document_id": "fitch_corporate_rating_criteria_2024",
+      "canonical_classification": "canonical_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use Fitch readily available cash and equivalents: cash plus eligible marketable securities, less restricted or blocked cash and any cash Fitch would not treat as readily available because of operating needs, seasonality, location, ownership, or legal constraints.",
+      "current_axiom_formula": "Use cash less weighted restricted cash, with missing restricted cash assumed to be zero.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2168",
+        "./src/company_state_builder.py:2187"
+      ],
+      "source_locator": "Fitch Corporate Rating Criteria, cash adjustments section and Appendix 2 formula table for readily available cash, p.20-21 and p.33.",
+      "implementation_gaps": [
+        "Current Axiom does not yet include marketable securities haircuts or exclude all categories of non-readily-available cash.",
+        "Current Axiom uses restricted-cash weights and missing-data assumptions that are still heuristic."
+      ]
+    },
+    "liquidity.available_for_actions": {
+      "label": "Available for actions",
+      "canonical_owner_id": "axiom_internal",
+      "canonical_classification": "internal_only",
+      "market_layer_status": "rename",
+      "recommended_metric_name": "liquidity.readily_available_liquidity",
+      "current_alignment_status": "internal_metric_only",
+      "canonical_formula": "No single external market metric exists under this name. If the market layer needs a liquidity quantity, rebuild it as readily available liquidity grounded in Fitch cash availability plus actually drawable committed facilities.",
+      "current_axiom_formula": "Take usable cash, subtract a heuristic minimum-cash proxy based on revenue, then add undrawn revolver if disclosed.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2149",
+        "./src/company_state_builder.py:2207"
+      ],
+      "implementation_gaps": [
+        "Current metric name overstates market standardization.",
+        "Current Axiom minimum-cash policy proxy is a heuristic and should not be described as a canonical market adjustment."
+      ]
+    },
+    "liquidity.runway_months": {
+      "label": "Runway months",
+      "canonical_owner_id": "axiom_internal",
+      "canonical_classification": "internal_only",
+      "market_layer_status": "retire",
+      "current_alignment_status": "internal_metric_only",
+      "canonical_formula": "No single trusted consumer-or-industrial market convention exists for a universal runway-months metric. Keep this only as an internal planning diagnostic if it remains useful.",
+      "current_axiom_formula": "If free cash flow is positive, cap runway at 60 months; otherwise divide available-for-actions liquidity by monthly cash burn inferred from free cash flow.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2256",
+        "./src/company_state_builder.py:2283"
+      ],
+      "implementation_gaps": [
+        "This is not a canonical market metric and should not be surfaced as if it were externally standardized."
+      ]
+    },
+    "capital_structure.maturity_wall_ratio_24m": {
+      "label": "Maturity wall ratio (24 months)",
+      "canonical_owner_id": "issuer_filing_native",
+      "canonical_classification": "filing_native_external",
+      "market_layer_status": "keep",
+      "current_alignment_status": "partial_proxy",
+      "canonical_formula": "Use issuer contractual debt maturities due within the next 24 months divided by the debt base selected for the chosen leverage framework. Source the schedule from the issuer's debt maturity disclosures, not from a rating-agency proxy ratio.",
+      "current_axiom_formula": "Sum debt due in the next 24 months from the available maturity schedule and divide by reported debt or Axiom market debt. Sanitize the metric to null when the disclosed maturity schedule is internally inconsistent.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2675",
+        "./src/company_state_builder.py:2743"
+      ],
+      "implementation_gaps": [
+        "Current Axiom often lacks disclosed maturity schedules and therefore cannot produce this metric for many issuers.",
+        "Current Axiom denominator can inherit the broader debt-definition gap when market debt is still heuristic."
+      ]
+    },
+    "capital_structure.refi_pressure_flag": {
+      "label": "Refinancing pressure flag",
+      "canonical_owner_id": "axiom_internal",
+      "canonical_classification": "internal_only",
+      "market_layer_status": "retire",
+      "current_alignment_status": "internal_metric_only",
+      "canonical_formula": "No single trusted external market formula exists for this binary flag. Keep it only as an internal decision aid if it remains helpful.",
+      "current_axiom_formula": "Set the flag to 1.0 when the 24-month maturity wall ratio exceeds 0.25, otherwise 0.0.",
+      "code_anchors": [
+        "./src/company_state_builder.py:2681",
+        "./src/company_state_builder.py:2762"
+      ],
+      "implementation_gaps": [
+        "Binary thresholding is useful internally but should not be presented as if it were a canonical market-native metric."
+      ]
+    }
+  }
+}

@@ -1,0 +1,276 @@
+{
+  "as_of_time": "2026-02-28T00:00:00+00:00",
+  "company_id": "0000354950",
+  "company_name": "Home Depot",
+  "constraint_set": {
+    "hard": [],
+    "soft": [
+      {
+        "name": "preserve_financing_flexibility",
+        "reason": "Sample surface treats liquidity and leverage as binding checks before discretionary actions."
+      }
+    ]
+  },
+  "features": {
+    "capital_structure.net_leverage": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.7933,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "capital_structure.net_leverage",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "net_debt_divided_by_ebitda_ttm",
+          "source_id": "balance_sheet_and_ebitda_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "x_ebitda",
+      "value": 2.1485348202633765,
+      "window": null
+    },
+    "cash_flow.fcf_yield": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.86,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "cash_flow.fcf_yield",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "free_cash_flow_ttm_divided_by_market_cap",
+          "source_id": "cash_flow_and_market_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "ratio",
+      "value": 0.016500019634188106,
+      "window": null
+    },
+    "cash_flow.free_cash_flow_ttm": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.86,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "cash_flow.free_cash_flow_ttm",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "operating_cash_flow_less_capex_ttm",
+          "source_id": "cash_flow_statement_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 6153000000.0,
+      "window": null
+    },
+    "liquidity.available_for_actions": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.7711,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "liquidity.available_for_actions",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "cash_capacity_after_minimum_operating_reserve",
+          "source_id": "liquidity_policy_model",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 16184000000.0,
+      "window": null
+    },
+    "market.credit_window_proxy": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.82,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "market.credit_window_proxy",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "credit_access_regime_proxy",
+          "source_id": "credit_market_panel",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "score_0_to_1",
+      "value": 0.3004509844393228,
+      "window": null
+    },
+    "market.enterprise_value": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.9,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "market.enterprise_value",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "market_cap_plus_net_debt",
+          "source_id": "market_price_and_balance_sheet_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 427238647166.15,
+      "window": null
+    },
+    "market.equity_window_proxy": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.82,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "market.equity_window_proxy",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "market_access_regime_proxy",
+          "source_id": "market_timeseries_panel",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "score_0_to_1",
+      "value": 0.7034259983596405,
+      "window": null
+    },
+    "market.market_cap": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.95,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "market.market_cap",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "share_price_times_shares_outstanding",
+          "source_id": "market_price_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 372908647166.15,
+      "window": null
+    },
+    "market.share_price": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.95,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "market.share_price",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "as_of_close_price",
+          "source_id": "market_price_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD/share",
+      "value": 374.59000000000003,
+      "window": null
+    },
+    "operating.ebitda_margin_ttm": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.765,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "operating.ebitda_margin_ttm",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "ebitda_ttm_divided_by_revenue_ttm",
+          "source_id": "financial_statement_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "ratio",
+      "value": 0.15852527050917162,
+      "window": null
+    },
+    "operating.ebitda_ttm": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.765,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "operating.ebitda_ttm",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "ttm_operating_metric_policy",
+          "source_id": "financial_statement_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 25287000000.0,
+      "window": null
+    },
+    "operating.revenue_ttm": {
+      "as_of_time": "2026-02-28T00:00:00+00:00",
+      "computed_at": "2026-03-01T00:00:00+00:00",
+      "confidence": 0.88,
+      "fallback_used": null,
+      "missing_reason": null,
+      "name": "operating.revenue_ttm",
+      "provenance": [
+        {
+          "as_of_time": "2026-02-28T00:00:00+00:00",
+          "available_time": "2026-02-28T00:00:00+00:00",
+          "method": "ttm_statement_rollup",
+          "source_id": "financial_statement_snapshot",
+          "source_type": "materialized_public_showcase_sample"
+        }
+      ],
+      "unit": "USD",
+      "value": 159514000000.0,
+      "window": null
+    }
+  },
+  "peer_set": {
+    "sector": "Consumer Discretionary",
+    "source": "public_showcase_sample",
+    "subsector": "Specialty Retail",
+    "ticker": "HD"
+  },
+  "provenance": {
+    "local_private_paths_removed": true,
+    "source_artifact": "materialized_examples/validation/cfo_decision_surface_home_depot.json",
+    "source_status": "sanitized_public_sample"
+  },
+  "regime": {
+    "credit_window_proxy": 0.3004509844393228,
+    "equity_window_proxy": 0.7034259983596405,
+    "sector": "Consumer Discretionary",
+    "subsector": "Specialty Retail"
+  },
+  "sample_note": "Compact public sample derived from a materialized Axiom company context and reshaped to the CompanyStateSnapshot contract.",
+  "snapshot_id": "fe25b6c9-cdf5-47c5-b9c7-0f3d9a8aa5b0",
+  "ticker": "HD"
+}

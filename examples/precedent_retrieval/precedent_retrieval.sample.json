@@ -1,0 +1,1682 @@
+{
+  "candidate_count": 80,
+  "evaluation_summary": {
+    "candidate_row_count": 120,
+    "mean_feature_mismatches": 2.691666666666667,
+    "mean_match_similarity": 0.5173600407222949,
+    "mean_precedent_confidence": 0.33921627465333887,
+    "mean_top_similarity": 0.6227532413394464,
+    "median_precedent_confidence": 0.3131867879922131,
+    "median_top_similarity": 0.6087866792195369,
+    "retrieved_precedent_count": 3268,
+    "run_count": 10,
+    "top_action_ids": [
+      [
+        "capital_structure.equity_issuance",
+        38
+      ],
+      [
+        "capital_return.open_market_buyback",
+        21
+      ],
+      [
+        "capital_structure.new_debt_issuance",
+        16
+      ],
+      [
+        "mna.transformational_acquisition",
+        10
+      ],
+      [
+        "governance.stock_split",
+        9
+      ],
+      [
+        "mna.tuck_in_acquisition",
+        8
+      ],
+      [
+        "mna.platform_acquisition",
+        7
+      ],
+      [
+        "capital_return.special_dividend",
+        5
+      ],
+      [
+        "capital_return.dividend_increase",
+        3
+      ],
+      [
+        "capital_structure.refinancing",
+        3
+      ]
+    ]
+  },
+  "profile": {
+    "count": 12,
+    "max_seconds": 0.257871,
+    "p50_seconds": 0.190545,
+    "p95_seconds": 0.252268,
+    "selected_action_counts": {
+      "capital_return.dividend_increase": 1,
+      "capital_return.open_market_buyback": 3,
+      "capital_return.special_dividend": 1,
+      "capital_structure.equity_issuance": 3,
+      "capital_structure.new_debt_issuance": 1,
+      "mna.platform_acquisition": 1,
+      "mna.transformational_acquisition": 1,
+      "mna.tuck_in_acquisition": 1
+    },
+    "slowest": [
+      {
+        "action_id": "capital_structure.equity_issuance",
+        "candidate_id": "3c7ef96e-2873-52e4-aee6-66f0efebb7ed",
+        "seconds": 0.257871
+      },
+      {
+        "action_id": "capital_return.open_market_buyback",
+        "candidate_id": "40ca61dc-efb5-5828-bea0-6ca4b21fc406",
+        "seconds": 0.252268
+      },
+      {
+        "action_id": "capital_structure.equity_issuance",
+        "candidate_id": "427955c9-2b3e-5a2c-812d-83b76cd11e83",
+        "seconds": 0.236441
+      },
+      {
+        "action_id": "capital_structure.equity_issuance",
+        "candidate_id": "e0ffa171-26ee-54e0-a1f7-31e4a8d7f783",
+        "seconds": 0.228401
+      },
+      {
+        "action_id": "capital_return.open_market_buyback",
+        "candidate_id": "34019e7a-918e-5d37-8a2b-1a330e6e2ec8",
+        "seconds": 0.213101
+      },
+      {
+        "action_id": "capital_return.open_market_buyback",
+        "candidate_id": "c6cbcb8e-847a-587d-9d56-e5e7a132664c",
+        "seconds": 0.190545
+      },
+      {
+        "action_id": "capital_return.dividend_increase",
+        "candidate_id": "7ff66f35-74c5-58e4-90e0-69aeb2c64b6c",
+        "seconds": 0.164611
+      },
+      {
+        "action_id": "capital_structure.new_debt_issuance",
+        "candidate_id": "0a5e83b0-7b35-515c-8335-51ca7d3852ed",
+        "seconds": 0.157547
+      },
+      {
+        "action_id": "mna.platform_acquisition",
+        "candidate_id": "3b3dfd48-00d7-58bd-b87d-8ff194a758d7",
+        "seconds": 0.154468
+      },
+      {
+        "action_id": "mna.tuck_in_acquisition",
+        "candidate_id": "7bc2c5ec-3643-55eb-8521-4f2fbf9abcc2",
+        "seconds": 0.149801
+      }
+    ]
+  },
+  "results": [
+    {
+      "action_id": "capital_structure.equity_issuance",
+      "candidate_id": "3c7ef96e-2873-52e4-aee6-66f0efebb7ed",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -1.4704183773519794,
+          "interdecile_range": 4.134406073768465,
+          "interquartile_range": 1.6405771783768759,
+          "tail_upside_to_downside_ratio": 1.8117208934874438,
+          "upside_tail_p90": 2.6639876964164855
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.15752462805101147,
+          "median": 0.1402463245737366,
+          "p10": -1.4704183773519794,
+          "p25": -0.587259787073885,
+          "p75": 1.0533173913029907,
+          "p90": 2.6639876964164855,
+          "sample_size": 30,
+          "variance": 14.039707423066384
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.43333333333333335,
+          "conditional_regret_severity": -2.000096934969727,
+          "positive_outcome_rate": 0.5666666666666667,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 60.0
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 21,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.1895, 7.3585]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "capital_structure.equity_issuance",
+        "top_critical_feature_coverage": 0.7289041314046995,
+        "top_weighted_feature_coverage": 0.7763587173685061
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": -934.21551271724,
+          "median": -30.59804494209657,
+          "p10": -7412.623121619981,
+          "p25": -644.6220360324676,
+          "p75": 43.589525000000016,
+          "p90": 383.93208377455505,
+          "sample_size": 17
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.15752462805101147,
+          "median": 0.1402463245737366,
+          "p10": -1.4704183773519794,
+          "p25": -0.587259787073885,
+          "p75": 1.0533173913029907,
+          "p90": 2.6639876964164855,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": -9.093293593018375,
+          "median": 0.5171613370141697,
+          "p10": -4.625190596143864,
+          "p25": -1.5591266074184829,
+          "p75": 0.9355184370705907,
+          "p90": 1.9335019952906172,
+          "sample_size": 26
+        },
+        "valuation_multiple_change": {
+          "mean": -0.16219055228030477,
+          "median": 0.06460091171682872,
+          "p10": -0.6103851839981523,
+          "p25": -0.27077861338868553,
+          "p75": 0.8752364301200335,
+          "p90": 1.3741994824613861,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "amount_usd": 18645432358.307503,
+        "offering_type": "at_the_market",
+        "use_of_proceeds": "mna"
+      },
+      "precedent_confidence": 0.41738498970787297,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "capital_structure.equity_issuance",
+          "base_leverage": 2.1689497716894977,
+          "base_margin": 0.13636363636363635,
+          "base_market_cap": 28873.5022,
+          "decision_time": "2023-08-03 00:00:00",
+          "precedent_id": "118122::2023-08-03T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6675478184252099
+        },
+        {
+          "action_id": "capital_structure.equity_issuance",
+          "base_leverage": 4.687439143135346,
+          "base_margin": 0.08183266932270916,
+          "base_market_cap": 22015.1648,
+          "decision_time": "2024-10-30 00:00:00",
+          "precedent_id": "030999::2024-10-30T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6643912301334648
+        },
+        {
+          "action_id": "capital_structure.equity_issuance",
+          "base_leverage": 1.3393924497292617,
+          "base_margin": 0.06278528892155825,
+          "base_market_cap": 32658.46,
+          "decision_time": "2021-05-06 00:00:00",
+          "precedent_id": "021540::2021-05-06T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6436038008555653
+        },
+        {
+          "action_id": "capital_structure.equity_issuance",
+          "base_leverage": 6.9041278295605855,
+          "base_margin": 0.06436407267740829,
+          "base_market_cap": 15582.0709,
+          "decision_time": "2024-07-31 00:00:00",
+          "precedent_id": "030999::2024-07-31T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6355906818462339
+        },
+        {
+          "action_id": "capital_structure.equity_issuance",
+          "base_leverage": 3.986600733769341,
+          "base_margin": 0.14584270359973323,
+          "base_market_cap": 63511.7177,
+          "decision_time": "2011-01-28 00:00:00",
+          "precedent_id": "004839::2011-01-28T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6012010043922378
+        }
+      ],
+      "top_similarity_mean": 0.6110391717664017
+    },
+    {
+      "action_id": "capital_return.open_market_buyback",
+      "candidate_id": "34019e7a-918e-5d37-8a2b-1a330e6e2ec8",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.6230586262450832,
+          "interdecile_range": 0.9706102672368551,
+          "interquartile_range": 0.3500341544002137,
+          "tail_upside_to_downside_ratio": 0.5578153103927344,
+          "upside_tail_p90": 0.34755164099177177
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": -0.12485492142126645,
+          "median": -0.03019061418372181,
+          "p10": -0.6230586262450832,
+          "p25": -0.1732350428639513,
+          "p75": 0.17679911153626238,
+          "p90": 0.34755164099177177,
+          "sample_size": 28,
+          "variance": 0.2895213565922951
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.5357142857142857,
+          "conditional_regret_severity": -0.41523903232413967,
+          "positive_outcome_rate": 0.39285714285714285,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 46.1749
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 30,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 0.5441778336074486,
+            "cohort_range": "[0.6519, 0.8974]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.market_access"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[2.9740, 4.8300]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "capital_return.open_market_buyback",
+        "top_critical_feature_coverage": 0.8047772837317793,
+        "top_weighted_feature_coverage": 0.927658429000531
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": 531.1924412650661,
+          "median": -0.14576446857832437,
+          "p10": -348.7443375087719,
+          "p25": -106.85456077308642,
+          "p75": 118.45535810982994,
+          "p90": 312.16048046176445,
+          "sample_size": 25
+        },
+        "equity_return_vs_sector": {
+          "mean": -0.12485492142126645,
+          "median": -0.03019061418372181,
+          "p10": -0.6230586262450832,
+          "p25": -0.1732350428639513,
+          "p75": 0.17679911153626238,
+          "p90": 0.34755164099177177,
+          "sample_size": 28
+        },
+        "leverage_change": {
+          "mean": -1.0369288150678702,
+          "median": 0.0498083006834536,
+          "p10": -1.7726602737647639,
+          "p25": -0.17796797475201853,
+          "p75": 0.2711751975667597,
+          "p90": 0.5881105864738382,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.1814042508437093,
+          "median": -0.017317740848338595,
+          "p10": -0.32244291404284486,
+          "p25": -0.10688761453913699,
+          "p75": 0.16159450855907703,
+          "p90": 0.3338134632693317,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "funding_mix": {
+          "cash": 0.5,
+          "debt": 0.5,
+          "equity": 0.0
+        },
+        "pace": "front_loaded",
+        "size_pct_market_cap": 0.02
+      },
+      "precedent_confidence": 0.5912112363835264,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "capital_return.open_market_buyback",
+          "base_leverage": 2.616598979991191,
+          "base_margin": 0.221934991337286,
+          "base_market_cap": 45918.9342,
+          "decision_time": "2023-02-28 00:00:00",
+          "precedent_id": "023809::2023-02-28T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8809123049237595
+        },
+        {
+          "action_id": "capital_return.open_market_buyback",
+          "base_leverage": 2.961418953909891,
+          "base_margin": 0.10705771469756611,
+          "base_market_cap": 88691.12,
+          "decision_time": "2020-01-31 00:00:00",
+          "precedent_id": "006829::2020-01-31T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8780592848078718
+        },
+        {
+          "action_id": "capital_return.open_market_buyback",
+          "base_leverage": 2.489841986455982,
+          "base_margin": 0.3544,
+          "base_market_cap": 18254.3,
+          "decision_time": "2021-04-30 00:00:00",
+          "precedent_id": "006733::2021-04-30T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8767728288878229
+        },
+        {
+          "action_id": "capital_return.open_market_buyback",
+          "base_leverage": 2.8328840970350404,
+          "base_margin": 0.29316475701303835,
+          "base_market_cap": 21218.55,
+          "decision_time": "2021-07-31 00:00:00",
+          "precedent_id": "006733::2021-07-31T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8765552066103002
+        },
+        {
+          "action_id": "capital_return.open_market_buyback",
+          "base_leverage": 1.7326071279462558,
+          "base_margin": 0.16971894949078517,
+          "base_market_cap": 308162.56,
+          "decision_time": "2022-07-31 00:00:00",
+          "precedent_id": "005680::2022-07-31T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.873778583195485
+        }
+      ],
+      "top_similarity_mean": 0.8746629881973446
+    },
+    {
+      "action_id": "capital_return.special_dividend",
+      "candidate_id": "b9f6a0cc-8ed7-5616-b75c-22aa62c67633",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -1.1519186418314402,
+          "interdecile_range": 2.0392891700983546,
+          "interquartile_range": 0.47962517559612955,
+          "tail_upside_to_downside_ratio": 0.7703413210294785,
+          "upside_tail_p90": 0.8873705282669143
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": -0.048051717193753965,
+          "median": -0.07538771887168016,
+          "p10": -1.1519186418314402,
+          "p25": -0.2529884733310964,
+          "p75": 0.22663670226503313,
+          "p90": 0.8873705282669143,
+          "sample_size": 30,
+          "variance": 0.7214952873412066
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.5333333333333333,
+          "conditional_regret_severity": -0.5713814388615475,
+          "positive_outcome_rate": 0.4666666666666667,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 40.6449
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 30,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 16.774344090501913,
+            "cohort_range": "[3.9688, 9.6094]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.valuation_multiple"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.2060, 5.8135]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "capital_return.special_dividend",
+        "top_critical_feature_coverage": 0.7041434732044057,
+        "top_weighted_feature_coverage": 0.8310232961085514
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": -1069.7830461670276,
+          "median": -493.83196047077934,
+          "p10": -2271.1801345183985,
+          "p25": -1604.674569250541,
+          "p75": -246.91598023538967,
+          "p90": -98.76639209415585,
+          "sample_size": 3
+        },
+        "equity_return_vs_sector": {
+          "mean": -0.048051717193753965,
+          "median": -0.07538771887168016,
+          "p10": -1.1519186418314402,
+          "p25": -0.2529884733310964,
+          "p75": 0.22663670226503313,
+          "p90": 0.8873705282669143,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": 2.3412284985367138,
+          "median": 0.4493767394257828,
+          "p10": -0.03530396911174855,
+          "p25": -0.020129228538570243,
+          "p75": 1.5356993527171356,
+          "p90": 6.728756272534364,
+          "sample_size": 29
+        },
+        "valuation_multiple_change": {
+          "mean": 0.10589059533572129,
+          "median": -0.034919192112229956,
+          "p10": -0.23734372780875682,
+          "p25": -0.17713661292394733,
+          "p75": 0.2703568839237793,
+          "p90": 0.8276051601409196,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "funding_mix": {
+          "cash": 0.7,
+          "debt": 0.3,
+          "equity": 0.0
+        },
+        "size_absolute_usd": 7458172943.323001
+      },
+      "precedent_confidence": 0.5702507118042812,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "capital_return.special_dividend",
+          "base_leverage": 0.5414126016260162,
+          "base_margin": 0.12763473636422595,
+          "base_market_cap": 42143.85,
+          "decision_time": "2004-04-14 00:00:00",
+          "precedent_id": "006829::2004-04-14T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8098190886793692
+        },
+        {
+          "action_id": "capital_return.special_dividend",
+          "base_leverage": 4.212926402267577,
+          "base_margin": 0.09237279928499004,
+          "base_market_cap": 1643.7828,
+          "decision_time": "2018-03-15 00:00:00",
+          "precedent_id": "019071::2018-03-15T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8097482971997368
+        },
+        {
+          "action_id": "capital_return.special_dividend",
+          "base_leverage": 4.7597269624573375,
+          "base_margin": 0.09267682229488358,
+          "base_market_cap": 896.5319,
+          "decision_time": "2017-09-14 00:00:00",
+          "precedent_id": "019071::2017-09-14T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8057497452717249
+        },
+        {
+          "action_id": "capital_return.special_dividend",
+          "base_leverage": 5.384809951872877,
+          "base_margin": 0.07093237668283596,
+          "base_market_cap": 790.0552,
+          "decision_time": "2018-12-14 00:00:00",
+          "precedent_id": "019071::2018-12-14T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8050324641995202
+        },
+        {
+          "action_id": "capital_return.special_dividend",
+          "base_leverage": 3.3006760615011532,
+          "base_margin": 0.11866208004920112,
+          "base_market_cap": 1651.2518,
+          "decision_time": "2021-06-14 00:00:00",
+          "precedent_id": "019071::2021-06-14T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.8039482369787633
+        }
+      ],
+      "top_similarity_mean": 0.804223333668924
+    },
+    {
+      "action_id": "mna.transformational_acquisition",
+      "candidate_id": "a9e1999f-0812-5680-8547-d701cd901183",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.7086834920579241,
+          "interdecile_range": 1.8843064809380716,
+          "interquartile_range": 0.7447246897064155,
+          "tail_upside_to_downside_ratio": 1.6588829880406726,
+          "upside_tail_p90": 1.1756229888801475
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.3516888332999208,
+          "median": -0.005227872703822443,
+          "p10": -0.7086834920579241,
+          "p25": -0.3782448504903341,
+          "p75": 0.3664798392160814,
+          "p90": 1.1756229888801475,
+          "sample_size": 30,
+          "variance": 4.927875563316916
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.5,
+          "conditional_regret_severity": -0.6162326413394429,
+          "positive_outcome_rate": 0.5,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 25.4373
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 270,
+        "pass_probability": 0.5900000000000001,
+        "status": "conditional"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.0525, 5.9270]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "mna.transformational_acquisition",
+        "top_critical_feature_coverage": 0.5216288529462263,
+        "top_weighted_feature_coverage": 0.8077914867276215
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": 9.156424290386045,
+          "median": 0.0,
+          "p10": -256.0880140138888,
+          "p25": -106.93453052398985,
+          "p75": 84.420004023312,
+          "p90": 326.29566400682006,
+          "sample_size": 15
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.3516888332999208,
+          "median": -0.005227872703822443,
+          "p10": -0.7086834920579241,
+          "p25": -0.3782448504903341,
+          "p75": 0.3664798392160814,
+          "p90": 1.1756229888801475,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": -0.17388217511572843,
+          "median": 1.2108445456207595,
+          "p10": -0.14082160649135117,
+          "p25": 0.2408846066602055,
+          "p75": 2.481502188169799,
+          "p90": 3.390279789868041,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.6848959383129548,
+          "median": 0.05266657625856807,
+          "p10": -0.28006820130042226,
+          "p25": -0.19698711911979677,
+          "p75": 0.4789262277180186,
+          "p90": 0.8702173808350177,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "funding_mix": {
+          "cash": 0.1,
+          "debt": 0.4,
+          "equity": 0.5
+        },
+        "leverage_post_close": 3.0,
+        "regulatory_risk": "high",
+        "strategic_thesis_strength": "medium",
+        "target_size_pct_ev": 0.25
+      },
+      "precedent_confidence": 0.25092874899820583,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "mna.transformational_acquisition",
+          "base_leverage": 1.7538525614327363,
+          "base_margin": 0.1126172607879925,
+          "base_market_cap": 8517.85,
+          "decision_time": "2022-08-08 00:00:00",
+          "precedent_id": "011465::2022-08-08T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.4379063144860133
+        },
+        {
+          "action_id": "mna.transformational_acquisition",
+          "base_leverage": 3.1601753670473083,
+          "base_margin": 0.029195827736631697,
+          "base_market_cap": 1091.6604,
+          "decision_time": "2007-02-27 00:00:00",
+          "precedent_id": "005301::2007-02-27T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.426858541925384
+        },
+        {
+          "action_id": "mna.transformational_acquisition",
+          "base_leverage": 3.37632754865709,
+          "base_margin": 0.04789022738094067,
+          "base_market_cap": 1866.1054,
+          "decision_time": "2021-09-22 00:00:00",
+          "precedent_id": "065831::2021-09-22T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.4177585320053045
+        },
+        {
+          "action_id": "mna.transformational_acquisition",
+          "base_leverage": 2.875294117647059,
+          "base_margin": 0.1850239442751415,
+          "base_market_cap": 3637.8,
+          "decision_time": "2019-02-24 00:00:00",
+          "precedent_id": "027373::2019-02-24T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.4173497161588949
+        },
+        {
+          "action_id": "mna.transformational_acquisition",
+          "base_leverage": 1.2012773712519458,
+          "base_margin": 0.09091472215479479,
+          "base_market_cap": 1009.0783,
+          "decision_time": "2019-09-16 00:00:00",
+          "precedent_id": "011537::2019-09-16T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.3830201420074117
+        }
+      ],
+      "top_similarity_mean": 0.387895258211309
+    },
+    {
+      "action_id": "mna.tuck_in_acquisition",
+      "candidate_id": "7bc2c5ec-3643-55eb-8521-4f2fbf9abcc2",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.6131208867152854,
+          "interdecile_range": 4.832588515692725,
+          "interquartile_range": 0.5917234804976501,
+          "tail_upside_to_downside_ratio": 6.88195055885746,
+          "upside_tail_p90": 4.21946762897744
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.7923012649593596,
+          "median": 0.07611785325228104,
+          "p10": -0.6131208867152854,
+          "p25": -0.3303464735290675,
+          "p75": 0.2613770069685827,
+          "p90": 4.21946762897744,
+          "sample_size": 30,
+          "variance": 6.16462015561832
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.4666666666666667,
+          "conditional_regret_severity": -0.4233547133055427,
+          "positive_outcome_rate": 0.5333333333333333,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 53.0875
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 120,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 0.5441778336074486,
+            "cohort_range": "[0.6040, 0.9347]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.market_access"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.2805, 5.3580]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "mna.tuck_in_acquisition",
+        "top_critical_feature_coverage": 0.7882673340054193,
+        "top_weighted_feature_coverage": 0.9002727750247944
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": 90.56042525223718,
+          "median": 26.910002041950044,
+          "p10": -126.52124735148676,
+          "p25": -24.881700864561786,
+          "p75": 72.04112227556728,
+          "p90": 153.42939330389964,
+          "sample_size": 30
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.7923012649593596,
+          "median": 0.07611785325228104,
+          "p10": -0.6131208867152854,
+          "p25": -0.3303464735290675,
+          "p75": 0.2613770069685827,
+          "p90": 4.21946762897744,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": 0.02962789612487723,
+          "median": 0.007744003885051809,
+          "p10": -1.1233152017597179,
+          "p25": -0.5069456913244057,
+          "p75": 0.7504791979060091,
+          "p90": 1.0392090013202826,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.4143034002551652,
+          "median": 0.06252743738435979,
+          "p10": -0.39170048082410186,
+          "p25": -0.21946422994290382,
+          "p75": 0.24192494857410718,
+          "p90": 2.7731305404253126,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "funding_mix": {
+          "cash": 0.1,
+          "debt": 0.4,
+          "equity": 0.5
+        },
+        "geography_overlap": "medium",
+        "leverage_post_close": 3.0,
+        "synergy_case_strength": "low",
+        "target_sector_match": "medium",
+        "target_size_pct_ev": 0.05
+      },
+      "precedent_confidence": 0.3271378859737633,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "mna.tuck_in_acquisition",
+          "base_leverage": 1.8099418979987087,
+          "base_margin": 0.11621625677115376,
+          "base_market_cap": 72402.64,
+          "decision_time": "2017-05-18 00:00:00",
+          "precedent_id": "006829::2017-05-18T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5761721433837804
+        },
+        {
+          "action_id": "mna.tuck_in_acquisition",
+          "base_leverage": 3.4656200888858835,
+          "base_margin": 0.1797938858472738,
+          "base_market_cap": 113931.2,
+          "decision_time": "2023-01-23 00:00:00",
+          "precedent_id": "025434::2023-01-23T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5715936886473266
+        },
+        {
+          "action_id": "mna.tuck_in_acquisition",
+          "base_leverage": 0.8537017357421183,
+          "base_margin": 0.06554598435069307,
+          "base_market_cap": 20280.45,
+          "decision_time": "2019-08-07 00:00:00",
+          "precedent_id": "002184::2019-08-07T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5481884095328985
+        },
+        {
+          "action_id": "mna.tuck_in_acquisition",
+          "base_leverage": 1.7959662288930582,
+          "base_margin": 0.10784792493136933,
+          "base_market_cap": 860328.0,
+          "decision_time": "2023-03-06 00:00:00",
+          "precedent_id": "064768::2023-03-06T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.546418193225991
+        },
+        {
+          "action_id": "mna.tuck_in_acquisition",
+          "base_leverage": 1.7959662288930582,
+          "base_margin": 0.10784792493136933,
+          "base_market_cap": 860328.0,
+          "decision_time": "2023-03-01 00:00:00",
+          "precedent_id": "064768::2023-03-01T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5410733476960694
+        }
+      ],
+      "top_similarity_mean": 0.5367785289542594
+    },
+    {
+      "action_id": "mna.platform_acquisition",
+      "candidate_id": "3b3dfd48-00d7-58bd-b87d-8ff194a758d7",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.18622006705877434,
+          "interdecile_range": 1.3253508562231884,
+          "interquartile_range": 0.25265991248958775,
+          "tail_upside_to_downside_ratio": 6.117121571032859,
+          "upside_tail_p90": 1.139130789164414
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.31148781101140816,
+          "median": 0.045846987160378286,
+          "p10": -0.18622006705877434,
+          "p25": -0.05522771431493199,
+          "p75": 0.19743219817465577,
+          "p90": 1.139130789164414,
+          "sample_size": 30,
+          "variance": 1.2206665480644676
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.4666666666666667,
+          "conditional_regret_severity": -0.1995210916575438,
+          "positive_outcome_rate": 0.5333333333333333,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 46.1749
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 210,
+        "pass_probability": 0.5900000000000001,
+        "status": "conditional"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 0.5441778336074486,
+            "cohort_range": "[0.6851, 0.9233]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.market_access"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.2320, 5.1345]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "mna.platform_acquisition",
+        "top_critical_feature_coverage": 0.8006643286087906,
+        "top_weighted_feature_coverage": 0.9150965196949927
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": 21.04848739863921,
+          "median": -0.7554747925226479,
+          "p10": -106.0958313198075,
+          "p25": -54.38183906437098,
+          "p75": 93.38841482146105,
+          "p90": 162.58102680839386,
+          "sample_size": 30
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.31148781101140816,
+          "median": 0.045846987160378286,
+          "p10": -0.18622006705877434,
+          "p25": -0.05522771431493199,
+          "p75": 0.19743219817465577,
+          "p90": 1.139130789164414,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": -0.03513461149685597,
+          "median": 0.0020190360116021933,
+          "p10": -0.717807103513202,
+          "p25": -0.4438188754047845,
+          "p75": 0.3843895173137378,
+          "p90": 0.6289031981868319,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.18122504576426438,
+          "median": 0.003225743209361991,
+          "p10": -0.14067882423596484,
+          "p25": -0.02098873159684617,
+          "p75": 0.17095326142678163,
+          "p90": 0.7357469869446983,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "expected_synergy_pct": 0.05,
+        "funding_mix": {
+          "cash": 0.1,
+          "debt": 0.4,
+          "equity": 0.5
+        },
+        "leverage_post_close": 3.5,
+        "regulatory_risk": "high",
+        "target_size_pct_ev": 0.1
+      },
+      "precedent_confidence": 0.2950079728063166,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "mna.platform_acquisition",
+          "base_leverage": 0.9713995943204868,
+          "base_margin": 0.1261046950338283,
+          "base_market_cap": 74717.51,
+          "decision_time": "2007-07-10 00:00:00",
+          "precedent_id": "005680::2007-07-10T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6076710776327988
+        },
+        {
+          "action_id": "mna.platform_acquisition",
+          "base_leverage": 3.035559827006247,
+          "base_margin": 0.08708327521272144,
+          "base_market_cap": 89946.3,
+          "decision_time": "2019-05-20 00:00:00",
+          "precedent_id": "006829::2019-05-20T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6011029206871256
+        },
+        {
+          "action_id": "mna.platform_acquisition",
+          "base_leverage": 2.256622286230627,
+          "base_margin": 0.2323561804299021,
+          "base_market_cap": 26000.9908,
+          "decision_time": "2020-12-28 00:00:00",
+          "precedent_id": "023809::2020-12-28T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5532680920103711
+        },
+        {
+          "action_id": "mna.platform_acquisition",
+          "base_leverage": 3.000586026738712,
+          "base_margin": 0.4788444342978902,
+          "base_market_cap": 136213.947,
+          "decision_time": "2019-03-25 00:00:00",
+          "precedent_id": "007154::2019-03-25T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.5092417171989267
+        },
+        {
+          "action_id": "mna.platform_acquisition",
+          "base_leverage": 0.8065902578796562,
+          "base_margin": 0.06506338553318419,
+          "base_market_cap": 19867.47,
+          "decision_time": "2019-05-03 00:00:00",
+          "precedent_id": "002184::2019-05-03T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.48083754742047297
+        }
+      ],
+      "top_similarity_mean": 0.5017373960438204
+    },
+    {
+      "action_id": "capital_return.dividend_increase",
+      "candidate_id": "7ff66f35-74c5-58e4-90e0-69aeb2c64b6c",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.2537423227957734,
+          "interdecile_range": 0.4684938037765362,
+          "interquartile_range": 0.24101439277696035,
+          "tail_upside_to_downside_ratio": 0.8463368610115833,
+          "upside_tail_p90": 0.2147514809807628
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.009563022516636306,
+          "median": -0.03126477339345294,
+          "p10": -0.2537423227957734,
+          "p25": -0.10026497708117871,
+          "p75": 0.14074941569578164,
+          "p90": 0.2147514809807628,
+          "sample_size": 30,
+          "variance": 0.10972809235395281
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.5333333333333333,
+          "conditional_regret_severity": -0.18327959887200168,
+          "positive_outcome_rate": 0.4666666666666667,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 60.0
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 30,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 10.213355048859935,
+            "cohort_range": "[10.2370, 70.0962]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.interest_coverage"
+          },
+          {
+            "candidate_value": 16.774344090501913,
+            "cohort_range": "[7.5370, 16.6213]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.valuation_multiple"
+          },
+          {
+            "candidate_value": 0.5441778336074486,
+            "cohort_range": "[0.6497, 0.8398]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.market_access"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.2135, 5.2420]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": true,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "capital_return.dividend_increase",
+        "top_critical_feature_coverage": 0.8279551192286163,
+        "top_weighted_feature_coverage": 0.9047425706102162
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": -363.2732622839301,
+          "median": -12.734217447138096,
+          "p10": -615.7867930149708,
+          "p25": -81.54415591548285,
+          "p75": 35.9847150224939,
+          "p90": 76.72148254719146,
+          "sample_size": 30
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.009563022516636306,
+          "median": -0.03126477339345294,
+          "p10": -0.2537423227957734,
+          "p25": -0.10026497708117871,
+          "p75": 0.14074941569578164,
+          "p90": 0.2147514809807628,
+          "sample_size": 30
+        },
+        "leverage_change": {
+          "mean": 0.22246467595805589,
+          "median": 0.22822073304304036,
+          "p10": -0.10028521749545181,
+          "p25": -0.03311608184331405,
+          "p75": 0.33126863761502423,
+          "p90": 0.6147565324510207,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.02832568524669469,
+          "median": -0.015636195031579612,
+          "p10": -0.18336403197612056,
+          "p25": -0.09658684778464507,
+          "p75": 0.14620178557131358,
+          "p90": 0.20918502619012241,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "annualized_cash_commitment_usd": 1864543235.8307502,
+        "percent_change": 0.06
+      },
+      "precedent_confidence": 0.3224169544836409,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "capital_return.dividend_increase",
+          "base_leverage": 2.857165084798506,
+          "base_margin": 0.15052579806543787,
+          "base_market_cap": 130410.28,
+          "decision_time": "2024-07-24 00:00:00",
+          "precedent_id": "006829::2024-07-24T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.7220425732342618
+        },
+        {
+          "action_id": "capital_return.dividend_increase",
+          "base_leverage": 2.58649495301079,
+          "base_margin": 0.1500308103648156,
+          "base_market_cap": 123035.36,
+          "decision_time": "2023-07-25 00:00:00",
+          "precedent_id": "006829::2023-07-25T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.7166898049042628
+        },
+        {
+          "action_id": "capital_return.dividend_increase",
+          "base_leverage": 1.7729674643315467,
+          "base_margin": 0.1683195364764331,
+          "base_market_cap": 329356.72,
+          "decision_time": "2023-03-08 00:00:00",
+          "precedent_id": "005680::2023-03-08T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.7023983391921149
+        },
+        {
+          "action_id": "capital_return.dividend_increase",
+          "base_leverage": 2.274588506994053,
+          "base_margin": 0.1258951515894333,
+          "base_market_cap": 24803.1675,
+          "decision_time": "2023-02-24 00:00:00",
+          "precedent_id": "029736::2023-02-24T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6536393645329739
+        },
+        {
+          "action_id": "capital_return.dividend_increase",
+          "base_leverage": 1.5455228365384615,
+          "base_margin": 0.14110065292970406,
+          "base_market_cap": 140318.75,
+          "decision_time": "2021-07-20 00:00:00",
+          "precedent_id": "006829::2021-07-20T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.6505828474899061
+        }
+      ],
+      "top_similarity_mean": 0.6536208469390472
+    },
+    {
+      "action_id": "capital_structure.new_debt_issuance",
+      "candidate_id": "0a5e83b0-7b35-515c-8335-51ca7d3852ed",
+      "cohort_size": 30,
+      "empirical_risk_profile": {
+        "available": true,
+        "dispersion_profile": {
+          "downside_tail_p10": -0.3266067271373547,
+          "interdecile_range": 0.8534165422379031,
+          "interquartile_range": 0.4367767710255529,
+          "tail_upside_to_downside_ratio": 1.6129790703269808,
+          "upside_tail_p90": 0.5268098151005484
+        },
+        "display_only": true,
+        "outcome_distribution": {
+          "mean": 0.27207420702398366,
+          "median": -0.024554800108784403,
+          "p10": -0.3266067271373547,
+          "p25": -0.2222253878789757,
+          "p75": 0.2145513831465772,
+          "p90": 0.5268098151005484,
+          "sample_size": 27,
+          "variance": 1.217757232351239
+        },
+        "primary_metric": "outcome_pe_12m",
+        "profile_version": "empirical_risk_profile_v1",
+        "regret_profile": {
+          "absolute_regret_definition": "outcome_pe_12m < 0",
+          "absolute_regret_rate": 0.5555555555555556,
+          "conditional_regret_severity": -0.21975466992927728,
+          "positive_outcome_rate": 0.4444444444444444,
+          "simple_alternative_regret_rate": null,
+          "simple_alternative_regret_status": "not_available_without_matched_alternative_cohort",
+          "status_quo_regret_rate": null,
+          "status_quo_regret_status": "not_available_without_matched_no_action_cohort"
+        },
+        "source": "matched_precedent_outcome_values"
+      },
+      "feasibility": {
+        "gating_signals": [
+          {
+            "feature_name": "liquidity.runway_months_proforma",
+            "interpretation": "Liquidity runway after action cash usage.",
+            "threshold": ">=12 preferred",
+            "value": 60.0
+          },
+          {
+            "feature_name": "liquidity.available_for_actions",
+            "interpretation": "Liquidity available for discretionary actions after minimum operating needs.",
+            "threshold": ">0 preferred before discretionary capital return",
+            "value": 16184000000.0
+          },
+          {
+            "feature_name": "liquidity.cash",
+            "interpretation": "Reported cash balance used to identify reserve pressure.",
+            "threshold": ">= minimum cash policy preferred",
+            "value": 1684000000.0
+          },
+          {
+            "feature_name": "liquidity.minimum_cash_policy_proxy",
+            "interpretation": "Proxy for minimum cash reserve needed before discretionary uses.",
+            "threshold": "cash reserve floor",
+            "value": 1654080000.0
+          }
+        ],
+        "lead_time_prior_days": 21,
+        "pass_probability": 0.9500000000000001,
+        "status": "feasible"
+      },
+      "mismatch_diagnostics": {
+        "feature_mismatches": [
+          {
+            "candidate_value": 0.5441778336074486,
+            "cohort_range": "[0.6053, 0.8096]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.market_access"
+          },
+          {
+            "candidate_value": 2.92,
+            "cohort_range": "[3.4255, 6.2300]",
+            "explanation": "Candidate feature lies outside the 5-95% precedent cohort range.",
+            "feature_name": "state_vector_v1.credit_spread"
+          }
+        ],
+        "low_precedent_coverage": false,
+        "parameter_scale_mismatch": false,
+        "regime_mismatch": false,
+        "state_distance_version": "weighted_distance_v2",
+        "state_weight_scope": "capital_structure.new_debt_issuance",
+        "top_critical_feature_coverage": 0.8586583086371389,
+        "top_weighted_feature_coverage": 0.8926817088660741
+      },
+      "outcome_distribution_12m_or_nearest": {
+        "credit_spread_change": {
+          "mean": -199.37104551515935,
+          "median": -10.043220655561447,
+          "p10": -256.9666072418454,
+          "p25": -143.79525442936148,
+          "p75": 8.693633840241066,
+          "p90": 41.87993091958848,
+          "sample_size": 28
+        },
+        "equity_return_vs_sector": {
+          "mean": 0.27207420702398366,
+          "median": -0.024554800108784403,
+          "p10": -0.3266067271373547,
+          "p25": -0.2222253878789757,
+          "p75": 0.2145513831465772,
+          "p90": 0.5268098151005484,
+          "sample_size": 27
+        },
+        "leverage_change": {
+          "mean": -7.771691777803457,
+          "median": 0.2160036481007599,
+          "p10": -0.40818631424280627,
+          "p25": -0.14696515991981718,
+          "p75": 0.5066691236548395,
+          "p90": 1.0098136167398655,
+          "sample_size": 30
+        },
+        "valuation_multiple_change": {
+          "mean": 0.42172622122445597,
+          "median": -0.0031938573859946902,
+          "p10": -0.1961985288447254,
+          "p25": -0.07397994226811605,
+          "p75": 0.2099817744480349,
+          "p90": 0.5028013994531758,
+          "sample_size": 30
+        }
+      },
+      "parameters": {
+        "amount_usd": 7458172943.323001,
+        "tenor_years": 5.0,
+        "use_of_proceeds": "mna"
+      },
+      "precedent_confidence": 0.31627101104322786,
+      "retrieval_tier": "exact",
+      "top_matches": [
+        {
+          "action_id": "capital_structure.new_debt_issuance",
+          "base_leverage": 5.127845518634495,
+          "base_margin": 0.08965918750968625,
+          "base_market_cap": 21727.0514,
+          "decision_time": "2021-05-04 00:00:00",
+          "precedent_id": "018675::2021-05-04T00:00:00.000000000::0",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.44303053663030295
+        },
+        {
+          "action_id": "capital_structure.new_debt_issuance",
+          "base_leverage": 2.5136558990711215,
+          "base_margin": 0.14863124491288804,
+          "base_market_cap": 125158.25,
+          "decision_time": "2023-03-28 00:00:00",
+          "precedent_id": "006829::2023-03-28T00:00:00.000000000::1",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.4348554196135375
+        },
+        {
+          "action_id": "capital_structure.new_debt_issuance",
+          "base_leverage": 2.5136558990711215,
+          "base_margin": 0.14863124491288804,
+          "base_market_cap": 125158.25,
+          "decision_time": "2023-03-28 00:00:00",
+          "precedent_id": "006829::2023-03-28T00:00:00.000000000::2",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.4348554196135375
+        },
+        {
+          "action_id": "capital_structure.new_debt_issuance",
+          "base_leverage": 2.5136558990711215,
+          "base_margin": 0.14863124491288804,
+          "base_market_cap": 125158.25,
+          "decision_time": "2023-03-28 00:00:00",
+          "precedent_id": "006829::2023-03-28T00:00:00.000000000::3",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.43359748494344186
+        },
+        {
+          "action_id": "capital_structure.new_debt_issuance",
+          "base_leverage": 2.5136558990711215,
+          "base_margin": 0.14863124491288804,
+          "base_market_cap": 125158.25,
+          "decision_time": "2023-03-28 00:00:00",
+          "precedent_id": "006829::2023-03-28T00:00:00.000000000::4",
+          "sector": "Consumer Discretionary",
+          "similarity_score": 0.43359748494344186
+        }
+      ],
+      "top_similarity_mean": 0.43105545779638665
+    }
+  ],
+  "retrieved_candidate_rows_in_sample": 12,
+  "run_id": "08dd0c87-79f6-4a9a-954b-88b10a0b9c52",
+  "sample_note": "Compact public sample from the precedent retrieval project bundle. Company identifiers are retained as anonymous gvkey-like ids; private local paths are omitted."
+}

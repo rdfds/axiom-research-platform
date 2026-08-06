@@ -1,0 +1,95 @@
+{
+  "cases": [
+    {
+      "ticker": "HD",
+      "name": "Home Depot",
+      "display_multiple": "P/E",
+      "forward_grade": "strong",
+      "market_signal_grade": "strong",
+      "forecast_precision_grade": "strong",
+      "gap_log": 0.16917778076953388,
+      "driver_underwritten_log": 0.06976463648884731,
+      "residual_outside_measured_drivers_log": 0.09941314428068657,
+      "coverage_ratio": 0.41237469939321236,
+      "reconciliation_error_log": 0.0,
+      "case_type": "flagship_driver_underwritten",
+      "top_drivers": [
+        {
+          "label": "Revenue growth",
+          "feature": "revenue_growth",
+          "horizon_label": "2Y",
+          "current_value": 0.005737928880908738,
+          "implied_value": 0.010797665097948085,
+          "market_implied_delta": 0.005059736217039347,
+          "gap_share": 0.41237469939321236,
+          "contribution_log": 0.06976463648884731,
+          "market_signal_grade": "strong",
+          "forecast_precision_grade": "strong",
+          "economic_materiality": "major"
+        }
+      ]
+    },
+    {
+      "ticker": "SYN_RESIDUAL",
+      "name": "Synthetic residual-dominant premium case",
+      "display_multiple": "P/E",
+      "forward_grade": "diagnostic",
+      "market_signal_grade": "weak",
+      "forecast_precision_grade": "weak",
+      "gap_log": 0.22,
+      "driver_underwritten_log": 0.025,
+      "residual_outside_measured_drivers_log": 0.195,
+      "coverage_ratio": 0.1136,
+      "reconciliation_error_log": 0.0,
+      "case_type": "residual_dominant",
+      "top_drivers": [
+        {
+          "label": "FCF margin",
+          "feature": "fcf_margin",
+          "horizon_label": "1Y",
+          "gap_share": 0.1136,
+          "contribution_log": 0.025,
+          "market_signal_grade": "weak",
+          "forecast_precision_grade": "weak",
+          "economic_materiality": "immaterial"
+        }
+      ]
+    },
+    {
+      "ticker": "SYN_MULTI",
+      "name": "Synthetic multi-driver underwritten discount case",
+      "display_multiple": "EV/EBITDA",
+      "forward_grade": "strong",
+      "market_signal_grade": "strong",
+      "forecast_precision_grade": "moderate",
+      "gap_log": -0.18,
+      "driver_underwritten_log": -0.135,
+      "residual_outside_measured_drivers_log": -0.045,
+      "coverage_ratio": 0.75,
+      "reconciliation_error_log": 0.0,
+      "case_type": "multi_driver_underwritten",
+      "top_drivers": [
+        {
+          "label": "EBITDA margin",
+          "feature": "ebitda_margin",
+          "horizon_label": "2Y",
+          "gap_share": 0.45,
+          "contribution_log": -0.081,
+          "market_signal_grade": "strong",
+          "forecast_precision_grade": "moderate",
+          "economic_materiality": "major"
+        },
+        {
+          "label": "Revenue growth",
+          "feature": "revenue_growth",
+          "horizon_label": "2Y",
+          "gap_share": 0.3,
+          "contribution_log": -0.054,
+          "market_signal_grade": "strong",
+          "forecast_precision_grade": "moderate",
+          "economic_materiality": "material"
+        }
+      ]
+    }
+  ]
+}

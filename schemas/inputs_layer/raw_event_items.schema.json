@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RawEventItem",
+  "type": "object",
+  "description": "Raw corporate action/event items as first observed.",
+  "properties": {
+    "raw_event_id": { "type": "string" },
+    "source": { "type": "string" },
+    "source_id": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "raw_payload": { "type": "object" },
+    "status_text": { "type": ["string", "null"] },
+    "entity_mentions": { "type": ["array", "null"], "items": { "type": "string" } },
+    "content_hash": { "type": "string" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": [
+    "raw_event_id",
+    "source",
+    "source_id",
+    "published_at",
+    "ingested_at",
+    "raw_payload",
+    "content_hash"
+  ],
+  "additionalProperties": true
+}

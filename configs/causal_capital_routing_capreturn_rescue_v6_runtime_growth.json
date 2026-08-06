@@ -1,0 +1,83 @@
+{
+  "actions": {
+    "capital_return.open_market_buyback": {
+      "status": "enabled",
+      "model_action_alias": "buyback",
+      "model_subtype_alias": "buyback",
+      "future_action_aliases": [
+        "capital_return.open_market_buyback",
+        "buyback"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "risk_reduction"
+      ],
+      "max_blend_weight": 0.16,
+      "notes": "Uses the repaired buyback rescue cell while preserving conservative blend caps because buyback quality still sits near the floor."
+    },
+    "capital_return.dividend_initiate": {
+      "status": "enabled",
+      "model_action_alias": "dividend_initiate",
+      "model_subtype_alias": "dividend_initiate",
+      "future_action_aliases": [
+        "capital_return.dividend_initiate",
+        "dividend_initiate"
+      ],
+      "objective_allowlist": [
+        "growth",
+        "rating_preservation"
+      ],
+      "strict_gate_primary_objectives": [
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.22,
+      "strict_gate_overrides": {
+        "min_treated_rows": 750
+      },
+      "notes": "Maps the prototype growth_v2 dividend-initiate cell into the runtime growth slot while keeping the repaired rating-preservation rescue cell."
+    },
+    "capital_return.special_dividend": {
+      "status": "enabled",
+      "model_action_alias": "special_dividend",
+      "model_subtype_alias": "special_dividend",
+      "future_action_aliases": [
+        "capital_return.special_dividend",
+        "special_dividend"
+      ],
+      "objective_allowlist": [
+        "value_creation",
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.18,
+      "notes": "Special dividends mostly act as one-time value release; keep blend modest."
+    },
+    "capital_structure.refinancing": {
+      "status": "enabled",
+      "model_action_alias": "refinancing",
+      "model_subtype_alias": "refinancing",
+      "future_action_aliases": [
+        "capital_structure.refinancing",
+        "refinancing"
+      ],
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.24
+    },
+    "capital_structure.equity_issuance": {
+      "status": "enabled",
+      "model_action_alias": "equity_issuance",
+      "model_subtype_alias": "equity_issuance",
+      "future_action_aliases": [
+        "capital_structure.equity_issuance",
+        "equity_issuance"
+      ],
+      "objective_allowlist": [
+        "risk_reduction",
+        "rating_preservation"
+      ],
+      "max_blend_weight": 0.22
+    }
+  }
+}

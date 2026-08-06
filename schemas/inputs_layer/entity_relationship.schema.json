@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EntityRelationship",
+  "type": "object",
+  "description": "Entity relationship graph with validity windows.",
+  "properties": {
+    "parent_entity_id": { "type": "string" },
+    "child_entity_id": { "type": "string" },
+    "relationship_type": { "type": "string" },
+    "valid_from": { "type": ["string", "null"], "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time" },
+    "source_id": { "type": ["string", "null"] },
+    "source_type": { "type": ["string", "null"] },
+    "published_at": { "type": ["string", "null"], "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": ["string", "null"], "format": "date-time" },
+    "confidence_score": { "type": ["number", "null"] },
+    "raw_pointer": { "type": ["string", "null"] }
+  },
+  "required": ["parent_entity_id", "child_entity_id", "relationship_type"],
+  "additionalProperties": true
+}

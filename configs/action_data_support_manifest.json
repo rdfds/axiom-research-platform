@@ -1,0 +1,306 @@
+{
+  "outcomes_path": "./data/curated/action_outcomes_with_credit_ratings.normalized_full.parquet",
+  "family_counts": {
+    "capital_return": 116936,
+    "capital_structure": 37368,
+    "mna": 23531,
+    "portfolio": 6041
+  },
+  "relevant_action_count": 33,
+  "exact_status_counts": {
+    "missing": 18,
+    "strong": 14,
+    "usable": 1
+  },
+  "support_mode_counts": {
+    "exact_supported": 15,
+    "family_only": 9,
+    "unsupported": 9
+  },
+  "relevant_actions": [
+    {
+      "action_id": "capital_return.accelerated_share_repurchase",
+      "family": "capital_return",
+      "exact_count": 0,
+      "family_count": 116936,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_return.dividend_cut",
+      "family": "capital_return",
+      "exact_count": 4580,
+      "family_count": 116936,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_return.dividend_increase",
+      "family": "capital_return",
+      "exact_count": 12913,
+      "family_count": 116936,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_return.dividend_initiate",
+      "family": "capital_return",
+      "exact_count": 1044,
+      "family_count": 116936,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_return.open_market_buyback",
+      "family": "capital_return",
+      "exact_count": 30686,
+      "family_count": 116936,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_return.special_dividend",
+      "family": "capital_return",
+      "exact_count": 1482,
+      "family_count": 116936,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_structure.convertible_issuance",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_structure.equity_issuance",
+      "family": "capital_structure",
+      "exact_count": 20126,
+      "family_count": 37368,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_structure.exchange_offer",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_structure.liability_management_exercise",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_structure.new_debt_issuance",
+      "family": "capital_structure",
+      "exact_count": 12519,
+      "family_count": 37368,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_structure.preferred_issuance",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_structure.refinancing",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "capital_structure.revolver_draw_or_resize",
+      "family": "capital_structure",
+      "exact_count": 4723,
+      "family_count": 37368,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "capital_structure.tender_offer_debt",
+      "family": "capital_structure",
+      "exact_count": 0,
+      "family_count": 37368,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "governance.activist_settlement",
+      "family": "governance",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "governance.board_refresh",
+      "family": "governance",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "governance.capital_allocation_policy_reset",
+      "family": "governance",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "mna.go_private_lbo",
+      "family": "mna",
+      "exact_count": 1680,
+      "family_count": 23531,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "mna.platform_acquisition",
+      "family": "mna",
+      "exact_count": 12686,
+      "family_count": 23531,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "mna.transformational_acquisition",
+      "family": "mna",
+      "exact_count": 2029,
+      "family_count": 23531,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "mna.tuck_in_acquisition",
+      "family": "mna",
+      "exact_count": 7136,
+      "family_count": 23531,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "portfolio.asset_sale",
+      "family": "portfolio",
+      "exact_count": 2888,
+      "family_count": 6041,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "portfolio.carve_out_ipo",
+      "family": "portfolio",
+      "exact_count": 0,
+      "family_count": 6041,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "portfolio.divestiture_full",
+      "family": "portfolio",
+      "exact_count": 2435,
+      "family_count": 6041,
+      "exact_support_status": "strong",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "portfolio.divestiture_partial",
+      "family": "portfolio",
+      "exact_count": 718,
+      "family_count": 6041,
+      "exact_support_status": "usable",
+      "support_mode": "exact_supported"
+    },
+    {
+      "action_id": "portfolio.spin_off",
+      "family": "portfolio",
+      "exact_count": 0,
+      "family_count": 6041,
+      "exact_support_status": "missing",
+      "support_mode": "family_only"
+    },
+    {
+      "action_id": "restructuring.chapter_pathway",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "restructuring.cost_program",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "restructuring.footprint_optimization",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "restructuring.out_of_court_restructuring",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "restructuring.workforce_reduction",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    },
+    {
+      "action_id": "restructuring.working_capital_program",
+      "family": "restructuring",
+      "exact_count": 0,
+      "family_count": 0,
+      "exact_support_status": "missing",
+      "support_mode": "unsupported"
+    }
+  ],
+  "non_exact_supported_actions": [
+    "capital_return.accelerated_share_repurchase",
+    "capital_structure.convertible_issuance",
+    "capital_structure.exchange_offer",
+    "capital_structure.liability_management_exercise",
+    "capital_structure.preferred_issuance",
+    "capital_structure.refinancing",
+    "capital_structure.tender_offer_debt",
+    "governance.activist_settlement",
+    "governance.board_refresh",
+    "governance.capital_allocation_policy_reset",
+    "portfolio.carve_out_ipo",
+    "portfolio.spin_off",
+    "restructuring.chapter_pathway",
+    "restructuring.cost_program",
+    "restructuring.footprint_optimization",
+    "restructuring.out_of_court_restructuring",
+    "restructuring.workforce_reduction",
+    "restructuring.working_capital_program"
+  ]
+}

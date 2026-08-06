@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EventRegistryRecord",
+  "type": "object",
+  "description": "Normalized corporate action events.",
+  "properties": {
+    "event_id": { "type": "string" },
+    "company_id": { "type": "string" },
+    "entity_id": { "type": ["string", "null"] },
+    "action_type": { "type": "string" },
+    "action_subtype": { "type": ["string", "null"] },
+    "announcement_date": { "type": "string", "format": "date-time" },
+    "effective_date": { "type": ["string", "null"], "format": "date-time" },
+    "status": { "type": ["string", "null"] },
+    "parameters": { "type": ["object", "null"] },
+    "evidence_links": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "source_id": { "type": "string" },
+    "source_type": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "effective_at": { "type": ["string", "null"], "format": "date-time" },
+    "ingested_at": { "type": "string", "format": "date-time" },
+    "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "raw_pointer": { "type": "string" }
+  },
+  "required": [
+    "event_id",
+    "company_id",
+    "entity_id",
+    "action_type",
+    "announcement_date",
+    "source_id",
+    "source_type",
+    "published_at",
+    "ingested_at",
+    "confidence_score",
+    "raw_pointer"
+  ],
+  "additionalProperties": true
+}

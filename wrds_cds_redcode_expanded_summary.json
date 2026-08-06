@@ -1,0 +1,10 @@
+{
+  "partial_rows": 125,
+  "new_safe_alias_rows": 10,
+  "expanded_rows": 135,
+  "remaining_unresolved": 478,
+  "new_match_types": {
+    "token_exact_abbrev": 9,
+    "token_subset_one_extra": 1
+  }
+}
