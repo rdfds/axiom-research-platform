@@ -5362,3 +5362,12 @@ def generate_action_candidates(
     )
 
 
+__all__ = [
+    "ActionCandidateDraft",
+    "CandidateGenerationEngine",
+    "PlaybookRegistry",
+    "PlaybookTemplate",
+    "Precondition",
+    "RationaleReference",
+    "generate_action_candidates",
+]
