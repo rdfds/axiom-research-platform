@@ -56,15 +56,14 @@ See [docs/architecture.md](docs/architecture.md) for the deeper system map.
 | As-of state | `src/company_state_builder.py` | Builds auditable company snapshots from market, financial, SEC, macro, and action inputs. |
 | Data contract | `docs/data_contract.md` | Defines the bitemporal append-only warehouse contract. |
 | Evidence layer | `src/evidence_pack.py` | Packages model output, citations, cohorts, objections, and action cards. |
-| Valuation drivers | `src/valuation_driver_validation.py` | Validates peer-relative valuation-driver explanatory power. |
-| Driver language | `src/valuation_driver_interpretation.py` | Converts coefficients into banker-safe interpretation without causal overclaims. |
-| Market expectations | `scripts/validate_forward_gap_lambda_policy.py` | Validates the forward market-implied gap policy with walk-forward and placebo checks. |
+| Company-state validation | `src/company_state_validation.py` | Checks point-in-time feature contracts, provenance, confidence, and fallback behavior. |
+| Market expectations | `scripts/paper/run_market_expectations_experiments.py` | Runs the forward market-implied gap policy with walk-forward and placebo checks. |
 | Paper package | `scripts/paper/run_market_expectations_experiments.py` | Reproducible market-expectations experiment runner with smoke fixtures, tables, placebos, and publication preset. |
 | Precedents | `src/pipeline/precedent_brain.py` | Retrieves and scores similar historical corporate-action cases. |
 | Learned distance | `src/pipeline/precedent_distance_v2_learning.py` | Tunes similarity weights by objective and action family. |
-| Action impact | `src/action_stock_impact_validation.py` | Validates action-family stock impact with regressors and calibrated classifiers. |
-| Valuation rerating | `src/action_valuation_rerating_validation.py` | Measures whether actions predict forward valuation residual changes. |
-| Decision surface | `src/cfo_decision_surface.py` | Combines market, precedent, and action evidence into CFO-facing reads. |
+| Causal evidence | `src/causal_impact_model.py` | Models action-impact evidence with explicit risk and calibration contracts. |
+| Board-ready output | `src/board_ready_dossier.py` | Shapes grounded evidence into a decision dossier with recommendation, sizing, and objections. |
+| Recommendation runtime | `src/recommendation_run_orchestrator.py` | Orchestrates reproducible recommendation runs across the evidence layers. |
 | Demo builder | `scripts/build_valuation_action_bridge.py` | Builds the static valuation/action bridge HTML demo. |
 
 ## Validation Snapshot
@@ -163,12 +162,10 @@ Install the lightweight analysis dependencies:
 python -m pip install -r requirements.txt
 ```
 
-Run focused tests:
+Run the public showcase checks:
 
 ```bash
-python -m pytest tests/test_valuation_driver_validation.py
-python -m pytest tests/test_cfo_native_valuation_basis.py
-python -m pytest tests/test_investor_native_valuation_lens.py
+python -m pytest -q tests/test_public_showcase_examples.py tests/test_hd_market_expectations_demo.py tests/test_market_expectations_paper_package.py
 ```
 
 Rebuild the public Home Depot demo from committed sample data:
@@ -200,10 +197,8 @@ Axiom is deliberately conservative about language:
 
 That restraint is a feature. The goal is to build decision evidence a CFO could interrogate, not a black box that sounds confident.
 
-## Current Status
+## Public-surface boundary
 
-This repository is an active research and product prototype. The core modeling work is substantial, but the public packaging is still being curated. The next cleanup pass should:
+This repository is the sanitized, reproducible research showcase for Axiom. It contains committed sample fixtures, schemas, model code, tests, and methodology notes; it does not contain production credentials, private warehouse data, or provider access tokens. The original working repository remains private because its ingestion adapters and local data workspace are not intended as a public API.
 
-- replace absolute local paths in older docs with repo-relative references
-- add a static HTML fixture or GitHub Pages preview for the HD sample
-- keep scratch experiments out of the primary GitHub narrative
+The public examples are intentionally runnable without paid data-provider accounts. Provider-backed ingestion scripts are retained as implementation context, but the documented path uses the committed sample fixtures and smoke panel.
