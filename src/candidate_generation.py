@@ -5199,7 +5199,7 @@ class CandidateGenerationEngine:
             if not isinstance(row, dict):
                 discarded.append({"index": i, "reason": "proposal_not_object"})
                 continue
-            aid = str(row['action_id'])
+            aid = str(row.get("action_id", ""))
             schema = self.registry.get_action(aid)
             if schema is None:
                 discarded.append({"index": i, "reason": f"unknown_action_id:{aid}"})

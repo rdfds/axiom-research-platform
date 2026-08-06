@@ -553,3 +553,52 @@ def test_crowded_holder_base_improves_capital_return_value_creation_signal(tmp_p
     assert "ownership_positioning_signal" in driver_names
 
 
+def test_precedent_blend_updates_impact_distribution(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 18.0},
+        "liquidity.available_for_actions": {"value": 300_000_000.0},
+        "market.market_cap": {"value": 2_500_000_000.0},
+        "capital_structure.net_debt": {"value": 300_000_000.0},
+        "capital_structure.net_leverage": {"value": 2.1},
+        "operating.ebitda_ttm": {"value": 140_000_000.0},
+        "operating.fcf_conversion": {"value": 0.40},
+        "market.ev_ebitda_vs_peer_z": {"value": -1.1},
+        "market.fcf_yield_percentile_peers": {"value": 78.0},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.12},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    brain = MechanismBrain(action_registry=registry)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0].to_dict()
+
+    pre_median = evaluated["impact_distribution"]["objectives"]["value_creation"]["median"]
+    blended = MechanismBrain.blend_precedent_into_action_candidate(
+        evaluated,
+        {
+            "distributions": [
+                {
+                    "metric": "outcome_pe_12m",
+                    "p25": 0.10,
+                    "p50": 0.20,
+                    "p75": 0.30,
+                    "n": 50,
+                }
+            ]
+        },
+    )
+    post_median = blended["impact_distribution"]["objectives"]["value_creation"]["median"]
+    assert post_median > pre_median
+    assert blended["impact_distribution"]["blend_metadata"]["source"] == "precedent_distribution"
+
+
