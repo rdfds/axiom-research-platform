@@ -1,4 +1,0 @@
-driver_family,feature,horizon_label,train_end,test_end,train_rows,test_rows
-growth,revenue_growth,1Y,2016-12-31,2018-12-31,8,8
-growth,revenue_growth,1Y,2018-12-31,2020-12-31,16,8
-margin,ebitda_margin,2Y,2018-12-31,2020-12-31,8,8

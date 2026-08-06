@@ -29,4 +29,3 @@ jobs:
           python -m pytest -q
           tests/test_public_showcase_examples.py
           tests/test_hd_market_expectations_demo.py
-          tests/test_market_expectations_paper_package.py

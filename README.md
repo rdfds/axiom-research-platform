@@ -1,204 +1,131 @@
 # Axiom
 
-Corporate finance intelligence for valuation, capital allocation, and board-level action decisions.
+### Decision intelligence for corporate finance
 
-Axiom is a research-grade decision engine that turns point-in-time company data, peer context, market pricing, precedent cases, and action-impact evidence into CFO-native recommendations. The system is built around a simple standard: every recommendation should be explainable, auditable, and tied to historical evidence.
+Axiom turns point-in-time company data, peer context, market pricing, historical transactions, and action-impact evidence into recommendations a CFO, banker, or investment committee can interrogate.
 
-![Home Depot market expectations demo](docs/assets/market_expectations_hd.png)
+This is not a dashboard wrapper or a single prediction model. It is an evidence system: every important output carries its timing, provenance, confidence, limitations, and supporting historical context.
 
-## What This Shows
+![Axiom market expectations demo](docs/assets/market_expectations_hd.png)
 
-Axiom is not a dashboard wrapper around a spreadsheet. It is a layered modeling system:
+## What Axiom does
 
-- **Point-in-time company state**: as-of snapshots with provenance, confidence, fallback flags, and no look-ahead leakage.
-- **Valuation driver engine**: peer-relative value surfaces that identify which business drivers explain valuation differences.
-- **Market-implied gap model**: estimates what future driver changes the market appears to be pricing into a company's premium or discount.
-- **Precedent retrieval brain**: finds similar historical corporate-action cases with learned distance weights and mismatch diagnostics.
-- **Causal/action evidence layer**: validates whether specific action types have measurable stock, valuation, credit, or operating impact.
-- **EvidencePack guardrail**: creates cited, structured evidence objects so user-facing output is grounded in source data rather than free-form narrative.
-- **CFO decision surface**: translates the evidence into board-ready action reads, risk cases, and monitoring triggers.
+- **Builds an auditable company state** from financial, market, filing, macro, and corporate-action inputs.
+- **Explains valuation differences** with peer-relative driver surfaces rather than an unexplained score.
+- **Separates priced expectations from residuals** so a premium or discount is not forced into a story the data cannot support.
+- **Retrieves historical precedents** using learned distance weights, regime context, outcome cohorts, and mismatch diagnostics.
+- **Evaluates action evidence** across market, valuation, credit, and operating outcomes with explicit quality gates.
+- **Packages evidence for decisions** through structured evidence packs, recommendation contracts, monitoring triggers, and board-ready dossiers.
 
-## Why It Is Hard
+## Why the engineering is difficult
 
-Corporate finance decisions are usually evaluated with stale comps, hand-picked precedents, and informal judgment. Axiom tries to make those judgments testable.
+Corporate-finance decisions fail quietly when the data is not aligned to the decision date. Axiom is designed around the difficult parts:
 
-The hard parts are:
-
-- avoiding look-ahead bias when building company snapshots
-- choosing peers without turning comps into a subjective list
-- separating "this driver matters to valuation" from "the market is pricing a change in this driver"
-- validating action impact without overclaiming causality
-- keeping model output usable for CFOs and bankers, not just data scientists
+1. **Point-in-time correctness** — features are built from what was available at the time, not from a later revised dataset.
+2. **Traceability** — every feature records provenance, confidence, units, fallback behavior, and timing.
+3. **Evidence separation** — explanatory valuation relationships are kept distinct from forward expectation claims and causal claims.
+4. **Honest uncertainty** — thin precedent or action families fall back to broader evidence instead of receiving false precision.
+5. **Decision translation** — model output becomes sizing guidance, objections, regret cases, and monitoring triggers rather than a chart with no action.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["Raw market, financial, filing, estimate, deal, and action data"] --> B["As-of data plane"]
+    A["Market, financial, filing, estimate, deal, and action data"] --> B["As-of data plane"]
     B --> C["CompanyStateSnapshot"]
-    C --> D["Valuation driver engine"]
-    C --> E["Precedent retrieval brain"]
-    C --> F["Mechanism / causal action layer"]
-    D --> G["Market-implied valuation gap model"]
+    C --> D["Valuation driver surface"]
+    C --> E["Precedent retrieval"]
+    C --> F["Action-impact evidence"]
+    D --> G["Market-implied expectations"]
     E --> H["EvidencePack"]
     F --> H
     G --> H
     H --> I["CFO decision surface"]
-    I --> J["Static demo / board-ready output"]
+    I --> J["Recommendation and monitoring contract"]
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the deeper system map.
+Read the system map in [docs/architecture.md](docs/architecture.md).
 
-## Core Modules
+## Core modules
 
-| Layer | Code | What it does |
+| Layer | Implementation | Role |
 |---|---|---|
-| As-of state | `src/company_state_builder.py` | Builds auditable company snapshots from market, financial, SEC, macro, and action inputs. |
-| Data contract | `docs/data_contract.md` | Defines the bitemporal append-only warehouse contract. |
-| Evidence layer | `src/evidence_pack.py` | Packages model output, citations, cohorts, objections, and action cards. |
-| Company-state validation | `src/company_state_validation.py` | Checks point-in-time feature contracts, provenance, confidence, and fallback behavior. |
-| Market expectations | `scripts/paper/run_market_expectations_experiments.py` | Runs the forward market-implied gap policy with walk-forward and placebo checks. |
-| Paper package | `scripts/paper/run_market_expectations_experiments.py` | Reproducible market-expectations experiment runner with smoke fixtures, tables, placebos, and publication preset. |
-| Precedents | `src/pipeline/precedent_brain.py` | Retrieves and scores similar historical corporate-action cases. |
-| Learned distance | `src/pipeline/precedent_distance_v2_learning.py` | Tunes similarity weights by objective and action family. |
-| Causal evidence | `src/causal_impact_model.py` | Models action-impact evidence with explicit risk and calibration contracts. |
-| Board-ready output | `src/board_ready_dossier.py` | Shapes grounded evidence into a decision dossier with recommendation, sizing, and objections. |
-| Recommendation runtime | `src/recommendation_run_orchestrator.py` | Orchestrates reproducible recommendation runs across the evidence layers. |
-| Demo builder | `scripts/build_valuation_action_bridge.py` | Builds the static valuation/action bridge HTML demo. |
+| Company state | [`src/company_state_builder.py`](src/company_state_builder.py) | Builds as-of snapshots from normalized inputs. |
+| State contracts | [`src/company_state_validation.py`](src/company_state_validation.py) | Enforces provenance, confidence, fallback, and invariant checks. |
+| Evidence packaging | [`src/evidence_pack.py`](src/evidence_pack.py) | Carries citations, cohorts, objections, and action cards into downstream output. |
+| Precedent retrieval | [`src/pipeline/precedent_brain.py`](src/pipeline/precedent_brain.py) | Finds and scores comparable historical actions. |
+| Learned similarity | [`src/pipeline/precedent_distance_v2_learning.py`](src/pipeline/precedent_distance_v2_learning.py) | Learns distance weights by objective and action family. |
+| Action evidence | [`src/causal_impact_model.py`](src/causal_impact_model.py) | Scores action-impact evidence with calibration and risk controls. |
+| Decision dossier | [`src/board_ready_dossier.py`](src/board_ready_dossier.py) | Shapes evidence into a decision-ready dossier. |
+| Run orchestration | [`src/recommendation_run_orchestrator.py`](src/recommendation_run_orchestrator.py) | Produces reproducible end-to-end recommendation runs. |
+| Static demo | [`scripts/build_valuation_action_bridge.py`](scripts/build_valuation_action_bridge.py) | Materializes the valuation/action view from committed sample inputs. |
 
-## Validation Snapshot
+## Start with the examples
 
-The current strongest public validation story is the market-implied valuation gap model:
+The repository includes four small, reviewable examples that expose the system's major layers without requiring private data-provider accounts.
 
-| Validation | Result |
-|---|---:|
-| Operating companies attempted | 84 |
-| Successful driver/horizon evaluations | 912 |
-| Walk-forward train ends | 2014, 2016, 2018, 2020 |
-| Test window | 2 years |
-| Excluded sectors | Energy, Financials, Utilities, Real Estate |
-| Best global lambda | 0.50 |
-| Mean MAE improvement | 0.0074 |
-| Placebo mean MAE improvement at lambda 0.50 | -0.0005 |
-| Actual minus placebo | 0.0079 |
-| Actual beats placebo | 63.5% |
-
-See [docs/validation/README.md](docs/validation/README.md) for the broader validation map and model-card style notes.
-
-## Publication Track
-
-The market-implied valuation gap work now has a dedicated publication package under [paper/](paper/):
-
-- methodology note: [paper/methodology.md](paper/methodology.md)
-- model card: [paper/model_card_market_expectations.md](paper/model_card_market_expectations.md)
-- manuscript scaffold: [paper/manuscript_skeleton.md](paper/manuscript_skeleton.md)
-- public smoke fixture and generated smoke tables: [paper/results/smoke/](paper/results/smoke/)
-- case-study decomposition artifacts: [paper/case_studies/](paper/case_studies/)
-
-Run the public reproducibility check:
-
-```bash
-python scripts/paper/run_market_expectations_experiments.py --preset smoke
-python scripts/paper/build_case_studies.py
-```
-
-Run the private-data empirical sweep:
-
-```bash
-python scripts/paper/run_market_expectations_experiments.py --preset publication
-```
-
-## Demo Case Study
-
-The current flagship showcase is Home Depot's market-expectations view:
-
-- example guide: [examples/hd_market_expectations/README.md](examples/hd_market_expectations/README.md)
-- committed sample: `examples/hd_market_expectations/valuation_driver_data.sample.json`
-- rebuild command: `python scripts/build_hd_market_expectations_demo.py`
-- builder: `scripts/build_valuation_action_bridge.py`
-
-The demo answers:
-
-> How much of the market premium/discount is underwritten by validated forward driver expectations, and how much sits outside measured financial drivers?
-
-## Showcase Gallery
-
-For a broader application tour, see [docs/showcase.md](docs/showcase.md).
-
-| Example | What it proves |
+| Example | Demonstrates |
 |---|---|
-| [Market expectations](examples/hd_market_expectations/README.md) | Valuation gap decomposition and market-implied forward driver expectations. |
-| [Company state snapshot](examples/company_state_snapshot/README.md) | Point-in-time features with provenance, confidence, units, and fallback flags. |
-| [Precedent retrieval](examples/precedent_retrieval/README.md) | Historical action analogs with similarity, cohort outcomes, and mismatch diagnostics. |
-| [CFO decision surface](examples/cfo_decision_surface/README.md) | Model evidence translated into action sizing, risk, regret, and board-ready recommendations. |
+| [Market expectations](examples/hd_market_expectations/README.md) | Valuation-gap decomposition and forward driver expectations. |
+| [Company state snapshot](examples/company_state_snapshot/README.md) | As-of features with provenance, confidence, units, and fallback flags. |
+| [Precedent retrieval](examples/precedent_retrieval/README.md) | Historical action analogs, cohort outcomes, and mismatch diagnostics. |
+| [CFO decision surface](examples/cfo_decision_surface/README.md) | Sizing, risk, regret, recommendation, and monitoring layers. |
 
-Print a compact summary of the committed showcase samples:
+Rebuild the flagship static example:
+
+```bash
+python scripts/build_hd_market_expectations_demo.py
+open examples/hd_market_expectations/build/valuation_action_bridge.html
+```
+
+Print a compact contract check for all committed examples:
 
 ```bash
 python scripts/inspect_showcase_gallery.py
 ```
 
-## Repository Layout
+## Validation standard
 
-```text
-src/                       Core modeling and decision-surface modules
-scripts/                   Builders, validation sweeps, and materialization scripts
-tests/                     Unit and product-contract tests
-docs/                      Architecture, data contracts, methodology, validation notes
-docs/validation/           Curated validation summaries for public review
-examples/                  Small guided case studies
-paper/                     Publication methodology, smoke fixture, tables, and manuscript scaffold
-configs/                   Model policies, routing overlays, and evaluation manifests
-schemas/                   Company-state and input-layer JSON schemas
-```
+Axiom treats validation as part of the product, not an afterthought. The public checks emphasize:
 
-Generated data, private datasets, and scratch outputs are intentionally excluded from the public story. The active workspace contains many local artifacts under `data/`, `out/`, and `./data/`; those should be treated as reproducible build outputs or private source material, not as the primary GitHub surface.
+- point-in-time inputs and no look-ahead leakage
+- walk-forward evaluation where the claim is temporal
+- placebo or baseline comparisons for expectation claims
+- model-family quality gates before evidence becomes a recommendation
+- explicit limitations when samples are thin or a mechanism is not identified
+
+See the [validation overview](docs/validation/README.md), [data contract](docs/data_contract.md), and [model monitoring notes](docs/model_monitoring.md).
 
 ## Quickstart
 
-Install the lightweight analysis dependencies:
-
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -e . pytest
+python -m pytest -q tests/test_public_showcase_examples.py tests/test_hd_market_expectations_demo.py
 ```
 
-Run the public showcase checks:
+The GitHub Actions workflow runs the same public contract checks on every push and pull request.
 
-```bash
-python -m pytest -q tests/test_public_showcase_examples.py tests/test_hd_market_expectations_demo.py tests/test_market_expectations_paper_package.py
+## Repository layout
+
+```text
+src/          Core modeling, retrieval, evidence, and decision modules
+scripts/      Ingestion, builders, validation, and operational tooling
+examples/     Small guided examples with committed sample inputs
+docs/         Architecture, contracts, validation, and monitoring notes
+schemas/      Company-state and input-layer JSON schemas
+configs/      Model policies, routing rules, and evaluation manifests
+tests/        Unit tests and product-contract checks
 ```
 
-Rebuild the public Home Depot demo from committed sample data:
+## Public boundary
 
-```bash
-python scripts/build_hd_market_expectations_demo.py
-```
+This repository is a sanitized engineering showcase. It contains model code, schemas, sample fixtures, tests, and documentation; it does not contain credentials, private warehouse data, or provider access tokens. The documented examples run from committed fixtures and do not require paid data access.
 
-Run the public paper smoke package:
+## What Axiom does not claim
 
-```bash
-python scripts/paper/run_market_expectations_experiments.py --preset smoke
-```
+- A peer-relative valuation relationship is not automatically causal.
+- A historical precedent is not a guarantee of a future outcome.
+- A residual valuation gap is not silently assigned to an invented driver.
+- A recommendation is not allowed to outrun the evidence supporting it.
 
-Open the rebuilt public sample:
-
-```bash
-open examples/hd_market_expectations/build/valuation_action_bridge.html
-```
-
-## What Axiom Does Not Claim
-
-Axiom is deliberately conservative about language:
-
-- peer valuation models are empirical association models, not causal proof
-- generic causal labels are explanatory unless routed to concrete validated metrics
-- thin action families can fall back to broader evidence rather than forcing a false "strong" label
-- residual valuation gaps are explicitly labeled as outside the measured driver surface
-
-That restraint is a feature. The goal is to build decision evidence a CFO could interrogate, not a black box that sounds confident.
-
-## Public-surface boundary
-
-This repository is the sanitized, reproducible research showcase for Axiom. It contains committed sample fixtures, schemas, model code, tests, and methodology notes; it does not contain production credentials, private warehouse data, or provider access tokens. The original working repository remains private because its ingestion adapters and local data workspace are not intended as a public API.
-
-The public examples are intentionally runnable without paid data-provider accounts. Provider-backed ingestion scripts are retained as implementation context, but the documented path uses the committed sample fixtures and smoke panel.
+That restraint is deliberate. The goal is decision evidence that a CFO can challenge, audit, and use—not a black box that merely sounds confident.

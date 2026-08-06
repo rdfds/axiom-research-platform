@@ -15,11 +15,9 @@ Axiom tries to avoid model confidence theater. The validation standard is:
 
 ## Market-Implied Valuation Gap
 
-Source artifacts:
+Public evidence fixture:
 
-- local generated artifact: `forward_gap_walk_forward_operating_ex_energy.md`
-- local generated artifact: `forward_gap_placebo_walk_forward_operating_ex_energy.md`
-- `scripts/validate_forward_gap_lambda_policy.py`
+- `examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_energy.sample.md`
 
 Scope:
 
@@ -67,12 +65,12 @@ Interpretation:
 
 ## Valuation Driver Surface
 
-Source artifacts:
+The public company-state and valuation examples are documented in:
 
-- local generated artifact: `value_surface_native_validation_report.md`
-- local generated artifact: `valuation_driver_importance_v2_backtest.md`
-- `src/valuation_driver_validation.py`
-- `scripts/build_curated_company_valuation_drivers.py`
+- `docs/company_state.md`
+- `docs/signal_taxonomy.md`
+- `src/company_state_builder.py`
+- `src/company_state_validation.py`
 
 Native display contract:
 
@@ -109,7 +107,7 @@ Interpretation:
 
 ## Precedent and Causal Monitoring
 
-Source docs:
+Source docs and implementation:
 
 - `docs/precedent_baseline.md`
 - `docs/causal_baseline.md`
@@ -146,8 +144,8 @@ That limitation should stay visible. It makes the public story more credible bec
 Source docs:
 
 - `docs/stock_impact_validation_artifacts.md`
-- `src/action_stock_impact_validation.py`
-- `src/stock_impact_profile.py`
+- `src/causal_impact_model.py`
+- `src/causal_benchmark.py`
 
 Refreshed families include:
 
@@ -165,12 +163,6 @@ Important modeling choice:
 - classifier-calibrated return-band evidence often gives a more stable product signal
 - exact thin families can fall back to broader family evidence when appropriate
 
-## What To Productize Next
+## Current public scope
 
-For a GitHub-ready validation package, the next pass should:
-
-- copy or regenerate stable public validation summaries into this folder
-- replace local absolute paths with repo-relative model-card references
-- add one command that rebuilds the market-implied gap validation from a small sample
-- add confidence intervals around current driver contributions
-- add a residual taxonomy for gaps mostly outside measured drivers
+The committed examples intentionally emphasize the parts a reviewer can run and inspect: point-in-time contracts, provenance, retrieval evidence, conservative action gates, and decision translation. Provider-backed ingestion and large generated workspaces remain outside the documented path.

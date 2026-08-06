@@ -105,10 +105,6 @@ That distinction matters. It separates:
 - drivers the market appears to be pricing differently
 - residual premium/discount that likely reflects brand, defensiveness, risk, sentiment, duration, or factors not captured in the model
 
-## GitHub Packaging TODO
+## Why this example matters
 
-This example should become a one-command public demo by adding:
-
-- a small static HTML fixture committed for GitHub Pages or release previews
-- a screenshot or short GIF of the interaction
-- a model-card appendix that points to `docs/validation/README.md`
+This is the clearest compact demonstration of Axiom's central design choice: make the model's support and uncertainty visible. The view does not hide the residual, overstate causal language, or require a private data account to inspect the product behavior.
