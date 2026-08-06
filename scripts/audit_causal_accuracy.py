@@ -120,7 +120,7 @@ def main() -> None:
             causal_rows = 0
             strict_rows = 0
             for row in results:
-                action_candidate = dict(row.get("action_candidate") or row['candidate'] or {})
+                action_candidate = dict(row.get("action_candidate") or row.get("candidate") or {})
                 action_id = str(action_candidate.get("action_id", ""))
                 drivers = list(((action_candidate.get("impact_distribution") or {}).get("key_drivers") or []))
                 driver_map = {
