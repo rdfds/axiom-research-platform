@@ -678,3 +678,77 @@ def test_causal_model_blend_updates_impact_distribution(tmp_path: Path):
     assert "causal_model_blend_weight" in driver_names
 
 
+def test_causal_model_blend_is_zero_when_strict_gate_fails(tmp_path: Path):
+    features = {
+        "liquidity.runway_months": {"value": 18.0},
+        "liquidity.available_for_actions": {"value": 250_000_000.0},
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "capital_structure.net_debt": {"value": 300_000_000.0},
+        "capital_structure.net_leverage": {"value": 2.0},
+        "operating.ebitda_ttm": {"value": 150_000_000.0},
+        "operating.fcf_conversion": {"value": 0.30},
+        "capital_structure.maturity_wall_ratio_24m": {"value": 0.12},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    model_payload = {
+        "version": "causal_test_low_quality",
+        "feature_order": [
+            "base_market_cap",
+            "base_leverage",
+            "action_size",
+            "funding_mix_cash",
+            "funding_mix_debt",
+            "funding_mix_equity",
+        ],
+        "feature_stats": {
+            "base_market_cap": {"mean": 1_000_000_000.0, "std": 500_000_000.0, "median": 1_000_000_000.0},
+            "base_leverage": {"mean": 2.5, "std": 1.0, "median": 2.5},
+            "action_size": {"mean": 100_000_000.0, "std": 100_000_000.0, "median": 100_000_000.0},
+            "funding_mix_cash": {"mean": 0.5, "std": 0.3, "median": 0.5},
+            "funding_mix_debt": {"mean": 0.3, "std": 0.3, "median": 0.3},
+            "funding_mix_equity": {"mean": 0.2, "std": 0.3, "median": 0.2},
+        },
+        "objectives": {
+            "value_creation": {
+                "models": {
+                    "__global__": {
+                        "intercept": 0.20,
+                        "coefficients": {
+                            "base_market_cap": 0.0,
+                            "base_leverage": 0.0,
+                            "action_size": 0.0,
+                            "funding_mix_cash": 0.0,
+                            "funding_mix_debt": 0.0,
+                            "funding_mix_equity": 0.0,
+                        },
+                        "residual_std": 0.01,
+                        "n_train": 5000,
+                        "r2": 0.40,
+                        "oos_r2": -0.35,
+                    }
+                }
+            }
+        },
+    }
+    causal_model = CausalImpactModel(model_payload)
+    brain = MechanismBrain(action_registry=registry, causal_model=causal_model)
+
+    evaluated = brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=[
+            _candidate(
+                "capital_return.open_market_buyback",
+                {"size_pct_market_cap": 0.05, "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0}},
+            )
+        ],
+    )[0]
+
+    drivers = {d.driver_name: d.contribution for d in evaluated.impact_distribution.key_drivers}
+    assert drivers.get("causal_model_blend_weight") == 0.0
+    assert "causal_model_support_score" in drivers
+    assert evaluated.impact_distribution.objectives["value_creation"].median <= 0.05
+
+

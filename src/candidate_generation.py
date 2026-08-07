@@ -5315,7 +5315,7 @@ class CandidateGenerationEngine:
         for c in run.constraints.hard_constraints + run.constraints.soft_constraints:
             out.append(str(c.constraint_type))
             out.append(str(c.constraint_id))
-        cs = snapshot['constraint_set'] if isinstance(snapshot, dict) else None
+        cs = snapshot.get("constraint_set") if isinstance(snapshot, dict) else None
         if isinstance(cs, dict):
             for bucket in ("hard", "soft"):
                 vals = cs.get(bucket, []) or []
