@@ -55,3 +55,13 @@ def _parse_param_values(items: list[str]) -> Dict[str, Any]:
     return out
 
 
+def _as_of_datetime(raw: str) -> datetime:
+    s = str(raw).strip()
+    if "T" not in s:
+        s = s + "T00:00:00+00:00"
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
