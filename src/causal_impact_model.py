@@ -145,3 +145,9 @@ def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
     return out
 
 
+def _feature_value(raw: Any) -> Any:
+    if isinstance(raw, dict):
+        return raw.get("value")
+    return raw
+
+

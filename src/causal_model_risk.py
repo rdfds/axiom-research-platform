@@ -293,7 +293,7 @@ def build_causal_model_risk_report(
         "challenger_monitoring": challenger_monitoring,
         "action_breakdown": action_breakdown,
         "alerts": alerts,
-        "snapshot_regime": dict(snapshot['regime'] or {}) if isinstance(snapshot, dict) else {},
+        "snapshot_regime": dict(snapshot.get("regime", {}) or {}) if isinstance(snapshot, dict) else {},
     }
 
 
