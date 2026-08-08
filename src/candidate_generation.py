@@ -5108,7 +5108,7 @@ class CandidateGenerationEngine:
         rationale_count: int,
         validation_warning_count: int,
         playbook_relevance: float,
-    ) :
+    ) -> float:
         trigger = _clip(trigger_strength, 0.0, 1.0)
         evidence = _clip(0.4 + 0.15 * min(rationale_count, 4), 0.0, 1.0)
         param_realism = _clip(1.0 - 0.15 * validation_warning_count, 0.3, 1.0)

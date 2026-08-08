@@ -1278,3 +1278,426 @@ def _coverage_gap_regular_payer_feature_set() -> dict:
     return features
 
 
+def _balance_sheet_light_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.market_cap"] = {"value": 25_931_450_290.88}
+    features["market.credit_window_proxy"] = {"value": None}
+    features["market.equity_window_proxy"] = {"value": 0.7717284445028556}
+    features["market.drawdown_90d"] = {"value": None}
+    features["market.volatility_90d"] = {"value": None}
+    features["liquidity.available_for_actions"] = {"value": 1_147_200_000.0}
+    features["liquidity.cash"] = {"value": 397_200_000.0}
+    features["liquidity.minimum_cash_policy_proxy"] = {"value": 0.0}
+    features["capital_structure.total_debt"] = {"value": 2_021_900_000.0}
+    features["capital_structure.net_debt"] = {"value": 1_624_700_000.0}
+    features["capital_structure.net_leverage"] = {"value": 1.221303465383748}
+    features["capital_structure.interest_coverage"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 400_000_000.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.19783372075770314}
+    features["operating.fcf_conversion"] = {"value": 0.4118619860181914}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.23635071511059785}
+    features["operating.revenue_cagr_3y"] = {"value": None}
+    features["strategic.last_action_type"] = {"value": "buyback"}
+    return features
+
+
+def _balance_sheet_light_regular_payer_negative_feature_set() -> dict:
+    features = _balance_sheet_light_regular_payer_feature_set()
+    features["liquidity.available_for_actions"] = {"value": None}
+    features["liquidity.cash"] = {"value": None}
+    features["operating.fcf_conversion"] = {"value": -0.15}
+    return features
+
+
+def _liquidity_supported_regular_payer_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["market.market_cap"] = {"value": 1_483_105_344.84}
+    features["market.credit_window_proxy"] = {"value": 0.8296065679699798}
+    features["market.equity_window_proxy"] = {"value": 0.7493464073683587}
+    features["market.drawdown_90d"] = {"value": -0.10385558279474028}
+    features["market.volatility_90d"] = {"value": 0.25019076442627564}
+    features["liquidity.available_for_actions"] = {"value": 745_700_000.0}
+    features["capital_structure.total_debt"] = {"value": 3_101_100_000.0}
+    features["capital_structure.net_debt"] = {"value": 2_355_400_000.0}
+    features["capital_structure.net_leverage"] = {"value": 8.23854494578524}
+    features["capital_structure.interest_coverage"] = {"value": 7.919667590027701}
+    features["capital_structure.debt_due_0_12m"] = {"value": None}
+    features["capital_structure.debt_due_12_24m"] = {"value": None}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": None}
+    features["operating.fcf_conversion"] = {"value": 0.3906960475690801}
+    features["operating.ebitda_margin_ttm"] = {"value": 0.10177999288002848}
+    features["operating.revenue_cagr_3y"] = {"value": None}
+    return features
+
+
+def _sparse_reset_recap_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "debt_issuance"}
+    features["market.market_cap"] = {"value": 610_097_252.76}
+    features["market.credit_window_proxy"] = {"value": 0.5074821251650947}
+    features["market.equity_window_proxy"] = {"value": 0.3025264989846301}
+    features["market.drawdown_90d"] = {"value": -0.1556603773584906}
+    features["liquidity.available_for_actions"] = {"value": 377_784_000.0}
+    features["capital_structure.total_debt"] = {"value": 506_172_000.0}
+    features["capital_structure.net_debt"] = {"value": 450_000_000.0}
+    features["capital_structure.net_leverage"] = {"value": 2.7799505305420134}
+    features["capital_structure.interest_coverage"] = {"value": 4.698075870489664}
+    return features
+
+
+def _acquisition_reset_recap_feature_set() -> dict:
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    features["strategic.last_action_type"] = {"value": "acquisition"}
+    features["market.market_cap"] = {"value": 205_894_294.83}
+    features["market.credit_window_proxy"] = {"value": 0.633400794648336}
+    features["market.equity_window_proxy"] = {"value": 0.24308728224966272}
+    features["market.drawdown_90d"] = {"value": -0.2028985507246377}
+    features["liquidity.available_for_actions"] = {"value": 137_436_000.0}
+    features["capital_structure.total_debt"] = {"value": 50_540_000.0}
+    features["capital_structure.net_debt"] = {"value": -19_396_000.0}
+    features["capital_structure.net_leverage"] = {"value": -0.3900261411622763}
+    features["capital_structure.interest_coverage"] = {"value": 4.7119575516391885}
+    features["capital_structure.debt_due_0_12m"] = {"value": None}
+    features["capital_structure.debt_due_12_24m"] = {"value": None}
+    return features
+
+
+def test_generated_candidates_pass_schema_validation(tmp_path: Path):
+    snapshot_root, snapshot = _write_snapshot(tmp_path, _rich_feature_set())
+    run = _make_run(tmp_path, snapshot_root)
+
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+
+    candidates = out["candidates"]
+    assert len(candidates) > 0
+
+    for c in candidates:
+        v = registry.validate_candidate(
+            {
+                "action_id": c["action_id"],
+                "parameters": c["parameters"],
+                "available_features": list(snapshot["features"].keys()),
+                "available_evidence_classes": [
+                    "financial_disclosure",
+                    "market_signal",
+                    "management_statement",
+                    "capital_policy_statement",
+                    "liquidity_disclosure",
+                    "segment_disclosure",
+                    "peer_context_signal",
+                    "recent_action_history",
+                    "rating_disclosure",
+                ],
+                "known_segments": ["segment_A", "segment_B", "segment_C"],
+                "constraints": [],
+            }
+        )
+        assert v.valid is True
+
+
+def test_parameter_ranges_respected(tmp_path: Path):
+    snapshot_root, snapshot = _write_snapshot(tmp_path, _rich_feature_set())
+    run = _make_run(tmp_path, snapshot_root)
+
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=600)
+
+    for c in out["candidates"]:
+        schema = registry.get_action(c["action_id"])
+        assert schema is not None
+        for pname, pval in c["parameters"].items():
+            pdef = schema["parameter_schema"].get(pname)
+            if not pdef:
+                continue
+            if pdef["type"] in {"percent", "numeric"}:
+                if "min" in pdef:
+                    assert float(pval) >= float(pdef["min"])
+                if "max" in pdef:
+                    assert float(pval) <= float(pdef["max"])
+
+
+def test_duplicate_candidates_removed(tmp_path: Path):
+    features = {
+        "market.market_cap": {"value": 2_000_000_000.0},
+        "liquidity.available_for_actions": {"value": 100_000_000.0},
+        "capital_structure.net_leverage": {"value": 2.0},
+    }
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+    llm = [
+        {
+            "action_id": "capital_return.open_market_buyback",
+            "parameters": {
+                "size_pct_market_cap": 0.1,
+                "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0},
+            },
+            "evidence_refs": [],
+        },
+        {
+            "action_id": "capital_return.open_market_buyback",
+            "parameters": {
+                "size_pct_market_cap": 0.1,
+                "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0},
+            },
+            "evidence_refs": [],
+        },
+    ]
+    out = engine.generate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        llm_proposals=llm,
+        max_candidates=100,
+    )
+
+    buybacks = [x for x in out["candidates"] if x["action_id"] == "capital_return.open_market_buyback"]
+    signatures = {x["candidate_signature"] for x in buybacks}
+    assert len(signatures) == len(buybacks)
+    assert out["llm_trace"]["accepted_count"] == 2
+    assert len(buybacks) == 1
+
+
+def test_deterministic_generation_reproducible(tmp_path: Path):
+    snapshot_root, snapshot = _write_snapshot(tmp_path, _rich_feature_set())
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    a = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=400)
+    b = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=400)
+
+    sig_a = [x["candidate_signature"] for x in a["candidates"]]
+    sig_b = [x["candidate_signature"] for x in b["candidates"]]
+    assert sig_a == sig_b
+
+
+def test_dividend_initiate_generated_only_for_non_payers(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_initiate" in action_ids
+
+    features_true = _capital_return_feature_set()
+    features_true["capital_return.dividend_payer_flag"] = {"value": True}
+    snapshot_root_true, snapshot_true = _write_snapshot(tmp_path / "payer_true", features_true)
+    run_true = _make_run(tmp_path / "payer_true", snapshot_root_true)
+    out_true = engine.generate_candidate_set(run=run_true, state_snapshot=snapshot_true, max_candidates=500)
+    action_ids_true = {row["action_id"] for row in out_true["candidates"]}
+    assert "capital_return.dividend_initiate" not in action_ids_true
+
+
+def test_dividend_initiate_generated_for_nonpayer_without_market_cap(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    features["market.market_cap"] = {"value": None}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine._gen_liquidity_excess(run=run, features=snapshot["features"])
+    action_ids = {row["action_id"] for row in out}
+    assert "capital_return.dividend_initiate" in action_ids
+    assert "capital_return.open_market_buyback" not in action_ids
+
+
+def test_dividend_initiate_generated_when_payer_history_is_sparse_but_no_positive_signal_exists(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {
+        "value": None,
+        "missing_reason": "unavailable",
+        "quality_flags": ["event_history_unavailable"],
+    }
+    features["capital_return.last_dividend_event_type"] = {"value": None}
+    features["market.market_cap"] = {"value": None}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine._gen_liquidity_excess(run=run, features=snapshot["features"])
+    action_ids = {row["action_id"] for row in out}
+    assert "capital_return.dividend_initiate" in action_ids
+    assert "capital_return.open_market_buyback" not in action_ids
+
+
+def test_capital_return_suppressed_when_financing_stress_is_active(tmp_path: Path):
+    features = _rich_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    blocked = {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.special_dividend",
+        "capital_return.dividend_initiate",
+        "capital_return.dividend_increase",
+    }
+    assert blocked.isdisjoint(action_ids)
+    assert "capital_structure.refinancing" in action_ids
+
+
+def test_capital_return_generated_when_financing_stress_is_mild(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": False}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.open_market_buyback" in action_ids
+    assert "capital_return.accelerated_share_repurchase" in action_ids
+    assert "capital_return.dividend_initiate" in action_ids
+
+
+def test_mna_suppressed_when_financing_stress_is_active(tmp_path: Path):
+    features = _rich_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    blocked = {
+        "mna.tuck_in_acquisition",
+        "mna.platform_acquisition",
+        "mna.go_private_lbo",
+    }
+    assert blocked.isdisjoint(action_ids)
+    assert "capital_structure.refinancing" in action_ids
+
+
+def test_mna_generated_when_capacity_is_clear(tmp_path: Path):
+    features = _mna_capacity_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "mna.tuck_in_acquisition" in action_ids
+    assert "mna.platform_acquisition" in action_ids
+    assert "mna.go_private_lbo" in action_ids
+
+
+def test_maturity_wall_generated_from_absolute_debt_due_when_ratio_missing(tmp_path: Path):
+    features = _absolute_maturity_wall_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.refinancing" in action_ids
+    assert "capital_structure.exchange_offer" in action_ids
+
+
+def test_small_absolute_debt_due_does_not_trigger_maturity_wall(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["capital_structure.debt_due_next_24m"] = {"value": None}
+    features["capital_structure.debt_due_0_12m"] = {"value": 500_000.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 0.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": None}
+    features["capital_structure.total_debt"] = {"value": 0.0}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.refinancing" not in action_ids
+
+
+def test_equity_issuance_generated_when_equity_window_is_only_viable_backstop(tmp_path: Path):
+    features = _equity_backstop_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_equity_issuance_generated_without_net_leverage_when_coverage_is_broken(tmp_path: Path):
+    features = _equity_backstop_feature_set()
+    features.pop("capital_structure.net_leverage", None)
+    features["capital_structure.total_debt"] = {"value": 3_900_000.0}
+    features["capital_structure.interest_coverage"] = {"value": -12.0}
+    features["liquidity.available_for_actions"] = {"value": 127_000_000.0}
+    features["market.market_cap"] = {"value": 6_500_000_000.0}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_equity_issuance_not_generated_when_liquidity_is_plentiful(tmp_path: Path):
+    features = _equity_backstop_feature_set()
+    features["liquidity.available_for_actions"] = {"value": 700_000_000.0}
+    features["market.market_cap"] = {"value": 5_000_000_000.0}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_undervaluation_capital_return_is_suppressed_when_revisions_are_sharply_negative(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["liquidity.available_for_actions"] = {"value": 100_000_000.0}
+    features["market.ev_ebitda_vs_peer_z"] = {"value": -1.6}
+    features["market.fcf_yield_percentile_peers"] = {"value": 0.86}
+    features["expectations.analyst_coverage_count"] = {"value": 12.0}
+    features["expectations.revision_signal"] = {"value": -0.10}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.open_market_buyback" not in action_ids
+    assert "capital_return.accelerated_share_repurchase" not in action_ids
+    assert "capital_return.dividend_increase" not in action_ids
+
+
