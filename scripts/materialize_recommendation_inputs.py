@@ -27,3 +27,11 @@ def _materialize_keyed_snapshots(snapshot_root: Path, as_of: str, companies: Lis
     return dest_snapshot_root
 
 
+def _maybe_copy(path_value: Optional[str], dest_dir: Path) -> Optional[str]:
+    if not path_value:
+        return None
+    src = Path(path_value)
+    dst = dest_dir / src.name
+    return str(_copy_file(src, dst))
+
+
