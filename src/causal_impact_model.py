@@ -131,3 +131,17 @@ def _scalar_float(value: Any) -> Optional[float]:
     return _scalar_float(seq[0])
 
 
+def _to_float(v: Any, default: Optional[float] = None) -> Optional[float]:
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return float(v)
+    try:
+        out = float(v)
+    except Exception:
+        return default
+    if math.isnan(out) or math.isinf(out):
+        return default
+    return out
+
+
