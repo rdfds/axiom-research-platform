@@ -252,3 +252,43 @@ def _canonical_subtype(raw: str) -> str:
     return s or "unknown"
 
 
+def _legacy_action_subtype_to_outcomes_subtype(action_id: str, action_type: str = "", action_subtype: str = "") -> str:
+    aid = str(action_id or "")
+    alias = _legacy_action_id_to_outcomes_action_type(action_id=aid, action_type=action_type)
+    st = str(action_subtype or "")
+    if not st and "." in aid:
+        st = aid.split(".", 1)[1]
+    st_key = _canonical_subtype(st)
+
+    # Hand-tuned bridge from ontology subtypes to historical subtype taxonomy.
+    if alias == "buyback":
+        return "buyback"
+    if alias == "dividend_regular":
+        return "regular"
+    if alias == "dividend_special":
+        return "special"
+    if alias == "dividend_cut":
+        return "dividend_cut"
+    if alias == "dividend_increase":
+        return "dividend_increase"
+    if alias == "equity_offering_public_proxy":
+        return "share_issuance_proxy"
+    if alias == "bond_issuance":
+        return "unknown"
+    if aid == "mna.go_private_lbo":
+        return "acquisition_lbo"
+    if aid == "capital_structure.revolver_draw_or_resize":
+        # The current outcomes corpus has usable coverage primarily in the
+        # long-dated revolver bucket; map the recommendation action there so
+        # subtype-level rescue cells can be selected at runtime.
+        return "revolver_line_1_yr"
+    return st_key
+
+
+def _default_causal_routing_config_path() -> Path:
+    env = str(os.environ.get("CAUSAL_ROUTING_CONFIG_PATH", "")).strip()
+    if env:
+        return Path(env)
+    return DEFAULT_CAUSAL_ROUTING_CONFIG_PATH
+
+

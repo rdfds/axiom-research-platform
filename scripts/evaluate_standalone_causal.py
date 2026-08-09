@@ -93,7 +93,7 @@ def main() -> None:
         snapshot_loader=None,
         aliases=aliases,
     )
-    features = dict(snapshot['features'] or {})
+    features = dict(snapshot.get("features", {}) or {})
     regime = dict(snapshot.get("regime", {}) or {})
     params = _parse_param_values(args.param)
     action_id = str(args.action_id)
