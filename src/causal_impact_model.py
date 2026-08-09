@@ -243,3 +243,12 @@ def _legacy_action_id_to_outcomes_action_type(action_id: str, action_type: str =
     return aid
 
 
+def _canonical_subtype(raw: str) -> str:
+    s = str(raw or "").strip().lower()
+    if not s:
+        return "unknown"
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "unknown"
+
+
