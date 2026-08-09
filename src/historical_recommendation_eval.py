@@ -489,3 +489,19 @@ def build_historical_recommendation_report(
     }
 
 
+def _historical_case_key(spec: Dict[str, Any]) -> str:
+    return "|".join(
+        [
+            str(spec.get("company_id") or ""),
+            str(spec.get("as_of_time") or ""),
+            str(spec.get("anchor_action_id") or ""),
+        ]
+    )
+
+
+def _prefilter_support_is_eligible(profile: Dict[str, Any]) -> bool:
+    if not profile:
+        return True
+    return bool(profile.get("estimated_supported", False))
+
+

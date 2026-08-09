@@ -298,3 +298,17 @@ class ModelVersionBundle:
         return asdict(self)
 
 
+@dataclass
+class DataCutoffSpec:
+    published_at_lte: str
+    ingested_at_lte: str
+
+
+@dataclass
+class AuditEvent:
+    event_id: str
+    timestamp: str
+    event_type: str
+    details: Dict[str, Any]
+
+
