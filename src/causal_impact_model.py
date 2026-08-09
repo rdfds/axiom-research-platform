@@ -155,3 +155,91 @@ def _extract_feature(features: Dict[str, Any], name: str, default: Any = None) -
     return resolve_feature_value(features, name, default=default)
 
 
+def _nested_get(obj: Dict[str, Any], path: str, default: Any = None) -> Any:
+    cur: Any = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur
+
+
+@dataclass(frozen=True)
+class CausalActionPolicy:
+    action_id: str
+    status: str
+    model_action_alias: str
+    model_subtype_alias: str
+    objective_allowlist: tuple[str, ...]
+    strict_gate_primary_objectives: tuple[str, ...]
+    model_artifact_path_override: str
+    max_blend_weight: Optional[float]
+    notes: str
+    future_action_alias: str
+    future_action_aliases: tuple[str, ...]
+    quality_floor_override: Optional[float]
+    support_floor_override: Optional[float]
+    min_train_rows_override: Optional[int]
+    min_oos_r2_override: Optional[float]
+    min_treated_rows_override: Optional[int]
+    min_control_rows_override: Optional[int]
+
+
+def _legacy_action_id_to_outcomes_action_type(action_id: str, action_type: str = "") -> str:
+    aid = str(action_id or "")
+    if aid in {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.tender_offer_buyback",
+    }:
+        return "buyback"
+    if aid == "capital_return.dividend_increase":
+        return "dividend_increase"
+    if aid == "capital_return.dividend_cut":
+        return "dividend_cut"
+    if aid == "capital_return.dividend_initiate":
+        # There is no dedicated dividend-initiation cell in the current model.
+        # Use the broader regular-dividend family as the conservative causal
+        # prior rather than dropping causal support entirely.
+        return "dividend_regular"
+    if aid == "capital_return.special_dividend":
+        # There is no durable special-dividend cell in the current causal model.
+        # Use the broader regular-dividend family as a conservative fallback so
+        # we can still blend a finance-policy prior instead of dropping causal
+        # support entirely.
+        return "dividend_regular"
+    if aid in {
+        "capital_structure.new_debt_issuance",
+        "capital_structure.convertible_issuance",
+        "capital_structure.refinancing",
+        "capital_structure.tender_offer_debt",
+        "capital_structure.exchange_offer",
+        "capital_structure.liability_management_exercise",
+    }:
+        return "bond_issuance"
+    if aid == "capital_structure.revolver_draw_or_resize":
+        return "loan_issuance"
+    if aid in {
+        "capital_structure.equity_issuance",
+        "capital_structure.preferred_issuance",
+    }:
+        return "equity_offering_public_proxy"
+    if aid == "mna.go_private_lbo":
+        return "acquisition"
+    if aid.startswith("mna.") or aid == "portfolio.joint_venture":
+        return "acquisition"
+    if aid in {"portfolio.spin_off", "portfolio.carve_out_ipo"}:
+        return "spin_off"
+    if aid.startswith("portfolio."):
+        return "divestiture"
+    if aid.startswith("restructuring.") or aid.startswith("governance."):
+        return "cost_program"
+
+    at = str(action_type or "").strip()
+    if at:
+        return at
+    if "." in aid:
+        return aid.split(".", 1)[0]
+    return aid
+
+
