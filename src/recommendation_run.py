@@ -278,3 +278,23 @@ class ScenarioAssumptions:
             raise ValueError("custom_flags must be object")
 
 
+@dataclass
+class FrozenStateReference:
+    snapshot_id: str
+    snapshot_hash: str
+    snapshot_version: str
+
+
+@dataclass
+class ModelVersionBundle:
+    candidate_generator_version: str
+    feasibility_model_version: str
+    mechanism_model_version: str
+    precedent_retrieval_version: str
+    planner_model_version: str
+    regime_model_version: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+

@@ -80,3 +80,5 @@ def main() -> None:
     print(json.dumps({"ok": True, "manifest": str(out_manifest), **manifest}))
 
 
+if __name__ == "__main__":
+    main()
