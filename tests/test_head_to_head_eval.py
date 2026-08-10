@@ -44,3 +44,28 @@ def _run() -> RecommendationRun:
     )
 
 
+def _snapshot_root(tmp_path: Path) -> Path:
+    root = tmp_path / "snapshots"
+    keyed = root / "keyed" / "as_of_date=2026-02-28"
+    keyed.mkdir(parents=True, exist_ok=True)
+    (keyed / "company_id=0000320193.json").write_text(
+        json.dumps(
+            {
+                "company_id": "0000320193",
+                "as_of_time": "2026-02-28T00:00:00+00:00",
+                "features": {
+                    "liquidity.available_for_actions": {"value": 600_000_000.0},
+                    "market.market_cap": {"value": 6_000_000_000.0},
+                    "capital_structure.net_leverage": {"value": 1.7},
+                    "capital_structure.maturity_wall_ratio_24m": {"value": 0.19},
+                    "operating.fcf_conversion": {"value": 0.79},
+                    "operating.revenue_yoy_last_q": {"value": 0.03},
+                    "market.credit_window_proxy": {"value": 0.71},
+                    "strategic.intent.return_capital_priority": {"value": 0.82},
+                },
+            }
+        )
+    )
+    return root
+
+
