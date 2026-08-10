@@ -46,3 +46,39 @@ def build_planner_eval_report(
     }
 
 
+def render_planner_eval_markdown(report: Dict[str, Any]) -> str:
+    aggregate = dict(report.get("aggregate", {}) or {})
+    lines: List[str] = []
+    lines.append("# Planner Evaluation Report")
+    lines.append("")
+    lines.append(f"- Runs analyzed: `{report.get('runs_analyzed', 0)}`")
+    lines.append(f"- Missing artifacts: `{len(report.get('missing_artifacts', []) or [])}`")
+    lines.append(f"- Heuristic overall mean: `{aggregate.get('heuristic_overall_mean', 0.0):.3f}`")
+    lines.append(f"- Positive top-plan raw-score rate: `{aggregate.get('positive_top_plan_rate', 0.0):.3f}`")
+    lines.append(f"- Supported top-plan step rate: `{aggregate.get('supported_top_plan_rate', 0.0):.3f}`")
+    lines.append(f"- Explanation completeness rate: `{aggregate.get('explanation_complete_rate', 0.0):.3f}`")
+    lines.append("")
+
+    bucket_counts = dict(aggregate.get("bucket_counts", {}) or {})
+    if bucket_counts:
+        lines.append("## Bucket Mix")
+        lines.append("")
+        for bucket, count in sorted(bucket_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- `{bucket}`: `{count}`")
+        lines.append("")
+
+    flag_counts = dict(aggregate.get("flag_counts", {}) or {})
+    if flag_counts:
+        lines.append("## Heuristic Flags")
+        lines.append("")
+        for flag, count in sorted(flag_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- `{flag}`: `{count}`")
+        lines.append("")
+
+    lines.append("## Human Review Queue")
+    lines.append("")
+    for idx, case in enumerate(report.get("review_queue", []) or [], start=1):
+        lines.extend(_render_case_markdown(case=case, index=idx))
+    return "\n".join(lines).strip() + "\n"
+
+
