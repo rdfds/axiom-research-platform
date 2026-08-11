@@ -764,3 +764,128 @@ def create_recommendation_run(
     return run.run_id
 
 
+def enforce_data_cutoff(
+    df: pd.DataFrame,
+    cutoff: DataCutoffSpec,
+    published_col: str = "published_at",
+    ingested_col: str = "ingested_at",
+) -> pd.DataFrame:
+    """Filter a dataframe to rows with published/ingested timestamps <= cutoff."""
+    out = df.copy()
+    pub_cut = _parse_ts(cutoff.published_at_lte)
+    ing_cut = _parse_ts(cutoff.ingested_at_lte)
+
+    if published_col in out.columns:
+        out[published_col] = pd.to_datetime(out[published_col], utc=True, errors="coerce")
+        out = out[(out[published_col].isna()) | (out[published_col] <= pub_cut)]
+
+    if ingested_col in out.columns:
+        out[ingested_col] = pd.to_datetime(out[ingested_col], utc=True, errors="coerce")
+        out = out[(out[ingested_col].isna()) | (out[ingested_col] <= ing_cut)]
+
+    return out.reset_index(drop=True)
+
+
+def validate_plan_hard_constraints(
+    plan_actions: Sequence[Dict[str, Any]],
+    constraints: ConstraintSet,
+    projected_state: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """Return list of hard-constraint violations for a proposed plan."""
+    violations: List[str] = []
+    projected_state = projected_state or {}
+
+    action_ids = [str(a.get("action_id", "")) for a in plan_actions]
+    action_types = [str(a.get("action_type", "")) for a in plan_actions]
+
+    for c in constraints.hard_constraints:
+        ctype = c.constraint_type
+        params = c.parameters
+
+        if ctype == "no_equity_issuance":
+            has_equity_action = any("equity_issuance" in x for x in action_ids)
+            if not has_equity_action:
+                for a in plan_actions:
+                    subtype = str(a.get("action_subtype", "")).strip()
+                    atype = str(a.get("action_type", "")).strip()
+                    if subtype == "equity_issuance" or atype == "equity_issuance":
+                        has_equity_action = True
+                        break
+            if has_equity_action:
+                violations.append(f"{c.constraint_id}:no_equity_issuance")
+
+        elif ctype == "forbidden_action_type":
+            target_type = str(params.get("action_type", ""))
+            target_id = str(params.get("action_id", ""))
+            if target_type and target_type in action_types:
+                violations.append(f"{c.constraint_id}:forbidden_action_type:{target_type}")
+            if target_id and target_id in action_ids:
+                violations.append(f"{c.constraint_id}:forbidden_action_id:{target_id}")
+
+        elif ctype == "required_action_type":
+            target_type = str(params.get("action_type", ""))
+            target_id = str(params.get("action_id", ""))
+            ok = True
+            if target_type:
+                ok = ok and (target_type in action_types)
+            if target_id:
+                ok = ok and (target_id in action_ids)
+            if not ok:
+                violations.append(f"{c.constraint_id}:required_action_missing")
+
+        elif ctype == "leverage_limit":
+            max_lev = params.get("max_leverage")
+            lev = projected_state.get("capital_structure.net_leverage")
+            try:
+                if max_lev is not None and lev is not None and float(lev) > float(max_lev):
+                    violations.append(f"{c.constraint_id}:leverage_limit")
+            except Exception:
+                violations.append(f"{c.constraint_id}:invalid_leverage_limit")
+
+        elif ctype == "minimum_cash_reserve":
+            min_cash = params.get("min_cash_reserve")
+            cash = projected_state.get("liquidity.cash")
+            try:
+                if min_cash is not None and cash is not None and float(cash) < float(min_cash):
+                    violations.append(f"{c.constraint_id}:minimum_cash_reserve")
+            except Exception:
+                violations.append(f"{c.constraint_id}:invalid_minimum_cash_reserve")
+
+        elif ctype == "max_acquisition_size":
+            max_pct = params.get("max_size_pct_ev")
+            max_usd = params.get("max_size_usd")
+            for a in plan_actions:
+                aid = str(a.get("action_id", ""))
+                if "acquisition" not in aid:
+                    continue
+                aparams = dict(a.get("params", {}) or a.get("parameters", {}) or {})
+                if max_pct is not None and aparams.get("target_size_pct_ev") is not None:
+                    try:
+                        if float(aparams["target_size_pct_ev"]) > float(max_pct):
+                            violations.append(f"{c.constraint_id}:max_acquisition_size_pct")
+                    except Exception:
+                        violations.append(f"{c.constraint_id}:invalid_acquisition_size_pct")
+                if max_usd is not None and aparams.get("size_absolute_usd") is not None:
+                    try:
+                        if float(aparams["size_absolute_usd"]) > float(max_usd):
+                            violations.append(f"{c.constraint_id}:max_acquisition_size_usd")
+                    except Exception:
+                        violations.append(f"{c.constraint_id}:invalid_acquisition_size_usd")
+
+        elif ctype == "maintain_investment_grade":
+            is_ig = projected_state.get("capital_structure.rating_state.is_investment_grade")
+            if is_ig is False:
+                violations.append(f"{c.constraint_id}:maintain_investment_grade")
+
+    return violations
+
+
+# -------------------------------
+# Internal helpers
+# -------------------------------
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+

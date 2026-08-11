@@ -73,3 +73,5 @@ def main() :
     print(json.dumps(summary, default=str))
 
 
+if __name__ == "__main__":
+    main()
