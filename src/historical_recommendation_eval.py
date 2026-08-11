@@ -505,3 +505,185 @@ def _prefilter_support_is_eligible(profile: Dict[str, Any]) -> bool:
     return bool(profile.get("estimated_supported", False))
 
 
+def _prefilter_case_support(
+    cases: Sequence[Dict[str, Any]],
+    *,
+    facts_path: Path,
+    raw_timeseries_path: Path,
+    event_store_path: Path,
+    ownership_summary_path: Path,
+    issuer_ratings_path: Path,
+    historical_backfill_mode: bool,
+) -> Dict[str, Dict[str, Any]]:
+    profiles: Dict[str, Dict[str, Any]] = {}
+    if not cases:
+        return profiles
+    rows: List[Dict[str, Any]] = []
+    for spec in cases:
+        case_key = _historical_case_key(spec)
+        rows.append(
+            {
+                "case_key": case_key,
+                "company_id": str(spec.get("company_id") or ""),
+                "source_company_id": str(spec.get("source_company_id") or ""),
+                "anchor_action_family": str(spec.get("anchor_action_family") or ""),
+                "as_of_time": pd.Timestamp(spec.get("as_of_time")).tz_convert("UTC").to_pydatetime(),
+            }
+        )
+        profiles[case_key] = {
+            "facts_hits": 0,
+            "timeseries_hits": 0,
+            "events_hits": 0,
+            "ownership_hits": 0,
+            "ratings_hits": 0,
+            "strong_source_count": 0,
+            "total_hits": 0,
+            "estimated_supported": False,
+            "score": 0.0,
+            "support_bucket": "none",
+        }
+    case_df = pd.DataFrame(rows)
+    con = duckdb.connect()
+    con.register("hist_cases", case_df)
+
+    _update_prefilter_hits(
+        profiles,
+        "facts_hits",
+        _query_source_hits(
+            con,
+            source_path=facts_path,
+            source_name="facts",
+            query=_build_facts_prefilter_query(
+                source_path=facts_path,
+                historical_backfill_mode=historical_backfill_mode,
+            ),
+        ),
+    )
+    _update_prefilter_hits(
+        profiles,
+        "timeseries_hits",
+        _query_source_hits(
+            con,
+            source_path=raw_timeseries_path,
+            source_name="timeseries",
+            query=_build_timeseries_prefilter_query(
+                source_path=raw_timeseries_path,
+                historical_backfill_mode=historical_backfill_mode,
+            ),
+        ),
+    )
+    _update_prefilter_hits(
+        profiles,
+        "events_hits",
+        _query_source_hits(
+            con,
+            source_path=event_store_path,
+            source_name="events",
+            query=_build_events_prefilter_query(
+                source_path=event_store_path,
+                historical_backfill_mode=historical_backfill_mode,
+            ),
+        ),
+    )
+    _update_prefilter_hits(
+        profiles,
+        "ownership_hits",
+        _query_source_hits(
+            con,
+            source_path=ownership_summary_path,
+            source_name="ownership",
+            query=_build_ownership_prefilter_query(
+                source_path=ownership_summary_path,
+                historical_backfill_mode=historical_backfill_mode,
+            ),
+        ),
+    )
+    _update_prefilter_hits(
+        profiles,
+        "ratings_hits",
+        _query_source_hits(
+            con,
+            source_path=issuer_ratings_path,
+            source_name="ratings",
+            query=_build_ratings_prefilter_query(
+                source_path=issuer_ratings_path,
+                historical_backfill_mode=historical_backfill_mode,
+            ),
+        ),
+    )
+    con.close()
+
+    for profile in profiles.values():
+        strong_source_count = sum(
+            1
+            for key in ("facts_hits", "timeseries_hits", "events_hits", "ratings_hits")
+            if int(profile.get(key, 0) or 0) > 0
+        )
+        total_hits = sum(int(profile.get(key, 0) or 0) for key in ("facts_hits", "timeseries_hits", "events_hits", "ownership_hits", "ratings_hits"))
+        score = (
+            min(int(profile.get("facts_hits", 0) or 0), 50) * 0.08
+            + min(int(profile.get("timeseries_hits", 0) or 0), 200) * 0.02
+            + min(int(profile.get("events_hits", 0) or 0), 50) * 0.05
+            + min(int(profile.get("ownership_hits", 0) or 0), 10) * 0.05
+            + min(int(profile.get("ratings_hits", 0) or 0), 10) * 0.1
+            + (1.5 if int(profile.get("facts_hits", 0) or 0) > 0 else 0.0)
+            + (1.0 if int(profile.get("timeseries_hits", 0) or 0) > 0 else 0.0)
+            + (1.0 if int(profile.get("events_hits", 0) or 0) > 0 else 0.0)
+            + (0.5 if int(profile.get("ratings_hits", 0) or 0) > 0 else 0.0)
+        )
+        estimated_supported = bool(
+            (int(profile.get("facts_hits", 0) or 0) > 0 or int(profile.get("events_hits", 0) or 0) > 0 or int(profile.get("ratings_hits", 0) or 0) > 0)
+            and (int(profile.get("facts_hits", 0) or 0) > 0 or int(profile.get("timeseries_hits", 0) or 0) > 0)
+        )
+        if estimated_supported and strong_source_count >= 3:
+            support_bucket = "strong"
+        elif estimated_supported:
+            support_bucket = "moderate"
+        elif total_hits > 0:
+            support_bucket = "weak"
+        else:
+            support_bucket = "none"
+        profile.update(
+            {
+                "strong_source_count": strong_source_count,
+                "total_hits": total_hits,
+                "estimated_supported": estimated_supported,
+                "score": round(float(score), 3),
+                "support_bucket": support_bucket,
+            }
+        )
+    return profiles
+
+
+def _summarize_case_support_by_family(
+    cases: Sequence[Dict[str, Any]],
+    case_support_prefilter: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for spec in cases:
+        family = str(spec.get("anchor_action_family") or "")
+        profile = dict(case_support_prefilter.get(_historical_case_key(spec), {}) or {})
+        buckets.setdefault(family, []).append(profile)
+    summary: Dict[str, Dict[str, Any]] = {}
+    for family, profiles in buckets.items():
+        candidate_count = len(profiles)
+        estimated_supported = sum(1 for profile in profiles if bool(profile.get("estimated_supported")))
+        mean_score = round(sum(float(profile.get("score", 0.0) or 0.0) for profile in profiles) / candidate_count, 3) if candidate_count else 0.0
+        summary[family] = {
+            "candidate_count": candidate_count,
+            "estimated_supported_count": estimated_supported,
+            "estimated_supported_rate": round(estimated_supported / candidate_count, 3) if candidate_count else 0.0,
+            "mean_prefilter_score": mean_score,
+        }
+    return dict(
+        sorted(
+            summary.items(),
+            key=lambda item: (
+                -float(item[1].get("estimated_supported_rate", 0.0) or 0.0),
+                -float(item[1].get("mean_prefilter_score", 0.0) or 0.0),
+                item[0],
+            ),
+        )
+    )
+
+
