@@ -687,3 +687,26 @@ def _summarize_case_support_by_family(
     )
 
 
+def _prioritize_historical_cases(
+    cases: Sequence[Dict[str, Any]],
+    *,
+    case_support_prefilter: Dict[str, Dict[str, Any]],
+    family_prefilter_summary: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    def _sort_key(spec: Dict[str, Any]) -> Tuple[Any, ...]:
+        profile = dict(case_support_prefilter.get(_historical_case_key(spec), {}) or {})
+        family = str(spec.get("anchor_action_family") or "")
+        family_summary = dict(family_prefilter_summary.get(family, {}) or {})
+        as_of_ts = pd.Timestamp(spec.get("as_of_time") or "1970-01-01T00:00:00Z").timestamp()
+        return (
+            -int(bool(profile.get("estimated_supported"))),
+            -float(family_summary.get("estimated_supported_rate", 0.0) or 0.0),
+            -float(profile.get("score", 0.0) or 0.0),
+            -int(profile.get("strong_source_count", 0) or 0),
+            -float(as_of_ts),
+            str(spec.get("company_id") or ""),
+        )
+
+    return sorted(list(cases), key=_sort_key, reverse=False)
+
+

@@ -35,3 +35,53 @@ class _DummySnapshot:
     features: dict
 
 
+def test_select_historical_cases_from_frame_stratifies_and_limits_company_reuse():
+    frame = pd.DataFrame(
+        [
+            {"company_id": "A", "action_date": "2024-06-01T00:00:00Z", "normalized_action_id": "capital_return.open_market_buyback", "normalized_action_family": "capital_return"},
+            {"company_id": "B", "action_date": "2024-05-01T00:00:00Z", "normalized_action_id": "capital_structure.refinancing", "normalized_action_family": "capital_structure"},
+            {"company_id": "C", "action_date": "2024-04-01T00:00:00Z", "normalized_action_id": "mna.tuck_in_acquisition", "normalized_action_family": "mna"},
+            {"company_id": "A", "action_date": "2024-03-01T00:00:00Z", "normalized_action_id": "capital_return.special_dividend", "normalized_action_family": "capital_return"},
+        ]
+    )
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True)
+
+    cases = _select_historical_cases_from_frame(
+        frame=frame,
+        case_count=3,
+        lookback_days=90,
+        max_cases_per_company=1,
+    )
+
+    assert len(cases) == 3
+    assert sorted(case["company_id"] for case in cases) == ["A", "B", "C"]
+    assert all(case["as_of_time"] < case["anchor_action_date"] for case in cases)
+
+
+def test_filter_excluded_historical_cases_removes_matching_anchor_rows():
+    frame = pd.DataFrame(
+        [
+            {
+                "company_id": "A",
+                "action_date": pd.Timestamp("2024-06-01T00:00:00Z"),
+                "normalized_action_id": "capital_return.open_market_buyback",
+                "normalized_action_family": "capital_return",
+            },
+            {
+                "company_id": "B",
+                "action_date": pd.Timestamp("2024-05-01T00:00:00Z"),
+                "normalized_action_id": "capital_structure.refinancing",
+                "normalized_action_family": "capital_structure",
+            },
+        ]
+    )
+    excluded = {
+        ("A", pd.Timestamp("2024-06-01T00:00:00Z"), "capital_return.open_market_buyback"),
+    }
+
+    filtered = _filter_excluded_historical_cases(frame, excluded)
+
+    assert len(filtered) == 1
+    assert filtered.iloc[0]["company_id"] == "B"
+
+
