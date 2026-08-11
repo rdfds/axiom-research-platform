@@ -160,3 +160,17 @@ python ./scripts/score_head_to_head_reviews.py \
   --out-md /tmp/head_to_head_report.md
 ```
 
+## Interpretation
+
+Strong evidence would look like:
+
+- model mean score >= baseline mean score
+- model win rate materially above baseline win rate
+- sign-test p-value low enough that the win rate is unlikely to be random
+- ex-post alignment at least as strong as the baseline on comparable cases
+- direct-task-match results holding up separately from weak-task-match results
+- no repeated weak patterns in the review queue
+
+That still does not prove “irrefutable.”
+
+It does tell you whether the model is becoming more decision-useful than the baseline public human memo set.

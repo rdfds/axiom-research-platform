@@ -220,3 +220,57 @@ def _build_case_report(runs_root: Path, run_id: str, rebuild_plan_set: bool) -> 
     }
 
 
+def _best_support_by_action(feasible_rows: Sequence[Dict[str, Any]], precedent_rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    precedent_by_candidate_id: Dict[str, float] = {}
+    precedent_by_action_id: Dict[str, float] = {}
+    for row in precedent_rows:
+        candidate = dict(row.get("candidate", {}) or {})
+        action_id = str(candidate.get("action_id", "") or "")
+        candidate_id = str(candidate.get("candidate_id", "") or "")
+        precedent_pack = dict(row.get("precedent_pack", {}) or {})
+        confidence = float(
+            precedent_pack.get("precedent_confidence")
+            or precedent_pack.get("calibration_confidence")
+            or 0.0
+        )
+        if candidate_id:
+            precedent_by_candidate_id[candidate_id] = max(confidence, precedent_by_candidate_id.get(candidate_id, 0.0))
+        if action_id:
+            precedent_by_action_id[action_id] = max(confidence, precedent_by_action_id.get(action_id, 0.0))
+
+    best: Dict[str, Dict[str, Any]] = {}
+    for row in feasible_rows:
+        candidate = dict(row.get("action_candidate") or row.get("candidate") or {})
+        action_id = str(candidate.get("action_id", "") or "")
+        if not action_id:
+            continue
+        candidate_id = str(candidate.get("candidate_id", "") or "")
+        impact = dict(candidate.get("impact_distribution", {}) or {})
+        objectives = dict(impact.get("objectives", {}) or {})
+        entry = {
+            "action_id": action_id,
+            "pass_probability": float((row.get("pass_probability") or (candidate.get("feasibility", {}) or {}).get("pass_probability") or 0.0)),
+            "evaluation_confidence": float(candidate.get("evaluation_confidence", 0.0) or 0.0),
+            "precedent_confidence": float(precedent_by_candidate_id.get(candidate_id) or precedent_by_action_id.get(action_id) or 0.0),
+            "has_causal": _has_causal(candidate),
+            "impact_snapshot": {
+                key: round(float((objectives.get(key, {}) or {}).get("median", 0.0) or 0.0), 3)
+                for key in ["value_creation", "risk_reduction", "growth", "rating_preservation", "optionality"]
+            },
+        }
+        score = (
+            entry["evaluation_confidence"]
+            + entry["precedent_confidence"]
+            + entry["pass_probability"]
+            + (0.1 if entry["has_causal"] else 0.0)
+        )
+        current = best.get(action_id)
+        if current is None or score > current["_selection_score"]:
+            entry["_selection_score"] = score
+            best[action_id] = entry
+
+    for payload in best.values():
+        payload.pop("_selection_score", None)
+    return best
+
+

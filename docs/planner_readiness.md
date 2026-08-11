@@ -48,3 +48,50 @@ That said, the inputs needed to build the Planner Brain are now in place and val
 - simplification
 - growth substitution
 
+## User-Value Expansion Added Before Planner
+
+Two low-risk structural additions were made so step 9 can start from cleaner primitives:
+
+### 1. Planner-Normalized Dependency Edges
+
+Added `ActionSchemaRegistry.fetch_planner_dependency_edges(...)`.
+
+This maps ontology rule types into planner-facing relationships:
+
+- `requires_prior -> requires`
+- `unlocks -> unlocks`
+- `conflicts_with -> conflicts`
+- `discouraged_with -> conflicts`
+- `preferred_after -> recommended_after`
+
+The helper preserves:
+
+- condition
+- strength
+- explanation
+- original rule type
+
+### 2. Planner Lead-Time Distribution Helper
+
+Added `ActionSchemaRegistry.fetch_planner_lead_time_distribution(...)`.
+
+The ontology stores `minimum_days`, `median_days`, and `p90_days`. Planner search needs a richer scheduling prior, so this helper deterministically interpolates:
+
+- `p25_days`
+- `p75_days`
+- `mean_days`
+
+Source is marked as `schema_prior_interpolated` so later historical transition priors can replace it cleanly.
+
+### 3. Planner Type Scaffolding
+
+Added `./src/planner_types.py`.
+
+This defines planner-facing schemas for:
+
+- dependency graph
+- lead-time distribution
+- plan / plan step / plan trigger / branch / risk / score breakdown
+
+The type scaffolding also includes optional explanation fields so the planner can emit user-facing structural rationales, not just action lists.
+

@@ -29,3 +29,19 @@ Any case with one or more of these flags should be reviewed manually:
 - `top3_contains_nonpositive`
 - `top3_duplicate_paths`
 
+## Human Gates
+
+Review the markdown queue and score each case:
+
+- Top-1 plan is strategically sensible
+- Top-3 contains no obvious nonsense
+- Explanation is persuasive and numbers-backed
+- Risks / triggers / branches are useful
+
+Acceptance thresholds:
+
+- Top-1 sensible: at least 80%
+- Top-3 sensible: at least 90%
+- Explanation persuasive: at least 80%
+- Risks / triggers useful: at least 75%
+
