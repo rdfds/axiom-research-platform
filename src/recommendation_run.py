@@ -889,3 +889,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _new_audit_event(event_type: str, details: Dict[str, Any]) -> AuditEvent:
+    if event_type not in AUDIT_EVENT_TYPES:
+        raise ValueError(f"Unsupported audit event type: {event_type}")
+    return AuditEvent(
+        event_id=str(uuid.uuid4()),
+        timestamp=_now_iso(),
+        event_type=event_type,
+        details=_json_sanitize(details),
+    )
+
+

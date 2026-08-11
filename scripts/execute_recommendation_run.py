@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main() :
+def main() -> None:
     t0 = time.time()
     print(json.dumps({"ok": True, "event": "startup", "stage": "import_orchestrator"}), flush=True)
     from src.recommendation_run_orchestrator import execute_recommendation_run
