@@ -123,3 +123,31 @@ def _render_case_markdown(case: Dict[str, Any], index: int) -> List[str]:
     return lines
 
 
+def _resolve_run_ids(
+    runs_roots: Sequence[Path],
+    run_ids: Optional[Sequence[str]],
+    limit: Optional[int],
+) -> List[Tuple[str, Path]]:
+    by_id: List[Tuple[str, Path]] = []
+    explicit = list(run_ids or [])
+    if explicit:
+        for run_id in explicit:
+            found = False
+            for runs_root in runs_roots:
+                run_path = runs_root / "runs" / f"run_id={run_id}.json"
+                if run_path.exists():
+                    by_id.append((run_id, runs_root))
+                    found = True
+                    break
+            if not found:
+                raise FileNotFoundError(f"run_id={run_id} not found under any runs root")
+    else:
+        for runs_root in runs_roots:
+            for run_path in sorted((runs_root / "runs").glob("run_id=*.json")):
+                run_id = run_path.stem.replace("run_id=", "", 1)
+                by_id.append((run_id, runs_root))
+    if limit is not None:
+        by_id = by_id[: max(0, int(limit))]
+    return by_id
+
+
