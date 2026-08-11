@@ -86,7 +86,7 @@ def _render_case_markdown(case: Dict[str, Any], index: int) -> List[str]:
     lines: List[str] = []
     top_plan = dict(case.get("top_plan", {}) or {})
     top_three = list(case.get("top_three_paths", []) or [])
-    support = dict(case['top_plan_support'] or {})
+    support = dict(case.get("top_plan_support", {}) or {})
     heuristic = dict(case.get("heuristic", {}) or {})
 
     lines.append(f"### {index}. `{case.get('company_id')}` / `{case.get('bucket')}`")
