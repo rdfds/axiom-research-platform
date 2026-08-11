@@ -135,3 +135,28 @@ To move from "better memo quality" toward "better strategic intelligence," add:
 
 The harness now supports all three.
 
+## Commands
+
+Build the head-to-head report:
+
+```bash
+PYTHONPATH=. \
+python ./scripts/build_head_to_head_packets.py \
+  --runs-roots /tmp/recommendation_runs_prod_causal_v2_20 /tmp/recommendation_runs_prod_eval10_local \
+  --snapshot-root /private/tmp/final_run_2026-02-28_local \
+  --baseline-dir ./data/head_to_head_baselines \
+  --realized-outcomes-path ./data/curated/action_outcomes_with_credit_ratings.normalized_full.parquet \
+  --packets-out-dir /tmp/head_to_head_packets \
+  --answer-key-out /tmp/head_to_head_answer_key.json \
+  --out-json /tmp/head_to_head_report.json
+```
+
+Render the human review queue:
+
+```bash
+PYTHONPATH=. \
+python ./scripts/score_head_to_head_reviews.py \
+  --report-json /tmp/head_to_head_report.json \
+  --out-md /tmp/head_to_head_report.md
+```
+

@@ -151,3 +151,72 @@ def _resolve_run_ids(
     return by_id
 
 
+def _build_case_report(runs_root: Path, run_id: str, rebuild_plan_set: bool) -> Dict[str, Any]:
+    run_payload = json.loads((runs_root / "runs" / f"run_id={run_id}.json").read_text())
+    artifacts_root = runs_root / "artifacts" / f"run_id={run_id}"
+    feasibility = json.loads((artifacts_root / "FeasibilityResults.json").read_text())
+    precedent = json.loads((artifacts_root / "PrecedentMatches.json").read_text())
+    if rebuild_plan_set:
+        recommendation_run = RecommendationRun.from_dict(run_payload)
+        feasible_candidates = [
+            row.get("action_candidate") or row.get("candidate") or {}
+            for row in list(feasibility.get("results", []) or [])
+            if row.get("feasible")
+        ]
+        stored_plan_set = json.loads((artifacts_root / "PlanSet.json").read_text()) if (artifacts_root / "PlanSet.json").exists() else {}
+        top_plans = max(3, len(list(stored_plan_set.get("plans", []) or [])))
+        plan_set = build_plan_set(
+            run=recommendation_run,
+            feasible_candidates=feasible_candidates,
+            precedent_matches=list(precedent.get("results", []) or []),
+            registry=build_default_action_schema_registry(),
+            top_plans=top_plans,
+        )
+    else:
+        plan_set = json.loads((artifacts_root / "PlanSet.json").read_text())
+
+    feasible_rows = [row for row in list(feasibility.get("results", []) or []) if row.get("feasible")]
+    support_by_action = _best_support_by_action(feasible_rows=feasible_rows, precedent_rows=list(precedent.get("results", []) or []))
+    plans = list(plan_set.get("plans", []) or [])
+    top_plan = dict(plans[0] or {}) if plans else {}
+
+    bucket = _infer_bucket(feasible_rows=feasible_rows, top_plan=top_plan)
+    top_plan_steps = list(top_plan.get("steps", []) or [])
+    top_plan_support = _top_plan_support(step_actions=[step.get("action_id") for step in top_plan_steps], support_by_action=support_by_action)
+    explanation = _explanation_score(top_plan=top_plan)
+    structural = _structural_score(top_plan=top_plan)
+    top_three_quality = _top_three_quality(plans=plans, support_by_action=support_by_action)
+    heuristic = _heuristic_summary(
+        top_plan=top_plan,
+        top_plan_support=top_plan_support,
+        structural=structural,
+        explanation=explanation,
+        top_three_quality=top_three_quality,
+    )
+
+    return {
+        "run_id": run_id,
+        "runs_root": str(runs_root),
+        "company_id": run_payload.get("company_id"),
+        "bucket": bucket,
+        "plan_count": len(plans),
+        "feasible_action_count": len(feasible_rows),
+        "top_plan": {
+            "action_path": " -> ".join(step.get("action_id", "") for step in top_plan_steps),
+            "score": float(top_plan.get("score", 0.0) or 0.0),
+            "raw_total_score": float(((top_plan.get("score_components", {}) or {}).get("raw_total_score", top_plan.get("score", 0.0)) or 0.0)),
+            "summary_explanation": top_plan.get("summary_explanation"),
+        },
+        "top_three_paths": [
+            " -> ".join(step.get("action_id", "") for step in list(plan.get("steps", []) or []))
+            for plan in plans[:3]
+        ],
+        "top_plan_support": top_plan_support,
+        "top_plan_step_cards": [
+            _step_card(action_id=step.get("action_id"), support=support_by_action.get(step.get("action_id")))
+            for step in top_plan_steps
+        ],
+        "heuristic": heuristic,
+    }
+
+
