@@ -382,3 +382,8 @@ def get_causal_action_policy(
     )
 
 
+def action_id_to_outcomes_action_type(action_id: str, action_type: str = "") -> str:
+    policy = get_causal_action_policy(action_id=action_id, action_type=action_type)
+    return str(policy.model_action_alias or "")
+
+

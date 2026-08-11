@@ -59,3 +59,17 @@ def test_transformational_acquisition_prefers_large_platform_precedents():
     assert scale_weights[0][0] == "mna.platform_merger.scale_large"
 
 
+def test_dividend_initiate_and_lbo_precedent_families():
+    dividend_weights = _candidate_action_family_weights("capital_return.dividend_initiate", "")
+    lbo_weights = _candidate_action_family_weights("mna.go_private_lbo", "")
+    lbo_scale = _candidate_action_family_scale_weights(
+        action_id="mna.go_private_lbo",
+        action_subtype="go_private_lbo",
+        action_params={"target_size_pct_ev": 0.9},
+        candidate_features={"market_cap": 10_000_000_000.0},
+    )
+    assert dividend_weights[0][0] == "capital_return.dividend_initiate"
+    assert lbo_weights[0][0] == "mna.platform_lbo"
+    assert lbo_scale[0][0] == "mna.platform_lbo.scale_large"
+
+
