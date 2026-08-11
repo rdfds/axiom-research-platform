@@ -256,7 +256,7 @@ class ScenarioAssumptions:
             return out
         out = cls(
             credit_regime_override=str(payload.get("credit_regime_override", "none") or "none"),
-            risk_regime_override=str(payload['risk_regime_override'] or "none"),
+            risk_regime_override=str(payload.get("risk_regime_override", "none") or "none"),
             vol_regime_override=str(payload.get("vol_regime_override", "none") or "none"),
             sector_cycle_override=str(payload.get("sector_cycle_override", "none") or "none"),
             interest_rate_shift_bp=int(payload.get("interest_rate_shift_bp", 0) or 0),

@@ -36,3 +36,40 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def main() :
+    t0 = time.time()
+    print(json.dumps({"ok": True, "event": "startup", "stage": "import_orchestrator"}), flush=True)
+    from src.recommendation_run_orchestrator import execute_recommendation_run
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_done",
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+        ),
+        flush=True,
+    )
+
+    args = parse_args()
+    summary = execute_recommendation_run(
+        run_id=args.run_id,
+        runs_root=args.runs_root,
+        snapshot_root=args.snapshot_root,
+        snapshot_path=args.snapshot_path,
+        entity_identifier_path=args.entity_identifier_path,
+        action_ids=args.action_id or None,
+        action_type=args.action_type,
+        max_candidates=args.max_candidates,
+        min_candidates_target=args.min_candidates_target,
+        strict_evidence=args.strict_evidence,
+        precedent_top_k=args.precedent_top_k,
+        outcomes_path=args.outcomes_path,
+        config_path=args.config,
+        top_plans=args.top_plans,
+    )
+    print(json.dumps(summary, default=str))
+
+
