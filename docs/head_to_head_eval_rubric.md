@@ -106,3 +106,32 @@ Undervaluation is still open, leverage is manageable, and waiting mostly leaves 
 }
 ```
 
+## Objective Lens
+
+The objective score is deterministic and checks:
+
+1. completeness
+2. factual grounding
+3. why-now specificity
+4. alternative depth
+5. risk specificity
+6. language cleanliness
+
+This is useful, but not enough on its own to prove superiority over strong humans.
+
+Use it as:
+
+- a fast filter
+- a ranking tool
+- a way to surface weak cases for human or model-judge review
+
+## Stronger Evidence
+
+To move from "better memo quality" toward "better strategic intelligence," add:
+
+1. blinded packet export for independent judge models
+2. ex-post alignment against realized actions within a fixed horizon
+3. significance reporting on model wins vs baseline wins
+
+The harness now supports all three.
+
