@@ -312,3 +312,455 @@ class AuditEvent:
     details: Dict[str, Any]
 
 
+@dataclass
+class RecommendationRun:
+    run_id: str
+    company_id: str
+    created_at: str
+    as_of_time: str
+    objectives: ObjectiveVector
+    constraints: ConstraintSet
+    scenario: ScenarioAssumptions
+    frozen_state: FrozenStateReference
+    model_versions: ModelVersionBundle
+    data_cutoff: DataCutoffSpec
+    status: str
+    audit_log: List[AuditEvent] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    planner_random_seed: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "company_id": self.company_id,
+            "created_at": self.created_at,
+            "as_of_time": self.as_of_time,
+            "objectives": asdict(self.objectives),
+            "constraints": {
+                "hard_constraints": [asdict(c) for c in self.constraints.hard_constraints],
+                "soft_constraints": [asdict(c) for c in self.constraints.soft_constraints],
+            },
+            "scenario": asdict(self.scenario),
+            "frozen_state": asdict(self.frozen_state),
+            "model_versions": asdict(self.model_versions),
+            "data_cutoff": asdict(self.data_cutoff),
+            "status": self.status,
+            "audit_log": [asdict(e) for e in self.audit_log],
+            "metadata": self.metadata,
+            "planner_random_seed": self.planner_random_seed,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "RecommendationRun":
+        return cls(
+            run_id=str(payload["run_id"]),
+            company_id=str(payload["company_id"]),
+            created_at=str(payload["created_at"]),
+            as_of_time=str(payload["as_of_time"]),
+            objectives=ObjectiveVector.from_any(payload.get("objectives", {})),
+            constraints=ConstraintSet.from_any(payload.get("constraints", {})),
+            scenario=ScenarioAssumptions.from_any(payload.get("scenario", {})),
+            frozen_state=FrozenStateReference(**dict(payload.get("frozen_state", {}))),
+            model_versions=ModelVersionBundle(**dict(payload.get("model_versions", {}))),
+            data_cutoff=DataCutoffSpec(**dict(payload.get("data_cutoff", {}))),
+            status=str(payload.get("status", "initialized")),
+            audit_log=[AuditEvent(**ev) for ev in payload.get("audit_log", [])],
+            metadata=dict(payload.get("metadata", {}) or {}),
+            planner_random_seed=payload.get("planner_random_seed"),
+        )
+
+
+class ModelRegistry:
+    """Simple immutable model-version provider."""
+
+    def __init__(self, versions: Optional[ModelVersionBundle] = None):
+        mechanism_version = os.environ.get("MECHANISM_MODEL_VERSION")
+        if not mechanism_version:
+            mechanism_version = self._infer_mechanism_version_from_artifact()
+        self._versions = versions or ModelVersionBundle(
+            candidate_generator_version=os.environ.get("CANDIDATE_GENERATOR_VERSION", "candidate_generator_v1"),
+            feasibility_model_version=os.environ.get("FEASIBILITY_MODEL_VERSION", "feasibility_model_v1"),
+            mechanism_model_version=str(mechanism_version or "mechanism_model_v2_causal"),
+            precedent_retrieval_version=os.environ.get(
+                "PRECEDENT_RETRIEVAL_VERSION",
+                DEFAULT_PRECEDENT_RETRIEVAL_VERSION,
+            ),
+            planner_model_version=os.environ.get("PLANNER_MODEL_VERSION", "planner_model_v1"),
+            regime_model_version=os.environ.get("REGIME_MODEL_VERSION", "regime_model_v1"),
+        )
+
+    def get_current_versions(self) -> ModelVersionBundle:
+        # Return a copy to preserve immutability semantics.
+        return ModelVersionBundle(**self._versions.to_dict())
+
+    def _infer_mechanism_version_from_artifact(self) -> Optional[str]:
+        path = Path(
+            str(
+                os.environ.get(
+                    "CAUSAL_IMPACT_MODEL_PATH",
+                    str(DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT),
+                )
+            )
+        )
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text())
+        except Exception:
+            return None
+        model_version = str(payload.get("version", "")).strip()
+        trained_at = str(payload.get("trained_at", "")).strip()
+        mode = str(os.environ.get("CAUSAL_IMPACT_MODE", "blend")).strip().lower() or "blend"
+        if not model_version:
+            return None
+        suffix = trained_at[:10].replace("-", "") if trained_at else "undated"
+        return f"mechanism_model_v2_causal+{model_version}+{suffix}+mode_{mode}"
+
+
+class RecommendationRunStore:
+    """Persistent registry for RecommendationRun objects."""
+
+    def __init__(self, root: str | Path = "data/recommendation_runs", temp_dir: str | Path | None = None) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.runs_dir = self.root / "runs"
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.artifacts_dir = self.root / "artifacts"
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.index_path = self.root / "run_index.parquet"
+        if temp_dir is None:
+            temp_dir = os.environ.get("RECOMMENDATION_RUN_TMP_DIR", "/tmp/recommendation_runs")
+        self.temp_dir = Path(temp_dir)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
+    def _run_path(self, run_id: str) -> Path:
+        return self.runs_dir / f"run_id={run_id}.json"
+
+    def _stage_path(self, out: Path) -> Path:
+        # Recreate temp_dir defensively in case an external cleanup removed it.
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        # Use a unique staged path per write to avoid cross-run races where two
+        # workers target the same "<name>.tmp" at once.
+        return self.temp_dir / f"{out.name}.{uuid.uuid4().hex}.tmp"
+
+    def _finalize(self, staged: Path, out: Path) -> None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(str(staged), str(out))
+        except Exception:
+            shutil.copy2(str(staged), str(out))
+            try:
+                staged.unlink()
+            except Exception:
+                pass
+
+    def get_run(self, run_id: str) :
+        p = self._run_path(run_id)
+        if not p.exists():
+            return None
+        payload = json.loads(p.read_text())
+        return RecommendationRun.from_dict(payload)
+
+    def write_run(self, run: RecommendationRun) -> Path:
+        out = self._run_path(run.run_id)
+        if out.exists():
+            raise ValueError(f"Run already exists: {run.run_id}")
+        self._write_run_unchecked(run, sync_index=True)
+        return out
+
+    def update_run(self, run: RecommendationRun, sync_index: bool = True) -> Path:
+        existing = self.get_run(run.run_id)
+        if existing is None:
+            raise ValueError(f"Run does not exist: {run.run_id}")
+        self._enforce_immutability(existing, run)
+        out = self._write_run_unchecked(run, sync_index=sync_index)
+        return out
+
+    def _write_run_unchecked(self, run: RecommendationRun, sync_index: bool = True) -> Path:
+        out = self._run_path(run.run_id)
+        staged = self._stage_path(out)
+        staged.write_text(json.dumps(_json_sanitize(run.to_dict()), indent=2))
+        self._finalize(staged, out)
+        if sync_index:
+            self._upsert_index(run)
+        return out
+
+    def _upsert_index(self, run: RecommendationRun) -> None:
+        row = {
+            "run_id": run.run_id,
+            "company_id": run.company_id,
+            "as_of_time": run.as_of_time,
+            "status": run.status,
+            "created_at": run.created_at,
+        }
+        if self.index_path.exists():
+            df = pd.read_parquet(self.index_path)
+            df = df[df["run_id"] != run.run_id]
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        else:
+            df = pd.DataFrame([row])
+        staged = self._stage_path(self.index_path)
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(staged, index=False)
+        self._finalize(staged, self.index_path)
+
+    def list_runs(
+        self,
+        company_id: Optional[str] = None,
+        as_of_time: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[RecommendationRun]:
+        if not self.index_path.exists():
+            return []
+        idx = pd.read_parquet(self.index_path)
+        if company_id is not None:
+            idx = idx[idx["company_id"].astype(str) == str(company_id)]
+        if as_of_time is not None:
+            as_of_norm = _parse_ts(as_of_time).isoformat()
+            idx = idx[idx["as_of_time"].astype(str) == as_of_norm]
+        if status is not None:
+            idx = idx[idx["status"].astype(str) == str(status)]
+
+        out: List[RecommendationRun] = []
+        for rid in idx["run_id"].tolist():
+            run = self.get_run(str(rid))
+            if run is not None:
+                out.append(run)
+        out.sort(key=lambda r: r.created_at)
+        return out
+
+    def log_event(self, run_id: str, event_type: str, details: Optional[Dict[str, Any]] = None) -> RecommendationRun:
+        run = self.get_run(run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        event = _new_audit_event(event_type=event_type, details=details or {})
+        run.audit_log.append(event)
+        self.update_run(run, sync_index=False)
+        return run
+
+    def transition_status(self, run_id: str, new_status: str, details: Optional[Dict[str, Any]] = None) -> RecommendationRun:
+        run = self.get_run(run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+
+        current = run.status
+        _validate_status_transition(current, new_status)
+
+        if current in PHASE_COMPLETED_EVENT and new_status != current:
+            run.audit_log.append(_new_audit_event(PHASE_COMPLETED_EVENT[current], details or {}))
+
+        run.status = new_status
+
+        if new_status in PHASE_STARTED_EVENT:
+            run.audit_log.append(_new_audit_event(PHASE_STARTED_EVENT[new_status], details or {}))
+        elif new_status == "completed":
+            run.audit_log.append(_new_audit_event("run_completed", details or {}))
+        elif new_status == "failed":
+            run.audit_log.append(_new_audit_event("run_failed", details or {}))
+
+        self.update_run(run, sync_index=(new_status in {"completed", "failed"}))
+        return run
+
+    def attach_artifact(self, run_id: str, artifact_name: str, payload: Any) -> Path:
+        run = self.get_run(run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+
+        out = self.artifacts_dir / f"run_id={run_id}" / f"{artifact_name}.json"
+        staged = self._stage_path(out)
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text(json.dumps(_json_sanitize(payload), indent=2))
+        self._finalize(staged, out)
+
+        artifacts = dict(run.metadata.get("artifacts", {}) or {})
+        artifacts[artifact_name] = str(out)
+        run.metadata["artifacts"] = artifacts
+        self.update_run(run, sync_index=False)
+        return out
+
+    def merge_metadata(self, run_id: str, metadata_patch: Dict[str, Any]) -> RecommendationRun:
+        run = self.get_run(run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        run.metadata = merge_metadata_patch(dict(run.metadata or {}), dict(metadata_patch or {}))
+        self.update_run(run, sync_index=False)
+        return run
+
+    @staticmethod
+    def _enforce_immutability(existing: RecommendationRun, updated: RecommendationRun) -> None:
+        immutable_pairs = [
+            ("company_id", existing.company_id, updated.company_id),
+            ("as_of_time", existing.as_of_time, updated.as_of_time),
+            ("created_at", existing.created_at, updated.created_at),
+            ("snapshot_id", existing.frozen_state.snapshot_id, updated.frozen_state.snapshot_id),
+            ("snapshot_hash", existing.frozen_state.snapshot_hash, updated.frozen_state.snapshot_hash),
+            ("snapshot_version", existing.frozen_state.snapshot_version, updated.frozen_state.snapshot_version),
+        ]
+        for field_name, before, after in immutable_pairs:
+            if before != after:
+                raise ValueError(f"Immutable field changed for run {existing.run_id}: {field_name}")
+
+        if existing.model_versions.to_dict() != updated.model_versions.to_dict():
+            raise ValueError(f"Model versions are immutable for run {existing.run_id}")
+
+
+def create_recommendation_run(
+    company_id: str,
+    as_of_time: str | datetime,
+    objectives: Optional[Dict[str, Any]] = None,
+    constraints: Optional[Dict[str, Any]] = None,
+    scenario: Optional[Dict[str, Any]] = None,
+    run_store: Optional[RecommendationRunStore] = None,
+    model_registry: Optional[ModelRegistry] = None,
+    model_versions: Optional[ModelVersionBundle] = None,
+    snapshot_root: Optional[str | Path] = None,
+    snapshot_path: Optional[str | Path] = None,
+    snapshot_builder: Optional[Any] = None,
+    snapshot_loader: Optional[Callable[[str, datetime], Dict[str, Any]]] = None,
+    entity_graph_path: str | Path = "data/inputs_layer/entity_graph.parquet",
+    entity_identifier_path: str | Path = "data/inputs_layer/entity_identifier.parquet",
+    company_aliases: Optional[Sequence[str]] = None,
+    skip_as_of_lower_bound_validation: bool = False,
+    planner_random_seed: Optional[int] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Create a frozen RecommendationRun and persist it.
+    """
+    as_of_dt = _parse_ts(as_of_time)
+
+    obj = ObjectiveVector.from_any(objectives)
+    cset = ConstraintSet.from_any(constraints)
+    scen = ScenarioAssumptions.from_any(scenario)
+    resolved_entity_graph_path = resolve_data_path(entity_graph_path)
+    resolved_entity_identifier_path = resolve_data_path(entity_identifier_path)
+    skip_company_validation = _skip_company_validation()
+    snapshot_aliases = [str(company_id), *(list(company_aliases or []))]
+    prefetched_snapshot: Optional[Dict[str, Any]] = None
+    validation_via_snapshot_fallback = False
+
+    if not skip_company_validation:
+        try:
+            _validate_company_id_exists(
+                company_id=company_id,
+                entity_graph_path=Path(resolved_entity_graph_path),
+                entity_identifier_path=Path(resolved_entity_identifier_path),
+                extra_aliases=company_aliases,
+            )
+        except ValueError:
+            if company_aliases:
+                prefetched_snapshot = _resolve_snapshot(
+                    company_id=company_id,
+                    as_of_time=as_of_dt,
+                    snapshot_root=Path(snapshot_root) if snapshot_root else None,
+                    snapshot_path=Path(snapshot_path) if snapshot_path else None,
+                    snapshot_builder=snapshot_builder,
+                    snapshot_loader=snapshot_loader,
+                    aliases=snapshot_aliases,
+                )
+                if _snapshot_has_material_features(prefetched_snapshot):
+                    validation_via_snapshot_fallback = True
+                else:
+                    raise
+            else:
+                raise
+    if (
+        not skip_company_validation
+        and not skip_as_of_lower_bound_validation
+        and not validation_via_snapshot_fallback
+    ):
+        _validate_as_of_lower_bound(
+            company_id=company_id,
+            as_of_time=as_of_dt,
+            entity_graph_path=Path(resolved_entity_graph_path),
+            entity_identifier_path=Path(resolved_entity_identifier_path),
+            extra_aliases=company_aliases,
+        )
+
+    if not (snapshot_path or skip_company_validation or validation_via_snapshot_fallback):
+        snapshot_aliases = _validation_aliases(
+            company_id,
+            Path(resolved_entity_identifier_path),
+            company_aliases,
+        )
+
+    snapshot = prefetched_snapshot or _resolve_snapshot(
+        company_id=company_id,
+        as_of_time=as_of_dt,
+        snapshot_root=Path(snapshot_root) if snapshot_root else None,
+        snapshot_path=Path(snapshot_path) if snapshot_path else None,
+        snapshot_builder=snapshot_builder,
+        snapshot_loader=snapshot_loader,
+        aliases=snapshot_aliases,
+    )
+
+    snapshot = _apply_scenario_overrides(snapshot, scen)
+    snapshot_hash = _hash_snapshot(snapshot)
+    snapshot_ref = FrozenStateReference(
+        snapshot_id=str(snapshot.get("snapshot_id") or str(uuid.uuid4())),
+        snapshot_hash=snapshot_hash,
+        snapshot_version=_snapshot_version(snapshot),
+    )
+
+    metadata_payload = merge_metadata_patch(
+        dict(metadata or {}),
+        {
+            "config": {
+                "create": build_create_config(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_graph_path=resolved_entity_graph_path,
+                    entity_identifier_path=resolved_entity_identifier_path,
+                    planner_random_seed=planner_random_seed,
+                ),
+                "runtime_env": capture_runtime_env_config(),
+            }
+        },
+    )
+
+    versions = model_versions or (model_registry or ModelRegistry()).get_current_versions()
+    run = RecommendationRun(
+        run_id=str(uuid.uuid4()),
+        company_id=str(company_id),
+        created_at=_now_iso(),
+        as_of_time=as_of_dt.isoformat(),
+        objectives=obj,
+        constraints=cset,
+        scenario=scen,
+        frozen_state=snapshot_ref,
+        model_versions=versions,
+        data_cutoff=DataCutoffSpec(
+            published_at_lte=as_of_dt.isoformat(),
+            ingested_at_lte=as_of_dt.isoformat(),
+        ),
+        status="initialized",
+        audit_log=[],
+        metadata=metadata_payload,
+        planner_random_seed=planner_random_seed,
+    )
+
+    store = run_store or RecommendationRunStore()
+    run.audit_log.append(
+        _new_audit_event(
+            "run_created",
+            {
+                "company_id": run.company_id,
+                "as_of_time": run.as_of_time,
+                "planner_random_seed": planner_random_seed,
+            },
+        )
+    )
+    run.audit_log.append(
+        _new_audit_event(
+            "snapshot_frozen",
+            {
+                "snapshot_id": snapshot_ref.snapshot_id,
+                "snapshot_hash": snapshot_ref.snapshot_hash,
+                "snapshot_version": snapshot_ref.snapshot_version,
+            },
+        )
+    )
+    store.write_run(run)
+    return run.run_id
+
+
