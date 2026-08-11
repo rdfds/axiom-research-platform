@@ -292,3 +292,93 @@ def _default_causal_routing_config_path() -> Path:
     return DEFAULT_CAUSAL_ROUTING_CONFIG_PATH
 
 
+@lru_cache(maxsize=2)
+def load_causal_routing_config(path_str: Optional[str] = None) -> Dict[str, Any]:
+    path = Path(path_str) if path_str else _default_causal_routing_config_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def get_causal_action_policy(
+    action_id: str,
+    action_type: str = "",
+    action_subtype: str = "",
+) -> CausalActionPolicy:
+    aid = str(action_id or "").strip()
+    legacy_action_alias = _legacy_action_id_to_outcomes_action_type(aid, action_type)
+    legacy_subtype_alias = _legacy_action_subtype_to_outcomes_subtype(aid, action_type, action_subtype)
+    config = load_causal_routing_config()
+    actions = dict(config.get("actions", {}) or {})
+    status_blend_caps = dict(config.get("status_max_blend_weight", {}) or {})
+    spec = dict(actions.get(aid, {}) or {})
+
+    status = str(spec.get("status", "unconfigured") or "unconfigured").strip().lower()
+    if not status:
+        status = "unconfigured"
+    model_action_alias = str(spec.get("model_action_alias", legacy_action_alias) or legacy_action_alias).strip()
+    model_subtype_alias = str(spec.get("model_subtype_alias", legacy_subtype_alias) or legacy_subtype_alias).strip()
+    objective_allowlist_raw = spec.get("objective_allowlist", [])
+    objective_allowlist = tuple(
+        str(x).strip()
+        for x in list(objective_allowlist_raw or [])
+        if str(x).strip()
+    )
+    strict_gate_primary_objectives_raw = spec.get("strict_gate_primary_objectives", [])
+    strict_gate_primary_objectives = tuple(
+        str(x).strip()
+        for x in list(strict_gate_primary_objectives_raw or [])
+        if str(x).strip()
+    )
+    model_artifact_path_override = str(spec.get("model_artifact_path_override", "") or "").strip()
+    max_blend_weight = _to_float(spec.get("max_blend_weight"))
+    if max_blend_weight is None:
+        max_blend_weight = _to_float(status_blend_caps.get(status))
+    notes = str(spec.get("notes", "") or "")
+    future_action_aliases_raw = list(spec.get("future_action_aliases", []) or [])
+    future_action_alias = str(spec.get("future_action_alias", "") or "")
+    gate_overrides = dict(spec.get("strict_gate_overrides", {}) or {})
+    future_action_aliases: list[str] = []
+    for item in future_action_aliases_raw:
+        alias = str(item or "").strip()
+        if alias and alias not in future_action_aliases:
+            future_action_aliases.append(alias)
+    if future_action_alias and future_action_alias not in future_action_aliases:
+        future_action_aliases.insert(0, future_action_alias)
+    return CausalActionPolicy(
+        action_id=aid,
+        status=status,
+        model_action_alias=model_action_alias or legacy_action_alias,
+        model_subtype_alias=model_subtype_alias or legacy_subtype_alias,
+        objective_allowlist=objective_allowlist,
+        strict_gate_primary_objectives=strict_gate_primary_objectives,
+        model_artifact_path_override=model_artifact_path_override,
+        max_blend_weight=max_blend_weight,
+        notes=notes,
+        future_action_alias=future_action_alias,
+        future_action_aliases=tuple(future_action_aliases),
+        quality_floor_override=_to_float(gate_overrides.get("quality_floor")),
+        support_floor_override=_to_float(gate_overrides.get("support_floor")),
+        min_train_rows_override=(
+            int(max(0.0, _to_float(gate_overrides.get("min_train_rows"), 0.0) or 0.0))
+            if gate_overrides.get("min_train_rows") is not None
+            else None
+        ),
+        min_oos_r2_override=_to_float(gate_overrides.get("min_oos_r2")),
+        min_treated_rows_override=(
+            int(max(0.0, _to_float(gate_overrides.get("min_treated_rows"), 0.0) or 0.0))
+            if gate_overrides.get("min_treated_rows") is not None
+            else None
+        ),
+        min_control_rows_override=(
+            int(max(0.0, _to_float(gate_overrides.get("min_control_rows"), 0.0) or 0.0))
+            if gate_overrides.get("min_control_rows") is not None
+            else None
+        ),
+    )
+
+

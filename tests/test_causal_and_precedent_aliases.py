@@ -47,3 +47,15 @@ def test_dividend_initiate_and_lbo_aliases_are_wired():
     assert lbo_subtype == "acquisition_lbo"
 
 
+def test_transformational_acquisition_prefers_large_platform_precedents():
+    family_weights = _candidate_action_family_weights("mna.transformational_acquisition", "")
+    scale_weights = _candidate_action_family_scale_weights(
+        action_id="mna.transformational_acquisition",
+        action_subtype="transformational_acquisition",
+        action_params={"target_size_pct_ev": 0.4},
+        candidate_features={"market_cap": 10_000_000_000.0},
+    )
+    assert family_weights[0][0] == "mna.platform_merger"
+    assert scale_weights[0][0] == "mna.platform_merger.scale_large"
+
+
