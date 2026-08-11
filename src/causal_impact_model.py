@@ -387,3 +387,12 @@ def action_id_to_outcomes_action_type(action_id: str, action_type: str = "") -> 
     return str(policy.model_action_alias or "")
 
 
+def action_subtype_to_outcomes_subtype(action_id: str, action_type: str = "", action_subtype: str = "") -> str:
+    policy = get_causal_action_policy(
+        action_id=action_id,
+        action_type=action_type,
+        action_subtype=action_subtype,
+    )
+    return str(policy.model_subtype_alias or "")
+
+
