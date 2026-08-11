@@ -69,3 +69,31 @@ def _snapshot_root(tmp_path: Path) -> Path:
     return root
 
 
+def _candidate(action_id: str, *, value_creation: float) -> dict:
+    action_type, action_subtype = action_id.split(".", 1)
+    return {
+        "candidate_id": f"cand-{action_subtype}",
+        "run_id": "run-1",
+        "action_id": action_id,
+        "action_type": action_type,
+        "action_subtype": action_subtype,
+        "parameters": {},
+        "feasibility": {"pass_probability": 0.93},
+        "mechanism_activation": {"mechanisms": [{"mechanism_id": "capital_efficiency", "activation_strength": 0.68}]},
+        "impact_distribution": {
+            "objectives": {
+                "value_creation": {"median": value_creation},
+                "risk_reduction": {"median": 0.12},
+                "growth": {"median": 0.0},
+                "rating_preservation": {"median": 0.05},
+                "optionality": {"median": 0.08},
+            },
+            "key_drivers": [{"driver_name": "causal_model_blend_weight", "contribution": 0.2}],
+            "uncertainty_score": 0.14,
+        },
+        "risks": [{"explanation": f"{action_id} requires disciplined execution."}],
+        "structural_sanity_flags": [],
+        "evaluation_confidence": 0.77,
+    }
+
+
