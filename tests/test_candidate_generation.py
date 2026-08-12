@@ -1701,3 +1701,345 @@ def test_undervaluation_capital_return_is_suppressed_when_revisions_are_sharply_
     assert "capital_return.dividend_increase" not in action_ids
 
 
+def test_undervaluation_capital_return_survives_when_revisions_are_supportive(tmp_path: Path):
+    features = _capital_return_feature_set()
+    features["liquidity.available_for_actions"] = {"value": 100_000_000.0}
+    features["market.ev_ebitda_vs_peer_z"] = {"value": -1.6}
+    features["market.fcf_yield_percentile_peers"] = {"value": 0.86}
+    features["expectations.analyst_coverage_count"] = {"value": 12.0}
+    features["expectations.revision_signal"] = {"value": 0.08}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.open_market_buyback" in action_ids
+
+
+def test_dividend_increase_generated_for_healthy_existing_payer(tmp_path: Path):
+    features = _dividend_confidence_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+
+
+def test_special_dividend_generated_for_net_cash_regular_payer_with_excess_liquidity(tmp_path: Path):
+    features = _special_dividend_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.special_dividend" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+
+
+
+
+def test_dividend_increase_generated_for_missing_schedule_regular_payer(tmp_path: Path):
+    features = _missing_schedule_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+
+
+def test_healthy_existing_payer_not_forced_into_equity_backstop(tmp_path: Path):
+    features = _dividend_confidence_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_special_dividend_generated_for_durable_payer_with_leverage_optics(tmp_path: Path):
+    features = _durable_dividend_growth_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = set(_candidate_action_ids(out))
+    assert "capital_return.special_dividend" in action_ids
+
+
+def test_dividend_increase_generated_when_cash_is_near_policy_floor(tmp_path: Path):
+    features = _near_min_cash_dividend_growth_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_dividend_increase_not_generated_when_durable_payer_faces_maturity_wall(tmp_path: Path):
+    features = _durable_dividend_growth_feature_set()
+    features["liquidity.available_for_actions"] = {"value": 0.0}
+    features["capital_structure.debt_due_0_12m"] = {"value": 0.0}
+    features["capital_structure.debt_due_12_24m"] = {"value": 750_000_000.0}
+    features["capital_structure.maturity_wall_ratio_24m"] = {"value": 0.5970386881069893}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" not in action_ids
+    assert "capital_structure.equity_issuance" in action_ids or "capital_structure.exchange_offer" in action_ids
+
+
+def test_extreme_volatility_payer_still_surfaces_equity_backstop(tmp_path: Path):
+    features = _extreme_volatility_dividend_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = set(_candidate_action_ids(out))
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_anomalous_regular_dividend_payer_prefers_dividend_increase_over_financing(tmp_path: Path):
+    features = _anomalous_regular_dividend_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+
+
+def test_leveraged_regular_payer_can_still_generate_dividend_increase(tmp_path: Path):
+    features = _leveraged_dividend_growth_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.liability_management_exercise" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+
+
+def test_cash_rich_regular_payer_surfaces_dividend_increase(tmp_path: Path):
+    features = _cash_rich_regular_dividend_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = set(_candidate_action_ids(out))
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_stable_debt_bearing_regular_payer_prefers_dividend_increase(tmp_path: Path):
+    features = _stable_debt_bearing_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_large_cap_coverage_regular_payer_prefers_dividend_increase(tmp_path: Path):
+    features = _large_cap_coverage_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+    assert "capital_structure.liability_management_exercise" not in action_ids
+
+
+def test_no_maturity_pressure_regular_payer_prefers_dividend_increase(tmp_path: Path):
+    features = _no_maturity_pressure_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_low_margin_no_maturity_regular_payer_does_not_force_dividend_increase(tmp_path: Path):
+    features = _low_margin_no_maturity_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" not in action_ids
+
+
+def test_schedule_anomaly_regular_payer_prefers_dividend_increase(tmp_path: Path):
+    features = _schedule_anomaly_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_coverage_outlier_regular_payer_prefers_dividend_increase(tmp_path: Path):
+    features = _coverage_outlier_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_financing_anomaly_regular_payer_prefers_dividend_increase_over_financing(tmp_path: Path):
+    features = _financing_anomaly_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+    assert "capital_structure.liability_management_exercise" not in action_ids
+
+
+def test_weak_fcf_schedule_anomaly_regular_payer_keeps_financing_actions(tmp_path: Path):
+    features = _weak_fcf_financing_anomaly_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" not in action_ids
+    assert "capital_structure.refinancing" in action_ids or "capital_structure.equity_issuance" in action_ids
+
+
+def test_no_market_dislocation_schedule_anomaly_regular_payer_keeps_financing_actions(tmp_path: Path):
+    features = _no_market_dislocation_financing_anomaly_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_increase" not in action_ids
+    assert "capital_structure.refinancing" in action_ids or "capital_structure.equity_issuance" in action_ids
+
+
+def test_equity_issuance_generated_for_extreme_volatility_equity_financing_profile(tmp_path: Path):
+    features = _extreme_volatility_dividend_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_equity_issuance_generated_for_distressed_private_placement_profile(tmp_path: Path):
+    features = _distressed_private_placement_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    placements = [
+        row
+        for row in out["candidates"]
+        if row["action_id"] == "capital_structure.equity_issuance"
+        and row["parameters"].get("offering_type") == "private_placement"
+    ]
+    assert placements
+
+
+def test_equity_issuance_generated_for_relaxed_public_window_backstop(tmp_path: Path):
+    features = _relaxed_window_equity_backstop_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_equity_issuance_generated_for_distressed_nonpayer_public_recap(tmp_path: Path):
+    features = _distressed_nonpayer_public_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+
+

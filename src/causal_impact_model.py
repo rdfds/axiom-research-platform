@@ -1181,3 +1181,10 @@ class CausalImpactModel:
         return _extract_feature(features, legacy_key, default=default)
 
 
+def _default_model_path() -> Path:
+    env = str(os.environ.get("CAUSAL_IMPACT_MODEL_PATH", "")).strip()
+    if env:
+        return Path(env)
+    return DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT
+
+
