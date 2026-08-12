@@ -237,3 +237,142 @@ def _render_case_markdown(case: Dict[str, Any], index: int) -> List[str]:
     return lines
 
 
+def _build_case(
+    *,
+    run_id: str,
+    runs_root: Path,
+    snapshot_root: Path,
+    baseline_dir: Path,
+    registry: Any,
+    outcomes_lookup: Optional[Dict[str, List[Tuple[Any, str, str]]]],
+    alignment_horizon_days: int,
+) -> Dict[str, Any]:
+    run_payload = json.loads((runs_root / "runs" / f"run_id={run_id}.json").read_text())
+    recommendation_run = RecommendationRun.from_dict(run_payload)
+    company_id = str(recommendation_run.company_id)
+    as_of_time = str(recommendation_run.as_of_time)
+    snapshot = _load_snapshot(snapshot_root=snapshot_root, company_id=company_id, as_of_time=as_of_time)
+    model_packet = build_model_packet(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot=snapshot,
+        registry=registry,
+        recommendation_run=recommendation_run,
+    )
+    baseline_packet = load_baseline_packet(
+        company_id=company_id,
+        as_of_time=as_of_time,
+        baseline_dir=baseline_dir,
+    )
+    comparison = compare_packets(model_packet=model_packet, baseline_packet=baseline_packet, snapshot=snapshot)
+    blinded = _build_blinded_review(model_packet=model_packet, baseline_packet=baseline_packet, run_id=run_id)
+    ex_post = _build_ex_post_comparison(
+        company_id=company_id,
+        as_of_time=as_of_time,
+        model_packet=model_packet,
+        baseline_packet=baseline_packet,
+        outcomes_lookup=outcomes_lookup,
+        alignment_horizon_days=alignment_horizon_days,
+    )
+    return {
+        "run_id": run_id,
+        "company_id": company_id,
+        "comparison": comparison,
+        "model_packet": model_packet.to_dict(),
+        "baseline_packet": baseline_packet.to_dict(),
+        "blinded_review": blinded,
+        "ex_post": ex_post,
+    }
+
+
+def build_model_packet(
+    *,
+    run_id: str,
+    runs_root: Path,
+    snapshot: Dict[str, Any],
+    registry: Any,
+    recommendation_run: RecommendationRun,
+) -> CanonicalPacket:
+    artifacts_root = runs_root / "artifacts" / f"run_id={run_id}"
+    feasibility = json.loads((artifacts_root / "FeasibilityResults.json").read_text())
+    precedent = json.loads((artifacts_root / "PrecedentMatches.json").read_text())
+    feasible_candidates = [
+        row.get("action_candidate") or row.get("candidate") or {}
+        for row in list(feasibility.get("results", []) or [])
+        if row.get("feasible")
+    ]
+    plan_set = build_plan_set(
+        run=recommendation_run,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+        top_plans=5,
+    )
+    dossier = build_board_ready_dossier(
+        run=recommendation_run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+    )
+    thesis = dict(dossier.get("recommendation_thesis", {}) or {})
+    action_path = [str(step.get("action_id", "") or "") for step in list(((plan_set.get("plans", []) or [{}])[0].get("steps", []) or []))]
+    alternatives = [
+        str(item.get("why_not_preferred", "") or "")
+        for item in list(dossier.get("alternative_analysis", []) or [])
+        if str(item.get("why_not_preferred", "") or "").strip()
+    ]
+    risk_case = dict(dossier.get("risk_case", {}) or {})
+    evidence_points = [
+        str(item['text'] or "")
+        for item in list(dossier.get("supporting_evidence", []) or [])
+        if str(item.get("text", "") or "").strip()
+    ]
+    raw_text_parts = [
+        str(dossier.get("executive_summary", "") or ""),
+        str(thesis.get("problem_statement", "") or ""),
+        str(thesis.get("why_this_plan", "") or ""),
+        str(thesis.get("why_now", "") or ""),
+        *alternatives,
+        *[str(x or "") for x in list(risk_case.get("main_failure_modes", []) or [])],
+        *[str(x or "") for x in list(risk_case.get("kill_criteria", []) or [])],
+        *evidence_points,
+    ]
+    return CanonicalPacket(
+        packet_id=f"{run_id}:model",
+        company_id=str(recommendation_run.company_id),
+        as_of_time=str(recommendation_run.as_of_time),
+        source_type="model",
+        source_label="board_ready_dossier",
+        primary_recommendation=_humanize_action(action_path[0] if action_path else ""),
+        action_path=action_path,
+        problem_statement=str(thesis.get("problem_statement", "") or ""),
+        recommendation_thesis=str(thesis.get("why_this_plan", "") or ""),
+        why_now=str(thesis.get("why_now", "") or ""),
+        alternatives=alternatives,
+        risks=[str(x or "") for x in list(risk_case.get("main_failure_modes", []) or [])],
+        kill_criteria=[str(x or "") for x in list(risk_case.get("kill_criteria", []) or [])],
+        evidence_points=evidence_points,
+        confidence_posture=str(dossier.get("confidence_posture", "") or ""),
+        baseline_type="model",
+        task_match="direct",
+        raw_text="\n".join(part for part in raw_text_parts if part),
+    )
+
+
+def load_baseline_packet(*, company_id: str, as_of_time: str, baseline_dir: Path) -> CanonicalPacket:
+    candidates = [
+        baseline_dir / f"company_id={company_id}.json",
+        baseline_dir / f"company_id={company_id}.md",
+        baseline_dir / f"{company_id}.json",
+        baseline_dir / f"{company_id}.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            if path.suffix.lower() == ".json":
+                return _load_baseline_json(path=path, company_id=company_id, as_of_time=as_of_time)
+            return _load_baseline_markdown(path=path, company_id=company_id, as_of_time=as_of_time)
+    raise FileNotFoundError(f"baseline memo not found for company_id={company_id} under {baseline_dir}")
+
+
