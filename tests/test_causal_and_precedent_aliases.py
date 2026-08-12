@@ -73,3 +73,24 @@ def test_dividend_initiate_and_lbo_precedent_families():
     assert lbo_scale[0][0] == "mna.platform_lbo.scale_large"
 
 
+def test_asset_sale_and_revolver_pick_family_scale_keys():
+    asset_weights = _candidate_action_family_scale_weights(
+        action_id="portfolio.asset_sale",
+        action_subtype="asset_sale",
+        action_params={"estimated_proceeds_usd": 600_000_000.0},
+        candidate_features={"market_cap": 4_000_000_000.0},
+    )
+    revolver_weights = _candidate_action_family_scale_weights(
+        action_id="capital_structure.revolver_draw_or_resize",
+        action_subtype="revolver_draw_or_resize",
+        action_params={"draw_amount_usd": 25_000_000.0},
+        candidate_features={"market_cap": 5_000_000_000.0},
+    )
+    assert asset_weights[0][0] == "portfolio.divestiture.scale_medium"
+    assert revolver_weights[0][0] == "capital_structure.revolver.amount_small"
+
+
+def test_registry_contains_new_actions():
+    registry = build_default_action_schema_registry(version="v1.0")
+    assert registry.get_action("capital_return.dividend_initiate") is not None
+    assert registry.get_action("mna.go_private_lbo") is not None
