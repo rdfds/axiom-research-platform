@@ -480,3 +480,500 @@ def _build_recommendation_thesis(
     }
 
 
+def _build_supporting_evidence(
+    *,
+    snapshot: Dict[str, Any],
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    metrics = [
+        ("Deployable liquidity", "liquidity.available_for_actions", _fmt_currency),
+        ("Net leverage", "capital_structure.net_leverage", _fmt_x),
+        ("Maturity wall (24m)", "capital_structure.maturity_wall_ratio_24m", _fmt_pct),
+        ("FCF conversion", "operating.fcf_conversion", _fmt_ratio),
+        ("Revenue growth", "operating.revenue_yoy_last_q", _fmt_pct),
+        ("Equity-market conditions", "market.equity_window_proxy", _fmt_score),
+        ("Debt-market conditions", "market.credit_window_proxy", _fmt_score),
+    ]
+    for label, key, formatter in metrics:
+        value = _feature_value(snapshot, key)
+        if value is None:
+            continue
+        out.append(
+            {
+                "label": label,
+                "metric": key,
+                "value": value,
+                "formatted_value": formatter(value),
+                "text": f"{label} is {formatter(value)}.",
+                "source": "snapshot",
+            }
+        )
+
+    for thesis in step_theses[:2]:
+        out.extend(list(thesis.get("supporting_facts", []) or [])[:3])
+
+    for action_id, pack in precedent_by_action.items():
+        if len(out) >= 12:
+            break
+        confidence = _precedent_confidence(pack)
+        tier = str(((pack.get("mismatch_diagnostics", {}) or {}).get("retrieval_tier", "")) or "")
+        sample_n = _precedent_sample_size(pack)
+        if confidence <= 0.0:
+            continue
+        out.append(
+            {
+                "label": f"Precedent for {_humanize_action_id(action_id)}",
+                "metric": "precedent_confidence",
+                "value": confidence,
+                "formatted_value": f"{confidence:.3f}",
+                "text": f"Precedent confidence is {confidence:.3f} on a {tier or 'unknown'} cohort with n={sample_n}.",
+                "source": "precedent",
+            }
+        )
+    return out[:12]
+
+
+def _build_status_quo_view(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+) -> Dict[str, Any]:
+    first_step = dict(step_theses[0] or {}) if step_theses else {}
+    evaluation = _evaluate_plan_vs_status_quo(
+        plan=top_plan,
+        first_step_thesis=first_step,
+        snapshot=snapshot,
+        diagnosed=diagnosed,
+    )
+    return {
+        "recommended_posture": evaluation["recommended_posture"],
+        "status_quo_preferred": evaluation["recommended_posture"] == "wait",
+        "edge_vs_status_quo": evaluation["edge_vs_status_quo"],
+        "edge_vs_status_quo_formatted": f"{evaluation['edge_vs_status_quo']:+.3f}",
+        "status_quo_score": evaluation["status_quo_score"],
+        "why_act_now": evaluation["why_act_now"],
+        "why_wait": evaluation["why_wait"],
+        "case_for_action": evaluation["case_for_action"],
+        "case_for_wait": evaluation["case_for_wait"],
+        "key_counterarguments": evaluation["case_for_wait"][:3],
+        "reassessment_triggers": evaluation["reassessment_triggers"],
+    }
+
+
+def _build_ranked_action_views(
+    *,
+    plans: Sequence[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+    registry: Any,
+    diagnosed: Dict[str, Any],
+    candidate_by_action: Dict[str, Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for idx, plan in enumerate(plans, start=1):
+        plan = dict(plan or {})
+        steps = list(plan.get("steps", []) or [])
+        action_ids = [str(step.get("action_id", "") or "") for step in steps]
+        first_action = str((action_ids[0] if action_ids else "") or "")
+        action_candidate = _resolve_plan_action_candidate(plan=plan, action_id=first_action, candidate_by_action=candidate_by_action)
+        step_thesis = _build_step_thesis(
+            step=dict(steps[0] or {}) if steps else {},
+            action_candidate=action_candidate,
+            precedent_pack=precedent_by_action.get(first_action, {}),
+            snapshot=snapshot,
+            registry=registry,
+            plan=plan,
+            diagnosed=diagnosed,
+        ) if steps else {}
+        evaluation = _evaluate_plan_vs_status_quo(
+            plan=plan,
+            first_step_thesis=step_thesis,
+            snapshot=snapshot,
+            diagnosed=diagnosed,
+        )
+        out.append(
+            {
+                "rank": idx,
+                "plan_id": str(plan.get("plan_id", "") or ""),
+                "action_ids": action_ids,
+                "recommended_posture": evaluation["recommended_posture"],
+                "edge_vs_status_quo": evaluation["edge_vs_status_quo"],
+                "edge_vs_status_quo_formatted": f"{evaluation['edge_vs_status_quo']:+.3f}",
+                "case_for": str(step_thesis.get("why_this_step", "") or ""),
+                "case_against": list(step_thesis.get("tradeoffs", []) or [])[:3] or list(evaluation["case_for_wait"][:2]),
+                "why_now": str(step_thesis.get("why_now", "") or ""),
+                "support_type": str(step_thesis.get("support_type", "") or ""),
+                "plan_score": float(plan.get("score", 0.0) or 0.0),
+                "support_factor": float(((plan.get("score_components", {}) or {}).get("support_factor", 0.0) or 0.0)),
+                "sizing_guidance": _build_step_sizing_guidance(
+                    action_id=first_action,
+                    parameters=dict(((steps[0] if steps else {}) or {}).get("parameters", {}) or {}),
+                    snapshot=snapshot,
+                ),
+                "parameter_optimization": _build_step_parameter_optimization(
+                    action_id=first_action,
+                    parameters=dict(((steps[0] if steps else {}) or {}).get("parameters", {}) or {}),
+                    snapshot=snapshot,
+                    registry=registry,
+                ),
+                "regret_balance": evaluation["regret_balance"],
+                "rating_constraint_posture": _build_rating_cliff_analysis(top_plan=plan, snapshot=snapshot).get("constraint_posture"),
+                "signal_posture": _build_signaling_analysis(top_plan=plan, snapshot=snapshot, status_quo_view=evaluation).get("signal_posture"),
+            }
+        )
+    return out
+
+
+def _build_step_thesis(
+    *,
+    step: Dict[str, Any],
+    action_candidate: Dict[str, Any],
+    precedent_pack: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    registry: Any,
+    plan: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+) -> Dict[str, Any]:
+    action_id = str(step.get("action_id", "") or "")
+    schema = registry.get_action(action_id) or {}
+    explanation = dict(step.get("explanation", {}) or {})
+    parameters = dict(step.get("parameters", {}) or {})
+    mechanisms = list(((action_candidate.get("mechanism_activation", {}) or {}).get("mechanisms", []) or []))
+    strongest_mech = max(mechanisms, key=lambda m: float(m.get("activation_strength", 0.0) or 0.0), default={})
+    strongest_mech_name = _humanize_mechanism_id(str(strongest_mech.get("mechanism_id", "") or ""))
+
+    objective_signal = _best_objective_signal(action_candidate)
+    precedent_confidence = _precedent_confidence(precedent_pack)
+    sample_n = _precedent_sample_size(precedent_pack)
+    support_type = _support_type(action_candidate=action_candidate, precedent_pack=precedent_pack)
+    role_text = _step_role_text(action_id=action_id, parameters=parameters, snapshot=snapshot, diagnosed=diagnosed)
+    why_this_step = role_text
+    if strongest_mech_name:
+        why_this_step += f" The dominant mechanism is {strongest_mech_name}."
+    if objective_signal is not None:
+        why_this_step += (
+            f" The clearest modeled benefit is {_humanize_objective_name(objective_signal[0])} "
+            f"({objective_signal[1]:+.3f})."
+        )
+    if schema.get("description") and role_text.endswith("addresses the current strategic bottleneck."):
+        why_this_step += f" {str(schema.get('description')).strip()}"
+
+    why_now = _timing_thesis(
+        action_id=action_id,
+        step=step,
+        snapshot=snapshot,
+        diagnosed=diagnosed,
+        plan=plan,
+    )
+
+    tradeoffs = _step_tradeoffs(action_candidate=action_candidate, action_id=action_id, snapshot=snapshot)
+    supporting_facts = _step_supporting_facts(
+        action_id=action_id,
+        action_candidate=action_candidate,
+        precedent_pack=precedent_pack,
+        snapshot=snapshot,
+        support_type=support_type,
+        sample_n=sample_n,
+        precedent_confidence=precedent_confidence,
+    )
+    return {
+        "action_id": action_id,
+        "action_label": _humanize_action_id(action_id),
+        "role": role_text,
+        "why_this_step": why_this_step.strip(),
+        "why_now": why_now,
+        "sizing_guidance": _build_step_sizing_guidance(
+            action_id=action_id,
+            parameters=parameters,
+            snapshot=snapshot,
+        ),
+        "parameter_optimization": _build_step_parameter_optimization(
+            action_id=action_id,
+            parameters=parameters,
+            snapshot=snapshot,
+            registry=registry,
+        ),
+        "support_type": support_type,
+        "precedent_confidence": precedent_confidence,
+        "precedent_sample_n": sample_n,
+        "supporting_facts": supporting_facts,
+        "tradeoffs": tradeoffs[:4],
+        "tail_descriptions": _tail_descriptions(precedent_pack),
+        "probability_of_success": float(step.get("probability_of_success", 0.0) or 0.0),
+        "lead_time_days": int(((step.get("expected_duration", {}) or {}).get("median_days", 0) or 0)),
+    }
+
+
+def _evaluate_plan_vs_status_quo(
+    *,
+    plan: Dict[str, Any],
+    first_step_thesis: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(plan.get("steps", []) or [])
+    first_action = str((((steps[0] if steps else {}) or {}).get("action_id", "") or ""))
+    components = dict(plan.get("score_components", {}) or {})
+    plan_score = float(plan.get("score", 0.0) or 0.0)
+    expected_utility = float(components.get("expected_utility", 0.0) or 0.0)
+    support_factor = float(components.get("support_factor", 0.0) or 0.0)
+    feasibility_chain = float(components.get("feasibility_chain", 0.0) or 0.0)
+    tail_penalty = float(components.get("tail_risk_penalty", 0.0) or 0.0)
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    liquidity = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    market_cap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    equity_window = _safe_float(_feature_value(snapshot, "market.equity_window_proxy"))
+    pursue_mna_priority = _safe_float(_feature_value(snapshot, "strategic.intent.pursue_mna_priority"))
+    focus_on_core = _safe_float(_feature_value(snapshot, "strategic.intent.focus_on_core"))
+    liquidity_to_mcap = (liquidity / market_cap) if liquidity is not None and market_cap not in (None, 0.0) else None
+
+    status_quo_score = 0.18
+    case_for_action: List[str] = []
+    case_for_wait: List[str] = []
+
+    why_this_step = str(first_step_thesis.get("why_this_step", "") or "").strip()
+    why_now = str(first_step_thesis.get("why_now", "") or "").strip()
+    if why_this_step:
+        case_for_action.append(why_this_step)
+    if why_now:
+        case_for_action.append(why_now)
+
+    if support_factor < 0.75:
+        status_quo_score += 0.05
+        case_for_wait.append("Empirical support is not yet strong enough for a clean act-now call.")
+    if feasibility_chain < 0.80:
+        status_quo_score += 0.04
+        case_for_wait.append("Execution still depends on a relatively fragile chain of assumptions.")
+    if tail_penalty > 0.08:
+        status_quo_score += 0.05
+        case_for_wait.append("Downside tails are still heavy enough that preserving optionality matters.")
+    if expected_utility < 0.52:
+        status_quo_score += 0.03
+        case_for_wait.append("The incremental benefit over waiting is still modest.")
+
+    if _has_capital_return([first_action]):
+        if (liquidity_to_mcap or 0.0) >= 0.03:
+            status_quo_score -= 0.06
+            case_for_action.append(f"Deployable liquidity already equals {_fmt_pct(liquidity_to_mcap)} of market value, so inactivity has an opportunity cost.")
+        if net_leverage is not None and net_leverage >= 2.75:
+            status_quo_score += 0.06
+            case_for_wait.append(f"Net leverage is already {_fmt_x(net_leverage)}, which makes immediate payout easier to regret.")
+        if first_action in {"capital_return.dividend_increase", "capital_return.dividend_initiate", "capital_return.special_dividend"}:
+            status_quo_score += 0.03
+            case_for_wait.append("A dividend step is stickier than waiting, so the hurdle to act should be higher.")
+        if _is_buyback_action(first_action):
+            status_quo_score -= 0.02
+            case_for_action.append("Repurchases are more reversible than a permanent payout reset.")
+
+    if _is_balance_sheet_action(first_action):
+        if (maturity_wall or 0.0) >= 0.20:
+            status_quo_score -= 0.10
+            case_for_action.append(f"A {_fmt_pct(maturity_wall)} 24-month maturity wall makes delay more expensive.")
+        if credit_window is not None and credit_window >= 0.60:
+            status_quo_score -= 0.04
+            case_for_action.append(f"Credit conditions are currently workable at {_fmt_score(credit_window)}.")
+        if _uses_equity_markets([first_action]) and (equity_window or 0.0) < 0.50:
+            status_quo_score += 0.05
+            case_for_wait.append("The equity window is not attractive enough to force issuance now.")
+
+    if _is_mna_action(first_action):
+        status_quo_score += 0.04
+        case_for_wait.append("M&A is less reversible than waiting, so it needs a wider edge before acting.")
+        if pursue_mna_priority is not None and pursue_mna_priority >= 0.75:
+            status_quo_score -= 0.04
+            case_for_action.append(f"Strategic intent to pursue M&A is already high at {_fmt_score(pursue_mna_priority)}.")
+
+    if _is_divestiture_action(first_action):
+        if focus_on_core is not None and focus_on_core >= 0.70:
+            status_quo_score -= 0.04
+            case_for_action.append(f"Focus-on-core pressure is elevated at {_fmt_score(focus_on_core)}.")
+        else:
+            status_quo_score += 0.02
+            case_for_wait.append("If strategic focus is not clearly impaired, waiting is a real alternative to selling.")
+
+    status_quo_score = _clip(status_quo_score, 0.05, 0.40)
+    edge_vs_status_quo = round(plan_score - status_quo_score, 6)
+    if edge_vs_status_quo >= 0.05 and support_factor >= 0.75 and feasibility_chain >= 0.80:
+        recommended_posture = "act_now"
+    elif edge_vs_status_quo >= 0.02 and expected_utility >= 0.50 and support_factor >= 0.70 and feasibility_chain >= 0.75:
+        recommended_posture = "conditional_action"
+    else:
+        recommended_posture = "wait"
+
+    case_for_wait = _posture_adjust_case_for_wait(
+        recommended_posture=recommended_posture,
+        first_action=first_action,
+        snapshot=snapshot,
+        case_for_wait=case_for_wait,
+    )
+    if not case_for_wait:
+        case_for_wait.append("Waiting preserves flexibility until the edge versus status quo becomes clearer.")
+    why_wait = " ".join(case_for_wait[:2])
+    why_act_now = " ".join(case_for_action[:2]) if case_for_action else "No action-specific reason is strong enough to justify moving immediately."
+    reassessment_triggers = _decision_boundaries(first_action=first_action, snapshot=snapshot, top_plan=plan)
+    return {
+        "recommended_posture": recommended_posture,
+        "status_quo_score": round(status_quo_score, 6),
+        "edge_vs_status_quo": edge_vs_status_quo,
+        "why_act_now": why_act_now,
+        "why_wait": why_wait,
+        "case_for_action": _dedupe(case_for_action)[:4],
+        "case_for_wait": _dedupe(case_for_wait)[:4],
+        "reassessment_triggers": reassessment_triggers,
+        "regret_balance": _regret_balance(first_action=first_action, recommended_posture=recommended_posture, snapshot=snapshot),
+    }
+
+
+def _posture_adjust_case_for_wait(
+    *,
+    recommended_posture: str,
+    first_action: str,
+    snapshot: Dict[str, Any],
+    case_for_wait: Sequence[str],
+) -> List[str]:
+    items = _dedupe([str(item or "").strip() for item in case_for_wait if str(item or "").strip()])
+    if recommended_posture == "act_now":
+        filtered = [
+            item for item in items
+            if "incremental benefit over waiting is still modest" not in item.lower()
+            and "not yet strong enough for a clean act-now call" not in item.lower()
+        ]
+        if filtered:
+            return filtered[:3]
+        if _is_buyback_action(first_action):
+            return ["Waiting preserves liquidity if a clearly better use of capital appears quickly."]
+        if _is_balance_sheet_action(first_action):
+            return ["Waiting avoids locking in financing if the need proves less durable than it currently appears."]
+        return ["Waiting preserves flexibility if the current thesis weakens quickly."]
+    if recommended_posture == "conditional_action":
+        adjusted: List[str] = []
+        for item in items:
+            if "incremental benefit over waiting is still modest" in item.lower():
+                adjusted.append("The edge over waiting is real, but not yet wide enough to force immediate execution.")
+            else:
+                adjusted.append(item)
+        return _dedupe(adjusted)[:3]
+    return items[:3]
+
+
+def _build_plan_sizing_guidance(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(top_plan.get("steps", []) or [])
+    if not steps:
+        return {}
+    first_step = dict(steps[0] or {})
+    sizing = _build_step_sizing_guidance(
+        action_id=str(first_step.get("action_id", "") or ""),
+        parameters=dict(first_step.get("parameters", {}) or {}),
+        snapshot=snapshot,
+    )
+    if step_theses:
+        sizing["execution_notes"] = list((step_theses[0] or {}).get("tradeoffs", []) or [])[:2]
+    return sizing
+
+
+def _build_parameter_optimization(
+    *,
+    top_plan: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    registry: Any,
+    sizing_guidance: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(top_plan.get("steps", []) or [])
+    if not steps:
+        return {}
+    first_step = dict(steps[0] or {})
+    return _build_step_parameter_optimization(
+        action_id=str(first_step.get("action_id", "") or ""),
+        parameters=dict(first_step.get("parameters", {}) or {}),
+        snapshot=snapshot,
+        registry=registry,
+        sizing_guidance=sizing_guidance,
+    )
+
+
+def _build_step_parameter_optimization(
+    *,
+    action_id: str,
+    parameters: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    registry: Any,
+    sizing_guidance: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    action = (registry.get_action(action_id) or {}) if registry is not None else {}
+    schema = dict(action.get("parameter_schema", {}) or {})
+    if not schema:
+        return {}
+
+    context = _parameter_context(snapshot=snapshot)
+    recommended_parameters: Dict[str, Dict[str, Any]] = {}
+    for parameter_name, parameter_schema in schema.items():
+        recommendation = _optimize_parameter_recommendation(
+            action_id=action_id,
+            parameter_name=str(parameter_name),
+            parameter_schema=dict(parameter_schema or {}),
+            parameters=parameters,
+            context=context,
+        )
+        if recommendation:
+            recommended_parameters[str(parameter_name)] = recommendation
+
+    if not recommended_parameters:
+        return {}
+
+    guardrails = _parameter_guardrails(
+        action_id=action_id,
+        context=context,
+        recommended_parameters=recommended_parameters,
+    )
+    rejected_variants = _parameter_rejected_variants(
+        action_id=action_id,
+        recommended_parameters=recommended_parameters,
+        context=context,
+    )
+    summary = _parameter_optimization_summary(
+        action_id=action_id,
+        recommended_parameters=recommended_parameters,
+        sizing_guidance=sizing_guidance or {},
+    )
+    return {
+        "action_id": action_id,
+        "objective": _parameter_optimization_objective(action_id),
+        "summary": summary,
+        "recommended_parameters": recommended_parameters,
+        "guardrails": guardrails,
+        "rejected_variants": rejected_variants,
+    }
+
+
+def _parameter_context(*, snapshot: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    liquidity = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    market_cap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    equity_window = _safe_float(_feature_value(snapshot, "market.equity_window_proxy"))
+    credit_spread_pct = _safe_float(_feature_value(snapshot, "market.credit_spread_percentile_2y"))
+    return {
+        "liquidity": liquidity,
+        "market_cap": market_cap,
+        "net_leverage": net_leverage,
+        "maturity_wall": maturity_wall,
+        "credit_window": credit_window,
+        "equity_window": equity_window,
+        "credit_spread_pct": credit_spread_pct,
+        "liquidity_to_market_cap": (liquidity / market_cap) if liquidity is not None and market_cap not in (None, 0.0) else None,
+    }
+
+
