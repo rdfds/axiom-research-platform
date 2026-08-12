@@ -95,3 +95,32 @@ This defines planner-facing schemas for:
 
 The type scaffolding also includes optional explanation fields so the planner can emit user-facing structural rationales, not just action lists.
 
+## Evaluation Coverage
+
+### Precedent
+
+Validated on:
+
+- fixed 5-company regression set
+- broader 20-company canary
+- targeted family benchmarks
+
+Accepted broad canary metrics:
+
+- `precedent_conf_mean = 0.346832`
+- `precedent_oos_mean = 0.308`
+
+### Causal
+
+Accepted broad canary metrics:
+
+- `causal_rate_mean = 0.848167`
+- `strict_causal_mean = 1.0`
+
+Intentional causal exceptions:
+
+- `capital_structure.revolver_draw_or_resize`
+- `mna.go_private_lbo`
+
+Both remain precedent-only by policy.
+

@@ -274,3 +274,23 @@ def _best_support_by_action(feasible_rows: Sequence[Dict[str, Any]], precedent_r
     return best
 
 
+def _infer_bucket(feasible_rows: Sequence[Dict[str, Any]], top_plan: Dict[str, Any]) -> str:
+    feasible_actions = {
+        str((row.get("action_candidate") or row.get("candidate") or {}).get("action_id", "") or "")
+        for row in feasible_rows
+    }
+    if any(action_id.startswith("mna.") for action_id in feasible_actions):
+        return "acquisition"
+    if any(action_id in {"portfolio.divestiture_partial", "portfolio.divestiture_full", "portfolio.asset_sale"} for action_id in feasible_actions):
+        return "divestiture"
+    if (
+        any(action_id in {"capital_structure.new_debt_issuance", "capital_structure.refinancing"} for action_id in feasible_actions)
+        and any(action_id in {"capital_return.open_market_buyback", "capital_return.accelerated_share_repurchase", "capital_return.tender_offer_buyback"} for action_id in feasible_actions)
+    ):
+        return "buyback_refi"
+    top_steps = list(top_plan.get("steps", []) or [])
+    if top_steps:
+        return str(top_steps[0].get("action_id", "other")).split(".", 1)[0]
+    return "other"
+
+
