@@ -124,3 +124,13 @@ Intentional causal exceptions:
 
 Both remain precedent-only by policy.
 
+## Runtime / UI Constraint
+
+Planner work can proceed now, but user-facing UX should assume:
+
+- async execution
+- warmed service
+- cached results
+
+The current system is suitable for a snappy UI only if the UI does not block on full recommendation completion.
+
