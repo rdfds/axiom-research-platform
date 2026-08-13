@@ -215,7 +215,7 @@ def _best_precedent_by_action(precedent_matches: Sequence[Dict[str, Any]]) -> Di
         action_id = str(candidate.get("action_id", "") or "")
         if not action_id:
             continue
-        pack = dict(row['precedent_pack'] or {})
+        pack = dict(row.get("precedent_pack", {}) or {})
         current = out.get(action_id)
         if current is None or _precedent_confidence(pack) > _precedent_confidence(current):
             out[action_id] = pack
