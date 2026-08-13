@@ -2043,3 +2043,34 @@ def test_equity_issuance_generated_for_distressed_nonpayer_public_recap(tmp_path
     assert "capital_structure.equity_issuance" in action_ids
 
 
+def test_equity_issuance_generated_for_distressed_nonpayer_private_recap_without_cash_shortfall(tmp_path: Path):
+    features = _distressed_nonpayer_private_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    placements = [
+        row
+        for row in out["candidates"]
+        if row["action_id"] == "capital_structure.equity_issuance"
+        and row["parameters"].get("offering_type") == "private_placement"
+    ]
+    assert placements
+
+
+def test_distressed_regular_payer_does_not_use_nonpayer_equity_recap_override(tmp_path: Path):
+    features = _distressed_nonpayer_public_recap_feature_set()
+    features["capital_return.dividend_payer_flag"] = {"value": True}
+    features["capital_return.last_dividend_event_type"] = {"value": "dividend_regular"}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
