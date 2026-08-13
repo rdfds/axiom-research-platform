@@ -45,3 +45,14 @@ Acceptance thresholds:
 - Explanation persuasive: at least 80%
 - Risks / triggers useful: at least 75%
 
+## Recommended Eval Set
+
+Do not rely only on the fixed 5-company regression set.
+
+Preferred process:
+
+1. run a broader 50-company production batch
+2. generate the planner eval report
+3. review the markdown queue
+4. turn repeated failures into planner regression fixtures
+

@@ -294,3 +294,43 @@ def _infer_bucket(feasible_rows: Sequence[Dict[str, Any]], top_plan: Dict[str, A
     return "other"
 
 
+def _top_plan_support(step_actions: Sequence[str], support_by_action: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    rows = [support_by_action[action_id] for action_id in step_actions if action_id in support_by_action]
+    if not rows:
+        return {
+            "avg_precedent_confidence": 0.0,
+            "causal_step_rate": 0.0,
+            "avg_pass_probability": 0.0,
+            "all_steps_supported": False,
+        }
+    return {
+        "avg_precedent_confidence": round(sum(row["precedent_confidence"] for row in rows) / len(rows), 6),
+        "causal_step_rate": round(sum(1.0 for row in rows if row["has_causal"]) / len(rows), 6),
+        "avg_pass_probability": round(sum(row["pass_probability"] for row in rows) / len(rows), 6),
+        "all_steps_supported": all((row["precedent_confidence"] > 0.0) or row["has_causal"] for row in rows),
+    }
+
+
+def _explanation_score(top_plan: Dict[str, Any]) -> Dict[str, Any]:
+    top_steps = list(top_plan.get("steps", []) or [])
+    summary_present = bool(str(top_plan.get("summary_explanation", "") or "").strip())
+    complete_steps = 0
+    for step in top_steps:
+        explanation = dict(step.get("explanation", {}) or {})
+        if (
+            str(explanation.get("problem_statement", "") or "").strip()
+            and str(explanation.get("why_this_action", "") or "").strip()
+            and str(explanation.get("why_now", "") or "").strip()
+        ):
+            complete_steps += 1
+    completeness = 0.0
+    if top_steps:
+        completeness = complete_steps / len(top_steps)
+    score = ((0.4 if summary_present else 0.0) + (0.6 * completeness))
+    return {
+        "summary_present": summary_present,
+        "complete_step_rate": round(completeness, 6),
+        "score": round(score, 6),
+    }
+
+
