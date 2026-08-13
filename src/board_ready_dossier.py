@@ -977,3 +977,430 @@ def _parameter_context(*, snapshot: Dict[str, Any]) -> Dict[str, Optional[float]
     }
 
 
+def _optimize_parameter_recommendation(
+    *,
+    action_id: str,
+    parameter_name: str,
+    parameter_schema: Dict[str, Any],
+    parameters: Dict[str, Any],
+    context: Dict[str, Optional[float]],
+) -> Optional[Dict[str, Any]]:
+    parameter_type = str(parameter_schema.get("type", "") or "")
+    current_value = parameters.get(parameter_name)
+
+    if parameter_name == "funding_mix":
+        mix = _recommended_funding_mix(action_id=action_id, context=context)
+        return {
+            "parameter_type": parameter_type,
+            "current_value": current_value,
+            "current_value_formatted": _format_parameter_value(parameter_type, current_value),
+            "recommended_value": mix,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, mix),
+            "why": _funding_mix_reason(action_id=action_id, context=context, mix=mix),
+        }
+
+    if parameter_name in {"size_pct_market_cap", "target_size_pct_ev", "percent_divested", "premium_pct", "discount_pct", "conversion_premium_pct", "initial_yield_pct", "percent_change"}:
+        target, lower, upper, why = _optimize_percent_parameter(
+            action_id=action_id,
+            parameter_name=parameter_name,
+            current_value=current_value,
+            parameter_schema=parameter_schema,
+            context=context,
+        )
+        return {
+            "parameter_type": parameter_type,
+            "current_value": _safe_float(current_value),
+            "current_value_formatted": _format_parameter_value(parameter_type, current_value),
+            "recommended_value": target,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, target),
+            "recommended_range": f"{_fmt_pct(lower)} to {_fmt_pct(upper)}",
+            "why": why,
+        }
+
+    if parameter_name in {"size_absolute_usd", "amount_usd", "amount_refinanced_usd", "draw_amount_usd", "resize_amount_usd", "estimated_ev_usd", "annualized_cash_commitment_usd"}:
+        target, lower, upper, why = _optimize_amount_parameter(
+            action_id=action_id,
+            parameter_name=parameter_name,
+            current_value=current_value,
+            context=context,
+        )
+        return {
+            "parameter_type": parameter_type,
+            "current_value": _safe_float(current_value),
+            "current_value_formatted": _format_parameter_value(parameter_type, current_value, parameter_name=parameter_name),
+            "recommended_value": target,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, target, parameter_name=parameter_name),
+            "recommended_range": f"{_fmt_currency(lower)} to {_fmt_currency(upper)}",
+            "why": why,
+        }
+
+    if parameter_name in {"tenor_years", "new_tenor_years", "call_protection_years", "leverage_post_close"}:
+        normalized_current = _normalize_numeric_current(
+            parameter_name=parameter_name,
+            current_value=current_value,
+            parameter_schema=parameter_schema,
+        )
+        target, lower, upper, why = _optimize_numeric_parameter(
+            action_id=action_id,
+            parameter_name=parameter_name,
+            current_value=normalized_current,
+            parameter_schema=parameter_schema,
+            context=context,
+        )
+        return {
+            "parameter_type": parameter_type,
+            "current_value": normalized_current,
+            "current_value_formatted": _format_parameter_value(parameter_type, normalized_current, parameter_name=parameter_name),
+            "recommended_value": target,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, target, parameter_name=parameter_name),
+            "recommended_range": _format_numeric_range(parameter_name=parameter_name, lower=lower, upper=upper),
+            "why": why,
+        }
+
+    if parameter_name in {"pace", "use_of_proceeds", "fixed_vs_floating", "rate_structure", "instrument_type", "offering_type", "intent", "target_sector_match", "synergy_case_strength", "geography_overlap", "regulatory_risk", "effective_quarter"}:
+        value, why = _optimize_enum_parameter(
+            action_id=action_id,
+            parameter_name=parameter_name,
+            current_value=current_value,
+            context=context,
+        )
+        return {
+            "parameter_type": parameter_type,
+            "current_value": current_value,
+            "current_value_formatted": _format_parameter_value(parameter_type, current_value),
+            "recommended_value": value,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, value),
+            "why": why,
+        }
+
+    if parameter_name == "secured_flag":
+        value, why = _optimize_boolean_parameter(
+            action_id=action_id,
+            parameter_name=parameter_name,
+            current_value=current_value,
+            context=context,
+        )
+        return {
+            "parameter_type": parameter_type,
+            "current_value": current_value,
+            "current_value_formatted": _format_parameter_value(parameter_type, current_value),
+            "recommended_value": value,
+            "recommended_value_formatted": _format_parameter_value(parameter_type, value),
+            "why": why,
+        }
+
+    return None
+
+
+def _optimize_percent_parameter(
+    *,
+    action_id: str,
+    parameter_name: str,
+    current_value: Any,
+    parameter_schema: Dict[str, Any],
+    context: Dict[str, Optional[float]],
+) -> Tuple[float, float, float, str]:
+    minimum = float(parameter_schema.get("min", 0.0) or 0.0)
+    maximum = float(parameter_schema.get("max", 1.0) or 1.0)
+    current = _safe_float(current_value)
+    net_leverage = context.get("net_leverage")
+    maturity_wall = context.get("maturity_wall")
+    liquidity_to_market_cap = context.get("liquidity_to_market_cap")
+    equity_window = context.get("equity_window")
+
+    if parameter_name == "size_pct_market_cap":
+        base = 0.03
+        if liquidity_to_market_cap is not None:
+            base += min(0.04, liquidity_to_market_cap * 0.35)
+        if (equity_window or 0.0) >= 0.65:
+            base += 0.01
+        if (net_leverage or 0.0) >= 2.5:
+            base -= 0.015
+        if (maturity_wall or 0.0) >= 0.20:
+            base -= 0.015
+        target = current if current is not None else base
+        if current is not None:
+            target = (0.6 * current) + (0.4 * base)
+        target = _clip(target, minimum, maximum)
+        lower = _clip(target * 0.85, minimum, maximum)
+        upper = _clip(target * 1.15, minimum, maximum)
+        why = "Keep the buyback large enough to matter, but cap it where leverage or maturity pressure would start to crowd out flexibility."
+        return target, lower, upper, why
+
+    if parameter_name == "target_size_pct_ev":
+        base = 0.06 if action_id == "mna.tuck_in_acquisition" else 0.12
+        if liquidity_to_market_cap is not None:
+            base = max(base, min(0.18 if action_id == "mna.tuck_in_acquisition" else 0.22, liquidity_to_market_cap * 0.75))
+        if (net_leverage or 0.0) >= 2.5:
+            base -= 0.03
+        if (maturity_wall or 0.0) >= 0.20:
+            base -= 0.02
+        target = current if current is not None else base
+        if current is not None:
+            target = (0.7 * current) + (0.3 * base)
+        target = _clip(target, minimum, maximum)
+        lower = _clip(target * 0.8, minimum, maximum)
+        upper = _clip(target * 1.2, minimum, maximum)
+        why = "Keep deal size inside a range the balance sheet can absorb without turning the strategic thesis into a financing thesis."
+        return target, lower, upper, why
+
+    if parameter_name == "percent_divested":
+        base = 0.15
+        if (net_leverage or 0.0) >= 2.75 or (maturity_wall or 0.0) >= 0.20:
+            base = 0.25
+        target = current if current is not None else base
+        if current is not None:
+            target = (0.7 * current) + (0.3 * base)
+        target = _clip(target, minimum, maximum)
+        lower = _clip(target * 0.8, minimum, maximum)
+        upper = _clip(target * 1.25, minimum, maximum)
+        why = "Bias the sale toward the smallest package that meaningfully simplifies the portfolio or releases capital."
+        return target, lower, upper, why
+
+    if parameter_name == "premium_pct":
+        base = 0.03 if (equity_window or 0.0) < 0.60 else 0.05
+        target = _clip(current if current is not None else base, minimum, maximum)
+        lower = _clip(max(minimum, target - 0.01), minimum, maximum)
+        upper = _clip(min(maximum, target + 0.02), minimum, maximum)
+        why = "Keep the tender premium high enough to secure participation but low enough to preserve per-share economics."
+        return target, lower, upper, why
+
+    if parameter_name == "initial_yield_pct":
+        base = 0.015 if (net_leverage or 0.0) >= 2.5 or (maturity_wall or 0.0) >= 0.20 else 0.02
+        target = _clip(current if current is not None else base, minimum, maximum)
+        lower = _clip(max(minimum, target - 0.005), minimum, maximum)
+        upper = _clip(min(maximum, target + 0.005), minimum, maximum)
+        why = "Start any new recurring dividend at a yield the company can defend through a weaker operating patch."
+        return target, lower, upper, why
+
+    if parameter_name == "percent_change":
+        base = 0.05 if (net_leverage or 0.0) >= 2.5 or (maturity_wall or 0.0) >= 0.20 else 0.08
+        target = _clip(current if current is not None else base, minimum, maximum)
+        lower = _clip(max(minimum, target - 0.02), minimum, maximum)
+        upper = _clip(min(maximum, target + 0.03), minimum, maximum)
+        why = "Keep the increase inside a band that signals confidence without turning the payout into the dominant capital-allocation commitment."
+        return target, lower, upper, why
+
+    if parameter_name == "discount_pct":
+        base = 0.02 if (equity_window or 0.0) >= 0.60 else 0.05
+        target = _clip(current if current is not None else base, minimum, maximum)
+        lower = _clip(max(minimum, target - 0.01), minimum, maximum)
+        upper = _clip(min(maximum, target + 0.02), minimum, maximum)
+        why = "Keep issuance discount narrow enough to avoid unnecessary dilution while still clearing the book."
+        return target, lower, upper, why
+
+    if parameter_name == "conversion_premium_pct":
+        base = 0.25 if (equity_window or 0.0) >= 0.60 else 0.18
+        target = _clip(current if current is not None else base, minimum, maximum)
+        lower = _clip(max(minimum, target - 0.05), minimum, maximum)
+        upper = _clip(min(maximum, target + 0.05), minimum, maximum)
+        why = "A mid-range conversion premium preserves some equity optionality without making the instrument too expensive to place."
+        return target, lower, upper, why
+
+    target = _clip(current if current is not None else minimum, minimum, maximum)
+    return target, target, target, "Keep the parameter inside the supported schema bounds."
+
+
+def _optimize_amount_parameter(
+    *,
+    action_id: str,
+    parameter_name: str,
+    current_value: Any,
+    context: Dict[str, Optional[float]],
+) -> Tuple[float, float, float, str]:
+    current = _safe_float(current_value)
+    liquidity = context.get("liquidity") or 0.0
+    market_cap = context.get("market_cap") or 0.0
+    net_leverage = context.get("net_leverage") or 0.0
+    maturity_wall = context.get("maturity_wall") or 0.0
+
+    if parameter_name == "annualized_cash_commitment_usd":
+        base = min(liquidity * 0.18, market_cap * 0.012) if liquidity and market_cap else max(liquidity * 0.12, 0.0)
+        if net_leverage >= 2.5 or maturity_wall >= 0.20:
+            base *= 0.8
+        target = current if current is not None else base
+        if current is not None and base > 0.0:
+            target = (0.7 * current) + (0.3 * base)
+        lower, upper = _bounded_amount_band(target)
+        why = "Set recurring cash commitment from defendable annual free-cash-flow capacity rather than a single strong quarter."
+        return target, lower, upper, why
+
+    if parameter_name in {"size_absolute_usd"} and _has_capital_return([action_id]):
+        base = min(liquidity * 0.45, market_cap * 0.06) if liquidity and market_cap else max(liquidity * 0.35, 0.0)
+        if net_leverage >= 2.5 or maturity_wall >= 0.20:
+            base *= 0.8
+        target = current if current is not None else base
+        if current is not None and base > 0.0:
+            target = (0.65 * current) + (0.35 * base)
+        lower, upper = _bounded_amount_band(target)
+        why = "Size the return against true excess liquidity rather than the full cash balance."
+        return target, lower, upper, why
+
+    if parameter_name in {"amount_usd", "amount_refinanced_usd", "draw_amount_usd", "resize_amount_usd"}:
+        base_ratio = 0.04
+        if maturity_wall >= 0.20:
+            base_ratio += 0.04
+        if net_leverage >= 3.0:
+            base_ratio += 0.02
+        if _uses_equity_markets([action_id]):
+            base_ratio = max(0.03, base_ratio - 0.01)
+        base = market_cap * base_ratio if market_cap else liquidity * 0.35
+        if current is not None:
+            target = (0.7 * current) + (0.3 * base)
+        else:
+            target = base
+        lower, upper = _bounded_amount_band(target)
+        why = "Anchor proceeds to the identified balance-sheet need plus a buffer, not to maximum available market appetite."
+        return target, lower, upper, why
+
+    if parameter_name == "estimated_ev_usd":
+        target = current if current is not None else max(market_cap * 0.15, liquidity * 0.5)
+        lower, upper = _bounded_amount_band(target)
+        why = "Frame divestiture value around a targeted non-core package rather than a forced headline disposal."
+        return target, lower, upper, why
+
+    target = current if current is not None else 0.0
+    return target, target, target, "Size the notional to the minimum amount that solves the problem."
+
+
+def _numeric_parameter_bounds(*, parameter_name: str, parameter_schema: Dict[str, Any]) -> Tuple[float, float]:
+    minimum = float(parameter_schema.get("min", 0.0) or 0.0)
+    maximum = parameter_schema.get("max")
+    if maximum is not None:
+        return minimum, float(maximum)
+    if parameter_name in {"tenor_years", "new_tenor_years"}:
+        return minimum, 10.0
+    if parameter_name == "call_protection_years":
+        return minimum, 5.0
+    if parameter_name == "leverage_post_close":
+        return minimum, 4.0
+    return minimum, max(minimum, 1_000_000_000.0)
+
+
+def _normalize_numeric_current(
+    *,
+    parameter_name: str,
+    current_value: Any,
+    parameter_schema: Dict[str, Any],
+) -> Optional[float]:
+    current = _safe_float(current_value)
+    if current is None:
+        return None
+    minimum, maximum = _numeric_parameter_bounds(parameter_name=parameter_name, parameter_schema=parameter_schema)
+    if current < minimum or current > maximum:
+        return None
+    return current
+
+
+def _optimize_numeric_parameter(
+    *,
+    action_id: str,
+    parameter_name: str,
+    current_value: Any,
+    parameter_schema: Dict[str, Any],
+    context: Dict[str, Optional[float]],
+) -> Tuple[float, float, float, str]:
+    current = _safe_float(current_value)
+    maturity_wall = context.get("maturity_wall") or 0.0
+    credit_window = context.get("credit_window") or 0.0
+    net_leverage = context.get("net_leverage") or 0.0
+    minimum, maximum = _numeric_parameter_bounds(parameter_name=parameter_name, parameter_schema=parameter_schema)
+
+    if parameter_name in {"tenor_years", "new_tenor_years"}:
+        base = 5.0
+        if maturity_wall >= 0.20:
+            base += 1.0
+        if credit_window >= 0.70:
+            base += 1.0
+        target = current if current is not None else base
+        if current is not None:
+            target = (0.65 * current) + (0.35 * base)
+        target = _clip(target, minimum, maximum)
+        lower = _clip(max(3.0, target - 1.0), minimum, maximum)
+        upper = _clip(min(10.0, target + 1.0), minimum, maximum)
+        why = "Extend tenor enough to move the maturity wall, but not so far that the company pays for duration it does not need."
+        return target, lower, upper, why
+
+    if parameter_name == "leverage_post_close":
+        base = 2.5 if action_id == "mna.tuck_in_acquisition" else 3.0
+        if maturity_wall >= 0.20 or net_leverage >= 2.5:
+            base -= 0.25
+        target = current if current is not None else base
+        if current is not None:
+            target = (0.6 * current) + (0.4 * base)
+        target = _clip(target, minimum, maximum)
+        lower = _clip(max(1.5, target - 0.25), minimum, maximum)
+        upper = _clip(min(4.0, target + 0.25), minimum, maximum)
+        why = "Keep pro forma leverage inside a range that preserves financing flexibility after the transaction."
+        return target, lower, upper, why
+
+    if parameter_name == "call_protection_years":
+        target = current if current is not None else 3.0
+        target = _clip(target, minimum, maximum)
+        lower = _clip(max(1.0, target - 1.0), minimum, maximum)
+        upper = _clip(min(5.0, target + 1.0), minimum, maximum)
+        why = "Use enough call protection to clear the security cleanly without overpaying for rigidity."
+        return target, lower, upper, why
+
+    target = _clip(current if current is not None else minimum, minimum, maximum)
+    return target, target, target, "Keep the numeric parameter near the center of the feasible range."
+
+
+def _optimize_enum_parameter(
+    *,
+    action_id: str,
+    parameter_name: str,
+    current_value: Any,
+    context: Dict[str, Optional[float]],
+) -> Tuple[str, str]:
+    net_leverage = context.get("net_leverage") or 0.0
+    maturity_wall = context.get("maturity_wall") or 0.0
+    credit_window = context.get("credit_window") or 0.0
+    equity_window = context.get("equity_window") or 0.0
+
+    if parameter_name == "pace":
+        value = "front_loaded" if equity_window >= 0.65 and net_leverage < 2.25 and maturity_wall < 0.15 else "gradual"
+        why = "Front-load only when the valuation window is open and the balance sheet can absorb the faster capital return."
+        return value, why
+    if parameter_name in {"fixed_vs_floating", "rate_structure"}:
+        value = "fixed" if maturity_wall >= 0.20 or credit_window < 0.55 else "mixed"
+        why = "Bias the liability profile toward fixed-rate certainty when refinancing risk matters more than carry optimization."
+        return value, why
+    if parameter_name == "instrument_type":
+        value = "term_loan" if credit_window < 0.50 else "bond"
+        why = "Use the instrument that is most likely to clear reliably in the current financing window."
+        return value, why
+    if parameter_name == "use_of_proceeds":
+        if _uses_equity_markets([action_id]):
+            value = "deleveraging" if net_leverage >= 2.5 or maturity_wall >= 0.20 else "liquidity_buffer"
+        elif _is_balance_sheet_action(action_id):
+            value = "refinancing" if maturity_wall >= 0.15 else "liquidity_buffer"
+        elif _is_divestiture_action(action_id):
+            value = "deleveraging" if net_leverage >= 2.5 or maturity_wall >= 0.20 else "reinvestment"
+        else:
+            value = "general_corporate"
+        why = "Direct proceeds first to the binding balance-sheet problem, then to optionality."
+        return value, why
+    if parameter_name == "offering_type":
+        value = "at_the_market" if equity_window >= 0.65 and net_leverage < 2.75 else "follow_on"
+        why = "Use a slower ATM only when the window is supportive; otherwise clear the financing in one transaction."
+        return value, why
+    if parameter_name == "effective_quarter":
+        value = "Q2" if (maturity_wall or 0.0) < 0.20 and net_leverage < 2.5 else "Q3"
+        why = "Only pull the effective quarter forward when balance-sheet pressure is modest enough to support the commitment immediately."
+        return value, why
+    if parameter_name == "intent":
+        value = "precautionary_draw" if credit_window < 0.45 or maturity_wall >= 0.20 else "resize"
+        why = "Use the revolver first as insurance when the financing window is shaky; resize only when liquidity architecture is the issue."
+        return value, why
+    if parameter_name == "target_sector_match":
+        return "high", "Tuck-in logic works best when adjacency risk is low and synergies are easier to underwrite."
+    if parameter_name == "synergy_case_strength":
+        return ("high" if net_leverage < 2.25 else "medium"), "Require a stronger synergy case as balance-sheet tolerance narrows."
+    if parameter_name == "geography_overlap":
+        return "high", "Higher geographic overlap reduces execution complexity and integration regret."
+    if parameter_name == "regulatory_risk":
+        return "low" if action_id == "mna.tuck_in_acquisition" else "medium", "Prefer transactions whose strategic value does not depend on taking large regulatory risk."
+    return str(current_value or ""), "Keep the enum choice aligned with the current financing and execution environment."
+
+
