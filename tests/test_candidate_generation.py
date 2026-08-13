@@ -2074,3 +2074,30 @@ def test_distressed_regular_payer_does_not_use_nonpayer_equity_recap_override(tm
     assert "capital_structure.equity_issuance" not in action_ids
 
 
+def test_nonpayer_public_recap_preference_suppresses_debt_only_maturity_actions(tmp_path: Path):
+    features = _nonpayer_public_recap_preference_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+    assert "capital_structure.liability_management_exercise" not in action_ids
+
+
+def test_nonpayer_public_recap_preference_does_not_fire_for_low_debt_pressure(tmp_path: Path):
+    features = _nonpayer_public_recap_low_stress_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
