@@ -38,3 +38,71 @@ def test_score_precedent_ranking_prefers_anchor_action_and_family():
     assert ranking["anchor_action_precedent_margin"] == 0.17
 
 
+def test_aggregate_historical_cases_exposes_precedent_ranking_metrics():
+    cases = [
+        {
+            "anchor_action_family": "capital_structure",
+            "top_action_ids": ["capital_structure.equity_issuance"],
+            "historical_alignment": {
+                "score": 1.0,
+                "primary_exact_match": True,
+                "primary_family_match": True,
+                "primary_support_adjusted_match": True,
+                "any_exact_match": True,
+                "any_family_match": True,
+                "any_support_adjusted_match": True,
+            },
+            "precedent_ranking": {
+                "reason": "ok",
+                "anchor_action_precedent_top1": True,
+                "anchor_action_precedent_mrr": 1.0,
+                "anchor_action_precedent_margin": 0.20,
+                "anchor_family_precedent_top1": True,
+                "anchor_family_precedent_mrr": 1.0,
+                "anchor_family_precedent_margin": 0.20,
+                "anchor_support_adjusted_precedent_top1": True,
+                "anchor_support_adjusted_precedent_mrr": 1.0,
+                "anchor_support_adjusted_precedent_margin": 0.20,
+            },
+        },
+        {
+            "anchor_action_family": "capital_structure",
+            "top_action_ids": ["capital_structure.refinancing"],
+            "historical_alignment": {
+                "score": 0.6,
+                "primary_exact_match": False,
+                "primary_family_match": True,
+                "primary_support_adjusted_match": True,
+                "any_exact_match": False,
+                "any_family_match": True,
+                "any_support_adjusted_match": True,
+            },
+            "precedent_ranking": {
+                "reason": "ok",
+                "anchor_action_precedent_top1": False,
+                "anchor_action_precedent_mrr": 0.5,
+                "anchor_action_precedent_margin": -0.05,
+                "anchor_family_precedent_top1": True,
+                "anchor_family_precedent_mrr": 1.0,
+                "anchor_family_precedent_margin": 0.10,
+                "anchor_support_adjusted_precedent_top1": False,
+                "anchor_support_adjusted_precedent_mrr": 0.5,
+                "anchor_support_adjusted_precedent_margin": -0.05,
+            },
+        },
+    ]
+    aggregate = _aggregate_historical_cases(cases)
+    assert aggregate["precedent_ranking_case_count"] == 2
+    assert aggregate["anchor_action_precedent_top1_rate"] == 0.5
+    assert aggregate["anchor_action_precedent_mrr_mean"] == 0.75
+    assert aggregate["anchor_action_precedent_margin_mean"] == 0.075
+    assert aggregate["anchor_action_precedent_margin_min"] == -0.05
+    assert aggregate["anchor_action_precedent_negative_margin_case_count"] == 1
+    assert aggregate["anchor_family_precedent_top1_rate"] == 1.0
+    assert aggregate["anchor_family_precedent_mrr_mean"] == 1.0
+    assert aggregate["anchor_family_precedent_margin_min"] == 0.1
+    assert aggregate["anchor_family_precedent_negative_margin_case_count"] == 0
+    assert aggregate["anchor_support_adjusted_precedent_top1_rate"] == 0.5
+    assert aggregate["anchor_support_adjusted_precedent_mrr_mean"] == 0.75
+    assert aggregate["anchor_support_adjusted_precedent_margin_min"] == -0.05
+    assert aggregate["anchor_support_adjusted_precedent_negative_margin_case_count"] == 1

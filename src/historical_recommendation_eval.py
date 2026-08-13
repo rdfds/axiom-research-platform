@@ -710,3 +710,27 @@ def _prioritize_historical_cases(
     return sorted(list(cases), key=_sort_key, reverse=False)
 
 
+def _query_source_hits(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    source_path: Path,
+    source_name: str,
+    query: Optional[str],
+) -> Dict[str, int]:
+    if query is None or not source_path.exists():
+        return {}
+    try:
+        frame = con.execute(query).df()
+    except Exception:
+        return {}
+    if frame.empty:
+        return {}
+    case_key_col = "case_key"
+    hits_col = f"{source_name}_hits"
+    out: Dict[str, int] = {}
+    for row in frame.itertuples(index=False):
+        key = str(getattr(row, case_key_col))
+        out[key] = int(getattr(row, hits_col) or 0)
+    return out
+
+

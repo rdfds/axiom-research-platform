@@ -85,3 +85,27 @@ def test_filter_excluded_historical_cases_removes_matching_anchor_rows():
     assert filtered.iloc[0]["company_id"] == "B"
 
 
+def test_load_excluded_historical_case_keys_reads_source_company_ids(tmp_path):
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        """
+        {
+          "cases": [
+            {
+              "company_id": "resolved-A",
+              "source_company_id": "source-A",
+              "anchor_action_id": "capital_return.dividend_increase",
+              "anchor_action_date": "2024-06-01T00:00:00+00:00"
+            }
+          ]
+        }
+        """.strip()
+    )
+
+    excluded = _load_excluded_historical_case_keys([report_path])
+
+    assert excluded == {
+        ("source-A", pd.Timestamp("2024-06-01T00:00:00Z"), "capital_return.dividend_increase"),
+    }
+
+
