@@ -734,3 +734,34 @@ def _query_source_hits(
     return out
 
 
+def _update_prefilter_hits(
+    profiles: Dict[str, Dict[str, Any]],
+    field_name: str,
+    source_hits: Dict[str, int],
+) -> None:
+    for case_key, hits in source_hits.items():
+        profile = profiles.get(case_key)
+        if profile is None:
+            continue
+        profile[field_name] = int(hits or 0)
+
+
+def _build_facts_prefilter_query(*, source_path: Path, historical_backfill_mode: bool) -> Optional[str]:
+    source_sql = _parquet_source_sql(source_path)
+    if not source_sql:
+        return None
+    ingested_clause = "" if historical_backfill_mode else "AND (f.ingested_at IS NULL OR try_cast(f.ingested_at AS TIMESTAMP) <= c.as_of_time)"
+    return f"""
+        SELECT c.case_key, COUNT(*) AS facts_hits
+        FROM hist_cases c
+        JOIN read_parquet({source_sql}, union_by_name=True) f
+          ON CAST(f.entity_id AS VARCHAR) = c.company_id
+        WHERE (f.published_at IS NULL OR try_cast(f.published_at AS TIMESTAMP) <= c.as_of_time)
+          AND (f.effective_at IS NULL OR try_cast(f.effective_at AS TIMESTAMP) <= c.as_of_time)
+          AND (f.valid_from IS NULL OR try_cast(f.valid_from AS TIMESTAMP) <= c.as_of_time)
+          AND (f.valid_to IS NULL OR try_cast(f.valid_to AS TIMESTAMP) > c.as_of_time)
+          {ingested_clause}
+        GROUP BY 1
+    """
+
+

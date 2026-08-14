@@ -900,3 +900,13 @@ def _new_audit_event(event_type: str, details: Dict[str, Any]) -> AuditEvent:
     )
 
 
+def _parse_ts(value: str | datetime) -> datetime:
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        dt = pd.to_datetime(value, utc=True).to_pydatetime()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
