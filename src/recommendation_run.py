@@ -454,7 +454,7 @@ class RecommendationRunStore:
             except Exception:
                 pass
 
-    def get_run(self, run_id: str) :
+    def get_run(self, run_id: str) -> Optional[RecommendationRun]:
         p = self._run_path(run_id)
         if not p.exists():
             return None
