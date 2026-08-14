@@ -56,3 +56,15 @@ Preferred process:
 3. review the markdown queue
 4. turn repeated failures into planner regression fixtures
 
+## Command
+
+```bash
+cd .
+
+PYTHONPATH=. \
+python ./scripts/evaluate_planner_quality.py \
+  --runs-roots /tmp/recommendation_runs_prod_causal_v2_20 \
+  --out-json /tmp/planner_eval_report.json \
+  --out-md /tmp/planner_eval_report.md \
+  --review-count 20
+```

@@ -334,3 +334,65 @@ def _explanation_score(top_plan: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _structural_score(top_plan: Dict[str, Any]) -> Dict[str, Any]:
+    top_steps = list(top_plan.get("steps", []) or [])
+    action_ids = [str(step.get("action_id", "") or "") for step in top_steps]
+    duplicates = len(set(action_ids)) != len(action_ids)
+    prerequisite_ok = True
+    seen: set[str] = set()
+    for step in top_steps:
+        prereqs = set(step.get("prerequisites", []) or [])
+        if not prereqs.issubset(seen):
+            prerequisite_ok = False
+            break
+        seen.add(str(step.get("action_id", "") or ""))
+    raw_total = float(((top_plan.get("score_components", {}) or {}).get("raw_total_score", top_plan.get("score", 0.0)) or 0.0))
+    components = [
+        1.0 if top_steps else 0.0,
+        1.0 if not duplicates else 0.0,
+        1.0 if prerequisite_ok else 0.0,
+        1.0 if raw_total > 0.0 else 0.0,
+    ]
+    return {
+        "duplicates": duplicates,
+        "prerequisite_ok": prerequisite_ok,
+        "raw_total_score": round(raw_total, 6),
+        "score": round(sum(components) / len(components), 6),
+    }
+
+
+def _top_three_quality(plans: Sequence[Dict[str, Any]], support_by_action: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    top_three = list(plans[:3] or [])
+    if not top_three:
+        return {
+            "positive_rate": 0.0,
+            "unique_path_rate": 0.0,
+            "unsupported_rate": 1.0,
+            "score": 0.0,
+        }
+    paths = []
+    positive = 0
+    unsupported = 0
+    for plan in top_three:
+        steps = list(plan.get("steps", []) or [])
+        paths.append(tuple(step.get("action_id") for step in steps))
+        raw_total = float(((plan.get("score_components", {}) or {}).get("raw_total_score", plan.get("score", 0.0)) or 0.0))
+        if raw_total > 0.0:
+            positive += 1
+        if any(
+            not ((support_by_action.get(step.get("action_id"), {}) or {}).get("precedent_confidence", 0.0) > 0.0 or (support_by_action.get(step.get("action_id"), {}) or {}).get("has_causal", False))
+            for step in steps
+        ):
+            unsupported += 1
+    positive_rate = positive / len(top_three)
+    unique_path_rate = len(set(paths)) / len(top_three)
+    unsupported_rate = unsupported / len(top_three)
+    score = (0.45 * positive_rate) + (0.25 * unique_path_rate) + (0.30 * (1.0 - unsupported_rate))
+    return {
+        "positive_rate": round(positive_rate, 6),
+        "unique_path_rate": round(unique_path_rate, 6),
+        "unsupported_rate": round(unsupported_rate, 6),
+        "score": round(score, 6),
+    }
+
+
