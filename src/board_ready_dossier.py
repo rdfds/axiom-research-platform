@@ -1404,3 +1404,20 @@ def _optimize_enum_parameter(
     return str(current_value or ""), "Keep the enum choice aligned with the current financing and execution environment."
 
 
+def _optimize_boolean_parameter(
+    *,
+    action_id: str,
+    parameter_name: str,
+    current_value: Any,
+    context: Dict[str, Optional[float]],
+) -> Tuple[bool, str]:
+    net_leverage = context.get("net_leverage") or 0.0
+    credit_window = context.get("credit_window") or 0.0
+    maturity_wall = context.get("maturity_wall") or 0.0
+    if parameter_name == "secured_flag":
+        value = bool(net_leverage >= 3.25 or (credit_window < 0.40 and maturity_wall >= 0.20))
+        why = "Use secured structure only when clearing the financing reliably is more valuable than preserving unencumbered flexibility."
+        return value, why
+    return bool(current_value), "Preserve the current boolean posture unless the financing constraint clearly changes."
+
+

@@ -69,3 +69,92 @@ def _snapshot() -> dict:
     }
 
 
+def _candidate_row(
+    action_id: str,
+    *,
+    value_creation: float,
+    risk_reduction: float = 0.0,
+    growth: float = 0.0,
+    rating_preservation: float = 0.0,
+    optionality: float = 0.0,
+    pass_probability: float = 0.92,
+    evaluation_confidence: float = 0.74,
+    precedent_confidence: float = 0.42,
+    params: dict | None = None,
+) -> dict:
+    action_type, action_subtype = action_id.split(".", 1)
+    return {
+        "candidate": {
+            "candidate_id": f"cand-{action_subtype}",
+            "run_id": "run-1",
+            "action_id": action_id,
+            "action_type": action_type,
+            "action_subtype": action_subtype,
+            "parameters": params or {},
+            "feasibility": {
+                "feasibility_status": "feasible",
+                "pass_probability": pass_probability,
+            },
+            "mechanism_activation": {
+                "mechanisms": [
+                    {
+                        "mechanism_id": "capital_efficiency",
+                        "activation_strength": 0.65,
+                    }
+                ],
+                "narrative_explanation": f"{action_id} addresses the current strategic setup.",
+            },
+            "impact_distribution": {
+                "objectives": {
+                    "value_creation": {"median": value_creation},
+                    "risk_reduction": {"median": risk_reduction},
+                    "growth": {"median": growth},
+                    "rating_preservation": {"median": rating_preservation},
+                    "optionality": {"median": optionality},
+                },
+                "key_drivers": [
+                    {
+                        "driver_name": "causal_model_blend_weight",
+                        "contribution": 0.21,
+                        "explanation": f"Causal support is active for {action_id}.",
+                    }
+                ],
+                "uncertainty_score": 0.18,
+            },
+            "risks": [
+                {
+                    "risk_type": "execution",
+                    "probability": 0.18,
+                    "explanation": f"{action_id} requires disciplined execution.",
+                }
+            ],
+            "structural_sanity_flags": [],
+            "evaluation_confidence": evaluation_confidence,
+        },
+        "precedent_pack": {
+            "precedent_confidence": precedent_confidence,
+            "mismatch_diagnostics": {
+                "out_of_sample_flag": False,
+                "retrieval_tier": "exact",
+            },
+            "tail_events": [
+                {
+                    "metric": "credit_spread_change",
+                    "description": "Tail spread widening in the bottom decile.",
+                }
+            ],
+            "second_order_effects": [
+                {
+                    "follow_on_action_id": "capital_return.open_market_buyback",
+                    "frequency": 0.41,
+                }
+            ],
+            "outcome_distributions": {
+                "horizon_12m": {
+                    "valuation_multiple_change": {"sample_size": 28},
+                }
+            },
+        },
+    }
+
+
