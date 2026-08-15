@@ -439,3 +439,23 @@ def _heuristic_summary(
     }
 
 
+def _step_card(action_id: Optional[str], support: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    support = dict(support or {})
+    return {
+        "action_id": action_id,
+        "pass_probability": float(support.get("pass_probability", 0.0) or 0.0),
+        "evaluation_confidence": float(support.get("evaluation_confidence", 0.0) or 0.0),
+        "precedent_confidence": float(support.get("precedent_confidence", 0.0) or 0.0),
+        "has_causal": bool(support.get("has_causal", False)),
+        "impact_snapshot": dict(support.get("impact_snapshot", {}) or {}),
+    }
+
+
+def _has_causal(candidate: Dict[str, Any]) -> bool:
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    for driver in list(impact.get("key_drivers", []) or []):
+        if str(driver.get("driver_name", "") or "").startswith("causal_model_"):
+            return True
+    return False
+
+
