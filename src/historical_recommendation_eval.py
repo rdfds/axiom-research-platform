@@ -765,3 +765,84 @@ def _build_facts_prefilter_query(*, source_path: Path, historical_backfill_mode:
     """
 
 
+def _build_timeseries_prefilter_query(*, source_path: Path, historical_backfill_mode: bool) -> Optional[str]:
+    source_sql = _parquet_source_sql(source_path)
+    if not source_sql:
+        return None
+    ingested_clause = (
+        ""
+        if historical_backfill_mode
+        else """
+          AND (
+                (ts.ingested_at IS NULL OR try_cast(ts.ingested_at AS TIMESTAMP) <= c.as_of_time)
+                AND (ts.ingestion_time IS NULL OR try_cast(ts.ingestion_time AS TIMESTAMP) <= c.as_of_time)
+              )
+        """
+    )
+    return f"""
+        SELECT c.case_key, COUNT(*) AS timeseries_hits
+        FROM hist_cases c
+        JOIN read_parquet({source_sql}, union_by_name=True) ts
+          ON (
+               CAST(ts.entity_id AS VARCHAR) = c.company_id
+               OR CAST(ts.company_id AS VARCHAR) = c.company_id
+             )
+        WHERE (
+                coalesce(
+                    try_cast(ts.published_at AS TIMESTAMP),
+                    try_cast(ts.available_time AS TIMESTAMP),
+                    try_cast(ts.trade_date AS TIMESTAMP),
+                    try_cast(ts.event_time AS TIMESTAMP)
+                ) IS NULL
+                OR coalesce(
+                    try_cast(ts.published_at AS TIMESTAMP),
+                    try_cast(ts.available_time AS TIMESTAMP),
+                    try_cast(ts.trade_date AS TIMESTAMP),
+                    try_cast(ts.event_time AS TIMESTAMP)
+                ) <= c.as_of_time
+              )
+          {ingested_clause}
+        GROUP BY 1
+    """
+
+
+def _build_events_prefilter_query(*, source_path: Path, historical_backfill_mode: bool) -> Optional[str]:
+    source_sql = _parquet_source_sql(source_path)
+    if not source_sql:
+        return None
+    ingested_clause = (
+        ""
+        if historical_backfill_mode
+        else """
+          AND (
+                (e.ingested_at IS NULL OR try_cast(e.ingested_at AS TIMESTAMP) <= c.as_of_time)
+                AND (e.created_at IS NULL OR try_cast(e.created_at AS TIMESTAMP) <= c.as_of_time)
+              )
+        """
+    )
+    return f"""
+        SELECT c.case_key, COUNT(*) AS events_hits
+        FROM hist_cases c
+        JOIN read_parquet({source_sql}, union_by_name=True) e
+          ON (
+               CAST(e.company_id AS VARCHAR) = c.company_id
+               OR CAST(e.company_id AS VARCHAR) = c.source_company_id
+             )
+        WHERE (
+                coalesce(
+                    try_cast(e.published_at AS TIMESTAMP),
+                    try_cast(e.announced_at AS TIMESTAMP),
+                    try_cast(e.effective_at AS TIMESTAMP)
+                ) IS NULL
+                OR coalesce(
+                    try_cast(e.published_at AS TIMESTAMP),
+                    try_cast(e.announced_at AS TIMESTAMP),
+                    try_cast(e.effective_at AS TIMESTAMP)
+                ) <= c.as_of_time
+              )
+          AND (e.effective_at IS NULL OR try_cast(e.effective_at AS TIMESTAMP) <= c.as_of_time)
+          {ingested_clause}
+        GROUP BY 1
+    """
+
+

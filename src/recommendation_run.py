@@ -910,3 +910,25 @@ def _parse_ts(value: str | datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _json_sanitize(obj: Any) -> Any:
+    if is_dataclass(obj):
+        return _json_sanitize(asdict(obj))
+    if isinstance(obj, dict):
+        return {k: _json_sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_sanitize(v) for v in obj]
+    if isinstance(obj, pd.Timestamp):
+        if obj.tzinfo is None:
+            return obj.tz_localize(timezone.utc).isoformat()
+        return obj.tz_convert(timezone.utc).isoformat()
+    if isinstance(obj, datetime):
+        if obj.tzinfo is None:
+            obj = obj.replace(tzinfo=timezone.utc)
+        return obj.astimezone(timezone.utc).isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, complex):
+        return float(obj.real) if abs(obj.imag) < 1e-9 else None
+    return obj
+
+
