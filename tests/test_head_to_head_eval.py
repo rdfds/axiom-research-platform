@@ -97,3 +97,125 @@ def _candidate(action_id: str, *, value_creation: float) -> dict:
     }
 
 
+def test_build_head_to_head_report_and_markdown(tmp_path: Path):
+    runs_root = tmp_path / "runs_root"
+    (runs_root / "runs").mkdir(parents=True, exist_ok=True)
+    artifacts = runs_root / "artifacts" / "run_id=run-1"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    baseline_dir = tmp_path / "baselines"
+    baseline_dir.mkdir(parents=True, exist_ok=True)
+
+    run = _run()
+    (runs_root / "runs" / "run_id=run-1.json").write_text(json.dumps(run.to_dict()))
+
+    buyback = _candidate("capital_return.open_market_buyback", value_creation=0.24)
+    refi = _candidate("capital_structure.refinancing", value_creation=0.11)
+    precedent_pack = {
+        "precedent_confidence": 0.43,
+        "mismatch_diagnostics": {"out_of_sample_flag": False, "retrieval_tier": "exact"},
+        "tail_events": [
+            {"metric": "equity_return_vs_sector", "horizon": "12m", "value": -0.38, "description": "Bottom decile historical outcome."}
+        ],
+        "outcome_distributions": {"horizon_12m": {"valuation_multiple_change": {"sample_size": 25}}},
+    }
+    (artifacts / "FeasibilityResults.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"candidate": {"candidate_id": buyback["candidate_id"], "action_id": buyback["action_id"]}, "action_candidate": buyback, "feasible": True},
+                    {"candidate": {"candidate_id": refi["candidate_id"], "action_id": refi["action_id"]}, "action_candidate": refi, "feasible": True},
+                ]
+            }
+        )
+    )
+    (artifacts / "PrecedentMatches.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"candidate": buyback, "precedent_pack": precedent_pack},
+                    {"candidate": refi, "precedent_pack": precedent_pack},
+                ]
+            }
+        )
+    )
+
+    (baseline_dir / "company_id=0000320193.md").write_text(
+        "\n".join(
+            [
+                "Baseline-Type: activist",
+                "Task-Match: direct",
+                "",
+                "# Problem",
+                "The company has excess capital and limited near-term better uses.",
+                "",
+                "# Recommendation",
+                "Prefer buybacks because they are more flexible than a special dividend.",
+                "",
+                "# Why Now",
+                "Liquidity is ample, leverage is moderate, and waiting mostly leaves capital idle.",
+                "",
+                "# Alternatives",
+                "- A special dividend is less flexible.",
+                "- A tuck-in deal does not clear the hurdle today.",
+                "",
+                "# Risks",
+                "- If conditions weaken, the company may need the cash back.",
+                "",
+                "# Kill Criteria",
+                "- Stop if leverage rises materially.",
+                "- Stop if a better strategic use for capital appears.",
+                "",
+                "# Evidence",
+                "- Net leverage is 1.7x.",
+                "- Liquidity is about 10% of market value.",
+            ]
+        )
+    )
+    realized_path = tmp_path / "realized.parquet"
+    pd.DataFrame(
+        [
+            {
+                "company_id": "0000320193",
+                "action_date": "2026-04-15",
+                "normalized_action_id": "capital_return.open_market_buyback",
+                "normalized_action_family": "capital_return",
+            },
+            {
+                "company_id": "0000320193",
+                "action_date": "2026-05-20",
+                "normalized_action_id": "capital_structure.refinancing",
+                "normalized_action_family": "capital_structure",
+            },
+        ]
+    ).to_parquet(realized_path, index=False)
+
+    report = build_head_to_head_report(
+        runs_roots=[runs_root],
+        snapshot_root=_snapshot_root(tmp_path),
+        baseline_dir=baseline_dir,
+        realized_outcomes_path=realized_path,
+        review_count=5,
+    )
+    markdown = render_head_to_head_markdown(report)
+    export_summary = export_blinded_packets(
+        report=report,
+        packets_out_dir=tmp_path / "packets",
+        answer_key_out=tmp_path / "answer_key.json",
+    )
+
+    assert report["runs_analyzed"] == 1
+    assert report["cases"][0]["comparison"]["winner"] in {"model", "baseline", "tie"}
+    assert report["cases"][0]["baseline_packet"]["baseline_type"] == "activist"
+    assert report["cases"][0]["baseline_packet"]["task_match"] == "direct"
+    assert report["cases"][0]["blinded_review"]["packet_A"]
+    assert report["aggregate"]["sign_test_p_value"] is not None
+    assert report["aggregate"]["by_task_match"]["direct"]["case_count"] == 1
+    assert report["aggregate"]["ex_post"]["coverage_rate"] == 1.0
+    assert report["cases"][0]["ex_post"]["model"]["score"] == 1.0
+    assert report["cases"][0]["ex_post"]["baseline"]["score"] == 1.0
+    assert export_summary["exported_packets"] == 1
+    assert (tmp_path / "packets" / "run_id=run-1.json").exists()
+    assert "Head-To-Head Benchmark Report" in markdown
+    assert "By Task Match" in markdown
+    assert "Winner:" in markdown
+    assert "Ex-Post Alignment" in markdown

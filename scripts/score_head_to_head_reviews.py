@@ -8,7 +8,7 @@ from pathlib import Path
 from src.head_to_head_eval import render_head_to_head_markdown
 
 
-def main() :
+def main() -> None:
     parser = argparse.ArgumentParser(description="Render a head-to-head benchmark report into a human review markdown.")
     parser.add_argument("--report-json", required=True)
     parser.add_argument("--out-md", required=True)
