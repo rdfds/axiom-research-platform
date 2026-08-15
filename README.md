@@ -21,11 +21,11 @@ This is not a dashboard wrapper or a single prediction model. It is an evidence 
 
 Corporate-finance decisions fail quietly when the data is not aligned to the decision date. Axiom is designed around the difficult parts:
 
-1. **Point-in-time correctness** — features are built from what was available at the time, not from a later revised dataset.
-2. **Traceability** — every feature records provenance, confidence, units, fallback behavior, and timing.
-3. **Evidence separation** — explanatory valuation relationships are kept distinct from forward expectation claims and causal claims.
-4. **Honest uncertainty** — thin precedent or action families fall back to broader evidence instead of receiving false precision.
-5. **Decision translation** — model output becomes sizing guidance, objections, regret cases, and monitoring triggers rather than a chart with no action.
+1. **Point-in-time correctness**: features are built from what was available at the time, not from a later revised dataset.
+2. **Traceability**: every feature records provenance, confidence, units, fallback behavior, and timing.
+3. **Evidence separation**: explanatory valuation relationships are kept distinct from forward expectation claims and causal claims.
+4. **Honest uncertainty**: thin precedent or action families fall back to broader evidence instead of receiving false precision.
+5. **Decision translation**: model output becomes sizing guidance, objections, regret cases, and monitoring triggers rather than a chart with no action.
 
 ## Architecture
 
