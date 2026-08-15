@@ -396,3 +396,46 @@ def _top_three_quality(plans: Sequence[Dict[str, Any]], support_by_action: Dict[
     }
 
 
+def _heuristic_summary(
+    top_plan: Dict[str, Any],
+    top_plan_support: Dict[str, Any],
+    structural: Dict[str, Any],
+    explanation: Dict[str, Any],
+    top_three_quality: Dict[str, Any],
+) -> Dict[str, Any]:
+    support_score = (
+        (0.35 * float(top_plan_support.get("avg_precedent_confidence", 0.0) or 0.0))
+        + (0.25 * float(top_plan_support.get("avg_pass_probability", 0.0) or 0.0))
+        + (0.20 * float(top_plan_support.get("causal_step_rate", 0.0) or 0.0))
+        + (0.20 * (1.0 if top_plan_support.get("all_steps_supported") else 0.0))
+    )
+    overall = (
+        0.30 * float(structural.get("score", 0.0) or 0.0)
+        + 0.30 * float(explanation.get("score", 0.0) or 0.0)
+        + 0.20 * float(top_three_quality.get("score", 0.0) or 0.0)
+        + 0.20 * support_score
+    )
+    flags: List[str] = []
+    if float(structural.get("raw_total_score", 0.0) or 0.0) <= 0.0:
+        flags.append("top_plan_nonpositive")
+    if not top_plan_support.get("all_steps_supported"):
+        flags.append("top_plan_unsupported_step")
+    if not explanation.get("summary_present"):
+        flags.append("top_plan_summary_missing")
+    if float(explanation.get("complete_step_rate", 0.0) or 0.0) < 1.0:
+        flags.append("step_explanation_incomplete")
+    if float(top_three_quality.get("positive_rate", 0.0) or 0.0) < 1.0:
+        flags.append("top3_contains_nonpositive")
+    if float(top_three_quality.get("unique_path_rate", 0.0) or 0.0) < 1.0:
+        flags.append("top3_duplicate_paths")
+
+    return {
+        "structural_score": round(float(structural.get("score", 0.0) or 0.0), 6),
+        "support_score": round(support_score, 6),
+        "explanation_score": round(float(explanation.get("score", 0.0) or 0.0), 6),
+        "top3_score": round(float(top_three_quality.get("score", 0.0) or 0.0), 6),
+        "overall_score": round(overall, 6),
+        "flags": flags,
+    }
+
+

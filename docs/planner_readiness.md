@@ -134,3 +134,8 @@ Planner work can proceed now, but user-facing UX should assume:
 
 The current system is suitable for a snappy UI only if the UI does not block on full recommendation completion.
 
+## Recommendation
+
+Proceed to step 9 now.
+
+Do not spend more time on precedent or causal before planner implementation unless a regression appears.
