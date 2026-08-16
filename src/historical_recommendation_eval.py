@@ -846,3 +846,37 @@ def _build_events_prefilter_query(*, source_path: Path, historical_backfill_mode
     """
 
 
+def _build_ownership_prefilter_query(*, source_path: Path, historical_backfill_mode: bool) -> Optional[str]:
+    source_sql = _parquet_source_sql(source_path)
+    if not source_sql:
+        return None
+    ingested_clause = "" if historical_backfill_mode else "AND (o.ingested_at IS NULL OR try_cast(o.ingested_at AS TIMESTAMP) <= c.as_of_time)"
+    return f"""
+        SELECT c.case_key, COUNT(*) AS ownership_hits
+        FROM hist_cases c
+        JOIN read_parquet({source_sql}, union_by_name=True) o
+          ON CAST(o.company_id AS VARCHAR) = c.company_id
+        WHERE (o.published_at IS NULL OR try_cast(o.published_at AS TIMESTAMP) <= c.as_of_time)
+          AND (o.effective_at IS NULL OR try_cast(o.effective_at AS TIMESTAMP) <= c.as_of_time)
+          {ingested_clause}
+        GROUP BY 1
+    """
+
+
+def _build_ratings_prefilter_query(*, source_path: Path, historical_backfill_mode: bool) -> Optional[str]:
+    source_sql = _parquet_source_sql(source_path)
+    if not source_sql:
+        return None
+    ingested_clause = "" if historical_backfill_mode else "AND (r.ingested_at IS NULL OR try_cast(r.ingested_at AS TIMESTAMP) <= c.as_of_time)"
+    return f"""
+        SELECT c.case_key, COUNT(*) AS ratings_hits
+        FROM hist_cases c
+        JOIN read_parquet({source_sql}, union_by_name=True) r
+          ON CAST(r.company_id AS VARCHAR) = c.company_id
+        WHERE (r.published_at IS NULL OR try_cast(r.published_at AS TIMESTAMP) <= c.as_of_time)
+          AND (r.effective_at IS NULL OR try_cast(r.effective_at AS TIMESTAMP) <= c.as_of_time)
+          {ingested_clause}
+        GROUP BY 1
+    """
+
+

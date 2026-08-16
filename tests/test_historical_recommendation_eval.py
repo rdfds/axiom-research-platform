@@ -109,3 +109,29 @@ def test_load_excluded_historical_case_keys_reads_source_company_ids(tmp_path):
     }
 
 
+def test_normalize_fixed_historical_case_uses_source_company_id_when_present():
+    normalized = _normalize_fixed_historical_case(
+        {
+            "company_id": "resolved-A",
+            "source_company_id": "source-A",
+            "ticker": "AAA",
+            "mapping_method": "ticker",
+            "anchor_action_id": "capital_return.dividend_increase",
+            "anchor_action_family": "capital_return",
+            "anchor_action_date": "2024-06-01T00:00:00+00:00",
+            "as_of_time": "2024-02-02T00:00:00+00:00",
+        }
+    )
+
+    assert normalized == {
+        "company_id": "resolved-A",
+        "source_company_id": "source-A",
+        "ticker": "AAA",
+        "mapping_method": "ticker",
+        "anchor_action_date": "2024-06-01T00:00:00+00:00",
+        "anchor_action_id": "capital_return.dividend_increase",
+        "anchor_action_family": "capital_return",
+        "as_of_time": "2024-02-02T00:00:00+00:00",
+    }
+
+
