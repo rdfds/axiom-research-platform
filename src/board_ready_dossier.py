@@ -1421,3 +1421,155 @@ def _optimize_boolean_parameter(
     return bool(current_value), "Preserve the current boolean posture unless the financing constraint clearly changes."
 
 
+def _recommended_funding_mix(
+    *,
+    action_id: str,
+    context: Dict[str, Optional[float]],
+) -> Dict[str, float]:
+    net_leverage = context.get("net_leverage") or 0.0
+    maturity_wall = context.get("maturity_wall") or 0.0
+    credit_window = context.get("credit_window") or 0.0
+    liquidity_to_market_cap = context.get("liquidity_to_market_cap") or 0.0
+
+    if _has_capital_return([action_id]):
+        if net_leverage < 1.75 and maturity_wall < 0.15 and credit_window >= 0.60:
+            return {"cash": 0.6, "debt": 0.4, "equity": 0.0}
+        if liquidity_to_market_cap >= 0.08:
+            return {"cash": 0.8, "debt": 0.2, "equity": 0.0}
+        return {"cash": 1.0, "debt": 0.0, "equity": 0.0}
+    if _is_mna_action(action_id):
+        if net_leverage < 2.0 and credit_window >= 0.60:
+            return {"cash": 0.5, "debt": 0.5, "equity": 0.0}
+        if net_leverage < 2.75:
+            return {"cash": 0.5, "debt": 0.35, "equity": 0.15}
+        return {"cash": 0.4, "debt": 0.3, "equity": 0.3}
+    return {"cash": 1.0, "debt": 0.0, "equity": 0.0}
+
+
+def _funding_mix_reason(
+    *,
+    action_id: str,
+    context: Dict[str, Optional[float]],
+    mix: Dict[str, float],
+) -> str:
+    net_leverage = context.get("net_leverage")
+    maturity_wall = context.get("maturity_wall")
+    if _has_capital_return([action_id]):
+        return (
+            f"Keep return-of-capital funding mostly cash-backed; net leverage at {_fmt_x(net_leverage)}"
+            f" and a {_fmt_pct(maturity_wall)} maturity wall do not justify a debt-heavy payout."
+            if net_leverage is not None and maturity_wall is not None
+            else "Keep return-of-capital funding mostly cash-backed unless the balance sheet is exceptionally underlevered."
+        )
+    if _is_mna_action(action_id):
+        return "Use a mixed funding stack only up to the point where pro forma leverage stays inside the target band."
+    return f"Recommended mix is {_format_parameter_value('funding_mix_object', mix)}."
+
+
+def _parameter_optimization_objective(action_id: str) -> str:
+    if _has_capital_return([action_id]):
+        return "Maximize per-share value while preserving balance-sheet flexibility."
+    if _is_balance_sheet_action(action_id):
+        return "Solve the financing problem with the smallest durable increase in risk or cost."
+    if _is_mna_action(action_id):
+        return "Keep the strategic upside while capping financing and integration regret."
+    if _is_divestiture_action(action_id):
+        return "Release capital and simplify the portfolio without forcing strategic over-disposal."
+    return "Tune parameters to solve the diagnosed problem with minimal irreversible regret."
+
+
+def _parameter_guardrails(
+    *,
+    action_id: str,
+    context: Dict[str, Optional[float]],
+    recommended_parameters: Dict[str, Dict[str, Any]],
+) -> List[str]:
+    net_leverage = context.get("net_leverage")
+    maturity_wall = context.get("maturity_wall")
+    guardrails: List[str] = []
+    if _has_capital_return([action_id]):
+        guardrails.append("Keep return-of-capital funding primarily cash-backed unless leverage is clearly below target.")
+        if maturity_wall is not None and maturity_wall >= 0.20:
+            guardrails.append(f"Do not size the payout as if the {_fmt_pct(maturity_wall)} near-term maturity wall does not exist.")
+    if _is_balance_sheet_action(action_id):
+        guardrails.append("Do not raise materially more capital than the identified coverage need plus a buffer.")
+        guardrails.append("Bias financing structure toward certainty before carry optimization.")
+    if _is_mna_action(action_id):
+        guardrails.append("Keep pro forma leverage inside the recommended post-close band.")
+        guardrails.append("Do not solve a strategic case by overusing equity or balance-sheet stretch.")
+    if _is_divestiture_action(action_id):
+        guardrails.append("Keep the sold package targeted; scale only if strategic coherence improves.")
+    if net_leverage is not None and net_leverage >= 3.0:
+        guardrails.append(f"Current net leverage at {_fmt_x(net_leverage)} leaves little room for parameter drift.")
+    return guardrails[:4]
+
+
+def _parameter_rejected_variants(
+    *,
+    action_id: str,
+    recommended_parameters: Dict[str, Dict[str, Any]],
+    context: Dict[str, Optional[float]],
+) -> List[str]:
+    rejected: List[str] = []
+    if _has_capital_return([action_id]):
+        rejected.append("Debt-heavy capital return that relies on a still-open credit window.")
+        rejected.append("Token sizing that leaves the capital-allocation problem essentially unchanged.")
+    if _is_balance_sheet_action(action_id):
+        rejected.append("Max-size issuance that creates future leverage or dilution regret after the immediate problem is solved.")
+    if _is_mna_action(action_id):
+        rejected.append("Acquisition sizing that only works if synergies or financing terms are perfect.")
+    if _is_divestiture_action(action_id):
+        rejected.append("Over-broad divestiture simply to maximize proceeds in one step.")
+    if not rejected and recommended_parameters:
+        rejected.append("Parameter choices that maximize size before proving the case on flexibility, risk, and timing.")
+    return rejected[:3]
+
+
+def _parameter_optimization_summary(
+    *,
+    action_id: str,
+    recommended_parameters: Dict[str, Dict[str, Any]],
+    sizing_guidance: Dict[str, Any],
+) -> str:
+    parts: List[str] = []
+    if "size_pct_market_cap" in recommended_parameters:
+        parts.append(f"Target {_humanize_action_id(action_id).lower()} around {recommended_parameters['size_pct_market_cap'].get('recommended_range')}.")
+    elif "size_absolute_usd" in recommended_parameters:
+        parts.append(f"Target notional around {recommended_parameters['size_absolute_usd'].get('recommended_range')}.")
+    elif "amount_usd" in recommended_parameters:
+        parts.append(f"Target proceeds around {recommended_parameters['amount_usd'].get('recommended_range')}.")
+    elif "amount_refinanced_usd" in recommended_parameters:
+        parts.append(f"Target refinanced notional around {recommended_parameters['amount_refinanced_usd'].get('recommended_range')}.")
+    elif "initial_yield_pct" in recommended_parameters:
+        parts.append(f"Start the payout around {recommended_parameters['initial_yield_pct'].get('recommended_range')} of yield.")
+    elif "percent_change" in recommended_parameters:
+        parts.append(f"Keep the dividend change around {recommended_parameters['percent_change'].get('recommended_range')}.")
+    if "funding_mix" in recommended_parameters:
+        parts.append(f"Fund it with {recommended_parameters['funding_mix'].get('recommended_value_formatted')}.")
+    if "annualized_cash_commitment_usd" in recommended_parameters:
+        parts.append(f"Keep annualized cash commitment around {recommended_parameters['annualized_cash_commitment_usd'].get('recommended_range')}.")
+    if "pace" in recommended_parameters:
+        parts.append(f"Execution pace should be {recommended_parameters['pace'].get('recommended_value_formatted')}.")
+    if "tenor_years" in recommended_parameters:
+        parts.append(f"Tenor should center on {recommended_parameters['tenor_years'].get('recommended_value_formatted')}.")
+    if "new_tenor_years" in recommended_parameters:
+        parts.append(f"Tenor should center on {recommended_parameters['new_tenor_years'].get('recommended_value_formatted')}.")
+    if not parts and sizing_guidance.get("recommended_range"):
+        parts.append(f"Use the sizing posture of {sizing_guidance.get('recommended_range')}.")
+    return " ".join(part for part in parts if part).strip()
+
+
+def _bounded_amount_band(target: float) -> Tuple[float, float]:
+    lower = max(0.0, target * 0.85)
+    upper = max(lower, target * 1.15)
+    return lower, upper
+
+
+def _format_numeric_range(*, parameter_name: str, lower: float, upper: float) -> str:
+    if parameter_name in {"tenor_years", "new_tenor_years", "call_protection_years"}:
+        return f"{lower:.1f} to {upper:.1f} years"
+    if parameter_name == "leverage_post_close":
+        return f"{lower:.2f}x to {upper:.2f}x"
+    return f"{lower:.2f} to {upper:.2f}"
+
+

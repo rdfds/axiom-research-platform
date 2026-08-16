@@ -158,3 +158,85 @@ def _candidate_row(
     }
 
 
+def test_build_board_ready_dossier_generates_executive_thesis():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            value_creation=0.16,
+            risk_reduction=0.31,
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            value_creation=0.29,
+            optionality=0.11,
+            params={"size_pct_market_cap": 0.06},
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            value_creation=0.11,
+            rating_preservation=-0.05,
+            optionality=-0.03,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=3,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    assert dossier["executive_summary"]
+    assert dossier["confidence_posture"] in {"high_conviction", "supported_but_conditional", "conditional"}
+    assert "balance-sheet capacity" in dossier["recommendation_thesis"]["problem_statement"].lower()
+    assert "sequence matters" in dossier["recommendation_thesis"]["why_this_plan"].lower()
+    assert "debt markets are currently" in dossier["recommendation_thesis"]["why_now"].lower()
+    assert dossier["status_quo_view"]["recommended_posture"] in {"act_now", "conditional_action", "wait"}
+    assert dossier["sizing_guidance"]["recommended_range"]
+    assert dossier["sizing_guidance"]["scenario_overrides"]
+    assert dossier["parameter_optimization"]["summary"]
+    assert dossier["parameter_optimization"]["recommended_parameters"]
+    assert any(
+        recommendation.get("recommended_value_formatted")
+        for recommendation in dossier["parameter_optimization"]["recommended_parameters"].values()
+    )
+    assert dossier["regret_analysis"]["if_we_act_and_are_wrong"]
+    assert dossier["regret_analysis"]["if_we_wait_and_are_wrong"]
+    assert dossier["rating_cliff_analysis"]["constraint_posture"]
+    assert dossier["signaling_analysis"]["signal_posture"]
+    assert dossier["recommendation_thesis"]["sizing_summary"]["recommended_range"]
+    assert dossier["recommendation_thesis"]["parameter_summary"]
+    assert dossier["recommendation_thesis"]["regret_balance"]
+    assert dossier["recommendation_thesis"]["rating_constraint_posture"]
+    assert dossier["recommendation_thesis"]["market_signal_posture"]
+    assert dossier["ranked_action_views"]
+    assert dossier["ranked_action_views"][0]["sizing_guidance"]["recommended_range"]
+    assert dossier["ranked_action_views"][0]["parameter_optimization"]["summary"]
+    assert dossier["ranked_action_views"][0]["regret_balance"]
+    assert dossier["ranked_action_views"][0]["rating_constraint_posture"]
+    assert dossier["ranked_action_views"][0]["signal_posture"]
+    assert dossier["supporting_evidence"]
+    assert dossier["step_theses"][0]["supporting_facts"]
+    assert dossier["alternative_analysis"]
+    assert any(
+        "maturity wall" in item["why_not_preferred"].lower()
+        or "stickier payout" in item["why_not_preferred"].lower()
+        or "expected utility" in item["why_not_preferred"].lower()
+        for item in dossier["alternative_analysis"]
+    )
+    assert dossier["risk_case"]["kill_criteria"]
+    assert dossier["scorecard"]["average_precedent_confidence"] > 0.0
+
+
