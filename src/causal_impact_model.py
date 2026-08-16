@@ -1188,3 +1188,14 @@ def _default_model_path() -> Path:
     return DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT
 
 
+@lru_cache(maxsize=2)
+def load_default_causal_impact_model(path_str: Optional[str] = None) -> Optional[CausalImpactModel]:
+    path = Path(path_str) if path_str else _default_model_path()
+    if not path.exists():
+        return None
+    try:
+        return CausalImpactModel.from_path(path)
+    except Exception:
+        return None
+
+
