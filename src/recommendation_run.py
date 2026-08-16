@@ -932,3 +932,18 @@ def _json_sanitize(obj: Any) -> Any:
     return obj
 
 
+def _canonical_json_hash(payload: Dict[str, Any]) -> str:
+    txt = json.dumps(_json_sanitize(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(txt.encode("utf-8")).hexdigest()
+
+
+def _hash_snapshot(snapshot: Dict[str, Any]) -> str:
+    return _canonical_json_hash(snapshot)
+
+
+def _snapshot_version(snapshot: Dict[str, Any]) -> str:
+    prov = snapshot['provenance'] if isinstance(snapshot.get("provenance"), dict) else {}
+    version = prov.get("computation_version") or snapshot.get("snapshot_version")
+    return str(version or "unknown")
+
+

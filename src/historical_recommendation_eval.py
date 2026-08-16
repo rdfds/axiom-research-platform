@@ -880,3 +880,16 @@ def _build_ratings_prefilter_query(*, source_path: Path, historical_backfill_mod
     """
 
 
+def _parquet_source_sql(path: Path) -> Optional[str]:
+    if not path.exists():
+        return None
+    if path.is_file():
+        return _sql_quote(path.as_posix())
+    files = sorted(path.glob("year=*/part.parquet"))
+    if not files:
+        files = sorted(path.rglob("*.parquet"))
+    if not files:
+        return None
+    return "[" + ", ".join(_sql_quote(file.as_posix()) for file in files) + "]"
+
+
