@@ -2101,3 +2101,168 @@ def test_nonpayer_public_recap_preference_does_not_fire_for_low_debt_pressure(tm
     assert "capital_structure.equity_issuance" not in action_ids
 
 
+def test_market_shutdown_regular_payer_surfaces_equity_backstop(tmp_path: Path):
+    features = _market_shutdown_regular_payer_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = set(_candidate_action_ids(out))
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_market_shutdown_regular_payer_guard_does_not_fire_for_low_debt_profile(tmp_path: Path):
+    features = _market_shutdown_low_debt_regular_payer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.equity_issuance" not in action_ids
+
+
+def test_strategic_regular_payer_recap_surfaces_equity(tmp_path: Path):
+    features = _strategic_regular_payer_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=12)
+    action_ids = _candidate_action_ids(out)
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_buyback_oriented_regular_payer_does_not_use_strategic_recap_override(tmp_path: Path):
+    features = _strategic_regular_payer_buyback_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=12)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.refinancing" in action_ids
+
+
+def test_buyback_regular_payer_recap_surfaces_equity(tmp_path: Path):
+    features = _buyback_regular_payer_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=12)
+    action_ids = _candidate_action_ids(out)
+    assert "capital_structure.equity_issuance" in action_ids
+
+
+def test_strategic_nonpayer_recap_prefers_equity_over_debt_tools(tmp_path: Path):
+    features = _strategic_nonpayer_recap_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=12)
+    action_ids = [row["action_id"] for row in out["candidates"]]
+    assert "capital_structure.equity_issuance" in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+    assert "capital_structure.exchange_offer" not in action_ids
+    assert "capital_structure.liability_management_exercise" not in action_ids
+
+
+def test_low_quality_strategic_nonpayer_does_not_trigger_equity_override(tmp_path: Path):
+    features = _low_quality_strategic_nonpayer_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=12)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_structure.refinancing" in action_ids
+
+
+def test_growth_substitution_requires_observed_weak_growth(tmp_path: Path):
+    features = _growth_missing_liquidity_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = set(_candidate_action_ids(out))
+    assert "mna.tuck_in_acquisition" not in action_ids
+    assert "mna.platform_acquisition" not in action_ids
+
+
+def test_dividend_cut_generated_for_stressed_existing_payer(tmp_path: Path):
+    features = _dividend_cut_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_cut" in action_ids
+
+
+def test_dividend_cut_generated_for_balance_sheet_pressure_regular_payer(tmp_path: Path):
+    features = _balance_sheet_pressure_dividend_cut_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_cut" in action_ids
+    assert "capital_return.dividend_increase" not in action_ids
+    assert "capital_structure.equity_issuance" not in action_ids
+    assert "capital_structure.refinancing" not in action_ids
+
+
+def test_dividend_cut_profile_prioritizes_dividend_cut_variants(tmp_path: Path):
+    features = _dividend_cut_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = _candidate_action_ids(out)
+    assert action_ids[:12] == ["capital_return.dividend_cut"] * 12
+
+
+def test_dividend_cut_not_generated_when_coverage_is_still_strong(tmp_path: Path):
+    features = _dividend_cut_feature_set()
+    features["capital_structure.interest_coverage"] = {"value": 10.5}
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = {row["action_id"] for row in out["candidates"]}
+    assert "capital_return.dividend_cut" not in action_ids
+
+
+def test_dividend_cut_generated_for_regular_payer_with_extreme_maturity_wall(tmp_path: Path):
+    features = _maturity_wall_dividend_cut_feature_set()
+    snapshot_root, snapshot = _write_snapshot(tmp_path, features)
+    run = _make_run(tmp_path, snapshot_root)
+    registry = build_default_action_schema_registry("v1.0")
+    engine = CandidateGenerationEngine(registry)
+
+    out = engine.generate_candidate_set(run=run, state_snapshot=snapshot, max_candidates=500)
+    action_ids = _candidate_action_ids(out)
+    assert "capital_return.dividend_cut" in action_ids
+    assert action_ids[:12] == ["capital_return.dividend_cut"] * 12
+
+
