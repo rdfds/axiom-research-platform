@@ -1042,3 +1042,126 @@ def _select_historical_cases(
     )
 
 
+def _summarize_historical_selection_pool(
+    *,
+    outcomes_path: Path,
+    families: Optional[Sequence[str]],
+    alignment_horizon_days: int,
+) -> Dict[str, Any]:
+    family_values = list(families or DEFAULT_FAMILIES)
+    max_event_date = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=max(1, int(alignment_horizon_days)))
+    max_event_date_naive = max_event_date.tz_convert(None).to_pydatetime()
+    query = """
+        SELECT
+            CAST(normalized_action_family AS VARCHAR) AS normalized_action_family,
+            COUNT(*) AS row_count,
+            SUM(CASE WHEN normalized_action_id IS NOT NULL THEN 1 ELSE 0 END) AS with_action_id_count,
+            SUM(CASE WHEN normalized_action_id IS NULL THEN 1 ELSE 0 END) AS missing_action_id_count
+        FROM read_parquet(?)
+        WHERE action_date IS NOT NULL
+          AND normalized_action_family IS NOT NULL
+          AND action_date <= ?
+    """
+    params: List[Any] = [str(outcomes_path), max_event_date_naive]
+    if family_values:
+        query += " AND normalized_action_family IN (" + ",".join(["?"] * len(family_values)) + ")"
+        params.extend(family_values)
+    query += " GROUP BY 1 ORDER BY 1"
+    frame = duckdb.execute(query, params).df()
+    if frame.empty:
+        return {
+            "families": family_values,
+            "total_rows": 0,
+            "with_action_id_count": 0,
+            "missing_action_id_count": 0,
+            "family_counts": {},
+        }
+
+    family_counts: Dict[str, Dict[str, int]] = {}
+    total_rows = 0
+    with_action_id_count = 0
+    missing_action_id_count = 0
+    for row in frame.itertuples(index=False):
+        family = str(row.normalized_action_family or "")
+        row_count = int(row.row_count or 0)
+        present = int(row.with_action_id_count or 0)
+        missing = int(row.missing_action_id_count or 0)
+        family_counts[family] = {
+            "row_count": row_count,
+            "with_action_id_count": present,
+            "missing_action_id_count": missing,
+        }
+        total_rows += row_count
+        with_action_id_count += present
+        missing_action_id_count += missing
+
+    return {
+        "families": family_values,
+        "total_rows": total_rows,
+        "with_action_id_count": with_action_id_count,
+        "missing_action_id_count": missing_action_id_count,
+        "family_counts": family_counts,
+    }
+
+
+def _load_action_support_summary(
+    *,
+    outcomes_path: Path,
+    manifest_path: Optional[Path],
+) -> Dict[str, Any]:
+    if manifest_path and manifest_path.exists():
+        try:
+            manifest = load_action_support_report(manifest_path)
+            if str(manifest.get("outcomes_path") or "") == str(outcomes_path):
+                return manifest
+        except Exception:
+            pass
+    return build_action_support_report(outcomes_path=outcomes_path)
+
+
+def _select_historical_cases_from_frame(
+    *,
+    frame: pd.DataFrame,
+    case_count: int,
+    lookback_days: int,
+    max_cases_per_company: int,
+) -> List[Dict[str, Any]]:
+    if frame.empty or case_count <= 0:
+        return []
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    company_counts: Dict[str, int] = {}
+    for row in frame.itertuples(index=False):
+        company_id = str(row.company_id)
+        if company_counts.get(company_id, 0) >= max(1, int(max_cases_per_company)):
+            continue
+        family = str(row.normalized_action_family or "")
+        resolved_company_id = str(getattr(row, "resolved_company_id", "") or company_id)
+        spec = {
+            "company_id": resolved_company_id,
+            "source_company_id": company_id,
+            "ticker": str(getattr(row, "ticker", "") or ""),
+            "mapping_method": str(getattr(row, "mapping_method", "") or ""),
+            "anchor_action_date": pd.Timestamp(row.action_date).tz_convert("UTC").isoformat(),
+            "anchor_action_id": str(row.normalized_action_id or ""),
+            "anchor_action_family": family,
+            "as_of_time": (pd.Timestamp(row.action_date).tz_convert("UTC") - pd.Timedelta(days=max(1, int(lookback_days)))).isoformat(),
+        }
+        buckets.setdefault(family, []).append(spec)
+        company_counts[company_id] = company_counts.get(company_id, 0) + 1
+    ordered_families = sorted(buckets.keys(), key=lambda key: (-len(buckets[key]), key))
+    selected: List[Dict[str, Any]] = []
+    while len(selected) < case_count:
+        made_progress = False
+        for family in ordered_families:
+            bucket = buckets.get(family, [])
+            if not bucket:
+                continue
+            selected.append(bucket.pop(0))
+            made_progress = True
+            if len(selected) >= case_count:
+                break
+        if not made_progress:
+            break
+    return selected
+
+
