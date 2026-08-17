@@ -376,3 +376,116 @@ def load_baseline_packet(*, company_id: str, as_of_time: str, baseline_dir: Path
     raise FileNotFoundError(f"baseline memo not found for company_id={company_id} under {baseline_dir}")
 
 
+def _load_baseline_json(*, path: Path, company_id: str, as_of_time: str) -> CanonicalPacket:
+    payload = json.loads(path.read_text())
+    action_path = [str(x or "") for x in list(payload.get("action_path", []) or [])]
+    alternatives = [str(x or "") for x in list(payload.get("alternatives", []) or [])]
+    risks = [str(x or "") for x in list(payload.get("risks", []) or [])]
+    kill_criteria = [str(x or "") for x in list(payload.get("kill_criteria", []) or [])]
+    evidence_points = [str(x or "") for x in list(payload.get("evidence_points", []) or [])]
+    raw_text = payload.get("raw_text") or "\n".join(
+        [
+            str(payload.get("problem_statement", "") or ""),
+            str(payload.get("recommendation_thesis", "") or ""),
+            str(payload.get("why_now", "") or ""),
+            *alternatives,
+            *risks,
+            *kill_criteria,
+            *evidence_points,
+        ]
+    )
+    if not action_path:
+        action_path = _infer_action_path(
+            " ".join(
+                [
+                    str(payload.get("primary_recommendation", "") or ""),
+                    str(payload.get("recommendation_thesis", "") or ""),
+                ]
+            )
+        )
+    baseline_type = str(payload.get("baseline_type", "") or "").strip() or _infer_baseline_type(str(payload))
+    task_match = str(payload.get("task_match", "") or "").strip() or _infer_task_match(baseline_type=baseline_type)
+    return CanonicalPacket(
+        packet_id=f"{company_id}:baseline:{path.name}",
+        company_id=company_id,
+        as_of_time=as_of_time,
+        source_type="baseline",
+        source_label=str(payload.get("source_label", path.name)),
+        primary_recommendation=str(payload.get("primary_recommendation", "") or _humanize_action(action_path[0] if action_path else "")),
+        action_path=action_path,
+        problem_statement=str(payload.get("problem_statement", "") or ""),
+        recommendation_thesis=str(payload.get("recommendation_thesis", "") or ""),
+        why_now=str(payload.get("why_now", "") or ""),
+        alternatives=alternatives,
+        risks=risks,
+        kill_criteria=kill_criteria,
+        evidence_points=evidence_points,
+        confidence_posture=str(payload.get("confidence_posture", "") or ""),
+        baseline_type=baseline_type,
+        task_match=task_match,
+        raw_text=str(raw_text or ""),
+    )
+
+
+def _load_baseline_markdown(*, path: Path, company_id: str, as_of_time: str) -> CanonicalPacket:
+    original_text = path.read_text()
+    metadata, text = _parse_markdown_preamble_metadata(original_text)
+    sections = _parse_markdown_sections(text)
+    recommendation_text = sections.get("recommendation", "") or sections.get("recommendation thesis", "")
+    action_path = _extract_action_path(recommendation_text) or _infer_action_path(recommendation_text)
+    alternatives = _split_bullets(sections.get("alternatives", ""))
+    risks = _split_bullets(sections.get("risks", ""))
+    kill_criteria = _split_bullets(sections.get("kill criteria", "")) or _split_bullets(sections.get("decision boundaries", ""))
+    evidence_points = _split_bullets(sections.get("evidence", ""))
+    primary_recommendation = _extract_primary_recommendation(sections.get("recommendation", "") or sections.get("recommendation thesis", ""))
+    baseline_type = str(metadata.get("baseline_type", "") or "").strip() or _infer_baseline_type(original_text)
+    task_match = str(metadata.get("task_match", "") or "").strip() or _infer_task_match(baseline_type=baseline_type)
+    return CanonicalPacket(
+        packet_id=f"{company_id}:baseline:{path.name}",
+        company_id=company_id,
+        as_of_time=as_of_time,
+        source_type="baseline",
+        source_label=path.name,
+        primary_recommendation=primary_recommendation,
+        action_path=action_path,
+        problem_statement=sections.get("problem", "") or sections.get("problem statement", ""),
+        recommendation_thesis=sections.get("recommendation", "") or sections.get("recommendation thesis", ""),
+        why_now=sections.get("why now", ""),
+        alternatives=alternatives,
+        risks=risks,
+        kill_criteria=kill_criteria,
+        evidence_points=evidence_points,
+        confidence_posture="",
+        baseline_type=baseline_type,
+        task_match=task_match,
+        raw_text=text,
+    )
+
+
+def compare_packets(*, model_packet: CanonicalPacket, baseline_packet: CanonicalPacket, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    model_scores = _score_packet(packet=model_packet, snapshot=snapshot)
+    baseline_scores = _score_packet(packet=baseline_packet, snapshot=snapshot)
+    model_overall = float(model_scores.get("overall_score", 0.0) or 0.0)
+    baseline_overall = float(baseline_scores.get("overall_score", 0.0) or 0.0)
+    delta = round(model_overall - baseline_overall, 6)
+    if delta > 0.05:
+        winner = "model"
+    elif delta < -0.05:
+        winner = "baseline"
+    else:
+        winner = "tie"
+    component_deltas = {
+        key: round(float(model_scores.get(key, 0.0) or 0.0) - float(baseline_scores.get(key, 0.0) or 0.0), 6)
+        for key in ["completeness_score", "grounding_score", "timing_score", "alternatives_score", "risk_score", "language_score"]
+    }
+    return {
+        "winner": winner,
+        "model_score": model_overall,
+        "baseline_score": baseline_overall,
+        "score_delta": delta,
+        "component_deltas": component_deltas,
+        "model_scores": model_scores,
+        "baseline_scores": baseline_scores,
+    }
+
+
