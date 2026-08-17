@@ -1051,7 +1051,7 @@ class CausalImpactModel:
         regime: Dict[str, Any],
         bundle: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, float]]:
-        if isinstance(features, dict) and isinstance(features['features'], dict):
+        if isinstance(features, dict) and isinstance(features.get("features"), dict):
             features = dict(features.get("features", {}) or {})
         feature_source: Dict[str, Any] = {}
         if isinstance(features, dict):
