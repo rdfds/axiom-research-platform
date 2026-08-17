@@ -135,3 +135,271 @@ def test_normalize_fixed_historical_case_uses_source_company_id_when_present():
     }
 
 
+def test_load_fixed_historical_cases_dedupes_and_preserves_order(tmp_path):
+    report_a = tmp_path / "report_a.json"
+    report_a.write_text(
+        """
+        {
+          "cases": [
+            {
+              "company_id": "resolved-A",
+              "source_company_id": "source-A",
+              "anchor_action_id": "capital_return.dividend_increase",
+              "anchor_action_family": "capital_return",
+              "anchor_action_date": "2024-06-01T00:00:00+00:00",
+              "as_of_time": "2024-02-02T00:00:00+00:00"
+            },
+            {
+              "company_id": "resolved-B",
+              "source_company_id": "source-B",
+              "anchor_action_id": "capital_structure.refinancing",
+              "anchor_action_family": "capital_structure",
+              "anchor_action_date": "2024-05-01T00:00:00+00:00",
+              "as_of_time": "2024-01-02T00:00:00+00:00"
+            }
+          ]
+        }
+        """.strip()
+    )
+    report_b = tmp_path / "report_b.json"
+    report_b.write_text(
+        """
+        {
+          "cases": [
+            {
+              "company_id": "resolved-B",
+              "source_company_id": "source-B",
+              "anchor_action_id": "capital_structure.refinancing",
+              "anchor_action_family": "capital_structure",
+              "anchor_action_date": "2024-05-01T00:00:00+00:00",
+              "as_of_time": "2024-01-02T00:00:00+00:00"
+            },
+            {
+              "company_id": "resolved-C",
+              "source_company_id": "source-C",
+              "anchor_action_id": "capital_return.special_dividend",
+              "anchor_action_family": "capital_return",
+              "anchor_action_date": "2024-04-01T00:00:00+00:00",
+              "as_of_time": "2023-12-02T00:00:00+00:00"
+            }
+          ]
+        }
+        """.strip()
+    )
+
+    cases = _load_fixed_historical_cases([report_a, report_b], case_count=5)
+
+    assert [case["source_company_id"] for case in cases] == ["source-A", "source-B", "source-C"]
+    assert [case["anchor_action_id"] for case in cases] == [
+        "capital_return.dividend_increase",
+        "capital_structure.refinancing",
+        "capital_return.special_dividend",
+    ]
+
+
+def test_load_fixed_historical_cases_uses_all_manifest_cases_when_case_count_omitted(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        """
+        {
+          "case_count": 3,
+          "cases": [
+            {
+              "company_id": "resolved-A",
+              "source_company_id": "source-A",
+              "anchor_action_id": "capital_return.dividend_increase",
+              "anchor_action_family": "capital_return",
+              "anchor_action_date": "2024-06-01T00:00:00+00:00",
+              "as_of_time": "2024-02-02T00:00:00+00:00"
+            },
+            {
+              "company_id": "resolved-B",
+              "source_company_id": "source-B",
+              "anchor_action_id": "capital_structure.refinancing",
+              "anchor_action_family": "capital_structure",
+              "anchor_action_date": "2024-05-01T00:00:00+00:00",
+              "as_of_time": "2024-01-02T00:00:00+00:00"
+            },
+            {
+              "company_id": "resolved-C",
+              "source_company_id": "source-C",
+              "anchor_action_id": "capital_return.special_dividend",
+              "anchor_action_family": "capital_return",
+              "anchor_action_date": "2024-04-01T00:00:00+00:00",
+              "as_of_time": "2023-12-02T00:00:00+00:00"
+            }
+          ]
+        }
+        """.strip()
+    )
+
+    cases = _load_fixed_historical_cases([manifest])
+
+    assert [case["source_company_id"] for case in cases] == ["source-A", "source-B", "source-C"]
+
+
+def test_build_historical_recommendation_report_skips_prefilter_for_fixed_cases(tmp_path, monkeypatch):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        """
+        {
+          "cases": [
+            {
+              "company_id": "resolved-B",
+              "source_company_id": "source-B",
+              "anchor_action_id": "capital_structure.refinancing",
+              "anchor_action_family": "capital_structure",
+              "anchor_action_date": "2024-05-01T00:00:00+00:00",
+              "as_of_time": "2024-01-02T00:00:00+00:00"
+            },
+            {
+              "company_id": "resolved-A",
+              "source_company_id": "source-A",
+              "anchor_action_id": "capital_return.dividend_increase",
+              "anchor_action_family": "capital_return",
+              "anchor_action_date": "2024-06-01T00:00:00+00:00",
+              "as_of_time": "2024-02-02T00:00:00+00:00"
+            }
+          ]
+        }
+        """.strip()
+    )
+
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._summarize_historical_selection_pool",
+        lambda **_: {"family_counts": {}},
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._load_action_support_summary",
+        lambda **_: {"support_mode_counts": {}, "exact_status_counts": {}, "actions": {}},
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._prefilter_case_support",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("prefilter should be skipped for fixed cases")),
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._load_realized_outcomes_lookup",
+        lambda *_args, **_kwargs: {},
+    )
+
+    class _FakeBuilder:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+    monkeypatch.setattr("src.historical_recommendation_eval.CompanyStateBuilder", _FakeBuilder)
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._build_historical_alias_overrides",
+        lambda cases: {str(case["company_id"]): str(case["source_company_id"]) for case in cases},
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._cached_snapshot_loader",
+        lambda *args, **kwargs: (lambda company_id, as_of_dt: {"company_id": company_id, "features": []}),
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._snapshot_coverage_summary",
+        lambda _snapshot: {"non_missing_core_features": 5},
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._snapshot_has_meaningful_coverage",
+        lambda _coverage, min_non_missing_core_features=3: True,
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._run_store_bindings",
+        lambda: (
+            lambda root: object(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            lambda **kwargs: f"run-{kwargs['company_id']}",
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval.execute_recommendation_run",
+        lambda **kwargs: {
+            "run_id": kwargs["run_id"],
+            "artifacts": {},
+        },
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._top_action_ids",
+        lambda _package: ["capital_structure.equity_issuance"],
+    )
+    monkeypatch.setattr(
+        "src.historical_recommendation_eval._score_ex_post_alignment",
+        lambda **kwargs: {"score": 1.0, "reason": "anchor_primary_exact"},
+    )
+
+    report = build_historical_recommendation_report(
+        runs_root=tmp_path / "runs",
+        outcomes_path=tmp_path / "outcomes.parquet",
+        entity_graph_path=tmp_path / "entity_graph.parquet",
+        entity_identifier_path=tmp_path / "entity_identifier.parquet",
+        entity_table_path=tmp_path / "entity.parquet",
+        fixed_case_paths=[manifest],
+        case_count=2,
+        raw_timeseries_path=tmp_path / "raw_timeseries.parquet",
+        event_store_path=tmp_path / "event_store.parquet",
+        facts_path=tmp_path / "facts",
+        ownership_summary_path=tmp_path / "ownership.parquet",
+        issuer_ratings_path=tmp_path / "ratings.parquet",
+    )
+
+    assert report["selection_mode"] == "fixed_cases"
+    assert report["family_prefilter_summary"] == {}
+    assert [case["source_company_id"] for case in report["cases"]] == ["source-B", "source-A"]
+
+
+def test_summarize_historical_selection_pool_tracks_missing_action_ids(tmp_path):
+    outcomes_path = tmp_path / "outcomes.parquet"
+    frame = pd.DataFrame(
+        [
+            {
+                "company_id": "A",
+                "action_date": "2024-06-01T00:00:00Z",
+                "normalized_action_id": "mna.tuck_in_acquisition",
+                "normalized_action_family": "mna",
+            },
+            {
+                "company_id": "B",
+                "action_date": "2024-05-01T00:00:00Z",
+                "normalized_action_id": None,
+                "normalized_action_family": "mna",
+            },
+            {
+                "company_id": "C",
+                "action_date": "2024-04-01T00:00:00Z",
+                "normalized_action_id": None,
+                "normalized_action_family": "portfolio",
+            },
+        ]
+    )
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True)
+    frame.to_parquet(outcomes_path, index=False)
+
+    summary = _summarize_historical_selection_pool(
+        outcomes_path=outcomes_path,
+        families=["mna", "portfolio"],
+        alignment_horizon_days=30,
+    )
+
+    assert summary["families"] == ["mna", "portfolio"]
+    assert summary["total_rows"] == 3
+    assert summary["with_action_id_count"] == 1
+    assert summary["missing_action_id_count"] == 2
+    assert summary["family_counts"] == {
+        "mna": {
+            "row_count": 2,
+            "with_action_id_count": 1,
+            "missing_action_id_count": 1,
+        },
+        "portfolio": {
+            "row_count": 1,
+            "with_action_id_count": 0,
+            "missing_action_id_count": 1,
+        },
+    }
+
+

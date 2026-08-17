@@ -893,3 +893,152 @@ def _parquet_source_sql(path: Path) -> Optional[str]:
     return "[" + ", ".join(_sql_quote(file.as_posix()) for file in files) + "]"
 
 
+def _sql_quote(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def render_historical_recommendation_markdown(report: Dict[str, Any]) -> str:
+    aggregate = dict(report.get("aggregate", {}) or {})
+    family_prefilter = dict(report.get("family_prefilter_summary", {}) or {})
+    action_support = dict(report.get("action_support_summary", {}) or {})
+    lines = [
+        "# Historical Recommendation Validation",
+        "",
+        f"- Supported case target: `{int(report.get('case_count_requested', 0) or 0)}`",
+        f"- Candidate cases scanned: `{int(report.get('candidate_case_count', 0) or 0)}`",
+        f"- Runs analyzed: `{int(report.get('runs_analyzed', 0) or 0)}`",
+        f"- Supported runs: `{int(report.get('supported_case_count', 0) or 0)}`",
+        f"- Completed runs: `{int(aggregate.get('completed_case_count', 0) or 0)}`",
+        f"- Scored runs: `{int(aggregate.get('scored_case_count', 0) or 0)}`",
+        f"- Unsupported runs: `{int(aggregate.get('unsupported_case_count', 0) or 0)}`",
+        f"- Mean alignment score: `{aggregate.get('mean_alignment_score', 0.0):.3f}`",
+        f"- Strong alignment rate: `{aggregate.get('strong_alignment_rate', 0.0):.3f}`",
+        f"- Primary exact-match rate: `{aggregate.get('anchor_primary_exact_rate', 0.0):.3f}`",
+        f"- Primary family-match rate: `{aggregate.get('anchor_primary_family_rate', 0.0):.3f}`",
+        f"- Primary support-adjusted rate: `{aggregate.get('anchor_primary_support_adjusted_rate', 0.0):.3f}`",
+        f"- Any exact-match rate: `{aggregate.get('future_any_exact_rate', 0.0):.3f}`",
+        f"- Any family-match rate: `{aggregate.get('future_any_family_rate', 0.0):.3f}`",
+        f"- Any support-adjusted rate: `{aggregate.get('future_any_support_adjusted_rate', 0.0):.3f}`",
+        "",
+        "## Candidate Support",
+        "",
+    ]
+    if family_prefilter:
+        for family, summary in family_prefilter.items():
+            lines.append(
+                f"- `{family}` candidates=`{int(summary.get('candidate_count', 0) or 0)}` "
+                f"estimated_supported=`{int(summary.get('estimated_supported_count', 0) or 0)}` "
+                f"rate=`{float(summary.get('estimated_supported_rate', 0.0) or 0.0):.3f}` "
+                f"mean_score=`{float(summary.get('mean_prefilter_score', 0.0) or 0.0):.3f}`"
+            )
+    else:
+        lines.append("- No candidate support profile available.")
+    lines.extend([
+        "",
+        "## Action Data Support",
+        "",
+    ])
+    if action_support:
+        exact_status_counts = dict(action_support.get("exact_status_counts", {}) or {})
+        support_mode_counts = dict(action_support.get("support_mode_counts", {}) or {})
+        lines.append(f"- Exact support statuses: `{json.dumps(exact_status_counts, sort_keys=True)}`")
+        lines.append(f"- Support modes: `{json.dumps(support_mode_counts, sort_keys=True)}`")
+    else:
+        lines.append("- No action support summary available.")
+    lines.extend([
+        "",
+        "## Review Queue",
+        "",
+    ])
+    for case in report.get("cases", [])[:20]:
+        if case.get("error"):
+            lines.append(f"- `{case.get('company_id')}` `{case.get('as_of_time')}`: error `{case.get('error')}`")
+            continue
+        if case.get("unsupported_reason"):
+            prefilter = dict(case.get("prefilter_support", {}) or {})
+            suffix = ""
+            if prefilter:
+                suffix = (
+                    f" prefilter=`{prefilter.get('support_bucket', '')}`"
+                    f" score=`{float(prefilter.get('score', 0.0) or 0.0):.3f}`"
+                )
+            lines.append(
+                f"- `{case.get('company_id')}` `{case.get('as_of_time')}`: unsupported "
+                f"`{case.get('unsupported_reason')}`{suffix}"
+            )
+            continue
+        hist = dict(case.get("historical_alignment", {}) or {})
+        score_value = hist.get("score")
+        score_text = "n/a" if score_value is None else f"{float(score_value):.3f}"
+        anchor_support = dict(case.get("anchor_action_support", {}) or {})
+        anchor_support_text = str(anchor_support.get("support_mode") or "")
+        lines.append(
+            f"- `{case['company_id']}` `{case.get('as_of_time')}` "
+            f"`{','.join(case.get('top_action_ids', []) or [])}` "
+            f"vs `{case.get('anchor_action_id')}` "
+            f"score=`{score_text}` reason=`{hist.get('reason', '')}` support=`{anchor_support_text}`"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def _select_historical_cases(
+    *,
+    outcomes_path: Path,
+    entity_identifier_path: Path,
+    entity_table_path: Path,
+    case_count: int,
+    lookback_days: int,
+    alignment_horizon_days: int,
+    families: Optional[Sequence[str]],
+    max_cases_per_company: int,
+    limit: Optional[int],
+    exclude_case_keys: Optional[Set[Tuple[str, pd.Timestamp, str]]] = None,
+) -> List[Dict[str, Any]]:
+    family_values = list(families or DEFAULT_FAMILIES)
+    max_event_date = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=max(1, int(alignment_horizon_days)))
+    max_event_date_naive = max_event_date.tz_convert(None).to_pydatetime()
+    query = """
+        SELECT
+            CAST(company_id AS VARCHAR) AS company_id,
+            CAST(ticker AS VARCHAR) AS ticker,
+            CAST(action_date AS TIMESTAMP) AS action_date,
+            CAST(normalized_action_id AS VARCHAR) AS normalized_action_id,
+            CAST(normalized_action_family AS VARCHAR) AS normalized_action_family
+        FROM read_parquet(?)
+        WHERE action_date IS NOT NULL
+          AND normalized_action_id IS NOT NULL
+          AND normalized_action_family IS NOT NULL
+          AND action_date <= ?
+    """
+    params: List[Any] = [str(outcomes_path), max_event_date_naive]
+    if family_values:
+        query += " AND normalized_action_family IN (" + ",".join(["?"] * len(family_values)) + ")"
+        params.extend(family_values)
+    query += " ORDER BY action_date DESC"
+    frame = duckdb.execute(query, params).df()
+    if frame.empty:
+        return []
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    frame = frame.dropna(subset=["company_id", "action_date", "normalized_action_id", "normalized_action_family"])
+    frame = _filter_excluded_historical_cases(frame, exclude_case_keys)
+    if frame.empty:
+        return []
+    frame = _resolve_supported_historical_entities(
+        frame=frame,
+        entity_identifier_path=entity_identifier_path,
+        entity_table_path=entity_table_path,
+        lookback_days=lookback_days,
+    )
+    if frame.empty:
+        return []
+    frame = frame.sort_values("action_date", ascending=False).reset_index(drop=True)
+    if limit:
+        frame = frame.head(int(limit)).reset_index(drop=True)
+    return _select_historical_cases_from_frame(
+        frame=frame,
+        case_count=case_count,
+        lookback_days=lookback_days,
+        max_cases_per_company=max_cases_per_company,
+    )
+
+
