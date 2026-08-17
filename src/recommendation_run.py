@@ -960,3 +960,47 @@ def _snapshot_has_material_features(snapshot: Dict[str, Any]) -> bool:
     return False
 
 
+def _id_aliases(company_id: str) -> List[str]:
+    cid = str(company_id).strip()
+    if not cid:
+        return []
+    out = [cid]
+    if cid.isdigit():
+        out.extend([cid.lstrip("0") or "0", cid.zfill(10), cid.zfill(6)])
+    return list(dict.fromkeys([x for x in out if x]))
+
+
+def _skip_company_validation() -> bool:
+    return str(os.environ.get("AXIOM_SKIP_RUN_COMPANY_VALIDATION", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _aliases_from_cik_gvkey(company_id: str, cik_gvkey_path: Path = Path("data/wrds/compustat/cik_gvkey.csv.gz")) -> List[str]:
+    if not cik_gvkey_path.exists():
+        return []
+    try:
+        df = pd.read_csv(cik_gvkey_path, dtype=str)
+    except Exception:
+        return []
+    if df.empty:
+        return []
+
+    df.columns = [c.lower() for c in df.columns]
+    if "gvkey" not in df.columns or "cik" not in df.columns:
+        return []
+
+    aliases = set(_id_aliases(company_id))
+    gv = df["gvkey"].astype(str).str.strip()
+    cik = df["cik"].astype(str).str.strip()
+    mask = gv.isin(aliases) | gv.str.zfill(6).isin({a.zfill(6) for a in aliases if a.isdigit()})
+    mask = mask | cik.isin(aliases) | cik.str.zfill(10).isin({a.zfill(10) for a in aliases if a.isdigit()})
+    if not mask.any():
+        return []
+
+    out: List[str] = []
+    for x in df.loc[mask, "gvkey"].dropna().astype(str).tolist():
+        out.extend(_id_aliases(x))
+    for x in df.loc[mask, "cik"].dropna().astype(str).tolist():
+        out.extend(_id_aliases(x))
+    return list(dict.fromkeys(out))
+
+
