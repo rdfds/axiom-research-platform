@@ -947,3 +947,16 @@ def _snapshot_version(snapshot: Dict[str, Any]) -> str:
     return str(version or "unknown")
 
 
+def _snapshot_has_material_features(snapshot: Dict[str, Any]) -> bool:
+    features = snapshot.get("features")
+    if not isinstance(features, dict) or not features:
+        return False
+    for value in features.values():
+        if isinstance(value, dict):
+            if value.get("value") is not None:
+                return True
+        elif value is not None:
+            return True
+    return False
+
+

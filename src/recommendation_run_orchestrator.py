@@ -50,3 +50,45 @@ def _causal_bindings():
     return build_causal_model_risk_report
 
 
+def _precedent_bindings():
+    from .pipeline.precedent_index import build_precedent_index
+    from .pipeline.run import run_precedent
+    from .pipeline.types import PrecedentPack
+
+    return build_precedent_index, run_precedent, PrecedentPack
+
+
+def _dossier_bindings():
+    from .board_ready_dossier import build_board_ready_dossier
+
+    return build_board_ready_dossier
+
+
+def _truthy_env(name: str) -> bool:
+    return str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _run_store_bindings():
+    from .recommendation_run import (
+        RecommendationRunStore,
+        _apply_scenario_overrides,
+        _hash_snapshot,
+        _parse_ts,
+        _resolve_snapshot,
+        _snapshot_company_aliases,
+        create_recommendation_run,
+        validate_plan_hard_constraints,
+    )
+
+    return (
+        RecommendationRunStore,
+        _apply_scenario_overrides,
+        _hash_snapshot,
+        _parse_ts,
+        _resolve_snapshot,
+        _snapshot_company_aliases,
+        create_recommendation_run,
+        validate_plan_hard_constraints,
+    )
+
+
