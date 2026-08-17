@@ -28,3 +28,26 @@ def _load_json_arg(raw: str | None, file_path: str | None) -> dict | None:
     return None
 
 
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Create RecommendationRun")
+    p.add_argument("--company-id", required=True)
+    p.add_argument("--as-of", required=True)
+
+    p.add_argument("--objectives-json", default=None, help="Inline JSON object for ObjectiveVector")
+    p.add_argument("--objectives-file", default=None, help="Path to JSON file for ObjectiveVector")
+
+    p.add_argument("--constraints-json", default=None, help="Inline JSON object for ConstraintSet")
+    p.add_argument("--constraints-file", default=None, help="Path to JSON file for ConstraintSet")
+
+    p.add_argument("--scenario-json", default=None, help="Inline JSON object for ScenarioAssumptions")
+    p.add_argument("--scenario-file", default=None, help="Path to JSON file for ScenarioAssumptions")
+
+    p.add_argument("--snapshot-root", default=None)
+    p.add_argument("--snapshot-path", default=None)
+    p.add_argument("--entity-graph-path", default="data/inputs_layer/entity_graph.parquet")
+    p.add_argument("--entity-identifier-path", default="data/inputs_layer/entity_identifier.parquet")
+    p.add_argument("--runs-root", default="data/recommendation_runs")
+    p.add_argument("--planner-random-seed", type=int, default=None)
+    return p.parse_args()
+
+
