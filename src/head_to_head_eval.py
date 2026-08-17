@@ -489,3 +489,78 @@ def compare_packets(*, model_packet: CanonicalPacket, baseline_packet: Canonical
     }
 
 
+def export_blinded_packets(
+    *,
+    report: Dict[str, Any],
+    packets_out_dir: str | Path,
+    answer_key_out: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    out_dir = Path(packets_out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    answer_key: Dict[str, Dict[str, Any]] = {}
+    exported = 0
+    for case in list(report.get("cases", []) or []):
+        run_id = str(case.get("run_id", "") or "")
+        company_id = str(case.get("company_id", "") or "")
+        blinded = dict(case.get("blinded_review", {}) or {})
+        if not run_id or not blinded:
+            continue
+        payload = {
+            "run_id": run_id,
+            "company_id": company_id,
+            "judge_prompt": blinded.get("judge_prompt", ""),
+            "packet_A": blinded.get("packet_A", {}),
+            "packet_B": blinded.get("packet_B", {}),
+        }
+        (out_dir / f"run_id={run_id}.json").write_text(json.dumps(payload, indent=2))
+        answer_key[run_id] = {
+            "company_id": company_id,
+            "order": blinded.get("order"),
+            "comparison": case.get("comparison", {}),
+            "ex_post": case.get("ex_post", {}),
+        }
+        exported += 1
+    if answer_key_out:
+        Path(answer_key_out).write_text(json.dumps(answer_key, indent=2))
+    return {"exported_packets": exported, "packets_out_dir": str(out_dir), "answer_key_out": str(answer_key_out) if answer_key_out else None}
+
+
+def _score_packet(*, packet: CanonicalPacket, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    completeness_score = 1.0 if all(
+        [
+            packet.problem_statement,
+            packet.recommendation_thesis,
+            packet.why_now,
+            packet.alternatives,
+            packet.risks,
+            packet.kill_criteria,
+        ]
+    ) else 0.0
+    grounding_score = _grounding_score(packet=packet, snapshot=snapshot)
+    timing_score = _timing_score(packet.why_now)
+    alternatives_score = _alternatives_score(packet.alternatives)
+    risk_score = _risk_score(packet.risks, packet.kill_criteria)
+    language_score = 0.0 if _RAW_ACTION_ID_RE.search(packet.raw_text) else 1.0
+    overall_score = round(
+        (
+            completeness_score
+            + grounding_score
+            + timing_score
+            + alternatives_score
+            + risk_score
+            + language_score
+        )
+        / 6.0,
+        6,
+    )
+    return {
+        "overall_score": overall_score,
+        "completeness_score": completeness_score,
+        "grounding_score": grounding_score,
+        "timing_score": timing_score,
+        "alternatives_score": alternatives_score,
+        "risk_score": risk_score,
+        "language_score": language_score,
+    }
+
+
