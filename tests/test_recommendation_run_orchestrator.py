@@ -66,3 +66,26 @@ def _write_keyed_snapshot(tmp_path: Path, as_of: str = "2026-02-28") -> Path:
     return root
 
 
+def _stub_precedent_runner(**kwargs):
+    action_id = kwargs.get("action_id")
+    score_map = {
+        "capital_return.open_market_buyback": 0.24,
+        "capital_structure.refinancing": 0.12,
+        "capital_structure.equity_issuance": -0.08,
+    }
+    p50 = score_map.get(str(action_id), 0.01)
+    dist = ImpactDistribution(
+        metric="outcome_pe_12m",
+        horizon_months=12,
+        p25=p50 - 0.1,
+        p50=p50,
+        p75=p50 + 0.1,
+        n=25,
+    )
+    return PrecedentPack(
+        matches=[{"action_id": str(action_id), "distance": 1.0}],
+        distributions=[dist],
+        mismatch_diagnostics={},
+    )
+
+

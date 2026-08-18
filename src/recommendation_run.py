@@ -1004,3 +1004,87 @@ def _aliases_from_cik_gvkey(company_id: str, cik_gvkey_path: Path = Path("data/w
     return list(dict.fromkeys(out))
 
 
+def _snapshot_company_aliases(company_id: str, entity_identifier_path: Path) -> List[str]:
+    aliases = list(_id_aliases(company_id))
+    aliases.extend(_aliases_from_cik_gvkey(company_id))
+    aliases = list(dict.fromkeys(aliases))
+    if not entity_identifier_path.exists():
+        return aliases
+
+    try:
+        df = _read_parquet_columns(entity_identifier_path, ["entity_id", "identifier_value"])
+    except Exception:
+        return aliases
+
+    id_aliases = set(aliases)
+    mask = df["entity_id"].astype(str).isin(id_aliases) | df["identifier_value"].astype(str).isin(id_aliases)
+    if not mask.any():
+        return aliases
+
+    for x in df.loc[mask, "entity_id"].dropna().astype(str).tolist():
+        aliases.extend(_id_aliases(x))
+    for x in df.loc[mask, "identifier_value"].dropna().astype(str).tolist():
+        aliases.extend(_id_aliases(x))
+
+    return list(dict.fromkeys(aliases))
+
+
+def _resolve_snapshot(
+    company_id: str,
+    as_of_time: datetime,
+    snapshot_root: Optional[Path],
+    snapshot_path: Optional[Path],
+    snapshot_builder: Optional[Any],
+    snapshot_loader: Optional[Callable[[str, datetime], Dict[str, Any]]],
+    aliases: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    if snapshot_loader is not None:
+        snap = snapshot_loader(company_id, as_of_time)
+        if not isinstance(snap, dict):
+            raise ValueError("snapshot_loader must return dict snapshot")
+        return snap
+
+    alias_values = list(dict.fromkeys(list(aliases or []) + _id_aliases(company_id)))
+    as_of_date = as_of_time.strftime("%Y-%m-%d")
+
+    if snapshot_root is not None:
+        for alias in alias_values:
+            p = snapshot_root / "keyed" / f"as_of_date={as_of_date}" / f"company_id={alias}.json"
+            if not p.exists():
+                continue
+            for line in p.read_text().splitlines():
+                if line.strip():
+                    return json.loads(line)
+
+    if snapshot_path is not None and snapshot_path.exists():
+        with snapshot_path.open("r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                row_cid = str(row.get("company_id", ""))
+                row_asof = pd.to_datetime(row.get("as_of_time"), utc=True, errors="coerce")
+                if pd.isna(row_asof):
+                    continue
+                if row_cid in alias_values and row_asof.strftime("%Y-%m-%d") == as_of_date:
+                    return row
+
+    if snapshot_builder is not None:
+        if hasattr(snapshot_builder, "get_snapshot"):
+            row = snapshot_builder.get_snapshot(company_id, as_of_time)
+        elif hasattr(snapshot_builder, "build"):
+            row = snapshot_builder.build(company_id, as_of_time)
+        else:
+            raise ValueError("snapshot_builder must expose get_snapshot(...) or build(...)")
+        if is_dataclass(row):
+            return asdict(row)
+        if isinstance(row, dict):
+            return row
+        raise ValueError(f"Unsupported snapshot builder return type: {type(row)}")
+
+    raise ValueError(
+        "Could not resolve frozen snapshot. Provide one of: "
+        "snapshot_loader, snapshot_root, snapshot_path, snapshot_builder."
+    )
+
+

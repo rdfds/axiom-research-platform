@@ -92,3 +92,471 @@ def _run_store_bindings():
     )
 
 
+def execute_recommendation_run(
+    run_id: str,
+    runs_root: str | Path = "data/recommendation_runs",
+    snapshot_root: Optional[str | Path] = None,
+    snapshot_path: Optional[str | Path] = None,
+    snapshot_loader: Optional[Callable[[str, datetime], Dict[str, Any]]] = None,
+    entity_identifier_path: str | Path = "data/inputs_layer/entity_identifier.parquet",
+    action_ids: Optional[Sequence[str]] = None,
+    action_type: Optional[str] = None,
+    max_candidates: int = 12,
+    min_candidates_target: int = 0,
+    strict_evidence: bool = False,
+    precedent_top_k: int = 0,
+    outcomes_path: Optional[str | Path] = None,
+    config_path: Optional[str | Path] = None,
+    top_plans: int = 3,
+    registry: Optional[ActionSchemaRegistry] = None,
+    precedent_runner: Optional[Callable[..., PrecedentPack]] = None,
+) -> Dict[str, Any]:
+    """Execute RecommendationRun lifecycle and attach all stage artifacts."""
+    import json as _json
+    import time as _time
+
+    t0 = _time.time()
+
+    def _debug(stage: str, **extra: Any) -> None:
+        payload = {
+            "ok": True,
+            "event": "execute_debug",
+            "stage": stage,
+            "elapsed_seconds": round(_time.time() - t0, 3),
+        }
+        if extra:
+            payload.update(extra)
+        print(_json.dumps(payload, default=str), flush=True)
+
+    _debug("bind_run_store:start")
+    RecommendationRunStore, _, _, _, _, _, _, _ = _run_store_bindings()
+    _debug("bind_run_store:done")
+    _debug("bind_candidate:start")
+    build_default_action_schema_registry, _, _ = _candidate_bindings()
+    _debug("bind_candidate:done")
+    _debug("bind_precedent:start")
+    build_precedent_index, run_precedent, _ = _precedent_bindings()
+    _debug("bind_precedent:done")
+    _debug("store_init:start", runs_root=str(runs_root))
+    store = RecommendationRunStore(root=runs_root)
+    _debug("store_init:done")
+    _debug("load_run:start", run_id=str(run_id))
+    run = store.get_run(run_id)
+    _debug("load_run:done", found=bool(run))
+    if run is None:
+        raise ValueError(f"Run not found: {run_id}")
+    if run.status in {"completed", "failed"}:
+        raise ValueError(f"Run is terminal ({run.status}); create a new run_id")
+
+    _debug("persist_execution_config:start")
+    _persist_execution_config(
+        store=store,
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        snapshot_path=snapshot_path,
+        entity_identifier_path=entity_identifier_path,
+        action_ids=action_ids,
+        action_type=action_type,
+        max_candidates=max_candidates,
+        min_candidates_target=min_candidates_target,
+        strict_evidence=strict_evidence,
+        precedent_top_k=precedent_top_k,
+        outcomes_path=outcomes_path,
+        config_path=config_path,
+        top_plans=top_plans,
+    )
+    _debug("persist_execution_config:done")
+
+    _debug("build_registry:start")
+    registry = registry or build_default_action_schema_registry(version="v1.0")
+    _debug("build_registry:done")
+    precedent_runner = precedent_runner or run_precedent
+    adapter_path = None
+
+    try:
+        _debug("load_snapshot:start")
+        snapshot = _load_and_verify_frozen_snapshot(
+            run=run,
+            snapshot_root=Path(snapshot_root) if snapshot_root else None,
+            snapshot_path=Path(snapshot_path) if snapshot_path else None,
+            snapshot_loader=snapshot_loader,
+            entity_identifier_path=Path(entity_identifier_path),
+        )
+        snapshot, adapter_diagnostics = adapt_snapshot(snapshot)
+        snapshot = attach_model_feature_bundle(snapshot)
+        adapter_path = store.attach_artifact(
+            run_id,
+            "RuntimeFeatureAdapterDiagnostics",
+            {
+                "run_id": run_id,
+                "generated_at": _now_iso(),
+                "diagnostics": adapter_diagnostics,
+            },
+        )
+        bundle_path = store.attach_artifact(
+            run_id,
+            "ModelFeatureBundleDiagnostics",
+            {
+                "run_id": run_id,
+                "generated_at": _now_iso(),
+                "diagnostics": dict((snapshot.get("_model_feature_bundle", {}) or {}).get("diagnostics", {}) or {}),
+            },
+        )
+        store.merge_metadata(
+            run_id,
+            {
+                "runtime": {
+                    "feature_adapter": adapter_diagnostics,
+                    "model_feature_bundle": dict((snapshot.get("_model_feature_bundle", {}) or {}).get("diagnostics", {}) or {}),
+                },
+                "artifacts": {
+                    "RuntimeFeatureAdapterDiagnostics": str(adapter_path),
+                    "ModelFeatureBundleDiagnostics": str(bundle_path),
+                },
+            },
+        )
+        _debug("load_snapshot:done")
+
+        # Stage 1: candidate generation
+        store.transition_status(run_id, "candidate_generation", {"max_candidates": max_candidates})
+        candidate_set = _generate_candidates(
+            run=run,
+            snapshot=snapshot,
+            registry=registry,
+            action_ids=action_ids,
+            action_type=action_type,
+            max_candidates=max_candidates,
+            min_candidates_target=min_candidates_target,
+            strict_evidence=strict_evidence,
+        )
+        candidates = list(candidate_set.get("candidates", []))
+        cand_artifact = dict(candidate_set)
+        cand_artifact["count"] = len(candidates)
+        candidate_path = store.attach_artifact(run_id, "CandidateSet", cand_artifact)
+
+        # Stage 2: feasibility
+        store.transition_status(run_id, "feasibility_evaluation", {"candidate_count": len(candidates)})
+        feasibility = _evaluate_feasibility(
+            run=run,
+            registry=registry,
+            candidates=candidates,
+            snapshot=snapshot,
+            strict_evidence=strict_evidence,
+        )
+        feasibility_profile = _feasibility_profile(feasibility)
+        _emit_stage_profile("feasibility_evaluation", feasibility_profile)
+        feasibility_path = store.attach_artifact(
+            run_id,
+            "FeasibilityResults",
+            {
+                "run_id": run_id,
+                "generated_at": _now_iso(),
+                "candidate_count": len(candidates),
+                "feasible_count": sum(1 for x in feasibility if x.get("feasible")),
+                "profile": feasibility_profile,
+                "results": feasibility,
+            },
+        )
+        causal_risk_path = None
+        if str(os.environ.get("AXIOM_SKIP_CAUSAL_MODEL_RISK_REPORT", "")).strip().lower() not in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            _debug("bind_causal:start")
+            build_causal_model_risk_report = _causal_bindings()
+            _debug("bind_causal:done")
+            prev_causal_report = _latest_previous_causal_report(store=store, run=run)
+            causal_risk_report = build_causal_model_risk_report(
+                run=run,
+                snapshot=snapshot,
+                feasibility_results=feasibility,
+                previous_report=prev_causal_report,
+            )
+            causal_risk_path = store.attach_artifact(run_id, "CausalModelRiskReport", causal_risk_report)
+
+        feasible_candidates = [
+            x.get("action_candidate", x.get("candidate"))
+            for x in feasibility
+            if x.get("feasible")
+        ]
+
+        # Stage 3: precedent retrieval
+        store.transition_status(
+            run_id,
+            "precedent_retrieval",
+            {
+                "feasible_count": len(feasible_candidates),
+                "precedent_top_k": int(precedent_top_k),
+            },
+        )
+        _update_stage_progress(
+            store=store,
+            run_id=run_id,
+            stage="precedent_retrieval",
+            completed=0,
+            total=min(len(feasible_candidates), int(precedent_top_k or 0) or len(feasible_candidates)),
+        )
+        precedent_matches = _retrieve_precedents(
+            run=run,
+            feasible_candidates=feasible_candidates,
+            precedent_runner=precedent_runner,
+            precedent_top_k=precedent_top_k,
+            snapshot=snapshot,
+            snapshot_root=snapshot_root,
+            snapshot_path=snapshot_path,
+            outcomes_path=outcomes_path,
+            config_path=config_path,
+            progress_callback=lambda completed, total: _update_stage_progress(
+                store=store,
+                run_id=run_id,
+                stage="precedent_retrieval",
+                completed=completed,
+                total=total,
+            ),
+        )
+        precedent_profile = _precedent_profile(precedent_matches)
+        _emit_stage_profile("precedent_retrieval", precedent_profile)
+        precedent_path = store.attach_artifact(
+            run_id,
+            "PrecedentMatches",
+            {
+                "run_id": run_id,
+                "generated_at": _now_iso(),
+                "candidate_count": len(feasible_candidates),
+                "profile": precedent_profile,
+                "results": precedent_matches,
+            },
+        )
+        precedent_index = build_precedent_index(run_id=run_id, precedent_matches=precedent_matches)
+        precedent_index_path = store.attach_artifact(run_id, "PrecedentIndex", precedent_index)
+
+        # Stage 4: plan search
+        store.transition_status(run_id, "plan_search", {"precedent_candidates": len(precedent_matches)})
+        plan_set = _build_plan_set(
+            run=run,
+            feasible_candidates=feasible_candidates,
+            precedent_matches=precedent_matches,
+            registry=registry,
+            top_plans=top_plans,
+        )
+        plan_path = store.attach_artifact(run_id, "PlanSet", plan_set)
+        plans = list(plan_set.get("plans", []) or [])
+        top_plan = plans[0] if plans else None
+        skip_dossier_package = _truthy_env("AXIOM_SKIP_DOSSIER_PACKAGE_BUILD")
+        if skip_dossier_package:
+            board_ready_dossier = {
+                "run_id": run_id,
+                "generated_at": _now_iso(),
+                "executive_summary": "Fit-mode dossier skipped to reduce heavy downstream warehouse access.",
+                "confidence_posture": "fit_mode_lightweight",
+                "status_quo_view": {"recommended_posture": None},
+                "ranked_action_views": [],
+                "monitoring": {"triggers": [], "branches": []},
+                "recommendation_thesis": {},
+                "fit_mode_skipped": True,
+            }
+        else:
+            build_board_ready_dossier = _dossier_bindings()
+            board_ready_dossier = build_board_ready_dossier(
+                run=run,
+                snapshot=snapshot,
+                plan_set=plan_set,
+                feasible_candidates=feasible_candidates,
+                precedent_matches=precedent_matches,
+                registry=registry,
+            )
+        dossier_path = store.attach_artifact(run_id, "BoardReadyDossier", board_ready_dossier)
+
+        def _plan_preview(plan: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "plan_id": plan.get("plan_id"),
+                "score": plan.get("score"),
+                "action_ids": [step.get("action_id") for step in list(plan.get("steps", []) or [])],
+                "summary_explanation": plan.get("summary_explanation"),
+                "main_failure_modes": list(((plan.get("risks", {}) or {}).get("main_failure_modes", []) or []))[:3],
+                "confidence_posture": board_ready_dossier.get("confidence_posture"),
+            }
+
+        top_plan_action_ids = [step.get("action_id") for step in list((top_plan or {}).get("steps", []) or []) if step.get("action_id")]
+        ranked_action_views = list(board_ready_dossier.get("ranked_action_views", []) or [])
+        if skip_dossier_package and top_plan_action_ids:
+            ranked_action_views = [
+                {
+                    "action_ids": top_plan_action_ids,
+                    "plan_id": (top_plan or {}).get("plan_id"),
+                    "summary_explanation": (top_plan or {}).get("summary_explanation"),
+                }
+            ]
+
+        recommendation_package = {
+            "run_id": run_id,
+            "company_id": run.company_id,
+            "as_of_time": run.as_of_time,
+            "generated_at": _now_iso(),
+            "planner_random_seed": int(run.planner_random_seed if run.planner_random_seed is not None else 0),
+            "recommended_posture": ((board_ready_dossier.get("status_quo_view", {}) or {}).get("recommended_posture")),
+            "status_quo_view": board_ready_dossier.get("status_quo_view"),
+            "sizing_guidance": board_ready_dossier.get("sizing_guidance"),
+            "parameter_optimization": board_ready_dossier.get("parameter_optimization"),
+            "regret_analysis": board_ready_dossier.get("regret_analysis"),
+            "rating_cliff_analysis": board_ready_dossier.get("rating_cliff_analysis"),
+            "signaling_analysis": board_ready_dossier.get("signaling_analysis"),
+            "top_plan": top_plan,
+            "ranked_action_views": ranked_action_views,
+            "primary_recommendation": top_plan_action_ids[0] if top_plan_action_ids else None,
+            "plans_preview": [_plan_preview(plan) for plan in plans[:3]],
+            "monitoring_triggers": list(((board_ready_dossier.get("monitoring", {}) or {}).get("triggers", []) or [])),
+            "contingency_branches": list(((board_ready_dossier.get("monitoring", {}) or {}).get("branches", []) or [])),
+            "top_plan_summary_explanation": board_ready_dossier.get("executive_summary") or (top_plan or {}).get("summary_explanation"),
+            "board_ready_dossier": board_ready_dossier,
+            "summary": {
+                "candidate_count": len(candidates),
+                "feasible_count": len(feasible_candidates),
+                "precedent_candidate_count": len(precedent_matches),
+                "plan_count": len(plans),
+                "top_plan_action_ids": [step.get("action_id") for step in list((top_plan or {}).get("steps", []) or [])],
+            },
+        }
+        recommendation_path = store.attach_artifact(run_id, "RecommendationPackage", recommendation_package)
+
+        store.transition_status(run_id, "completed", {"plan_count": len(plan_set.get("plans", []))})
+
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "status": "completed",
+            "artifacts": {
+                "CandidateSet": str(candidate_path),
+                "FeasibilityResults": str(feasibility_path),
+                "CausalModelRiskReport": str(causal_risk_path),
+                "PrecedentMatches": str(precedent_path),
+                "PrecedentIndex": str(precedent_index_path),
+                "PlanSet": str(plan_path),
+                "BoardReadyDossier": str(dossier_path),
+                "RecommendationPackage": str(recommendation_path),
+                "RuntimeFeatureAdapterDiagnostics": str(adapter_path) if adapter_path is not None else None,
+            },
+            "counts": {
+                "candidates": len(candidates),
+                "feasible": len(feasible_candidates),
+                "precedent": len(precedent_matches),
+                "plans": len(plan_set.get("plans", [])),
+            },
+            "runtime_feature_adapter": adapter_diagnostics,
+        }
+
+    except Exception as exc:
+        # Best effort failure transition for traceability.
+        try:
+            current = store.get_run(run_id)
+            if current is not None and current.status not in {"completed", "failed"}:
+                store.transition_status(run_id, "failed", {"error": str(exc)})
+        except Exception:
+            pass
+        raise
+
+
+def create_and_execute_recommendation_run(
+    company_id: str,
+    as_of_time: str | datetime,
+    objectives: Optional[Dict[str, Any]] = None,
+    constraints: Optional[Dict[str, Any]] = None,
+    scenario: Optional[Dict[str, Any]] = None,
+    runs_root: str | Path = "data/recommendation_runs",
+    snapshot_root: Optional[str | Path] = None,
+    snapshot_path: Optional[str | Path] = None,
+    snapshot_loader: Optional[Callable[[str, datetime], Dict[str, Any]]] = None,
+    entity_graph_path: str | Path = "data/inputs_layer/entity_graph.parquet",
+    entity_identifier_path: str | Path = "data/inputs_layer/entity_identifier.parquet",
+    planner_random_seed: Optional[int] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    action_ids: Optional[Sequence[str]] = None,
+    action_type: Optional[str] = None,
+    max_candidates: int = 12,
+    min_candidates_target: int = 0,
+    strict_evidence: bool = False,
+    precedent_top_k: int = 0,
+    outcomes_path: Optional[str | Path] = None,
+    config_path: Optional[str | Path] = None,
+    top_plans: int = 3,
+    registry: Optional[ActionSchemaRegistry] = None,
+    precedent_runner: Optional[Callable[..., PrecedentPack]] = None,
+) -> Dict[str, Any]:
+    """One-shot helper: create a run, then execute all stages."""
+    RecommendationRunStore, _, _, _, _, _, create_recommendation_run, _ = _run_store_bindings()
+    store = RecommendationRunStore(root=runs_root)
+    run_id = create_recommendation_run(
+        company_id=company_id,
+        as_of_time=as_of_time,
+        objectives=objectives,
+        constraints=constraints,
+        scenario=scenario,
+        run_store=store,
+        snapshot_root=snapshot_root,
+        snapshot_path=snapshot_path,
+        snapshot_loader=snapshot_loader,
+        entity_graph_path=entity_graph_path,
+        entity_identifier_path=entity_identifier_path,
+        planner_random_seed=planner_random_seed,
+        metadata=metadata,
+    )
+    summary = execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        snapshot_path=snapshot_path,
+        snapshot_loader=snapshot_loader,
+        entity_identifier_path=entity_identifier_path,
+        action_ids=action_ids,
+        action_type=action_type,
+        max_candidates=max_candidates,
+        min_candidates_target=min_candidates_target,
+        strict_evidence=strict_evidence,
+        precedent_top_k=precedent_top_k,
+        outcomes_path=outcomes_path,
+        config_path=config_path,
+        top_plans=top_plans,
+        registry=registry,
+        precedent_runner=precedent_runner,
+    )
+    return summary
+
+
+def _load_and_verify_frozen_snapshot(
+    run: RecommendationRun,
+    snapshot_root: Optional[Path],
+    snapshot_path: Optional[Path],
+    snapshot_loader: Optional[Callable[[str, datetime], Dict[str, Any]]],
+    entity_identifier_path: Path,
+) -> Dict[str, Any]:
+    _, _apply_scenario_overrides, _hash_snapshot, _parse_ts, _resolve_snapshot, _snapshot_company_aliases, _, _ = _run_store_bindings()
+    as_of_dt = _parse_ts(run.as_of_time)
+    if snapshot_path is not None or _truthy_env("AXIOM_SKIP_RUN_COMPANY_VALIDATION"):
+        aliases = [str(run.company_id)]
+    else:
+        aliases = _snapshot_company_aliases(run.company_id, entity_identifier_path)
+    snapshot = _resolve_snapshot(
+        company_id=run.company_id,
+        as_of_time=as_of_dt,
+        snapshot_root=snapshot_root,
+        snapshot_path=snapshot_path,
+        snapshot_builder=None,
+        snapshot_loader=snapshot_loader,
+        aliases=aliases,
+    )
+    snapshot = _apply_scenario_overrides(snapshot, run.scenario)
+    observed_hash = _hash_snapshot(snapshot)
+    if observed_hash != run.frozen_state.snapshot_hash:
+        raise ValueError(
+            "Frozen snapshot hash mismatch for run_id={} expected={} got={}".format(
+                run.run_id,
+                run.frozen_state.snapshot_hash,
+                observed_hash,
+            )
+        )
+    return snapshot
+
+
