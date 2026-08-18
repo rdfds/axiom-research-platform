@@ -564,3 +564,30 @@ def _score_packet(*, packet: CanonicalPacket, snapshot: Dict[str, Any]) -> Dict[
     }
 
 
+def _grounding_score(*, packet: CanonicalPacket, snapshot: Dict[str, Any]) -> float:
+    text = "\n".join([packet.problem_statement, packet.recommendation_thesis, packet.why_now, *packet.evidence_points])
+    metric_hits = sum(1 for token in _SNAPSHOT_METRIC_PATTERNS if token in text.lower())
+    numeric_hits = len(_NUMERIC_RE.findall(text))
+    evidence_count = len(packet.evidence_points)
+    score = 0.0
+    if metric_hits >= 2:
+        score += 0.4
+    if numeric_hits >= 3:
+        score += 0.3
+    if evidence_count >= 3:
+        score += 0.3
+    return min(score, 1.0)
+
+
+def _timing_score(text: str) -> float:
+    lower = str(text or "").lower()
+    score = 0.0
+    if any(token in lower for token in ["window", "waiting", "lead time", "urgent", "supportive now", "front-of-plan", "after "]):
+        score += 0.5
+    if _NUMERIC_RE.search(text or ""):
+        score += 0.25
+    if any(token in lower for token in ["credit", "equity", "liquidity", "maturity", "market value"]):
+        score += 0.25
+    return min(score, 1.0)
+
+

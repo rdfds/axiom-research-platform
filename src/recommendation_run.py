@@ -942,7 +942,7 @@ def _hash_snapshot(snapshot: Dict[str, Any]) -> str:
 
 
 def _snapshot_version(snapshot: Dict[str, Any]) -> str:
-    prov = snapshot['provenance'] if isinstance(snapshot.get("provenance"), dict) else {}
+    prov = snapshot.get("provenance", {}) if isinstance(snapshot.get("provenance"), dict) else {}
     version = prov.get("computation_version") or snapshot.get("snapshot_version")
     return str(version or "unknown")
 
