@@ -459,3 +459,36 @@ def _has_causal(candidate: Dict[str, Any]) -> bool:
     return False
 
 
+def _aggregate_cases(cases: Sequence[Dict[str, Any]], missing_artifacts: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    bucket_counts = Counter()
+    flag_counts = Counter()
+    overall_scores: List[float] = []
+    positive_top = 0
+    supported_top = 0
+    explanation_complete = 0
+
+    for case in cases:
+        bucket_counts[str(case.get("bucket") or "other")] += 1
+        heuristic = dict(case.get("heuristic", {}) or {})
+        for flag in list(heuristic.get("flags", []) or []):
+            flag_counts[str(flag)] += 1
+        overall_scores.append(float(heuristic.get("overall_score", 0.0) or 0.0))
+        if float(((case.get("top_plan", {}) or {}).get("raw_total_score", 0.0) or 0.0) > 0.0):
+            positive_top += 1
+        if bool(((case.get("top_plan_support", {}) or {}).get("all_steps_supported", False))):
+            supported_top += 1
+        if "step_explanation_incomplete" not in list(heuristic.get("flags", []) or []) and "top_plan_summary_missing" not in list(heuristic.get("flags", []) or []):
+            explanation_complete += 1
+
+    denom = max(1, len(cases))
+    return {
+        "bucket_counts": dict(bucket_counts),
+        "flag_counts": dict(flag_counts),
+        "heuristic_overall_mean": round(sum(overall_scores) / denom, 6),
+        "positive_top_plan_rate": round(positive_top / denom, 6),
+        "supported_top_plan_rate": round(supported_top / denom, 6),
+        "explanation_complete_rate": round(explanation_complete / denom, 6),
+        "missing_artifact_rate": round(len(missing_artifacts) / max(1, len(cases) + len(missing_artifacts)), 6),
+    }
+
+
