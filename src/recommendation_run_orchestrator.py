@@ -560,3 +560,33 @@ def _load_and_verify_frozen_snapshot(
     return snapshot
 
 
+def _generate_candidates(
+    run: RecommendationRun,
+    snapshot: Dict[str, Any],
+    registry: ActionSchemaRegistry,
+    action_ids: Optional[Sequence[str]],
+    action_type: Optional[str],
+    max_candidates: int,
+    min_candidates_target: int,
+    strict_evidence: bool,
+) -> Dict[str, Any]:
+    _, generate_action_candidates, _ = _candidate_bindings()
+    if action_ids:
+        missing = [aid for aid in action_ids if registry.get_action(str(aid)) is None]
+        if missing:
+            raise ValueError(f"Unknown action_id in candidate request: {missing}")
+    if action_type and not registry.get_actions_by_type(action_type):
+        raise ValueError(f"No actions under action_type={action_type}")
+
+    return generate_action_candidates(
+        run=run,
+        state_snapshot=snapshot,
+        action_registry=registry,
+        action_ids=action_ids,
+        action_type=action_type,
+        max_candidates=max_candidates,
+        min_candidates_target=min_candidates_target,
+        strict_evidence=strict_evidence,
+    )
+
+
