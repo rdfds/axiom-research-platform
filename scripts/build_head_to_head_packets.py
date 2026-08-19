@@ -9,7 +9,7 @@ from typing import List
 from src.head_to_head_eval import build_head_to_head_report, export_blinded_packets
 
 
-def _parse_run_ids(path: Path | None) :
+def _parse_run_ids(path: Path | None) -> List[str] | None:
     if path is None:
         return None
     run_ids: List[str] = []

@@ -325,7 +325,7 @@ def build_model_packet(
     ]
     risk_case = dict(dossier.get("risk_case", {}) or {})
     evidence_points = [
-        str(item['text'] or "")
+        str(item.get("text", "") or "")
         for item in list(dossier.get("supporting_evidence", []) or [])
         if str(item.get("text", "") or "").strip()
     ]
