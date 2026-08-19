@@ -1165,3 +1165,101 @@ def _select_historical_cases_from_frame(
     return selected
 
 
+def _load_fixed_historical_cases(
+    report_paths: Sequence[str | Path],
+    *,
+    case_count: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    selected: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    max_cases = max(1, int(case_count)) if case_count is not None else None
+    for path_like in report_paths:
+        path = Path(path_like)
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text())
+        except Exception:
+            continue
+        for raw_case in payload.get("cases", []) or []:
+            spec = _normalize_fixed_historical_case(raw_case)
+            if spec is None:
+                continue
+            case_key = _historical_case_key(spec)
+            if case_key in seen:
+                continue
+            seen.add(case_key)
+            selected.append(spec)
+            if max_cases is not None and len(selected) >= max_cases:
+                return selected
+    return selected
+
+
+def _normalize_fixed_historical_case(raw_case: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    company_id = str(raw_case.get("company_id") or "").strip()
+    if not company_id:
+        return None
+    anchor_action_id = str(raw_case.get("anchor_action_id") or "").strip()
+    anchor_action_family = str(raw_case.get("anchor_action_family") or "").strip()
+    anchor_action_date_raw = raw_case.get("anchor_action_date")
+    as_of_time_raw = raw_case.get("as_of_time")
+    if not anchor_action_id or not anchor_action_family or not anchor_action_date_raw or not as_of_time_raw:
+        return None
+    anchor_action_date = pd.to_datetime(anchor_action_date_raw, utc=True, errors="coerce")
+    as_of_time = pd.to_datetime(as_of_time_raw, utc=True, errors="coerce")
+    if pd.isna(anchor_action_date) or pd.isna(as_of_time):
+        return None
+    return {
+        "company_id": company_id,
+        "source_company_id": str(raw_case.get("source_company_id") or company_id),
+        "ticker": str(raw_case.get("ticker") or ""),
+        "mapping_method": str(raw_case.get("mapping_method") or ""),
+        "anchor_action_date": pd.Timestamp(anchor_action_date).isoformat(),
+        "anchor_action_id": anchor_action_id,
+        "anchor_action_family": anchor_action_family,
+        "as_of_time": pd.Timestamp(as_of_time).isoformat(),
+    }
+
+
+def _load_excluded_historical_case_keys(
+    report_paths: Optional[Sequence[str | Path]],
+) -> Set[Tuple[str, pd.Timestamp, str]]:
+    excluded: Set[Tuple[str, pd.Timestamp, str]] = set()
+    for path_like in report_paths or []:
+        path = Path(path_like)
+        if not path.exists():
+            continue
+        try:
+            report = json.loads(path.read_text())
+        except Exception:
+            continue
+        for case in report.get("cases", []) or []:
+            company_id = str(case.get("source_company_id") or case.get("company_id") or "").strip()
+            action_id = str(case.get("anchor_action_id") or "").strip()
+            action_date_raw = case.get("anchor_action_date")
+            if not company_id or not action_id or not action_date_raw:
+                continue
+            action_date = pd.to_datetime(action_date_raw, utc=True, errors="coerce")
+            if pd.isna(action_date):
+                continue
+            excluded.add((company_id, pd.Timestamp(action_date), action_id))
+    return excluded
+
+
+def _filter_excluded_historical_cases(
+    frame: pd.DataFrame,
+    exclude_case_keys: Optional[Set[Tuple[str, pd.Timestamp, str]]],
+) -> pd.DataFrame:
+    if frame.empty or not exclude_case_keys:
+        return frame
+    keep_mask = []
+    for row in frame.itertuples(index=False):
+        key = (
+            str(row.company_id),
+            pd.Timestamp(row.action_date).tz_convert("UTC"),
+            str(row.normalized_action_id),
+        )
+        keep_mask.append(key not in exclude_case_keys)
+    return frame.loc[keep_mask].reset_index(drop=True)
+
+

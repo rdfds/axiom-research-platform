@@ -492,3 +492,27 @@ def _aggregate_cases(cases: Sequence[Dict[str, Any]], missing_artifacts: Sequenc
     }
 
 
+def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> List[Dict[str, Any]]:
+    by_bucket: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for case in cases:
+        by_bucket[str(case.get("bucket") or "other")].append(case)
+    for bucket_cases in by_bucket.values():
+        bucket_cases.sort(key=lambda item: (float((item.get("heuristic", {}) or {}).get("overall_score", 0.0) or 0.0), str(item.get("company_id", ""))))
+
+    ordered_buckets = sorted(by_bucket, key=lambda key: (len(by_bucket[key]), key))
+    selected: List[Dict[str, Any]] = []
+    while ordered_buckets and len(selected) < max(1, int(review_count)):
+        next_round: List[str] = []
+        for bucket in ordered_buckets:
+            if len(selected) >= max(1, int(review_count)):
+                break
+            bucket_cases = by_bucket[bucket]
+            if not bucket_cases:
+                continue
+            selected.append(bucket_cases.pop(0))
+            if bucket_cases:
+                next_round.append(bucket)
+        ordered_buckets = next_round
+    return selected
+
+

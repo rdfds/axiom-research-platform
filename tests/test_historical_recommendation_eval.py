@@ -403,3 +403,25 @@ def test_summarize_historical_selection_pool_tracks_missing_action_ids(tmp_path)
     }
 
 
+def test_score_ex_post_alignment_prefers_exact_primary_match():
+    lookup = {
+        "A": [
+            (pd.Timestamp("2024-06-01T00:00:00Z"), "capital_structure.refinancing", "capital_structure"),
+            (pd.Timestamp("2024-07-15T00:00:00Z"), "capital_return.open_market_buyback", "capital_return"),
+        ]
+    }
+    score = _score_ex_post_alignment(
+        company_id="A",
+        as_of_time="2024-03-01T00:00:00Z",
+        recommended_action_ids=["capital_structure.refinancing"],
+        outcomes_lookup=lookup,
+        alignment_horizon_days=180,
+        anchor_action_id="capital_structure.refinancing",
+        anchor_action_family="capital_structure",
+    )
+
+    assert score["score"] == 1.0
+    assert score["primary_exact_match"] is True
+    assert score["reason"] == "anchor_primary_exact"
+
+

@@ -591,3 +591,20 @@ def _timing_score(text: str) -> float:
     return min(score, 1.0)
 
 
+def _alternatives_score(alternatives: Sequence[str]) -> float:
+    if not alternatives:
+        return 0.0
+    specific = 0
+    for item in alternatives:
+        lower = str(item or "").lower()
+        if any(phrase in lower for phrase in _GENERIC_ALT_PHRASES):
+            continue
+        if len(lower.split()) >= 6:
+            specific += 1
+    if specific >= 2:
+        return 1.0
+    if specific == 1:
+        return 0.75
+    return 0.5
+
+
