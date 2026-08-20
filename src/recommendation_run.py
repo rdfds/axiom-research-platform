@@ -1115,3 +1115,27 @@ def _apply_scenario_overrides(snapshot: Dict[str, Any], scenario: ScenarioAssump
     return out
 
 
+def _validate_status_transition(current: str, new_status: str) -> None:
+    if current not in RUN_STATUSES:
+        raise ValueError(f"Invalid current status: {current}")
+    if new_status not in RUN_STATUSES:
+        raise ValueError(f"Invalid target status: {new_status}")
+    if current == new_status:
+        return
+    if current in {"completed", "failed"}:
+        raise ValueError(f"Cannot transition terminal status {current} -> {new_status}")
+    if new_status == "failed":
+        return
+
+    allowed = {
+        "initialized": {"candidate_generation"},
+        "candidate_generation": {"feasibility_evaluation"},
+        "feasibility_evaluation": {"precedent_retrieval"},
+        "precedent_retrieval": {"plan_search"},
+        "plan_search": {"completed"},
+    }
+    next_allowed = allowed.get(current, set())
+    if new_status not in next_allowed:
+        raise ValueError(f"Invalid status transition: {current} -> {new_status}")
+
+

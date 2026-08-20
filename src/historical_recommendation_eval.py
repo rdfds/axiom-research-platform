@@ -1263,3 +1263,76 @@ def _filter_excluded_historical_cases(
     return frame.loc[keep_mask].reset_index(drop=True)
 
 
+def _resolve_supported_historical_entities(
+    *,
+    frame: pd.DataFrame,
+    entity_identifier_path: Path,
+    entity_table_path: Path,
+    lookback_days: int,
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    try:
+        entity_df = duckdb.execute(
+            "SELECT CAST(entity_id AS VARCHAR) AS entity_id FROM read_parquet(?)",
+            [str(entity_table_path)],
+        ).df()
+    except Exception:
+        return frame.iloc[0:0].copy()
+    valid_entity_ids = set(entity_df["entity_id"].astype(str))
+    if not valid_entity_ids:
+        return frame.iloc[0:0].copy()
+    try:
+        ticker_df = duckdb.execute(
+            """
+            SELECT
+                CAST(entity_id AS VARCHAR) AS entity_id,
+                upper(CAST(identifier_value AS VARCHAR)) AS ticker,
+                CAST(valid_from AS TIMESTAMP) AS valid_from,
+                CAST(valid_to AS TIMESTAMP) AS valid_to
+            FROM read_parquet(?)
+            WHERE identifier_type = 'ticker'
+              AND identifier_value IS NOT NULL
+            """,
+            [str(entity_identifier_path)],
+        ).df()
+    except Exception:
+        ticker_df = pd.DataFrame(columns=["entity_id", "ticker", "valid_from", "valid_to"])
+    if not ticker_df.empty:
+        ticker_df["valid_from"] = pd.to_datetime(ticker_df["valid_from"], utc=True, errors="coerce")
+        ticker_df["valid_to"] = pd.to_datetime(ticker_df["valid_to"], utc=True, errors="coerce")
+        ticker_df = ticker_df[ticker_df["entity_id"].astype(str).isin(valid_entity_ids)].reset_index(drop=True)
+    ticker_groups: Dict[str, pd.DataFrame] = {
+        str(ticker): group.sort_values(["valid_from", "valid_to"], ascending=[False, False], na_position="last").reset_index(drop=True)
+        for ticker, group in ticker_df.groupby("ticker", sort=False)
+    }
+
+    resolved_rows: List[Dict[str, Any]] = []
+    for row in frame.itertuples(index=False):
+        source_company_id = str(row.company_id or "")
+        ticker = str(getattr(row, "ticker", "") or "").upper()
+        as_of_time = pd.Timestamp(row.action_date).tz_convert("UTC") - pd.Timedelta(days=max(1, int(lookback_days)))
+        resolved_company_id = None
+        mapping_method = None
+        if source_company_id in valid_entity_ids:
+            resolved_company_id = source_company_id
+            mapping_method = "company_id_direct"
+        elif ticker:
+            candidates = ticker_groups.get(ticker)
+            if candidates is not None and not candidates.empty:
+                valid = candidates[
+                    ((candidates["valid_from"].isna()) | (candidates["valid_from"] <= as_of_time))
+                    & ((candidates["valid_to"].isna()) | (candidates["valid_to"] > as_of_time))
+                ]
+                chosen = valid.iloc[0] if not valid.empty else candidates.iloc[0]
+                resolved_company_id = str(chosen["entity_id"])
+                mapping_method = "ticker_identifier"
+        if not resolved_company_id:
+            continue
+        payload = row._asdict()
+        payload["resolved_company_id"] = resolved_company_id
+        payload["mapping_method"] = mapping_method or ""
+        resolved_rows.append(payload)
+    return pd.DataFrame(resolved_rows)
+
+
