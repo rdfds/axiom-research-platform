@@ -608,3 +608,156 @@ def _alternatives_score(alternatives: Sequence[str]) -> float:
     return 0.5
 
 
+def _risk_score(risks: Sequence[str], kill_criteria: Sequence[str]) -> float:
+    score = 0.0
+    if risks:
+        score += 0.4
+    if any(_NUMERIC_RE.search(item or "") or "tail" in str(item or "").lower() for item in risks):
+        score += 0.3
+    if len(list(kill_criteria or [])) >= 2:
+        score += 0.3
+    return min(score, 1.0)
+
+
+def _build_blinded_review(*, model_packet: CanonicalPacket, baseline_packet: CanonicalPacket, run_id: str) -> Dict[str, Any]:
+    rng = random.Random(str(run_id))
+    order = ["A", "B"]
+    rng.shuffle(order)
+    mapping = {order[0]: model_packet.to_dict(), order[1]: baseline_packet.to_dict()}
+    if mapping["A"]["source_type"] == mapping["B"]["source_type"]:
+        mapping["A"] = model_packet.to_dict()
+        mapping["B"] = baseline_packet.to_dict()
+        order = ["A=model", "B=baseline"]
+    else:
+        order = [f"A={mapping['A']['source_type']}", f"B={mapping['B']['source_type']}"]
+    return {
+        "order": order,
+        "packet_A": _blind_packet(mapping["A"]),
+        "packet_B": _blind_packet(mapping["B"]),
+        "judge_prompt": (
+            "Compare Packet A and Packet B. Score which has the better problem diagnosis, recommendation, why-now logic, "
+            "alternative analysis, and risk framing. Do not infer the source."
+        ),
+    }
+
+
+def _blind_packet(packet: Dict[str, Any]) -> Dict[str, Any]:
+    blinded = dict(packet)
+    blinded.pop("source_type", None)
+    blinded.pop("source_label", None)
+    blinded.pop("confidence_posture", None)
+    blinded.pop("baseline_type", None)
+    blinded.pop("task_match", None)
+    return blinded
+
+
+def _aggregate_cases(cases: Sequence[Dict[str, Any]], missing_inputs: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    if not cases:
+        return {
+            "model_mean_score": 0.0,
+            "baseline_mean_score": 0.0,
+            "model_win_rate": 0.0,
+            "baseline_win_rate": 0.0,
+            "tie_rate": 0.0,
+            "mean_score_delta": 0.0,
+            "median_score_delta": 0.0,
+            "comparable_case_count": 0,
+            "sign_test_p_value": None,
+            "model_win_rate_ci_95": None,
+            "component_delta_means": {},
+            "by_task_match": {},
+            "by_baseline_type": {},
+            "ex_post": {},
+            "missing_input_rate": 1.0 if missing_inputs else 0.0,
+        }
+    count = float(len(cases))
+    model_wins = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "model")
+    baseline_wins = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "baseline")
+    ties = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "tie")
+    score_deltas = [float((case['comparison'] or {}).get("score_delta", 0.0) or 0.0) for case in cases]
+    component_keys = ["completeness_score", "grounding_score", "timing_score", "alternatives_score", "risk_score", "language_score"]
+    component_delta_means = {
+        key: round(
+            sum(float(((case.get("comparison", {}) or {}).get("component_deltas", {}) or {}).get(key, 0.0) or 0.0) for case in cases) / count,
+            6,
+        )
+        for key in component_keys
+    }
+    significance = _compute_significance(model_wins=model_wins, baseline_wins=baseline_wins)
+    return {
+        "model_mean_score": round(sum(float((case.get("comparison", {}) or {}).get("model_score", 0.0) or 0.0) for case in cases) / count, 6),
+        "baseline_mean_score": round(sum(float((case.get("comparison", {}) or {}).get("baseline_score", 0.0) or 0.0) for case in cases) / count, 6),
+        "model_win_rate": round(model_wins / count, 6),
+        "baseline_win_rate": round(baseline_wins / count, 6),
+        "tie_rate": round(ties / count, 6),
+        "mean_score_delta": round(sum(score_deltas) / count, 6),
+        "median_score_delta": round(_median(score_deltas), 6),
+        "comparable_case_count": significance["comparable_case_count"],
+        "sign_test_p_value": significance["sign_test_p_value"],
+        "model_win_rate_ci_95": significance["model_win_rate_ci_95"],
+        "component_delta_means": component_delta_means,
+        "by_task_match": _aggregate_cases_by_bucket(cases=cases, field="task_match"),
+        "by_baseline_type": _aggregate_cases_by_bucket(cases=cases, field="baseline_type"),
+        "ex_post": _aggregate_ex_post(cases),
+        "missing_input_rate": round(len(missing_inputs) / (len(cases) + len(missing_inputs)), 6) if (cases or missing_inputs) else 0.0,
+    }
+
+
+def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> List[Dict[str, Any]]:
+    ranked = sorted(
+        cases,
+        key=lambda case: (
+            float((case.get("comparison", {}) or {}).get("score_delta", 0.0) or 0.0),
+            abs(float((case.get("comparison", {}) or {}).get("score_delta", 0.0) or 0.0)),
+            str(case.get("company_id", "")),
+        ),
+    )
+    return ranked[: max(0, int(review_count))]
+
+
+def _parse_markdown_sections(text: str) -> Dict[str, str]:
+    sections: Dict[str, str] = {}
+    matches = list(_SECTION_RE.finditer(text or ""))
+    if not matches:
+        return {"recommendation": text.strip()}
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        key = match.group(1).strip().lower()
+        sections[key] = text[start:end].strip()
+    return sections
+
+
+def _parse_markdown_preamble_metadata(text: str) -> Tuple[Dict[str, str], str]:
+    lines = str(text or "").splitlines()
+    metadata: Dict[str, str] = {}
+    body_start = 0
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            body_start = idx
+            break
+        if ":" in stripped:
+            key, value = stripped.split(":", 1)
+            metadata[key.strip().lower().replace("-", "_").replace(" ", "_")] = value.strip()
+            body_start = idx + 1
+            continue
+        body_start = idx
+        break
+    return metadata, "\n".join(lines[body_start:]).lstrip()
+
+
+def _split_bullets(text: str) -> List[str]:
+    out: List[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("- ", "* ", "+ ")):
+            stripped = stripped[2:].strip()
+        out.append(stripped)
+    return out
+
+
