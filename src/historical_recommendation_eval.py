@@ -973,7 +973,7 @@ def render_historical_recommendation_markdown(report: Dict[str, Any]) -> str:
         anchor_support = dict(case.get("anchor_action_support", {}) or {})
         anchor_support_text = str(anchor_support.get("support_mode") or "")
         lines.append(
-            f"- `{case['company_id']}` `{case.get('as_of_time')}` "
+            f"- `{case.get('company_id')}` `{case.get('as_of_time')}` "
             f"`{','.join(case.get('top_action_ids', []) or [])}` "
             f"vs `{case.get('anchor_action_id')}` "
             f"score=`{score_text}` reason=`{hist.get('reason', '')}` support=`{anchor_support_text}`"

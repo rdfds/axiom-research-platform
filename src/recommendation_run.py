@@ -1088,3 +1088,30 @@ def _resolve_snapshot(
     )
 
 
+def _apply_scenario_overrides(snapshot: Dict[str, Any], scenario: ScenarioAssumptions) -> Dict[str, Any]:
+    out = dict(snapshot)
+    regime = dict(out.get("regime", {}) or {})
+
+    if scenario.credit_regime_override != "none":
+        regime["credit_regime"] = scenario.credit_regime_override
+    if scenario.risk_regime_override != "none":
+        regime["risk_regime"] = scenario.risk_regime_override
+    if scenario.vol_regime_override != "none":
+        regime["vol_regime"] = scenario.vol_regime_override
+    if scenario.sector_cycle_override != "none":
+        regime["sector_cycle"] = scenario.sector_cycle_override
+
+    signals = dict(regime.get("signals", {}) or {})
+    if scenario.interest_rate_shift_bp:
+        signals["interest_rate_shift_bp"] = int(scenario.interest_rate_shift_bp)
+    if scenario.equity_market_drawdown_pct:
+        signals["equity_market_drawdown_pct"] = float(scenario.equity_market_drawdown_pct)
+    if scenario.custom_flags:
+        signals["custom_flags"] = dict(scenario.custom_flags)
+    if signals:
+        regime["signals"] = signals
+
+    out["regime"] = regime
+    return out
+
+
