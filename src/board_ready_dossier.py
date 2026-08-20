@@ -1573,3 +1573,493 @@ def _format_numeric_range(*, parameter_name: str, lower: float, upper: float) ->
     return f"{lower:.2f} to {upper:.2f}"
 
 
+def _format_parameter_value(parameter_type: str, value: Any, *, parameter_name: str = "") -> str:
+    if value is None or value == "":
+        return "n/a"
+    if parameter_type == "percent":
+        return _fmt_pct(value)
+    if parameter_type == "numeric":
+        if parameter_name.endswith("_usd") or parameter_name.startswith("amount_") or parameter_name in {"size_absolute_usd", "draw_amount_usd", "resize_amount_usd", "estimated_ev_usd"}:
+            return _fmt_currency(value)
+        if parameter_name in {"tenor_years", "new_tenor_years", "call_protection_years"}:
+            num = _safe_float(value)
+            return f"{num:.1f} years" if num is not None else "n/a"
+        if parameter_name == "leverage_post_close":
+            return _fmt_x(value)
+        num = _safe_float(value)
+        return f"{num:.2f}" if num is not None else "n/a"
+    if parameter_type == "funding_mix_object":
+        if not isinstance(value, dict):
+            return "n/a"
+        parts = [f"{key} {_fmt_pct(val)}" for key, val in value.items()]
+        return " / ".join(parts)
+    if parameter_type == "boolean":
+        return "yes" if bool(value) else "no"
+    return _humanize_text(str(value))
+
+def _build_scenario_sizing(
+    *,
+    top_plan: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    base_sizing: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    steps = list(top_plan.get("steps", []) or [])
+    if not steps:
+        return []
+    first_action = str((steps[0].get("action_id", "") or ""))
+    base_range = str(base_sizing.get("recommended_range", "") or "")
+    if _is_buyback_action(first_action):
+        return [
+            {
+                "scenario": "tight_credit_or_higher_vol",
+                "sizing_adjustment": "Use the lower end of the range or phase execution.",
+                "reason": "Repurchase regret rises if balance-sheet flexibility tightens after launch.",
+            },
+            {
+                "scenario": "stronger_cash_build_or_deeper_discount",
+                "sizing_adjustment": "Use the upper end of the range.",
+                "reason": "A wider discount or larger cash build increases the cost of waiting.",
+            },
+        ]
+    if first_action in {"capital_return.dividend_increase", "capital_return.dividend_initiate", "capital_return.special_dividend"}:
+        return [
+            {
+                "scenario": "weaker_operating_outlook",
+                "sizing_adjustment": "Stay at the floor of the range or defer.",
+                "reason": "Sticky payout commitments are hardest to reverse cleanly.",
+            },
+            {
+                "scenario": "sustained_cash_generation",
+                "sizing_adjustment": "Move toward the upper end only after the stronger run rate proves durable.",
+                "reason": "Dividend sizing should follow repeatable cash generation, not one strong quarter.",
+            },
+        ]
+    if _is_balance_sheet_action(first_action):
+        return [
+            {
+                "scenario": "tighter_financing_window",
+                "sizing_adjustment": "Front-load execution but keep size to coverage-first minimums.",
+                "reason": "The priority becomes securing resilience, not maximizing proceeds.",
+            },
+            {
+                "scenario": "better_credit_or_equity_window",
+                "sizing_adjustment": f"Use the current base range: {base_range}" if base_range else "Extend tenor or prefund modestly while terms remain constructive.",
+                "reason": "A better window supports cleaner financing, not necessarily larger financing.",
+            },
+        ]
+    if _is_mna_action(first_action):
+        return [
+            {
+                "scenario": "higher_volatility_or_weaker_financing",
+                "sizing_adjustment": "Bias toward a smaller bolt-on or defer.",
+                "reason": "Deal regret rises quickly when financing and integration conditions worsen.",
+            },
+            {
+                "scenario": "supportive_financing_and_high_conviction_target",
+                "sizing_adjustment": "Move up only if leverage and integration remain contained.",
+                "reason": "Larger deals require both strategic conviction and financing room.",
+            },
+        ]
+    if _is_divestiture_action(first_action):
+        return [
+            {
+                "scenario": "weak_bid_environment",
+                "sizing_adjustment": "Sell the narrowest non-core package or wait.",
+                "reason": "Forced scale in a weak market increases the odds of selling too cheap.",
+            },
+            {
+                "scenario": "strong_bid_environment",
+                "sizing_adjustment": "Expand scope only if strategic focus improves with the larger package.",
+                "reason": "Higher bids justify more scale only if portfolio quality remains coherent afterward.",
+            },
+        ]
+    return [
+        {
+            "scenario": "weaker_case",
+            "sizing_adjustment": "Use the lower end of the sizing posture or defer.",
+            "reason": "When the setup weakens, preserving flexibility should dominate scale.",
+        },
+        {
+            "scenario": "stronger_case",
+            "sizing_adjustment": f"Use the base range: {base_range}" if base_range else "Use the upper end only if the action edge widens.",
+            "reason": "Larger action size should follow a clearer edge, not optimism alone.",
+        },
+    ]
+
+
+def _build_regret_analysis(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+    status_quo_view: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(top_plan.get("steps", []) or [])
+    first_action = str((steps[0].get("action_id", "") or "")) if steps else ""
+    regret_if_act = _regret_if_act(first_action=first_action, snapshot=snapshot)
+    regret_if_wait = _regret_if_wait(first_action=first_action, snapshot=snapshot)
+    return {
+        "regret_balance": _regret_balance(
+            first_action=first_action,
+            recommended_posture=str(status_quo_view.get("recommended_posture", "") or ""),
+            snapshot=snapshot,
+        ),
+        "if_we_act_and_are_wrong": regret_if_act,
+        "if_we_wait_and_are_wrong": regret_if_wait,
+        "decision_rule": "Prefer the path with lower irreversible regret unless the current edge versus status quo is clear.",
+        "counterfactual_summary": (
+            f"If we act and are wrong: {regret_if_act} "
+            f"If we wait and are wrong: {regret_if_wait}"
+        ),
+    }
+
+
+def _build_rating_cliff_analysis(
+    *,
+    top_plan: Dict[str, Any],
+    snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(top_plan.get("steps", []) or [])
+    first_action = str((steps[0].get("action_id", "") or "")) if steps else ""
+    rating_state = _feature_value(snapshot, "capital_structure.rating_state")
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    credit_spread_pct = _safe_float(_feature_value(snapshot, "market.credit_spread_percentile_2y"))
+    rating = ""
+    outlook = ""
+    is_ig: Optional[bool] = None
+    if isinstance(rating_state, dict):
+        rating = str(rating_state.get("rating", "") or "")
+        outlook = str(rating_state.get("outlook", "") or "")
+        score = rating_state.get("score")
+        upper = rating.upper()
+        if upper:
+            is_ig = not upper.startswith("BB") and not upper.startswith("B") and not upper.startswith("CCC")
+        elif score is not None:
+            try:
+                is_ig = float(score) <= 10.5
+            except Exception:
+                is_ig = None
+
+    pressure = 0.0
+    why_it_matters: List[str] = []
+    constraints_to_watch: List[str] = []
+    if is_ig is False:
+        pressure += 0.18
+        why_it_matters.append("The issuer already screens as non-investment-grade, so incremental balance-sheet stress is punished faster.")
+    if outlook.lower().startswith("neg"):
+        pressure += 0.08
+        why_it_matters.append("The rating outlook is already negative, so the downgrade path is shorter than normal.")
+    if net_leverage is not None and net_leverage >= 3.0:
+        pressure += 0.12
+        why_it_matters.append(f"Net leverage at {_fmt_x(net_leverage)} leaves limited downgrade buffer.")
+    elif net_leverage is not None and net_leverage >= 2.5:
+        pressure += 0.06
+    if maturity_wall is not None and maturity_wall >= 0.20:
+        pressure += 0.10
+        why_it_matters.append(f"A {_fmt_pct(maturity_wall)} near-term maturity wall can force financing under pressure.")
+    if credit_spread_pct is not None and credit_spread_pct >= 75.0:
+        pressure += 0.08
+        why_it_matters.append(f"Credit spreads are already wide versus history at the {credit_spread_pct:.0f}th percentile.")
+    if credit_window is not None and credit_window <= 0.40:
+        pressure += 0.06
+        why_it_matters.append(
+            f"Debt-market conditions are {_market_window_description(credit_window, 'debt')}, so rating damage would be expensive."
+        )
+
+    covenant_pressure = 0.0
+    if is_ig is False:
+        covenant_pressure += 0.10
+    if net_leverage is not None and net_leverage >= 3.5:
+        covenant_pressure += 0.18
+    elif net_leverage is not None and net_leverage >= 3.0:
+        covenant_pressure += 0.10
+    if maturity_wall is not None and maturity_wall >= 0.20:
+        covenant_pressure += 0.06
+
+    pressure_level = _pressure_label(pressure)
+    covenant_level = _pressure_label(covenant_pressure)
+
+    if _has_capital_return([first_action]):
+        if pressure >= 0.18:
+            constraint_posture = "binding_against_payout"
+            action_interaction = "The rating/covenant profile raises the hurdle for immediate capital return."
+        else:
+            constraint_posture = "not_binding"
+            action_interaction = "Rating and covenant pressure do not appear to be the main reason to avoid the payout."
+    elif _is_balance_sheet_action(first_action):
+        if pressure >= 0.12 or covenant_pressure >= 0.12:
+            constraint_posture = "supports_balance_sheet_action"
+            action_interaction = "Rating and covenant pressure reinforce the case for a financing or liability-management step."
+        else:
+            constraint_posture = "monitor_but_not_binding"
+            action_interaction = "Balance-sheet action is not purely being forced by rating or covenant stress."
+    else:
+        constraint_posture = "monitor_but_not_binding" if pressure >= 0.12 else "not_binding"
+        action_interaction = "Rating and covenant pressure are a real constraint but not obviously the sole decision driver."
+
+    if is_ig is False:
+        constraints_to_watch.append("Avoid actions that could push the company deeper into sub-investment-grade financing costs.")
+    if covenant_pressure >= 0.12:
+        constraints_to_watch.append("Do not assume covenant headroom is abundant once leverage or EBITDA softens.")
+    if maturity_wall is not None and maturity_wall >= 0.20:
+        constraints_to_watch.append("Do not spend flexibility ahead of the near-term maturity burden.")
+    if not constraints_to_watch:
+        constraints_to_watch.append("Monitor rating and financing conditions even if they are not the lead constraint today.")
+
+    return {
+        "rating": rating or None,
+        "outlook": outlook or None,
+        "is_investment_grade": is_ig,
+        "rating_pressure_level": pressure_level,
+        "covenant_pressure_level": covenant_level,
+        "constraint_posture": constraint_posture,
+        "why_it_matters": why_it_matters[:3] or ["Rating and covenant headroom are not obviously the binding constraint."],
+        "action_interaction": action_interaction,
+        "constraints_to_watch": constraints_to_watch[:4],
+    }
+
+
+def _build_signaling_analysis(
+    *,
+    top_plan: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    status_quo_view: Dict[str, Any],
+) -> Dict[str, Any]:
+    steps = list(top_plan.get("steps", []) or [])
+    first_action = str((steps[0].get("action_id", "") or "")) if steps else ""
+    return_capital_priority = _safe_float(_feature_value(snapshot, "strategic.intent.return_capital_priority"))
+    pursue_mna_priority = _safe_float(_feature_value(snapshot, "strategic.intent.pursue_mna_priority"))
+    focus_on_core = _safe_float(_feature_value(snapshot, "strategic.intent.focus_on_core"))
+    activist_signal = _safe_float(_feature_value(snapshot, "ownership_governance.activist_signal"))
+
+    favorable: List[str] = []
+    adverse: List[str] = []
+    belief_tests: List[str] = []
+    signal_posture = "mixed"
+
+    if _is_buyback_action(first_action):
+        signal_posture = "positive_if_disciplined"
+        favorable.append("The market can read a buyback as evidence that excess capital exists and management sees limited better uses.")
+        adverse.append("The market can also read a buyback as a lack of growth ideas if the operating backdrop is soft.")
+        belief_tests.append("Investors have to believe liquidity is truly excess and not needed for resilience.")
+    elif first_action in {"capital_return.dividend_increase", "capital_return.dividend_initiate", "capital_return.special_dividend"}:
+        signal_posture = "positive_but_sticky"
+        favorable.append("A dividend step can signal confidence in durable cash generation.")
+        adverse.append("If the payout later proves hard to sustain, the signaling damage is worse than for a buyback.")
+        belief_tests.append("Investors have to believe free cash flow is repeatable enough to support the payout.")
+    elif first_action == "capital_return.dividend_cut":
+        signal_posture = "negative_but_honest"
+        favorable.append("A cut can be read positively only if it clearly protects balance-sheet resilience.")
+        adverse.append("Absent a strong repair story, a dividend cut is usually read as distress.")
+        belief_tests.append("Investors have to believe the cut fixes a real problem rather than confirms deeper deterioration.")
+    elif _uses_equity_markets([first_action]):
+        signal_posture = "negative_unless_proactive"
+        favorable.append("Equity issuance can signal prudence if it is clearly prefunding resilience or a high-return use of capital.")
+        adverse.append("The default market read is dilution, funding stress, or overvaluation capture.")
+        belief_tests.append("Investors have to believe the proceeds solve a concrete need that justifies the dilution.")
+    elif _is_balance_sheet_action(first_action):
+        signal_posture = "constructive_if_preemptive"
+        favorable.append("Refinancing or liability management can signal proactive balance-sheet discipline.")
+        adverse.append("If the company looks forced into the deal, the same action can signal fragility.")
+        belief_tests.append("Investors have to believe the company is acting from choice rather than desperation.")
+    elif _is_mna_action(first_action):
+        signal_posture = "high_variance"
+        favorable.append("M&A can signal confidence, ambition, and a differentiated growth path.")
+        adverse.append("It can also signal empire-building or overpayment if the strategic fit is not obvious.")
+        belief_tests.append("Investors have to believe the return on the deal exceeds the next-best use of capital.")
+    elif _is_divestiture_action(first_action):
+        signal_posture = "positive_if_focus"
+        favorable.append("Divestiture can signal discipline, focus, and willingness to exit low-value complexity.")
+        adverse.append("It can also signal that the company is a forced seller if the balance-sheet story looks weak.")
+        belief_tests.append("Investors have to believe the sale improves the remaining business rather than just raises cash.")
+
+    if (return_capital_priority or 0.0) >= 0.75 and _has_capital_return([first_action]):
+        favorable.append("Management signaling already leans toward capital return, so the action is less likely to shock the market.")
+    if (pursue_mna_priority or 0.0) >= 0.75 and _is_mna_action(first_action):
+        favorable.append("Management has already been signaling external growth, which lowers surprise risk.")
+    if (focus_on_core or 0.0) >= 0.70 and _is_divestiture_action(first_action):
+        favorable.append("The portfolio-focus narrative is already available to investors.")
+    if (activist_signal or 0.0) >= 0.5:
+        favorable.append("Elevated activist pressure means the market is already primed for visible action.")
+        adverse.append("Visible action under activist pressure can be read as reactive rather than strategic if the rationale is thin.")
+
+    if str(status_quo_view.get("recommended_posture", "") or "") == "wait":
+        adverse.append("Because the edge versus waiting is not decisive, the market could read the action as forced or premature.")
+
+    return {
+        "signal_posture": signal_posture,
+        "favorable_interpretations": favorable[:4] or ["The action does not create an obviously strong external signal."],
+        "adverse_interpretations": adverse[:4] or ["The action does not carry a strong adverse signal by itself."],
+        "what_market_has_to_believe": belief_tests[:3] or ["Investors have to believe the action solves a real problem more cleanly than waiting."],
+    }
+
+
+def _build_step_sizing_guidance(
+    *,
+    action_id: str,
+    parameters: Dict[str, Any],
+    snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    liquidity = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    market_cap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    liquidity_to_mcap = (liquidity / market_cap) if liquidity is not None and market_cap not in (None, 0.0) else None
+
+    if _is_buyback_action(action_id):
+        explicit = _safe_float(parameters.get("size_pct_market_cap"))
+        if explicit is not None:
+            lower = max(0.01, explicit * 0.85)
+            upper = explicit * 1.15
+            if net_leverage is not None and net_leverage >= 2.5:
+                upper = min(upper, explicit)
+            recommended_range = f"{_fmt_pct(lower)} to {_fmt_pct(upper)} of market value"
+            why_not_larger = "A larger repurchase would start to trade away flexibility too aggressively."
+            if maturity_wall is not None and maturity_wall >= 0.20:
+                why_not_larger = f"A larger repurchase would spend capital ahead of a {_fmt_pct(maturity_wall)} maturity wall."
+            why_not_smaller = "A meaningfully smaller program would not solve the idle-capital problem as directly."
+            return {
+                "sizing_posture": "moderate" if explicit < 0.08 else "assertive",
+                "recommended_range": recommended_range,
+                "rationale": [
+                    f"Current plan parameter is {_fmt_pct(explicit)} of market value.",
+                    f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "Balance-sheet capacity still matters more than gross authorization size.",
+                ],
+                "why_not_larger": why_not_larger,
+                "why_not_smaller": why_not_smaller,
+            }
+        if liquidity_to_mcap is not None:
+            upper = min(0.10, max(0.03, liquidity_to_mcap * 0.5))
+            lower = max(0.02, min(upper - 0.01, upper * 0.6))
+            if net_leverage is not None and net_leverage >= 2.5:
+                upper = min(upper, 0.06)
+                lower = min(lower, 0.04)
+            return {
+                "sizing_posture": "moderate",
+                "recommended_range": f"{_fmt_pct(lower)} to {_fmt_pct(upper)} of market value",
+                "rationale": [
+                    f"Deployable liquidity is {_fmt_pct(liquidity_to_mcap)} of market value.",
+                    f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "Sizing should preserve room for downside volatility.",
+                ],
+                "why_not_larger": "Going larger would reduce optionality faster than the current setup justifies.",
+                "why_not_smaller": "Going much smaller would leave the capital-allocation problem mostly unresolved.",
+            }
+
+    if action_id in {"capital_return.dividend_increase", "capital_return.dividend_initiate"}:
+        return {
+            "sizing_posture": "conservative",
+            "recommended_range": "Start with a modest recurring payout and leave room to scale only after results hold.",
+            "rationale": [
+                "Recurring dividends are harder to reverse than buybacks.",
+                f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "The recurring commitment should be sized below the business's downside cash-generation case.",
+            ],
+            "why_not_larger": "A larger recurring payout raises the odds of later reversal and signaling damage.",
+            "why_not_smaller": "A token increase would not create a meaningful capital-allocation signal.",
+        }
+
+    if action_id == "capital_return.special_dividend":
+        return {
+            "sizing_posture": "measured",
+            "recommended_range": "Keep the one-time payout below the full excess-cash position and retain a liquidity buffer.",
+            "rationale": [
+                f"Deployable liquidity is {_fmt_currency(liquidity)}." if liquidity is not None else "One-time payouts should be sized against true excess liquidity, not gross cash.",
+                "A special dividend is less sticky than a recurring payout but still consumes optionality immediately.",
+            ],
+            "why_not_larger": "Distributing too much cash now would reduce flexibility with no chance to scale back afterward.",
+            "why_not_smaller": "A de minimis special dividend would not solve the distribution question cleanly.",
+        }
+
+    if action_id in {"capital_structure.refinancing", "capital_structure.new_debt_issuance", "capital_structure.revolver_draw_or_resize"}:
+        return {
+            "sizing_posture": "coverage_first",
+            "recommended_range": "Size the financing to cover the near-term need plus a buffer, not to maximize gross proceeds.",
+            "rationale": [
+                f"24-month maturity wall is {_fmt_pct(maturity_wall)}." if maturity_wall is not None else "The financing should be anchored to a concrete need rather than headline size.",
+                f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "Additional debt should improve resilience rather than just expand gross leverage.",
+            ],
+            "why_not_larger": "Over-issuing debt can fix a timing problem by creating a later leverage problem.",
+            "why_not_smaller": "Under-sizing the transaction can force a second financing under worse conditions.",
+        }
+
+    if _uses_equity_markets([action_id]):
+        return {
+            "sizing_posture": "minimum_necessary",
+            "recommended_range": "Raise only the amount required to solve the funding problem with an explicit dilution ceiling.",
+            "rationale": [
+                "Equity is the most visible and often the most expensive source of permanent capital.",
+                f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "Dilution should be justified by a clear resilience or growth need.",
+            ],
+            "why_not_larger": "Excess equity issuance dilutes existing holders without proportional strategic benefit.",
+            "why_not_smaller": "A too-small issuance can leave the balance-sheet problem unresolved and force another raise.",
+        }
+
+    if _is_mna_action(action_id):
+        return {
+            "sizing_posture": "bolt_on_bias",
+            "recommended_range": "Prefer a deal size the company can absorb without compromising financing flexibility.",
+            "rationale": [
+                "The hurdle for M&A should rise with irreversibility and integration risk.",
+                f"Net leverage is {_fmt_x(net_leverage)}." if net_leverage is not None else "Keep transaction size inside the company's proven integration capacity.",
+            ],
+            "why_not_larger": "A larger acquisition increases integration, financing, and regret risk all at once.",
+            "why_not_smaller": "A too-small deal can consume management attention without moving the strategic outcome.",
+        }
+
+    if _is_divestiture_action(action_id):
+        return {
+            "sizing_posture": "targeted",
+            "recommended_range": "Sell the least strategic or lowest-return assets first rather than forcing a large disposal.",
+            "rationale": [
+                "Divestiture sizing should follow strategic fit, not just headline proceeds.",
+                "The first sale should prove portfolio simplification and capital release before scaling further.",
+            ],
+            "why_not_larger": "A larger sale can destroy strategic coherence if it is driven by urgency rather than asset quality.",
+            "why_not_smaller": "A very small sale may not create enough focus or flexibility to justify the effort.",
+        }
+
+    return {
+        "sizing_posture": "measured",
+        "recommended_range": "Size the action to solve the diagnosed problem without giving away future flexibility.",
+        "rationale": ["The action should clear a concrete need test rather than maximize gross scale."],
+        "why_not_larger": "Larger size would increase regret risk without enough added benefit.",
+        "why_not_smaller": "Smaller size would risk failing to solve the problem cleanly.",
+    }
+
+
+def _regret_if_act(*, first_action: str, snapshot: Dict[str, Any]) -> str:
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    if _has_capital_return([first_action]):
+        if maturity_wall is not None and maturity_wall >= 0.20:
+            return f"We commit capital before resolving a {_fmt_pct(maturity_wall)} near-term maturity burden."
+        return "We return capital now and later discover that the cash had a better strategic or defensive use."
+    if _is_balance_sheet_action(first_action):
+        return "We lock in financing that solves a timing problem but leaves the company with avoidable cost or dilution."
+    if _is_mna_action(first_action):
+        return "We commit to an irreversible deal and then find the strategic fit or integration case was overstated."
+    if _is_divestiture_action(first_action):
+        return "We sell too much or sell too cheaply and regret the loss of the asset later."
+    return "We act too aggressively before the edge versus waiting is truly proven."
+
+
+def _regret_if_wait(*, first_action: str, snapshot: Dict[str, Any]) -> str:
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    liquidity = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    market_cap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    liquidity_to_mcap = (liquidity / market_cap) if liquidity is not None and market_cap not in (None, 0.0) else None
+    if _has_capital_return([first_action]):
+        if liquidity_to_mcap is not None:
+            return f"We leave {_fmt_pct(liquidity_to_mcap)} of market value idle and miss a clean capital-return window."
+        return "We leave excess capital idle and fail to solve the capital-allocation problem."
+    if _is_balance_sheet_action(first_action):
+        if maturity_wall is not None and maturity_wall >= 0.20:
+            return f"We are forced to refinance later under worse conditions while a {_fmt_pct(maturity_wall)} maturity burden is still approaching."
+        return "We lose the current financing window and end up solving the balance-sheet problem on worse terms."
+    if _is_mna_action(first_action):
+        return "We preserve flexibility but miss a genuine strategic opening that does not come back on similar terms."
+    if _is_divestiture_action(first_action):
+        return "We keep a low-quality or non-core asset too long and preserve complexity that should have been removed."
+    return "We preserve optionality but allow a fixable problem to linger longer than necessary."
+
+
