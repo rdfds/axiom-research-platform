@@ -2063,3 +2063,70 @@ def _regret_if_wait(*, first_action: str, snapshot: Dict[str, Any]) -> str:
     return "We preserve optionality but allow a fixable problem to linger longer than necessary."
 
 
+def _regret_balance(*, first_action: str, recommended_posture: str, snapshot: Dict[str, Any]) -> str:
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    if recommended_posture == "wait":
+        return "bias_to_wait"
+    if _is_balance_sheet_action(first_action) and (maturity_wall or 0.0) >= 0.20:
+        return "bias_to_action"
+    if _is_mna_action(first_action) or first_action in {"capital_return.dividend_increase", "capital_return.dividend_initiate", "capital_return.special_dividend"}:
+        return "bias_to_wait"
+    if _is_buyback_action(first_action):
+        return "balanced_with_reversible_bias"
+    return "balanced"
+
+
+def _build_alternative_analysis(
+    *,
+    top_plan: Dict[str, Any],
+    other_plans: Sequence[Dict[str, Any]],
+    diagnosed: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    candidate_by_action: Dict[str, Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    top_components = dict(top_plan.get("score_components", {}) or {})
+    top_action_ids = [str(step.get("action_id", "") or "") for step in list(top_plan.get("steps", []) or [])]
+    top_first = str((top_action_ids[0] if top_action_ids else "") or "")
+    top_candidate = _resolve_plan_action_candidate(plan=top_plan, action_id=top_first, candidate_by_action=candidate_by_action)
+    for alt in other_plans:
+        alt = dict(alt or {})
+        alt_components = dict(alt.get("score_components", {}) or {})
+        alt_action_ids = [str(step.get("action_id", "") or "") for step in list(alt.get("steps", []) or [])]
+        alt_first = str((alt_action_ids[0] if alt_action_ids else "") or "")
+        alt_candidate = _resolve_plan_action_candidate(plan=alt, action_id=alt_first, candidate_by_action=candidate_by_action)
+        reasons = _build_alternative_rebuttal_reasons(
+            top_plan=top_plan,
+            alt_plan=alt,
+            top_components=top_components,
+            alt_components=alt_components,
+            top_action_ids=top_action_ids,
+            alt_action_ids=alt_action_ids,
+            top_candidate=top_candidate,
+            alt_candidate=alt_candidate,
+            snapshot=snapshot,
+            diagnosed=diagnosed,
+            precedent_by_action=precedent_by_action,
+        )
+        out.append(
+            {
+                "plan_id": str(alt.get("plan_id", "") or ""),
+                "action_ids": alt_action_ids,
+                "why_not_preferred": _format_alternative_rebuttal(reasons),
+                "comparison_reasons": reasons,
+                "score_delta": round(float(top_plan.get("score", 0.0) or 0.0) - float(alt.get("score", 0.0) or 0.0), 6),
+                "problem_alignment": diagnosed.get("primary_problem", ""),
+            }
+        )
+    if not out:
+        out = _fallback_alternative_analysis(
+            top_plan=top_plan,
+            diagnosed=diagnosed,
+            snapshot=snapshot,
+            candidate_by_action=candidate_by_action,
+            precedent_by_action=precedent_by_action,
+        )
+    return out
+
+
