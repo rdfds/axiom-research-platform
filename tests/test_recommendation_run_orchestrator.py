@@ -89,3 +89,133 @@ def _stub_precedent_runner(**kwargs):
     )
 
 
+def test_execute_recommendation_run_lifecycle_and_artifacts(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    summary = execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback", "capital_structure.refinancing"],
+        precedent_runner=_stub_precedent_runner,
+        precedent_top_k=2,
+    )
+
+    assert summary["ok"] is True
+    assert summary["status"] == "completed"
+    assert summary["counts"]["candidates"] == 2
+    assert summary["counts"]["feasible"] >= 1
+    assert summary["counts"]["plans"] >= 1
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert run.status == "completed"
+
+    artifact_map = run.metadata.get("artifacts", {})
+    for name in ["CandidateSet", "FeasibilityResults", "CausalModelRiskReport", "PrecedentMatches", "PrecedentIndex", "PlanSet", "BoardReadyDossier", "RecommendationPackage"]:
+        assert name in artifact_map
+        assert Path(artifact_map[name]).exists()
+
+    precedent_payload = json.loads(Path(artifact_map["PrecedentMatches"]).read_text())
+    assert precedent_payload.get("results")
+    first = precedent_payload["results"][0]
+    cand = first.get("candidate", {})
+    impact = cand.get("impact_distribution", {})
+    assert isinstance(impact, dict)
+    assert impact.get("blend_metadata", {}).get("source") == "precedent_distribution"
+
+    dossier_payload = json.loads(Path(artifact_map["BoardReadyDossier"]).read_text())
+    assert dossier_payload["executive_summary"]
+    assert dossier_payload["recommendation_thesis"]["problem_statement"]
+    assert dossier_payload["recommendation_thesis"]["why_now"]
+    assert dossier_payload["risk_case"]["kill_criteria"]
+
+    recommendation_payload = json.loads(Path(artifact_map["RecommendationPackage"]).read_text())
+    assert recommendation_payload["recommended_posture"] in {"act_now", "conditional_action", "wait"}
+    assert recommendation_payload["status_quo_view"]
+    assert recommendation_payload["sizing_guidance"]
+    assert recommendation_payload["parameter_optimization"]
+    assert recommendation_payload["regret_analysis"]
+    assert recommendation_payload["rating_cliff_analysis"]
+    assert recommendation_payload["signaling_analysis"]
+    assert recommendation_payload["top_plan"]
+    assert recommendation_payload["ranked_action_views"]
+    assert recommendation_payload["plans_preview"]
+    assert recommendation_payload["top_plan_summary_explanation"]
+    assert recommendation_payload["board_ready_dossier"]["executive_summary"]
+    assert isinstance(recommendation_payload["monitoring_triggers"], list)
+    assert isinstance(recommendation_payload["contingency_branches"], list)
+    assert recommendation_payload["summary"]["top_plan_action_ids"]
+
+    event_types = [e.event_type for e in run.audit_log]
+    assert "candidate_generation_started" in event_types
+    assert "candidate_generation_completed" in event_types
+    assert "feasibility_eval_started" in event_types
+    assert "feasibility_eval_completed" in event_types
+    assert "precedent_retrieval_started" in event_types
+    assert "precedent_retrieval_completed" in event_types
+    assert "planning_started" in event_types
+    assert "planning_completed" in event_types
+    assert "run_completed" in event_types
+
+
+def test_execute_recommendation_run_hard_constraint_gates_equity(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        constraints={
+            "hard_constraints": [
+                {
+                    "constraint_type": "no_equity_issuance",
+                    "parameters": {},
+                    "source": "user_input",
+                    "priority": "hard",
+                }
+            ],
+            "soft_constraints": [],
+        },
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_structure.equity_issuance", "capital_return.open_market_buyback"],
+        precedent_runner=_stub_precedent_runner,
+    )
+
+    run = store.get_run(run_id)
+    assert run is not None
+    feas_path = Path(run.metadata["artifacts"]["FeasibilityResults"])
+    feas = json.loads(feas_path.read_text())
+
+    by_action = {r["candidate"]["action_id"]: r for r in feas["results"]}
+    assert by_action["capital_structure.equity_issuance"]["feasible"] is False
+    assert any("no_equity_issuance" in x for x in by_action["capital_structure.equity_issuance"]["hard_constraint_violations"])
+
+

@@ -590,3 +590,8 @@ def _generate_candidates(
     )
 
 
+def _snapshot_features(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    feats = feature_view_from_snapshot(snapshot, view_name="candidate_generation")
+    return feats if isinstance(feats, dict) else {}
+
+
