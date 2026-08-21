@@ -761,3 +761,7 @@ def _split_bullets(text: str) -> List[str]:
     return out
 
 
+def _extract_action_path(text: str) -> List[str]:
+    return _RAW_ACTION_ID_RE.findall(str(text or ""))
+
+

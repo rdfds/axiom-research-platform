@@ -1336,3 +1336,105 @@ def _resolve_supported_historical_entities(
     return pd.DataFrame(resolved_rows)
 
 
+def _cached_snapshot_loader(
+    builder: CompanyStateBuilder,
+    *,
+    cache_dir: Optional[Path] = None,
+    progress_logger: Optional[Callable[[Dict[str, Any]], None]] = None,
+    alias_overrides: Optional[Dict[Tuple[str, str], List[str]]] = None,
+):
+    cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _loader(company_id: str, as_of_time: datetime) -> Dict[str, Any]:
+        as_of_ts = pd.Timestamp(as_of_time).tz_convert("UTC")
+        key = (str(company_id), as_of_ts.isoformat())
+        if key in cache:
+            return cache[key]
+        extra_aliases = list((alias_overrides or {}).get(key, []) or [])
+        cache_path = _snapshot_cache_path(
+            cache_dir,
+            company_id=str(company_id),
+            as_of_ts=as_of_ts,
+            extra_aliases=extra_aliases,
+            historical_backfill_mode=bool(getattr(builder, "historical_backfill_mode", False)),
+        )
+        if cache_path is not None and cache_path.exists():
+            try:
+                payload = json.loads(cache_path.read_text())
+                payload = attach_model_feature_bundle(payload)
+                cache_path.write_text(json.dumps(payload))
+                cache[key] = payload
+                _emit_progress(
+                    progress_logger,
+                    {
+                        "event": "snapshot_cache_hit",
+                        "company_id": str(company_id),
+                        "as_of_time": as_of_ts.isoformat(),
+                        "cache_path": str(cache_path),
+                    },
+                )
+                return payload
+            except Exception:
+                _emit_progress(
+                    progress_logger,
+                    {
+                        "event": "snapshot_cache_rebuild",
+                        "company_id": str(company_id),
+                        "as_of_time": as_of_ts.isoformat(),
+                        "cache_path": str(cache_path),
+                    },
+                )
+        build_started_at = time.perf_counter()
+        _emit_progress(
+            progress_logger,
+            {
+                "event": "snapshot_build_start",
+                "company_id": str(company_id),
+                "as_of_time": as_of_ts.isoformat(),
+                "cache_path": str(cache_path) if cache_path is not None else None,
+                "extra_aliases": extra_aliases[:10],
+            },
+        )
+        snap = builder.build(
+            company_id=str(company_id),
+            as_of_time=as_of_ts.isoformat(),
+            extra_aliases=extra_aliases,
+        )
+        payload = attach_model_feature_bundle(asdict(snap))
+        cache[key] = payload
+        if cache_path is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(payload))
+        _emit_progress(
+            progress_logger,
+            {
+                "event": "snapshot_build_complete",
+                "company_id": str(company_id),
+                "as_of_time": as_of_ts.isoformat(),
+                "cache_path": str(cache_path) if cache_path is not None else None,
+                "elapsed_seconds": round(time.perf_counter() - build_started_at, 3),
+            },
+        )
+        return payload
+
+    return _loader
+
+
+def _snapshot_cache_path(
+    cache_dir: Optional[Path],
+    *,
+    company_id: str,
+    as_of_ts: pd.Timestamp,
+    extra_aliases: Optional[Sequence[str]] = None,
+    historical_backfill_mode: bool = False,
+) -> Optional[Path]:
+    if cache_dir is None:
+        return None
+    stamp = as_of_ts.strftime("%Y%m%dT%H%M%SZ")
+    alias_part = "|".join(sorted({str(x) for x in list(extra_aliases or []) if str(x)}))
+    digest = hashlib.sha1(
+        f"{company_id}|{as_of_ts.isoformat()}|backfill={int(historical_backfill_mode)}|aliases={alias_part}".encode("utf-8")
+    ).hexdigest()[:12]
+    return cache_dir / f"company_id={company_id}" / f"snapshot_as_of={stamp}_{digest}.json"
+
+

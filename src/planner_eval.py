@@ -516,3 +516,7 @@ def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> 
     return selected
 
 
+__all__ = [
+    "build_planner_eval_report",
+    "render_planner_eval_markdown",
+]
