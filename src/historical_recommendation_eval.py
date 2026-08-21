@@ -1438,3 +1438,29 @@ def _snapshot_cache_path(
     return cache_dir / f"company_id={company_id}" / f"snapshot_as_of={stamp}_{digest}.json"
 
 
+def _emit_progress(
+    progress_logger: Optional[Callable[[Dict[str, Any]], None]],
+    payload: Dict[str, Any],
+) -> None:
+    if progress_logger is None:
+        return
+    progress_logger(dict(payload))
+
+
+def _build_historical_alias_overrides(selected_cases: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str], List[str]]:
+    overrides: Dict[Tuple[str, str], List[str]] = {}
+    for case in selected_cases:
+        resolved_company_id = str(case.get("company_id") or "")
+        as_of_time = str(case.get("as_of_time") or "")
+        source_company_id = str(case.get("source_company_id") or "")
+        ticker = str(case.get("ticker") or "").upper()
+        aliases: List[str] = []
+        if source_company_id and source_company_id != resolved_company_id:
+            aliases.append(source_company_id)
+        if ticker:
+            aliases.append(ticker)
+        if aliases:
+            overrides[(resolved_company_id, as_of_time)] = aliases
+    return overrides
+
+

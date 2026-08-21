@@ -87,3 +87,50 @@ def test_canonical_request_signature_stable_to_action_order():
     assert s1 == s2
 
 
+def test_find_cached_completed_run(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    sig = api._canonical_request_signature(
+        company_id="001690",
+        as_of="2026-02-28",
+        action_ids=["capital_return.open_market_buyback"],
+        action_type=None,
+        objectives=None,
+        constraints=None,
+        scenario=None,
+        max_candidates=50,
+        min_candidates_target=300,
+        precedent_top_k=25,
+        strict_evidence=False,
+        top_plans=1,
+    )
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+        metadata={"request_signature": sig},
+    )
+    store.transition_status(run_id, "candidate_generation")
+    store.transition_status(run_id, "feasibility_evaluation")
+    store.transition_status(run_id, "precedent_retrieval")
+    store.transition_status(run_id, "plan_search")
+    store.transition_status(run_id, "completed")
+    store.attach_artifact(run_id, "RecommendationPackage", {"run_id": run_id, "top_plan": {"plan_id": "p1"}})
+
+    found = api._find_cached_completed_run(
+        store=store,
+        company_id="001690",
+        as_of="2026-02-28",
+        request_signature=sig,
+    )
+    assert found is not None
+    assert found["run_id"] == run_id
+    assert found["status"] == "completed"
+
+

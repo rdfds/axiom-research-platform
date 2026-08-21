@@ -1139,3 +1139,10 @@ def _validate_status_transition(current: str, new_status: str) -> None:
         raise ValueError(f"Invalid status transition: {current} -> {new_status}")
 
 
+def _read_parquet_columns(path: Path, columns: Iterable[str]) -> pd.DataFrame:
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(path, columns=list(columns))
+    return table.to_pandas()
+
+
