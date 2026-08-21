@@ -92,3 +92,5 @@ def main() :
     print(json.dumps({"ok": True, "run_id": run_id, "runs_root": args.runs_root}))
 
 
+if __name__ == "__main__":
+    main()
