@@ -2130,3 +2130,138 @@ def _build_alternative_analysis(
     return out
 
 
+def _fallback_alternative_analysis(
+    *,
+    top_plan: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    candidate_by_action: Dict[str, Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    top_components = dict(top_plan.get("score_components", {}) or {})
+    top_action_ids = [str(step.get("action_id", "") or "") for step in list(top_plan.get("steps", []) or [])]
+    top_first = str((top_action_ids[0] if top_action_ids else "") or "")
+    top_candidate = _resolve_plan_action_candidate(plan=top_plan, action_id=top_first, candidate_by_action=candidate_by_action)
+    ranked: List[Tuple[float, str, Dict[str, Any]]] = []
+    for action_id, candidate in candidate_by_action.items():
+        if not action_id or action_id == top_first:
+            continue
+        support = _candidate_support_score(candidate) + (0.25 * _precedent_confidence(precedent_by_action.get(action_id, {})))
+        ranked.append((support, action_id, dict(candidate or {})))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    out: List[Dict[str, Any]] = []
+    for _, alt_action_id, alt_candidate in ranked[:3]:
+        alt_components = {
+            "expected_utility": _candidate_expected_utility(alt_candidate),
+            "support_factor": float(alt_candidate.get("evaluation_confidence", 0.0) or 0.0),
+            "tail_risk_penalty": _candidate_tail_penalty(alt_candidate),
+            "time_discount_factor": 1.0,
+        }
+        reasons = _build_alternative_rebuttal_reasons(
+            top_plan=top_plan,
+            alt_plan={"plan_id": f"candidate::{alt_action_id}", "steps": [{"action_id": alt_action_id}], "actions": [alt_candidate]},
+            top_components=top_components,
+            alt_components=alt_components,
+            top_action_ids=top_action_ids,
+            alt_action_ids=[alt_action_id],
+            top_candidate=top_candidate,
+            alt_candidate=alt_candidate,
+            snapshot=snapshot,
+            diagnosed=diagnosed,
+            precedent_by_action=precedent_by_action,
+        )
+        out.append(
+            {
+                "plan_id": f"candidate::{alt_action_id}",
+                "action_ids": [alt_action_id],
+                "why_not_preferred": _format_alternative_rebuttal(reasons),
+                "comparison_reasons": reasons,
+                "score_delta": None,
+                "problem_alignment": diagnosed.get("primary_problem", ""),
+            }
+        )
+    return out
+
+
+def _build_risk_case(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    risks = dict(top_plan.get("risks", {}) or {})
+    first_action = str((((top_plan.get("steps", []) or [{}])[0] or {}).get("action_id", "") or ""))
+    main_failure_modes = _dedupe([str(x).strip() for x in list(risks.get("main_failure_modes", []) or []) if str(x).strip()])[:4]
+    regime_sensitivity = _dedupe([str(x).strip() for x in list(risks.get("regime_sensitivity", []) or []) if str(x).strip()])[:4]
+    execution_risks = _dedupe([str(x).strip() for x in list(risks.get("execution_risks", []) or []) if str(x).strip()])[:4]
+    tail_descriptions = _dedupe(
+        desc
+        for thesis in step_theses
+        for desc in list(thesis.get("tail_descriptions", []) or [])
+        if str(desc).strip()
+    )
+    adverse_tails = [desc for desc in tail_descriptions if str(desc).startswith("Adverse")]
+    generic_failure_modes = {
+        "Bottom decile historical outcome.",
+        "Top decile historical outcome.",
+    }
+    if not main_failure_modes or set(main_failure_modes).issubset(generic_failure_modes):
+        main_failure_modes = _fallback_failure_modes(first_action=first_action, snapshot=snapshot)
+    elif _has_only_generic_tail_descriptions(main_failure_modes):
+        main_failure_modes = _dedupe(_fallback_failure_modes(first_action=first_action, snapshot=snapshot) + main_failure_modes)[:4]
+    if not main_failure_modes:
+        main_failure_modes = _fallback_failure_modes(first_action=first_action, snapshot=snapshot)
+    execution_risks = _dedupe(execution_risks + [tradeoff for thesis in step_theses for tradeoff in list(thesis.get("tradeoffs", []) or [])])[:4]
+    if not execution_risks or all(_looks_generic_execution_risk(x) for x in execution_risks):
+        execution_risks = _fallback_execution_risks(first_action=first_action, snapshot=snapshot)
+    why_acceptable: List[str] = []
+    feasibility_chain = float(((top_plan.get("score_components", {}) or {}).get("feasibility_chain", 0.0) or 0.0))
+    if feasibility_chain >= 0.9:
+        why_acceptable.append(f"Plan feasibility chain is {feasibility_chain:.3f}, so execution is not being forced through a weak step.")
+    if list(top_plan.get("triggers", []) or []):
+        why_acceptable.append("The plan has explicit monitoring triggers rather than assuming static conditions.")
+    if list(top_plan.get("branches", []) or []):
+        why_acceptable.append("The plan includes contingency branches, so it is not reliant on one path only.")
+    if not why_acceptable:
+        why_acceptable.append("Risks are acceptable only if the current operating and market posture holds.")
+
+    kill_criteria = _decision_boundaries(
+        first_action=first_action,
+        snapshot=snapshot,
+        top_plan=top_plan,
+    )
+    return {
+        "main_failure_modes": [_humanize_text(x) for x in main_failure_modes],
+        "regime_sensitivity": [_humanize_text(x) for x in regime_sensitivity],
+        "execution_risks": [_humanize_text(x) for x in execution_risks],
+        "why_risks_acceptable": why_acceptable[:4],
+        "kill_criteria": kill_criteria,
+    }
+
+
+def _build_scorecard(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    action_ids = [str(step.get("action_id", "") or "") for step in list(top_plan.get("steps", []) or [])]
+    precedent_scores = [
+        _precedent_confidence(precedent_by_action.get(action_id, {}))
+        for action_id in action_ids
+        if action_id in precedent_by_action
+    ]
+    eval_scores = [float(((top_plan.get("actions", []) or [{}])[idx].get("evaluation_confidence", 0.0) or 0.0)) for idx in range(len(action_ids)) if idx < len(list(top_plan.get("actions", []) or []))]
+    return {
+        "plan_score": float(top_plan.get("score", 0.0) or 0.0),
+        "expected_utility": float(((top_plan.get("score_components", {}) or {}).get("expected_utility", 0.0) or 0.0)),
+        "feasibility_chain": float(((top_plan.get("score_components", {}) or {}).get("feasibility_chain", 0.0) or 0.0)),
+        "support_factor": float(((top_plan.get("score_components", {}) or {}).get("support_factor", 0.0) or 0.0)),
+        "tail_risk_penalty": float(((top_plan.get("score_components", {}) or {}).get("tail_risk_penalty", 0.0) or 0.0)),
+        "average_precedent_confidence": round(sum(precedent_scores) / len(precedent_scores), 6) if precedent_scores else 0.0,
+        "average_evaluation_confidence": round(sum(eval_scores) / len(eval_scores), 6) if eval_scores else 0.0,
+        "causal_supported_steps": sum(1 for thesis in step_theses if str(thesis.get("support_type", "")).startswith("causal")),
+    }
+
+
