@@ -2265,3 +2265,186 @@ def _build_scorecard(
     }
 
 
+def _confidence_posture(
+    *,
+    top_plan: Dict[str, Any],
+    step_theses: Sequence[Dict[str, Any]],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> str:
+    plan_score = float(top_plan.get("score", 0.0) or 0.0)
+    support_factor = float(((top_plan.get("score_components", {}) or {}).get("support_factor", 0.0) or 0.0))
+    tail_penalty = float(((top_plan.get("score_components", {}) or {}).get("tail_risk_penalty", 0.0) or 0.0))
+    avg_precedent = 0.0
+    if step_theses:
+        vals = [float(thesis.get("precedent_confidence", 0.0) or 0.0) for thesis in step_theses]
+        avg_precedent = sum(vals) / len(vals)
+    if plan_score >= 0.30 and support_factor >= 0.80 and avg_precedent >= 0.35 and tail_penalty <= 0.08:
+        return "high_conviction"
+    if plan_score >= 0.18 and support_factor >= 0.70:
+        return "supported_but_conditional"
+    return "conditional"
+
+
+def _step_role_text(action_id: str, parameters: Dict[str, Any], snapshot: Dict[str, Any], diagnosed: Dict[str, Any]) -> str:
+    if _is_buyback_action(action_id):
+        size_pct = _safe_float(parameters.get("size_pct_market_cap"))
+        size_abs = _safe_float(parameters.get("size_absolute_usd"))
+        funding_mix = dict(parameters.get("funding_mix", {}) or {})
+        if size_pct is not None:
+            size_text = f" at about {_fmt_pct(size_pct)} of market value"
+        elif size_abs is not None:
+            size_text = f" for roughly {_fmt_currency(size_abs)}"
+        else:
+            size_text = ""
+        funding_text = ""
+        cash_share = _safe_float(funding_mix.get("cash"))
+        debt_share = _safe_float(funding_mix.get("debt"))
+        if cash_share is not None and cash_share >= 0.75:
+            funding_text = " funded primarily from cash"
+        elif debt_share is not None and debt_share >= 0.25:
+            funding_text = " while preserving flexibility on the funding mix"
+        return f"Repurchase stock{size_text}{funding_text} to absorb excess capital and improve per-share value."
+    if action_id in {"capital_return.special_dividend", "capital_return.dividend_increase", "capital_return.dividend_initiate"}:
+        yield_pct = _safe_float(parameters.get("initial_yield_pct"))
+        annual_cash = _safe_float(parameters.get("annualized_cash_commitment_usd"))
+        if action_id == "capital_return.special_dividend":
+            return "Return excess cash through a one-time distribution without permanently resetting payout policy."
+        if yield_pct is not None:
+            return f"Reset recurring payout policy around {_fmt_pct(yield_pct)} of yield so cash return is explicit rather than residual."
+        if annual_cash is not None:
+            return f"Reset recurring payout policy around {_fmt_currency(annual_cash)} of annual cash commitment."
+        return "Reset payout policy to return excess cash through a recurring distribution."
+    if action_id == "capital_structure.refinancing":
+        amount = _safe_float(parameters.get("amount_refinanced_usd"))
+        tenor = _normalize_numeric_current(
+            parameter_name="new_tenor_years",
+            current_value=parameters.get("new_tenor_years"),
+            parameter_schema={},
+        )
+        targeted = dict(parameters.get("maturities_targeted", {}) or {})
+        targeted_max = _safe_float(targeted.get("max"))
+        amount_text = f" about {_fmt_currency(amount)}" if amount is not None else ""
+        tenor_text = f" into roughly {tenor:.1f}-year paper" if tenor is not None else ""
+        targeted_text = ""
+        if targeted_max is not None:
+            targeted_text = f" with a focus on obligations coming due inside {targeted_max:.0f} years"
+        return (
+            f"Refinance{amount_text}{tenor_text} to push out maturities{targeted_text} before optionality is used elsewhere."
+        ).replace("  ", " ").strip()
+    if action_id in {"capital_structure.new_debt_issuance", "capital_structure.revolver_draw_or_resize"}:
+        amount = _safe_float(
+            parameters.get("amount_usd")
+            or parameters.get("draw_amount_usd")
+            or parameters.get("resize_amount_usd")
+        )
+        tenor = _normalize_numeric_current(
+            parameter_name="tenor_years",
+            current_value=parameters.get("tenor_years"),
+            parameter_schema={},
+        )
+        use_of_proceeds = _humanize_use_of_proceeds(str(parameters.get("use_of_proceeds", "") or ""))
+        amount_text = f" about {_fmt_currency(amount)}" if amount is not None else ""
+        tenor_text = f" with roughly {tenor:.1f}-year tenor" if tenor is not None else ""
+        if action_id == "capital_structure.revolver_draw_or_resize":
+            return (
+                f"Use the revolver{amount_text} to secure liquidity insurance{_for_phrase(use_of_proceeds)} "
+                f"before relying on a less forgiving market."
+            )
+        return (
+            f"Raise{amount_text} of new debt{tenor_text} to {use_of_proceeds}, so later steps are not funded from a weaker position."
+        ).replace("  ", " ").strip()
+    if action_id in {"capital_structure.tender_offer_debt", "capital_structure.exchange_offer", "capital_structure.liability_management_exercise"}:
+        return "Actively reshape liabilities to reduce refinancing or spread risk."
+    if action_id in {"capital_structure.equity_issuance", "capital_structure.convertible_issuance", "capital_structure.preferred_issuance"}:
+        amount = _safe_float(parameters.get("amount_usd"))
+        use_of_proceeds = _humanize_use_of_proceeds(str(parameters.get("use_of_proceeds", "") or ""))
+        amount_text = f" about {_fmt_currency(amount)} of" if amount is not None else ""
+        instrument = "convertible capital" if action_id == "capital_structure.convertible_issuance" else "equity capital"
+        if action_id == "capital_structure.preferred_issuance":
+            instrument = "preferred capital"
+        return (
+            f"Raise {amount_text} {instrument} to {use_of_proceeds}, accepting dilution only because flexibility is the binding issue."
+        ).replace("  ", " ").strip()
+    if _is_mna_action(action_id):
+        size = _safe_float(parameters.get("estimated_ev_usd"))
+        leverage_post_close = _normalize_numeric_current(
+            parameter_name="leverage_post_close",
+            current_value=parameters.get("leverage_post_close"),
+            parameter_schema={},
+        )
+        size_text = f" at roughly {_fmt_currency(size)} of enterprise value" if size is not None else ""
+        leverage_text = f" while keeping pro forma leverage near {leverage_post_close:.1f}x" if leverage_post_close is not None else ""
+        return (
+            f"Use external action{size_text} to add growth, scale, or strategic control that internal deployment would not create{leverage_text}."
+        ).replace("  ", " ").strip()
+    if _is_divestiture_action(action_id):
+        pct_divested = _safe_float(parameters.get("percent_divested"))
+        use_of_proceeds = _humanize_use_of_proceeds(str(parameters.get("use_of_proceeds", "") or ""))
+        pct_text = f" by selling roughly {_fmt_pct(pct_divested)} of the asset base" if pct_divested is not None else ""
+        return f"Release capital{pct_text} and simplify the portfolio before using the proceeds to {use_of_proceeds}."
+    return f"{_humanize_action_id(action_id)} addresses the current strategic bottleneck."
+
+
+def _timing_thesis(
+    *,
+    action_id: str,
+    step: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+    plan: Dict[str, Any],
+) -> str:
+    prerequisites = list(step.get("prerequisites", []) or [])
+    median_days = int(((step.get("expected_duration", {}) or {}).get("median_days", 0) or 0))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    equity_window = _safe_float(_feature_value(snapshot, "market.equity_window_proxy"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    liquidity_to_mcap = None
+    liq = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    mcap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    if liq is not None and mcap not in (None, 0.0):
+        liquidity_to_mcap = liq / mcap
+
+    parts: List[str] = []
+    if prerequisites:
+        parts.append(f"This step should happen only after {', '.join(_humanize_action_id(x) for x in prerequisites)} has landed.")
+    else:
+        parts.append("This is a front-of-plan action rather than a follow-on clean-up step.")
+    if _is_balance_sheet_action(action_id) and (maturity_wall or 0.0) >= 0.12:
+        parts.append(f"The 24-month maturity wall is already {_fmt_pct(maturity_wall)}, so waiting does not improve the liability profile.")
+    if _is_balance_sheet_action(action_id) and (net_leverage or 0.0) >= 3.0:
+        parts.append(f"Net leverage is {_fmt_x(net_leverage)}, so preserving financing flexibility matters before doing anything more discretionary.")
+    if _uses_credit_markets([action_id]) and (credit_window or 0.0) >= 0.50:
+        parts.append(
+            f"Debt markets are currently {_market_window_description(credit_window, 'debt')}, "
+            "so it is safer to address the financing need before conditions worsen."
+        )
+    elif _uses_credit_markets([action_id]) and credit_window is not None and credit_window <= 0.35:
+        parts.append("Debt markets are already fragile enough that waiting risks losing the remaining financing window.")
+    if _uses_equity_markets([action_id]) and (equity_window or 0.0) >= 0.60:
+        parts.append(f"Equity markets are open enough to issue now and issuance conditions are {_market_window_description(equity_window, 'equity')}.")
+    if _has_capital_return([action_id]) and (liquidity_to_mcap or 0.0) >= 0.03:
+        parts.append(f"Waiting mainly leaves {_fmt_pct(liquidity_to_mcap)} of market value idle rather than improving the setup.")
+    if median_days > 0:
+        parts.append(f"Lead time is about {median_days} days, so the plan captures value on a near-term rather than distant timeline.")
+    return " ".join(parts[:4]).strip()
+
+
+def _step_tradeoffs(action_candidate: Dict[str, Any], action_id: str, snapshot: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for risk in list(action_candidate.get("risks", []) or []):
+        explanation = str(risk.get("explanation", "") or "").strip()
+        if explanation:
+            out.append(explanation)
+    for flag in list(action_candidate.get("structural_sanity_flags", []) or []):
+        if str(flag.get("status", "") or "") == "warning":
+            explanation = str(flag.get("explanation", "") or "").strip()
+            if explanation:
+                out.append(explanation)
+    if _has_capital_return([action_id]):
+        net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+        if net_leverage is not None and net_leverage >= 2.5:
+            out.append("Capital return would be more controversial at current leverage and should not crowd out balance-sheet repair.")
+    return _dedupe(out)
+
+

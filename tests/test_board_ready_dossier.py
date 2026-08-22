@@ -240,3 +240,43 @@ def test_build_board_ready_dossier_generates_executive_thesis():
     assert dossier["scorecard"]["average_precedent_confidence"] > 0.0
 
 
+def test_build_board_ready_dossier_can_recommend_wait_against_weak_action():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_return.dividend_initiate",
+            value_creation=0.01,
+            risk_reduction=0.0,
+            optionality=-0.04,
+            pass_probability=0.58,
+            evaluation_confidence=0.22,
+            precedent_confidence=0.12,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=_snapshot(),
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    assert dossier["status_quo_view"]["recommended_posture"] == "wait"
+    assert dossier["status_quo_view"]["status_quo_preferred"] is True
+    assert "wait" in dossier["executive_summary"].lower()
+    assert dossier["parameter_optimization"]["summary"]
+    assert dossier["parameter_optimization"]["recommended_parameters"]["initial_yield_pct"]["recommended_range"]
+    assert dossier["recommendation_thesis"]["recommended_posture"] == "wait"
+    assert dossier["ranked_action_views"][0]["recommended_posture"] == "wait"
+
+
