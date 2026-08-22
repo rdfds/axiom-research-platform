@@ -595,3 +595,9 @@ def _snapshot_features(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     return feats if isinstance(feats, dict) else {}
 
 
+def _snapshot_feature_value(v: Any) -> Any:
+    if isinstance(v, dict):
+        return v.get("value")
+    return v
+
+
