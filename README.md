@@ -2,9 +2,13 @@
 
 ### Decision intelligence for corporate finance
 
+[![Public showcase CI](https://github.com/rdfds/axiom-research-platform/actions/workflows/public-showcase.yml/badge.svg)](https://github.com/rdfds/axiom-research-platform/actions/workflows/public-showcase.yml)
+
 Axiom turns point-in-time company data, peer context, market pricing, historical transactions, and action-impact evidence into recommendations a CFO, banker, or investment committee can interrogate.
 
 This is not a dashboard wrapper or a single prediction model. It is an evidence system: every important output carries its timing, provenance, confidence, limitations, and supporting historical context.
+
+> **Public showcase:** Published in August 2026 from work begun in December 2025. Private datasets, credentials, and private development history are excluded; the public commit dates reflect preparation of this sanitized showcase rather than the project's full development timeline.
 
 ![Axiom market expectations demo](docs/assets/market_expectations_hd.png)
 
