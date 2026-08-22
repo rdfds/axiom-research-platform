@@ -601,3 +601,53 @@ def _snapshot_feature_value(v: Any) -> Any:
     return v
 
 
+def _flatten_projected_state(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    dossier_features = feature_view_from_snapshot(snapshot, view_name="dossier")
+    for k, v in dossier_features.items():
+        out[k] = _snapshot_feature_value(v)
+    for key in (
+        "capital_structure.net_debt",
+        "capital_structure.net_leverage",
+        "capital_structure.gross_leverage",
+        "liquidity.available_for_actions",
+        "operating.ebitda_ttm",
+        "macro.rate_10y",
+        "macro.rate_2y",
+        "macro.sofr",
+        "market.ig_oas",
+        "market.hy_oas",
+        "market.pe",
+    ):
+        value = resolve_feature_value(dossier_features, key)
+        if value is not None:
+            out[key] = value
+
+    # Optional helper signal for rating-preservation constraints.
+    rating_state = out.get("capital_structure.rating_state")
+    if isinstance(rating_state, dict):
+        rating = str(rating_state.get("rating", "") or "")
+        is_ig = False
+        if rating:
+            upper = rating.upper()
+            # Broad heuristic: treat any BB+/below as non-IG.
+            is_ig = not upper.startswith("BB") and not upper.startswith("B") and not upper.startswith("CCC")
+        out["capital_structure.rating_state.is_investment_grade"] = is_ig
+    return out
+
+
+def _infer_evidence_classes(snapshot: Dict[str, Any]) -> List[str]:
+    classes = {"financial_disclosure"}
+    prov = snapshot.get("provenance", {}) if isinstance(snapshot.get("provenance"), dict) else {}
+    inputs = prov.get("inputs_used", {}) if isinstance(prov.get("inputs_used"), dict) else {}
+    if inputs.get("facts"):
+        classes.update({"management_statement", "capital_policy_statement", "liquidity_disclosure"})
+    if inputs.get("timeseries") or inputs.get("macro"):
+        classes.add("market_signal")
+    if inputs.get("events"):
+        classes.update({"recent_action_history", "peer_context_signal"})
+    if inputs.get("issuer_ratings"):
+        classes.add("rating_disclosure")
+    return sorted(classes)
+
+

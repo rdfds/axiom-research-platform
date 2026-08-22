@@ -219,3 +219,72 @@ def test_execute_recommendation_run_hard_constraint_gates_equity(tmp_path: Path)
     assert any("no_equity_issuance" in x for x in by_action["capital_structure.equity_issuance"]["hard_constraint_violations"])
 
 
+def test_execute_recommendation_run_fails_on_snapshot_hash_mismatch(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    # mutate snapshot after run creation to force hash mismatch
+    p = snapshot_root / "keyed" / "as_of_date=2026-02-28" / "company_id=0000320193.json"
+    row = json.loads(p.read_text().strip())
+    row["features"]["liquidity.available_for_actions"]["value"] = 999.0
+    p.write_text(json.dumps(row) + "\n")
+
+    with pytest.raises(ValueError, match="Frozen snapshot hash mismatch"):
+        execute_recommendation_run(
+            run_id=run_id,
+            runs_root=runs_root,
+            snapshot_root=snapshot_root,
+            entity_identifier_path=entity_identifier,
+            action_ids=["capital_return.open_market_buyback"],
+            precedent_runner=_stub_precedent_runner,
+        )
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert run.status == "failed"
+    assert any(e.event_type == "run_failed" for e in run.audit_log)
+
+
+def test_create_and_execute_recommendation_run_one_shot(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+
+    summary = create_and_execute_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback"],
+        precedent_runner=_stub_precedent_runner,
+        top_plans=1,
+    )
+
+    assert summary["ok"] is True
+    assert summary["status"] == "completed"
+    assert summary["counts"]["candidates"] == 1
+    assert summary["counts"]["feasible"] == 1
+    assert summary["counts"]["plans"] == 1
+
+    run_id = summary["run_id"]
+    store = RecommendationRunStore(root=runs_root)
+    run = store.get_run(run_id)
+    assert run is not None
+    assert run.status == "completed"
+    assert any(e.event_type == "run_completed" for e in run.audit_log)
+
+
