@@ -1464,3 +1464,133 @@ def _build_historical_alias_overrides(selected_cases: Sequence[Dict[str, Any]]) 
     return overrides
 
 
+def _load_realized_outcomes_lookup(path: Path) -> Dict[str, List[Tuple[pd.Timestamp, str, str]]]:
+    frame = duckdb.execute(
+        """
+        SELECT
+            CAST(company_id AS VARCHAR) AS company_id,
+            CAST(action_date AS TIMESTAMP) AS action_date,
+            CAST(normalized_action_id AS VARCHAR) AS normalized_action_id,
+            CAST(normalized_action_family AS VARCHAR) AS normalized_action_family
+        FROM read_parquet(?)
+        WHERE company_id IS NOT NULL AND action_date IS NOT NULL
+        ORDER BY company_id, action_date
+        """,
+        [str(path)],
+    ).df()
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    frame = frame.dropna(subset=["company_id", "action_date"])
+    lookup: Dict[str, List[Tuple[pd.Timestamp, str, str]]] = {}
+    for company_id, group in frame.groupby("company_id", sort=False):
+        lookup[str(company_id)] = [
+            (
+                pd.Timestamp(row.action_date).tz_convert("UTC"),
+                str(row.normalized_action_id or ""),
+                str(row.normalized_action_family or ""),
+            )
+            for row in group.itertuples(index=False)
+        ]
+    return lookup
+
+
+def _top_action_ids(package: Dict[str, Any]) -> List[str]:
+    ranked = list(package.get("ranked_action_views", []) or [])
+    if ranked:
+        top = dict(ranked[0] or {})
+        ids = [str(x) for x in list(top.get("action_ids", []) or []) if str(x)]
+        if ids:
+            return ids
+    primary = str(package.get("primary_recommendation", "") or "")
+    return [primary] if primary else []
+
+
+def _score_precedent_ranking(
+    *,
+    precedent_index: Dict[str, Any],
+    anchor_action_id: str,
+    anchor_action_family: str,
+    anchor_action_support: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    candidate_rows = list(precedent_index.get("candidate_rows", []) or [])
+    if not candidate_rows:
+        return {"reason": "no_precedent_candidate_rows"}
+
+    action_scores: Dict[str, float] = {}
+    family_scores: Dict[str, float] = {}
+    for row in candidate_rows:
+        action_id = str(row.get("action_id") or "").strip()
+        if not action_id:
+            continue
+        confidence = row.get("precedent_confidence")
+        if confidence is None:
+            continue
+        score = float(confidence)
+        family = _action_family(action_id)
+        if action_id not in action_scores or score > action_scores[action_id]:
+            action_scores[action_id] = score
+        if family and (family not in family_scores or score > family_scores[family]):
+            family_scores[family] = score
+
+    if not action_scores and not family_scores:
+        return {"reason": "no_precedent_scores"}
+
+    sorted_actions = sorted(action_scores.items(), key=lambda item: (-item[1], item[0]))
+    sorted_families = sorted(family_scores.items(), key=lambda item: (-item[1], item[0]))
+    action_rank_lookup = {action_id: index + 1 for index, (action_id, _) in enumerate(sorted_actions)}
+    family_rank_lookup = {family: index + 1 for index, (family, _) in enumerate(sorted_families)}
+
+    anchor_action_score = action_scores.get(anchor_action_id)
+    anchor_family_score = family_scores.get(anchor_action_family)
+    anchor_action_rank = action_rank_lookup.get(anchor_action_id)
+    anchor_family_rank = family_rank_lookup.get(anchor_action_family)
+
+    best_other_action_score = max((score for action_id, score in sorted_actions if action_id != anchor_action_id), default=None)
+    best_other_family_score = max((score for family, score in sorted_families if family != anchor_action_family), default=None)
+
+    anchor_support_mode = str((anchor_action_support or {}).get("support_mode") or "exact_supported")
+    if anchor_support_mode == "exact_supported":
+        support_adjusted_rank = anchor_action_rank
+        support_adjusted_score = anchor_action_score
+        support_adjusted_margin = (
+            None
+            if anchor_action_score is None or best_other_action_score is None
+            else float(anchor_action_score) - float(best_other_action_score)
+        )
+    else:
+        support_adjusted_rank = anchor_family_rank
+        support_adjusted_score = anchor_family_score
+        support_adjusted_margin = (
+            None
+            if anchor_family_score is None or best_other_family_score is None
+            else float(anchor_family_score) - float(best_other_family_score)
+        )
+
+    return {
+        "reason": "ok",
+        "candidate_row_count": len(candidate_rows),
+        "anchor_action_precedent_score": anchor_action_score,
+        "anchor_action_precedent_rank": anchor_action_rank,
+        "anchor_action_precedent_mrr": (1.0 / float(anchor_action_rank)) if anchor_action_rank else 0.0,
+        "anchor_action_precedent_top1": bool(anchor_action_rank == 1),
+        "anchor_action_precedent_margin": (
+            None
+            if anchor_action_score is None or best_other_action_score is None
+            else float(anchor_action_score) - float(best_other_action_score)
+        ),
+        "anchor_family_precedent_score": anchor_family_score,
+        "anchor_family_precedent_rank": anchor_family_rank,
+        "anchor_family_precedent_mrr": (1.0 / float(anchor_family_rank)) if anchor_family_rank else 0.0,
+        "anchor_family_precedent_top1": bool(anchor_family_rank == 1),
+        "anchor_family_precedent_margin": (
+            None
+            if anchor_family_score is None or best_other_family_score is None
+            else float(anchor_family_score) - float(best_other_family_score)
+        ),
+        "anchor_support_adjusted_precedent_score": support_adjusted_score,
+        "anchor_support_adjusted_precedent_rank": support_adjusted_rank,
+        "anchor_support_adjusted_precedent_mrr": (1.0 / float(support_adjusted_rank)) if support_adjusted_rank else 0.0,
+        "anchor_support_adjusted_precedent_top1": bool(support_adjusted_rank == 1),
+        "anchor_support_adjusted_precedent_margin": support_adjusted_margin,
+    }
+
+

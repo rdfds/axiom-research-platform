@@ -1146,3 +1146,69 @@ def _read_parquet_columns(path: Path, columns: Iterable[str]) -> pd.DataFrame:
     return table.to_pandas()
 
 
+def _validation_aliases(
+    company_id: str,
+    entity_identifier_path: Path,
+    extra_aliases: Optional[Sequence[str]] = None,
+) -> List[str]:
+    aliases = list(_snapshot_company_aliases(company_id, entity_identifier_path))
+    for alias in extra_aliases or []:
+        if alias is None:
+            continue
+        text = str(alias).strip()
+        if not text:
+            continue
+        aliases.extend(_id_aliases(text))
+    return list(dict.fromkeys(aliases))
+
+
+def _validate_company_id_exists(
+    company_id: str,
+    entity_graph_path: Path,
+    entity_identifier_path: Path,
+    extra_aliases: Optional[Sequence[str]] = None,
+) -> None:
+    aliases = set(_validation_aliases(company_id, entity_identifier_path, extra_aliases))
+
+    found = False
+    if entity_graph_path.exists():
+        cols = ["entity_id", "related_id"]
+        df = _read_parquet_columns(entity_graph_path, [c for c in cols if c])
+        for c in cols:
+            if c in df.columns:
+                vals = set(df[c].dropna().astype(str).tolist())
+                if aliases.intersection(vals):
+                    found = True
+                    break
+
+    if not found and entity_identifier_path.exists():
+        cols = ["entity_id", "identifier_value"]
+        df = _read_parquet_columns(entity_identifier_path, cols)
+        entity_vals = set(df["entity_id"].dropna().astype(str).tolist())
+        ident_vals = set(df["identifier_value"].dropna().astype(str).tolist())
+        if aliases.intersection(entity_vals) or aliases.intersection(ident_vals):
+            found = True
+
+    if not found:
+        raise ValueError(f"company_id not found in entity graph: {company_id}")
+
+
+def _validate_as_of_lower_bound(
+    company_id: str,
+    as_of_time: datetime,
+    entity_graph_path: Path,
+    entity_identifier_path: Path,
+    extra_aliases: Optional[Sequence[str]] = None,
+) -> None:
+    earliest = _earliest_company_data_time(
+        company_id,
+        entity_graph_path,
+        entity_identifier_path,
+        extra_aliases=extra_aliases,
+    )
+    if earliest is not None and as_of_time < earliest:
+        raise ValueError(
+            f"as_of_time {as_of_time.isoformat()} is earlier than earliest company data {earliest.isoformat()}"
+        )
+
+
