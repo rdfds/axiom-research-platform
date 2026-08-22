@@ -651,3 +651,11 @@ def _infer_evidence_classes(snapshot: Dict[str, Any]) -> List[str]:
     return sorted(classes)
 
 
+def _constraint_tokens(run: RecommendationRun) -> List[str]:
+    out: List[str] = []
+    for c in run.constraints.hard_constraints + run.constraints.soft_constraints:
+        out.append(c.constraint_type)
+        out.append(c.constraint_id)
+    return list(dict.fromkeys(out))
+
+
