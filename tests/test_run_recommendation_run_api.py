@@ -134,3 +134,25 @@ def test_find_cached_completed_run(tmp_path: Path):
     assert found["status"] == "completed"
 
 
+def test_audit_event_to_dict_accepts_dataclass_and_dict():
+    ev = AuditEvent(
+        event_id="ev1",
+        timestamp="2026-02-28T00:00:00Z",
+        event_type="run_created",
+        details={"x": 1},
+    )
+    as_obj = api._audit_event_to_dict(ev)
+    as_dict = api._audit_event_to_dict(
+        {
+            "event_id": "ev2",
+            "timestamp": "2026-02-28T00:00:01Z",
+            "event_type": "snapshot_frozen",
+            "details": {"y": 2},
+        }
+    )
+    assert as_obj["event_id"] == "ev1"
+    assert as_obj["event_type"] == "run_created"
+    assert as_obj["details"] == {"x": 1}
+    assert as_dict["event_id"] == "ev2"
+    assert as_dict["event_type"] == "snapshot_frozen"
+    assert as_dict["details"] == {"y": 2}
