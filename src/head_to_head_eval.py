@@ -674,7 +674,7 @@ def _aggregate_cases(cases: Sequence[Dict[str, Any]], missing_inputs: Sequence[D
     model_wins = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "model")
     baseline_wins = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "baseline")
     ties = sum(1 for case in cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "tie")
-    score_deltas = [float((case['comparison'] or {}).get("score_delta", 0.0) or 0.0) for case in cases]
+    score_deltas = [float((case.get("comparison", {}) or {}).get("score_delta", 0.0) or 0.0) for case in cases]
     component_keys = ["completeness_score", "grounding_score", "timing_score", "alternatives_score", "risk_score", "language_score"]
     component_delta_means = {
         key: round(
