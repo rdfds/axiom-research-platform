@@ -76,3 +76,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _stderr_progress_logger(payload: dict) -> None:
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr, flush=True)
+
+

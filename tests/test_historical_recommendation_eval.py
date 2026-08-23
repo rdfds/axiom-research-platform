@@ -447,3 +447,29 @@ def test_score_ex_post_alignment_gives_family_credit_without_exact_match():
     assert score["reason"] == "anchor_primary_family_match"
 
 
+def test_score_ex_post_alignment_downshifts_to_family_only_for_family_only_actions():
+    lookup = {
+        "A": [
+            (pd.Timestamp("2024-06-01T00:00:00Z"), "capital_structure.equity_issuance", "capital_structure"),
+        ]
+    }
+    score = _score_ex_post_alignment(
+        company_id="A",
+        as_of_time="2024-03-01T00:00:00Z",
+        recommended_action_ids=["capital_structure.refinancing"],
+        outcomes_lookup=lookup,
+        alignment_horizon_days=180,
+        anchor_action_id="capital_structure.refinancing",
+        anchor_action_family="capital_structure",
+        anchor_action_support={"support_mode": "family_only"},
+        recommended_action_support=[{"support_mode": "family_only"}],
+    )
+
+    assert score["score"] == 1.0
+    assert score["primary_exact_match"] is False
+    assert score["primary_family_match"] is True
+    assert score["primary_support_adjusted_match"] is True
+    assert score["primary_benchmark_mode"] == "family_only"
+    assert score["reason"] == "anchor_primary_family_support_adjusted"
+
+

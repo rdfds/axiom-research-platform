@@ -1212,3 +1212,67 @@ def _validate_as_of_lower_bound(
         )
 
 
+def _earliest_company_data_time(
+    company_id: str,
+    entity_graph_path: Path,
+    entity_identifier_path: Path,
+    extra_aliases: Optional[Sequence[str]] = None,
+) -> Optional[datetime]:
+    aliases = set(_validation_aliases(company_id, entity_identifier_path, extra_aliases))
+    entity_ids = set(aliases)
+
+    if entity_identifier_path.exists():
+        df_ident = _read_parquet_columns(entity_identifier_path, ["entity_id", "identifier_value"])
+        mask = df_ident["identifier_value"].astype(str).isin(aliases) | df_ident["entity_id"].astype(str).isin(aliases)
+        if mask.any():
+            entity_ids.update(df_ident.loc[mask, "entity_id"].dropna().astype(str).tolist())
+
+    times: List[datetime] = []
+    if entity_graph_path.exists():
+        cols = [
+            "entity_id",
+            "related_id",
+            "valid_from",
+            "effective_at",
+            "published_at",
+            "ingested_at",
+        ]
+        df = _read_parquet_columns(entity_graph_path, cols)
+        mask = df["entity_id"].astype(str).isin(entity_ids) | df["related_id"].astype(str).isin(entity_ids)
+        df = df.loc[mask]
+        for c in ["valid_from", "effective_at", "published_at", "ingested_at"]:
+            if c not in df.columns:
+                continue
+            ser = pd.to_datetime(df[c], utc=True, errors="coerce").dropna()
+            if not ser.empty:
+                times.append(ser.min().to_pydatetime())
+
+    if not times:
+        return None
+    out = min(times)
+    if out.tzinfo is None:
+        out = out.replace(tzinfo=timezone.utc)
+    return out.astimezone(timezone.utc)
+
+
+__all__ = [
+    "AUDIT_EVENT_TYPES",
+    "CONSTRAINT_PRIORITIES",
+    "CONSTRAINT_SOURCES",
+    "CONSTRAINT_TYPES",
+    "DataCutoffSpec",
+    "FrozenStateReference",
+    "ModelRegistry",
+    "ModelVersionBundle",
+    "ObjectiveVector",
+    "RecommendationRun",
+    "RecommendationRunStore",
+    "ScenarioAssumptions",
+    "Constraint",
+    "ConstraintSet",
+    "AuditEvent",
+    "RUN_STATUSES",
+    "create_recommendation_run",
+    "enforce_data_cutoff",
+    "validate_plan_hard_constraints",
+]

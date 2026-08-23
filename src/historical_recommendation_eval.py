@@ -1818,3 +1818,26 @@ def _snapshot_coverage_summary(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _snapshot_has_meaningful_coverage(
+    snapshot_coverage: Dict[str, Any],
+    *,
+    min_non_missing_core_features: int,
+) -> bool:
+    core_categories = {"liquidity", "capital_structure", "market", "operating", "ownership_governance", "strategic"}
+    non_missing_count = int(snapshot_coverage.get("non_missing_core_feature_count", 0) or 0)
+    categories = set(snapshot_coverage.get("non_missing_categories", []) or [])
+    return non_missing_count >= max(1, int(min_non_missing_core_features)) and bool(categories & core_categories)
+
+
+__all__ = [
+    "build_historical_recommendation_report",
+    "render_historical_recommendation_markdown",
+    "_historical_case_key",
+    "_prefilter_support_is_eligible",
+    "_prioritize_historical_cases",
+    "_select_historical_cases_from_frame",
+    "_score_ex_post_alignment",
+    "_snapshot_coverage_summary",
+    "_snapshot_has_meaningful_coverage",
+    "_summarize_case_support_by_family",
+]
