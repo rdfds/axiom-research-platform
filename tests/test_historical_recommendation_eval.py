@@ -425,3 +425,25 @@ def test_score_ex_post_alignment_prefers_exact_primary_match():
     assert score["reason"] == "anchor_primary_exact"
 
 
+def test_score_ex_post_alignment_gives_family_credit_without_exact_match():
+    lookup = {
+        "A": [
+            (pd.Timestamp("2024-06-01T00:00:00Z"), "capital_return.tender_offer_buyback", "capital_return"),
+        ]
+    }
+    score = _score_ex_post_alignment(
+        company_id="A",
+        as_of_time="2024-03-01T00:00:00Z",
+        recommended_action_ids=["capital_return.open_market_buyback"],
+        outcomes_lookup=lookup,
+        alignment_horizon_days=180,
+        anchor_action_id="capital_return.tender_offer_buyback",
+        anchor_action_family="capital_return",
+    )
+
+    assert score["score"] == 0.6
+    assert score["primary_exact_match"] is False
+    assert score["primary_family_match"] is True
+    assert score["reason"] == "anchor_primary_family_match"
+
+

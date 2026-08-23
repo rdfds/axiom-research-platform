@@ -1594,3 +1594,227 @@ def _score_precedent_ranking(
     }
 
 
+def _score_ex_post_alignment(
+    *,
+    company_id: str,
+    as_of_time: str,
+    recommended_action_ids: Sequence[str],
+    outcomes_lookup: Dict[str, List[Tuple[pd.Timestamp, str, str]]],
+    alignment_horizon_days: int,
+    anchor_action_id: str,
+    anchor_action_family: str,
+    anchor_action_support: Optional[Dict[str, Any]] = None,
+    recommended_action_support: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    future_events = list(outcomes_lookup.get(company_id, []) or [])
+    if not future_events:
+        return {"score": None, "reason": "no_company_events"}
+    as_of_ts = pd.Timestamp(as_of_time)
+    if as_of_ts.tzinfo is None:
+        as_of_ts = as_of_ts.tz_localize("UTC")
+    else:
+        as_of_ts = as_of_ts.tz_convert("UTC")
+    end_ts = as_of_ts + pd.Timedelta(days=max(1, int(alignment_horizon_days)))
+    window_events = [(ts, action_id, family) for ts, action_id, family in future_events if ts > as_of_ts and ts <= end_ts]
+    if not window_events:
+        return {"score": None, "reason": "no_future_events_within_horizon"}
+    primary = str((recommended_action_ids[0] if recommended_action_ids else "") or "")
+    target_ids = [str(x) for x in recommended_action_ids if str(x)]
+    target_families = sorted({_action_family(x) for x in target_ids if _action_family(x)})
+    future_ids = {action_id for _, action_id, _ in window_events if action_id}
+    future_families = {family for _, _, family in window_events if family}
+    primary_family = _action_family(primary)
+    anchor_support_mode = str((anchor_action_support or {}).get("support_mode") or "exact_supported")
+    recommended_support_modes = [
+        str((item or {}).get("support_mode") or "exact_supported")
+        for item in list(recommended_action_support or [])
+    ]
+    primary_support_mode = recommended_support_modes[0] if recommended_support_modes else "exact_supported"
+
+    primary_exact = bool(primary and primary == anchor_action_id)
+    any_exact = bool(set(target_ids) & future_ids)
+    primary_family_match = bool(primary_family and primary_family == anchor_action_family)
+    any_family_match = bool(set(target_families) & future_families)
+    primary_benchmark_mode = "exact" if anchor_support_mode == "exact_supported" and primary_support_mode == "exact_supported" else "family_only"
+    any_benchmark_mode = "exact" if anchor_support_mode == "exact_supported" and all(mode == "exact_supported" for mode in recommended_support_modes or ["exact_supported"]) else "family_only"
+    primary_support_adjusted_match = primary_exact if primary_benchmark_mode == "exact" else primary_family_match
+    any_support_adjusted_match = any_exact if any_benchmark_mode == "exact" else any_family_match
+    if primary_support_adjusted_match:
+        score = 1.0
+        reason = "anchor_primary_exact" if primary_benchmark_mode == "exact" else "anchor_primary_family_support_adjusted"
+    elif any_support_adjusted_match:
+        score = 0.85
+        reason = "future_exact_match" if any_benchmark_mode == "exact" else "future_family_support_adjusted"
+    elif primary_family_match:
+        score = 0.6
+        reason = "anchor_primary_family_match"
+    elif any_family_match:
+        score = 0.4
+        reason = "future_family_match"
+    else:
+        score = 0.0
+        reason = "no_alignment"
+    return {
+        "score": round(score, 6),
+        "reason": reason,
+        "primary_exact_match": primary_exact,
+        "any_exact_match": any_exact,
+        "primary_family_match": primary_family_match,
+        "any_family_match": any_family_match,
+        "primary_support_adjusted_match": primary_support_adjusted_match,
+        "any_support_adjusted_match": any_support_adjusted_match,
+        "primary_benchmark_mode": primary_benchmark_mode,
+        "any_benchmark_mode": any_benchmark_mode,
+        "anchor_action_id": anchor_action_id,
+        "anchor_action_family": anchor_action_family,
+        "future_action_ids_sample": sorted(future_ids)[:5],
+        "future_action_families_sample": sorted(future_families)[:5],
+    }
+
+
+def _aggregate_historical_cases(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    unsupported = [case for case in cases if case.get("unsupported_reason")]
+    completed = [case for case in cases if not case.get("error") and not case.get("unsupported_reason")]
+    scored = [
+        case for case in completed
+        if ((case.get("historical_alignment", {}) or {}).get("score")) is not None
+    ]
+    if not cases:
+        return {
+            "completed_case_count": 0,
+            "scored_case_count": 0,
+            "mean_alignment_score": 0.0,
+            "strong_alignment_rate": 0.0,
+            "anchor_primary_exact_rate": 0.0,
+            "anchor_primary_family_rate": 0.0,
+            "future_any_exact_rate": 0.0,
+            "future_any_family_rate": 0.0,
+            "error_rate": 0.0,
+            "unsupported_case_count": 0,
+            "coverage_skip_rate": 0.0,
+        }
+    alignment_scores = [float(((case.get("historical_alignment", {}) or {}).get("score", 0.0) or 0.0)) for case in scored]
+    precedent_ranking_cases = [
+        case for case in completed
+        if str(((case.get("precedent_ranking", {}) or {}).get("reason") or "")).strip().lower() == "ok"
+    ]
+    exact_precedent_mrr = [
+        float(((case.get("precedent_ranking", {}) or {}).get("anchor_action_precedent_mrr", 0.0) or 0.0))
+        for case in precedent_ranking_cases
+    ]
+    family_precedent_mrr = [
+        float(((case.get("precedent_ranking", {}) or {}).get("anchor_family_precedent_mrr", 0.0) or 0.0))
+        for case in precedent_ranking_cases
+    ]
+    support_adjusted_precedent_mrr = [
+        float(((case.get("precedent_ranking", {}) or {}).get("anchor_support_adjusted_precedent_mrr", 0.0) or 0.0))
+        for case in precedent_ranking_cases
+    ]
+    exact_precedent_margin = [
+        float(value)
+        for value in [((case.get("precedent_ranking", {}) or {}).get("anchor_action_precedent_margin")) for case in precedent_ranking_cases]
+        if value is not None
+    ]
+    family_precedent_margin = [
+        float(value)
+        for value in [((case.get("precedent_ranking", {}) or {}).get("anchor_family_precedent_margin")) for case in precedent_ranking_cases]
+        if value is not None
+    ]
+    support_adjusted_precedent_margin = [
+        float(value)
+        for value in [((case.get("precedent_ranking", {}) or {}).get("anchor_support_adjusted_precedent_margin")) for case in precedent_ranking_cases]
+        if value is not None
+    ]
+    exact_negative_margin_case_count = sum(1 for value in exact_precedent_margin if float(value) < 0.0)
+    family_negative_margin_case_count = sum(1 for value in family_precedent_margin if float(value) < 0.0)
+    support_adjusted_negative_margin_case_count = sum(1 for value in support_adjusted_precedent_margin if float(value) < 0.0)
+    return {
+        "completed_case_count": len(completed),
+        "scored_case_count": len(scored),
+        "unsupported_case_count": len(unsupported),
+        "mean_alignment_score": round(sum(alignment_scores) / len(alignment_scores), 6) if alignment_scores else 0.0,
+        "strong_alignment_rate": round(sum(1 for case in scored if float(((case.get("historical_alignment", {}) or {}).get("score", 0.0) or 0.0)) >= 0.6) / len(scored), 6) if scored else 0.0,
+        "anchor_primary_exact_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("primary_exact_match")))) / len(scored), 6) if scored else 0.0,
+        "anchor_primary_family_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("primary_family_match")))) / len(scored), 6) if scored else 0.0,
+        "anchor_primary_support_adjusted_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("primary_support_adjusted_match")))) / len(scored), 6) if scored else 0.0,
+        "future_any_exact_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("any_exact_match")))) / len(scored), 6) if scored else 0.0,
+        "future_any_family_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("any_family_match")))) / len(scored), 6) if scored else 0.0,
+        "future_any_support_adjusted_rate": round(sum(1 for case in scored if bool(((case.get("historical_alignment", {}) or {}).get("any_support_adjusted_match")))) / len(scored), 6) if scored else 0.0,
+        "precedent_ranking_case_count": len(precedent_ranking_cases),
+        "anchor_action_precedent_top1_rate": round(sum(1 for case in precedent_ranking_cases if bool(((case.get("precedent_ranking", {}) or {}).get("anchor_action_precedent_top1")))) / len(precedent_ranking_cases), 6) if precedent_ranking_cases else 0.0,
+        "anchor_action_precedent_mrr_mean": round(sum(exact_precedent_mrr) / len(exact_precedent_mrr), 6) if exact_precedent_mrr else 0.0,
+        "anchor_action_precedent_margin_mean": round(sum(exact_precedent_margin) / len(exact_precedent_margin), 6) if exact_precedent_margin else 0.0,
+        "anchor_action_precedent_margin_min": round(min(exact_precedent_margin), 6) if exact_precedent_margin else 0.0,
+        "anchor_action_precedent_negative_margin_case_count": exact_negative_margin_case_count,
+        "anchor_family_precedent_top1_rate": round(sum(1 for case in precedent_ranking_cases if bool(((case.get("precedent_ranking", {}) or {}).get("anchor_family_precedent_top1")))) / len(precedent_ranking_cases), 6) if precedent_ranking_cases else 0.0,
+        "anchor_family_precedent_mrr_mean": round(sum(family_precedent_mrr) / len(family_precedent_mrr), 6) if family_precedent_mrr else 0.0,
+        "anchor_family_precedent_margin_mean": round(sum(family_precedent_margin) / len(family_precedent_margin), 6) if family_precedent_margin else 0.0,
+        "anchor_family_precedent_margin_min": round(min(family_precedent_margin), 6) if family_precedent_margin else 0.0,
+        "anchor_family_precedent_negative_margin_case_count": family_negative_margin_case_count,
+        "anchor_support_adjusted_precedent_top1_rate": round(sum(1 for case in precedent_ranking_cases if bool(((case.get("precedent_ranking", {}) or {}).get("anchor_support_adjusted_precedent_top1")))) / len(precedent_ranking_cases), 6) if precedent_ranking_cases else 0.0,
+        "anchor_support_adjusted_precedent_mrr_mean": round(sum(support_adjusted_precedent_mrr) / len(support_adjusted_precedent_mrr), 6) if support_adjusted_precedent_mrr else 0.0,
+        "anchor_support_adjusted_precedent_margin_mean": round(sum(support_adjusted_precedent_margin) / len(support_adjusted_precedent_margin), 6) if support_adjusted_precedent_margin else 0.0,
+        "anchor_support_adjusted_precedent_margin_min": round(min(support_adjusted_precedent_margin), 6) if support_adjusted_precedent_margin else 0.0,
+        "anchor_support_adjusted_precedent_negative_margin_case_count": support_adjusted_negative_margin_case_count,
+        "error_rate": round(sum(1 for case in cases if case.get("error")) / len(cases), 6),
+        "coverage_skip_rate": round(len(unsupported) / len(cases), 6),
+        "recommended_posture_counts": _count_values(case.get("recommended_posture") for case in completed),
+        "recommended_family_counts": _count_values(_action_family((case.get("top_action_ids") or [""])[0]) for case in completed),
+        "anchor_family_counts": _count_values(case.get("anchor_action_family") for case in completed),
+        "anchor_support_mode_counts": _count_values(
+            ((case.get("anchor_action_support", {}) or {}).get("support_mode")) for case in completed
+        ),
+        "recommended_support_mode_counts": _count_values(
+            (
+                ((case.get("recommended_action_support") or [{}])[0] or {}).get("support_mode")
+                if case.get("recommended_action_support")
+                else None
+            )
+            for case in completed
+        ),
+    }
+
+
+def _count_values(values: Iterable[Any]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        out[text] = out.get(text, 0) + 1
+    return dict(sorted(out.items()))
+
+
+def _action_family(action_id: str) -> str:
+    text = str(action_id or "")
+    if "." not in text:
+        return ""
+    return text.split(".", 1)[0]
+
+
+def _snapshot_coverage_summary(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    features = dict(snapshot.get("features", {}) or {})
+    category_counts: Dict[str, int] = {}
+    non_missing_core_feature_count = 0
+    non_missing_feature_names: List[str] = []
+    for name, payload in features.items():
+        if not isinstance(payload, dict):
+            continue
+        if str(name).startswith("strategic.intent."):
+            continue
+        missing_reason = payload.get("missing_reason")
+        value = payload.get("value")
+        if missing_reason is None and value is not None:
+            non_missing_core_feature_count += 1
+            non_missing_feature_names.append(str(name))
+            category = str(name).split(".", 1)[0]
+            category_counts[category] = category_counts.get(category, 0) + 1
+    return {
+        "feature_count": len(features),
+        "non_missing_core_feature_count": non_missing_core_feature_count,
+        "non_missing_categories": sorted(category_counts.keys()),
+        "non_missing_category_counts": dict(sorted(category_counts.items())),
+        "sample_non_missing_features": non_missing_feature_names[:10],
+    }
+
+
