@@ -2448,3 +2448,182 @@ def _step_tradeoffs(action_candidate: Dict[str, Any], action_id: str, snapshot: 
     return _dedupe(out)
 
 
+def _step_supporting_facts(
+    *,
+    action_id: str,
+    action_candidate: Dict[str, Any],
+    precedent_pack: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    support_type: str,
+    sample_n: int,
+    precedent_confidence: float,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    pass_probability = float(((action_candidate.get("feasibility", {}) or {}).get("pass_probability", 0.0) or 0.0))
+    if pass_probability > 0.0:
+        out.append(
+            {
+                "label": "Feasibility",
+                "metric": "pass_probability",
+                "value": pass_probability,
+                "formatted_value": f"{pass_probability:.3f}",
+                "text": f"Modeled pass probability is {pass_probability:.3f}.",
+                "source": "feasibility",
+            }
+        )
+
+    objective_signal = _best_objective_signal(action_candidate)
+    if objective_signal is not None:
+        out.append(
+            {
+                "label": "Modeled objective",
+                "metric": objective_signal[0],
+                "value": objective_signal[1],
+                "formatted_value": f"{objective_signal[1]:+.3f}",
+                "text": f"The strongest median objective contribution is {objective_signal[0]} at {objective_signal[1]:+.3f}.",
+                "source": support_type,
+            }
+        )
+
+    if precedent_confidence > 0.0:
+        tier = str(((precedent_pack.get("mismatch_diagnostics", {}) or {}).get("retrieval_tier", "")) or "")
+        out.append(
+            {
+                "label": "Precedent quality",
+                "metric": "precedent_confidence",
+                "value": precedent_confidence,
+                "formatted_value": f"{precedent_confidence:.3f}",
+                "text": f"Historical analog support is {precedent_confidence:.3f} on a {tier or 'matched'} cohort with n={sample_n}.",
+                "source": "precedent",
+            }
+        )
+
+    for metric_key, label, formatter in _family_metrics_for_action(action_id):
+        value = _feature_value(snapshot, metric_key)
+        if value is None:
+            continue
+        out.append(
+            {
+                "label": label,
+                "metric": metric_key,
+                "value": value,
+                "formatted_value": formatter(value),
+                "text": f"{label} is {formatter(value)}.",
+                "source": "snapshot",
+            }
+        )
+    return out[:5]
+
+
+def _family_metrics_for_action(action_id: str) -> List[Tuple[str, str, Any]]:
+    if _has_capital_return([action_id]):
+        return [
+            ("liquidity.available_for_actions", "Deployable liquidity", _fmt_currency),
+            ("market.market_cap", "Market value", _fmt_currency),
+            ("capital_structure.net_leverage", "Net leverage", _fmt_x),
+            ("operating.fcf_conversion", "FCF conversion", _fmt_ratio),
+        ]
+    if _is_balance_sheet_action(action_id):
+        return [
+            ("capital_structure.maturity_wall_ratio_24m", "Maturity wall", _fmt_pct),
+            ("capital_structure.net_leverage", "Net leverage", _fmt_x),
+            ("market.credit_window_proxy", "Credit window", _fmt_score),
+            ("liquidity.available_for_actions", "Liquidity", _fmt_currency),
+        ]
+    if _is_mna_action(action_id):
+        return [
+            ("liquidity.available_for_actions", "Deployable liquidity", _fmt_currency),
+            ("capital_structure.net_leverage", "Net leverage", _fmt_x),
+            ("strategic.intent.pursue_mna_priority", "M&A intent", _fmt_score),
+            ("market.equity_window_proxy", "Equity window", _fmt_score),
+        ]
+    if _is_divestiture_action(action_id):
+        return [
+            ("capital_structure.net_leverage", "Net leverage", _fmt_x),
+            ("strategic.intent.focus_on_core", "Focus on core", _fmt_score),
+            ("ownership_governance.activist_signal", "Activist pressure", _fmt_score),
+        ]
+    return [
+        ("capital_structure.net_leverage", "Net leverage", _fmt_x),
+        ("liquidity.available_for_actions", "Liquidity", _fmt_currency),
+    ]
+
+
+def _decision_preconditions(first_action: str, snapshot: Dict[str, Any], top_plan: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    if _has_capital_return([first_action]):
+        out.append("Liquidity after the action must remain comfortably above minimum operating needs.")
+        out.append("There cannot be a hidden maturity or funding issue that makes capital return premature.")
+    if _is_balance_sheet_action(first_action):
+        out.append("The capital-markets window must remain open enough to transact on acceptable terms.")
+        out.append("The transaction has to improve flexibility, not just add gross debt.")
+    if _is_mna_action(first_action):
+        out.append("The deal has to clear a return hurdle that is better than the next-best use of capital.")
+        out.append("Financing cannot compromise balance-sheet resilience.")
+    if _is_divestiture_action(first_action):
+        out.append("The asset sold has to be non-core or low-return relative to the capital it frees up.")
+    if not out:
+        out.append("The factual diagnosis and sequencing assumptions have to remain intact.")
+    return out[:3]
+
+
+def _decision_boundaries(first_action: str, snapshot: Dict[str, Any], top_plan: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    equity_window = _safe_float(_feature_value(snapshot, "market.equity_window_proxy"))
+    if _has_capital_return([first_action]):
+        out.append("Pause if liquidity is reallocated to a higher-return strategic use or leverage drifts materially higher.")
+        if net_leverage is not None:
+            out.append(f"Pause if net leverage moves materially above the current {_fmt_x(net_leverage)} baseline.")
+    if _is_balance_sheet_action(first_action):
+        out.append("Do not force a financing if the market window closes and terms stop improving the balance sheet.")
+        if credit_window is not None and credit_window > 0.05:
+            out.append(
+                f"Reassess if debt-market conditions weaken meaningfully from the current "
+                f"{_market_window_description(credit_window, 'debt')} backdrop."
+            )
+        else:
+            out.append("Reassess if credit conditions deteriorate materially from here.")
+    if _uses_equity_markets([first_action]) and equity_window is not None:
+        if equity_window > 0.05:
+            out.append(
+                f"Reassess if equity-market conditions weaken from the current "
+                f"{_market_window_description(equity_window, 'equity')} backdrop."
+            )
+        else:
+            out.append("Reassess if the equity window weakens further.")
+    if maturity_wall is not None and maturity_wall >= 0.20:
+        out.append("Move faster, not slower, if near-term maturity pressure rises further.")
+    triggers = list(top_plan.get("triggers", []) or [])
+    for trigger in triggers[:2]:
+        condition = str(trigger.get("condition", "") or "").strip()
+        if condition:
+            out.append(_humanize_condition(condition))
+    return _dedupe(out)[:4]
+
+
+def _precedent_confidence(pack: Dict[str, Any]) -> float:
+    if not isinstance(pack, dict):
+        return 0.0
+    return float(pack.get("precedent_confidence", pack.get("calibration_confidence", 0.0)) or 0.0)
+
+
+def _precedent_sample_size(pack: Dict[str, Any]) -> int:
+    if not isinstance(pack, dict):
+        return 0
+    out = pack.get("outcome_distributions") or {}
+    if isinstance(out, dict):
+        h12 = dict(out.get("horizon_12m", {}) or {})
+        val = dict(h12.get("valuation_multiple_change", {}) or {})
+        n = val.get("sample_size")
+        if n is not None:
+            return int(n or 0)
+    legacy = list(pack.get("legacy_distributions", []) or [])
+    for item in legacy:
+        if str((item or {}).get("metric", "")) == "outcome_pe_12m":
+            return int((item or {}).get("n", 0) or 0)
+    return 0
+
+
