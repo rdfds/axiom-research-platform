@@ -659,3 +659,105 @@ def _constraint_tokens(run: RecommendationRun) -> List[str]:
     return list(dict.fromkeys(out))
 
 
+def _evaluate_feasibility(
+    run: RecommendationRun,
+    registry: ActionSchemaRegistry,
+    candidates: List[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+    strict_evidence: bool,
+) -> List[Dict[str, Any]]:
+    _, _, MechanismBrain = _candidate_bindings()
+    _, _, _, _, _, _, _, validate_plan_hard_constraints = _run_store_bindings()
+    features = _snapshot_features(snapshot)
+    feature_names = sorted(features.keys())
+    evidence_classes = _infer_evidence_classes(snapshot)
+    projected_state = _flatten_projected_state(snapshot)
+    constraint_tokens = _constraint_tokens(run)
+    mechanism_brain = MechanismBrain(action_registry=registry)
+    mechanism_eval_t0 = time.perf_counter()
+    evaluated = mechanism_brain.evaluate_candidate_set(
+        run=run,
+        state_snapshot=snapshot,
+        candidates=candidates,
+    )
+    mechanism_eval_seconds = time.perf_counter() - mechanism_eval_t0
+    mechanism_batch_profile = dict(getattr(mechanism_brain, "last_evaluation_set_profile", {}) or {})
+
+    out: List[Dict[str, Any]] = []
+    for cand, action_eval in zip(candidates, evaluated):
+        candidate_t0 = time.perf_counter()
+        action_eval_to_dict_t0 = time.perf_counter()
+        action_eval_dict = action_eval.to_dict()
+        action_eval_to_dict_seconds = time.perf_counter() - action_eval_to_dict_t0
+
+        validation_t0 = time.perf_counter()
+        validation = registry.validate_candidate(
+            {
+                "action_id": cand["action_id"],
+                "parameters": cand.get("params", {}),
+                "available_features": feature_names,
+                "available_evidence_classes": evidence_classes,
+                "constraints": constraint_tokens,
+            },
+            strict_evidence=bool(strict_evidence),
+        )
+        validation_seconds = time.perf_counter() - validation_t0
+
+        eval_profile = dict(action_eval_dict.get("evaluation_profile", {}) or {})
+        hard_constraint_t0 = time.perf_counter()
+        hard_violations = validate_plan_hard_constraints([action_eval_dict], run.constraints, projected_state=projected_state)
+        hard_constraint_seconds = time.perf_counter() - hard_constraint_t0
+        mech_feasible = str(action_eval.feasibility.feasibility_status) != "infeasible"
+        feasible = bool(validation.valid) and len(hard_violations) == 0 and mech_feasible
+
+        out.append(
+            {
+                "candidate": cand,
+                "feasible": feasible,
+                "feasibility_status": action_eval.feasibility.feasibility_status,
+                "pass_probability": action_eval.feasibility.pass_probability,
+                "action_candidate": action_eval_dict,
+                "validation": validation.to_dict(),
+                "hard_constraint_violations": hard_violations,
+                "profiling": {
+                    "action_eval_to_dict_seconds": round(action_eval_to_dict_seconds, 6),
+                    "validation_seconds": round(validation_seconds, 6),
+                    "hard_constraint_seconds": round(hard_constraint_seconds, 6),
+                    "post_eval_seconds": round(time.perf_counter() - candidate_t0, 6),
+                    "schema_lookup_seconds": round(float(eval_profile.get("schema_lookup_seconds", 0.0) or 0.0), 6),
+                    "mechanism_feasibility_seconds": round(float(eval_profile.get("feasibility_seconds", 0.0) or 0.0), 6),
+                    "mechanism_activation_seconds": round(float(eval_profile.get("mechanism_activation_seconds", 0.0) or 0.0), 6),
+                    "impact_distribution_seconds": round(float(eval_profile.get("impact_distribution_seconds", 0.0) or 0.0), 6),
+                    "structural_checks_seconds": round(float(eval_profile.get("structural_checks_seconds", 0.0) or 0.0), 6),
+                    "risk_identification_seconds": round(float(eval_profile.get("risk_identification_seconds", 0.0) or 0.0), 6),
+                    "assumptions_seconds": round(float(eval_profile.get("assumptions_seconds", 0.0) or 0.0), 6),
+                    "evaluation_confidence_seconds": round(float(eval_profile.get("evaluation_confidence_seconds", 0.0) or 0.0), 6),
+                    "candidate_id_seconds": round(float(eval_profile.get("candidate_id_seconds", 0.0) or 0.0), 6),
+                    "mechanism_total_seconds": round(float(eval_profile.get("total_seconds", 0.0) or 0.0), 6),
+                },
+            }
+        )
+    if out:
+        bulk_share = mechanism_eval_seconds / float(len(out))
+        for row in out:
+            profiling = dict(row.get("profiling", {}) or {})
+            profiling["bulk_mechanism_eval_seconds_share"] = round(bulk_share, 6)
+            if mechanism_batch_profile:
+                profiling["bulk_mechanism_unattributed_seconds_share"] = round(
+                    float(mechanism_batch_profile.get("unattributed_seconds", 0.0) or 0.0) / float(len(out)),
+                    6,
+                )
+            profiling["estimated_total_seconds"] = round(
+                float(profiling.get("post_eval_seconds", 0.0)) + bulk_share,
+                6,
+            )
+            row["profiling"] = profiling
+    if mechanism_batch_profile and out:
+        mechanism_batch_profile["per_candidate_share_seconds"] = round(mechanism_eval_seconds / float(len(out)), 6)
+        mechanism_batch_profile["per_candidate_unattributed_share_seconds"] = round(
+            float(mechanism_batch_profile.get("unattributed_seconds", 0.0) or 0.0) / float(len(out)),
+            6,
+        )
+    return out
+
+
