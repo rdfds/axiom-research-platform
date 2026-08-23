@@ -765,3 +765,14 @@ def _extract_action_path(text: str) -> List[str]:
     return _RAW_ACTION_ID_RE.findall(str(text or ""))
 
 
+def _extract_primary_recommendation(text: str) -> str:
+    action_path = _extract_action_path(text)
+    if action_path:
+        return _humanize_action(action_path[0])
+    inferred = _infer_action_path(text)
+    if inferred:
+        return _humanize_action(inferred[0])
+    stripped = " ".join(str(text or "").split())
+    return stripped[:120]
+
+
