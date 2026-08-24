@@ -46,3 +46,16 @@ class LeadTimeDistribution:
         return asdict(self)
 
 
+@dataclass
+class PlanExplanation:
+    problem_statement: str
+    why_this_action: str
+    why_now: str
+    key_supporting_facts: List[str] = field(default_factory=list)
+    main_tradeoffs: List[str] = field(default_factory=list)
+    why_not_alternatives: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
