@@ -30,3 +30,19 @@ class ActionDependencyGraph:
         }
 
 
+@dataclass
+class LeadTimeDistribution:
+    action_id: str
+    minimum_days: int
+    mean_days: float
+    median_days: int
+    p25_days: int
+    p75_days: int
+    p90_days: int
+    conditional_adjustments: List[Dict[str, Any]] = field(default_factory=list)
+    source: str = "schema_prior_interpolated"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
