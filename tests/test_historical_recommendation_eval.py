@@ -473,3 +473,78 @@ def test_score_ex_post_alignment_downshifts_to_family_only_for_family_only_actio
     assert score["reason"] == "anchor_primary_family_support_adjusted"
 
 
+def test_aggregate_historical_cases_tracks_action_support_modes():
+    aggregate = _aggregate_historical_cases(
+        [
+            {
+                "company_id": "A",
+                "anchor_action_support": {"support_mode": "exact_supported"},
+                "recommended_action_support": [{"support_mode": "exact_supported"}],
+                "recommended_posture": "act",
+                "top_action_ids": ["capital_return.open_market_buyback"],
+                "anchor_action_family": "capital_return",
+                "historical_alignment": {
+                    "score": 1.0,
+                    "primary_exact_match": True,
+                    "primary_family_match": True,
+                    "primary_support_adjusted_match": True,
+                    "any_exact_match": True,
+                    "any_family_match": True,
+                    "any_support_adjusted_match": True,
+                },
+            },
+            {
+                "company_id": "B",
+                "anchor_action_support": {"support_mode": "family_only"},
+                "unsupported_reason": "no_feasible_plan_generated",
+            },
+        ]
+    )
+
+    assert aggregate["anchor_support_mode_counts"] == {
+        "exact_supported": 1,
+    }
+    assert aggregate["recommended_support_mode_counts"] == {
+        "exact_supported": 1,
+    }
+    assert aggregate["anchor_primary_support_adjusted_rate"] == 1.0
+    assert aggregate["future_any_support_adjusted_rate"] == 1.0
+
+
+def test_aggregate_historical_cases_anchor_support_modes_do_not_exceed_completed_cases():
+    aggregate = _aggregate_historical_cases(
+        [
+            {
+                "company_id": "A",
+                "anchor_action_support": {"support_mode": "exact_supported"},
+                "recommended_action_support": [{"support_mode": "exact_supported"}],
+                "recommended_posture": "act",
+                "top_action_ids": ["capital_return.open_market_buyback"],
+                "anchor_action_family": "capital_return",
+                "historical_alignment": {
+                    "score": 1.0,
+                    "primary_exact_match": True,
+                    "primary_family_match": True,
+                    "primary_support_adjusted_match": True,
+                    "any_exact_match": True,
+                    "any_family_match": True,
+                    "any_support_adjusted_match": True,
+                },
+            },
+            {
+                "company_id": "B",
+                "anchor_action_support": {"support_mode": "family_only"},
+                "error": "runtime failure",
+            },
+            {
+                "company_id": "C",
+                "anchor_action_support": {"support_mode": "family_only"},
+                "unsupported_reason": "no_feasible_plan_generated",
+            },
+        ]
+    )
+
+    assert aggregate["completed_case_count"] == 1
+    assert sum(aggregate["anchor_support_mode_counts"].values()) == aggregate["completed_case_count"]
+
+

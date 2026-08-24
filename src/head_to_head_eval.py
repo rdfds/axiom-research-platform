@@ -776,3 +776,31 @@ def _extract_primary_recommendation(text: str) -> str:
     return stripped[:120]
 
 
+def _infer_action_path(text: str) -> List[str]:
+    out: List[str] = []
+    haystack = str(text or "")
+    for pattern, action_id in _ACTION_HINTS:
+        if pattern.search(haystack):
+            out.append(action_id)
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for action_id in out:
+        if action_id not in seen:
+            ordered.append(action_id)
+            seen.add(action_id)
+    return ordered
+
+
+def _infer_baseline_type(text: str) -> str:
+    lower = str(text or "").lower()
+    if any(token in lower for token in ["activist", "engine no. 1", "elliott", "starboard", "third point", "jana", "mantle ridge"]):
+        return "activist"
+    if "investor letter" in lower or "shareholder letter" in lower or "fund letter" in lower:
+        return "investor_letter"
+    if any(token in lower for token in ["moody", "s&p", "fitch", "rating rationale", "credit opinion"]):
+        return "rating_note"
+    if any(token in lower for token in ["joint statement", "proxy", "sec filing", "def 14a", "dfan14a"]):
+        return "investor_campaign"
+    return "management_ir"
+
+
