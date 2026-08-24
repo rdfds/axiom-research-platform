@@ -288,3 +288,72 @@ def test_create_and_execute_recommendation_run_one_shot(tmp_path: Path):
     assert any(e.event_type == "run_completed" for e in run.audit_log)
 
 
+def test_execute_recommendation_run_accepts_snapshot_loader(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    calls = {"n": 0}
+
+    def loader(company_id: str, as_of_time):
+        calls["n"] += 1
+        p = snapshot_root / "keyed" / "as_of_date=2026-02-28" / "company_id=0000320193.json"
+        return json.loads(p.read_text().strip())
+
+    summary = execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_loader=loader,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback"],
+        precedent_runner=_stub_precedent_runner,
+        top_plans=1,
+    )
+
+    assert summary["ok"] is True
+    assert summary["status"] == "completed"
+    assert calls["n"] >= 1
+
+
+def test_execute_recommendation_run_precedent_top_k_limits_calls(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    summary = execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback", "capital_structure.refinancing"],
+        precedent_runner=_stub_precedent_runner,
+        precedent_top_k=1,
+        top_plans=1,
+    )
+
+    assert summary["ok"] is True
+    assert summary["counts"]["candidates"] == 2
+    assert summary["counts"]["feasible"] >= 1
+    assert summary["counts"]["precedent"] == 1
+
+

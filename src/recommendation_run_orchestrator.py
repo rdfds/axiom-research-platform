@@ -761,3 +761,90 @@ def _evaluate_feasibility(
     return out
 
 
+def _pack_to_dict(pack: Any) -> Dict[str, Any]:
+    _, _, PrecedentPack = _precedent_bindings()
+    if isinstance(pack, dict):
+        return pack
+    if isinstance(pack, PrecedentPack):
+        return pack.to_dict()
+    if hasattr(pack, "to_dict"):
+        return pack.to_dict()
+    if is_dataclass(pack):
+        return asdict(pack)
+    raise ValueError(f"Unsupported precedent pack type: {type(pack)}")
+
+
+def _latest_previous_causal_report(store: RecommendationRunStore, run: RecommendationRun) -> Optional[Dict[str, Any]]:
+    try:
+        runs = store.list_runs(company_id=run.company_id, status="completed")
+    except Exception:
+        return None
+
+    # Most recent first, excluding current run_id.
+    for prev in reversed(runs):
+        if str(prev.run_id) == str(run.run_id):
+            continue
+        artifacts = dict(prev.metadata.get("artifacts", {}) or {})
+        path = artifacts.get("CausalModelRiskReport")
+        if not path:
+            continue
+        try:
+            p = Path(str(path))
+            if not p.exists():
+                continue
+            import json as _json
+
+            obj = _json.loads(p.read_text())
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+    return None
+
+
+def _persist_execution_config(
+    *,
+    store: RecommendationRunStore,
+    run_id: str,
+    runs_root: str | Path,
+    snapshot_root: Optional[str | Path],
+    snapshot_path: Optional[str | Path],
+    entity_identifier_path: str | Path,
+    action_ids: Optional[Sequence[str]],
+    action_type: Optional[str],
+    max_candidates: int,
+    min_candidates_target: int,
+    strict_evidence: bool,
+    precedent_top_k: int,
+    outcomes_path: Optional[str | Path],
+    config_path: Optional[str | Path],
+    top_plans: int,
+) -> None:
+    try:
+        store.merge_metadata(
+            run_id,
+            {
+                "config": {
+                    "execution": build_execution_config(
+                        runs_root=runs_root,
+                        snapshot_root=snapshot_root,
+                        snapshot_path=snapshot_path,
+                        entity_identifier_path=entity_identifier_path,
+                        action_ids=action_ids,
+                        action_type=action_type,
+                        max_candidates=max_candidates,
+                        min_candidates_target=min_candidates_target,
+                        strict_evidence=strict_evidence,
+                        precedent_top_k=precedent_top_k,
+                        outcomes_path=outcomes_path,
+                        config_path=config_path,
+                        top_plans=top_plans,
+                    ),
+                    "runtime_env": capture_runtime_env_config(),
+                }
+            },
+        )
+    except Exception:
+        return
+
+
