@@ -280,3 +280,50 @@ def test_build_board_ready_dossier_can_recommend_wait_against_weak_action():
     assert dossier["ranked_action_views"][0]["recommended_posture"] == "wait"
 
 
+def test_build_board_ready_dossier_clamps_implausible_debt_tenor():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            value_creation=0.02,
+            risk_reduction=0.05,
+            rating_preservation=0.03,
+            optionality=0.02,
+            params={
+                "amount_usd": 2_000_000_000.0,
+                "tenor_years": 2_000_000_000.0,
+                "secured_flag": False,
+                "use_of_proceeds": "general_corporate",
+                "fixed_vs_floating": "fixed",
+                "instrument_type": "bond",
+            },
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    tenor = dossier["parameter_optimization"]["recommended_parameters"]["tenor_years"]
+    assert tenor["current_value"] is None
+    assert tenor["current_value_formatted"] == "n/a"
+    assert tenor["recommended_value"] <= 10.0
+    assert tenor["recommended_range"].endswith("years")
+    assert "2000000000.0 years" not in dossier["parameter_optimization"]["summary"]
+    assert "The edge over waiting" in dossier["executive_summary"]
+
+

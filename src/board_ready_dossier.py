@@ -2627,3 +2627,222 @@ def _precedent_sample_size(pack: Dict[str, Any]) -> int:
     return 0
 
 
+def _support_type(action_candidate: Dict[str, Any], precedent_pack: Dict[str, Any]) -> str:
+    impact = dict(action_candidate.get("impact_distribution", {}) or {})
+    key_drivers = list(impact.get("key_drivers", []) or [])
+    if any(str((driver or {}).get("driver_name", "")).startswith("causal_model_") for driver in key_drivers):
+        return "causal_and_precedent" if _precedent_confidence(precedent_pack) > 0 else "causal"
+    if _precedent_confidence(precedent_pack) > 0:
+        return "precedent"
+    return "model_only"
+
+
+def _best_objective_signal(action_candidate: Dict[str, Any]) -> Optional[Tuple[str, float]]:
+    objectives = dict(((action_candidate.get("impact_distribution", {}) or {}).get("objectives", {}) or {}))
+    best: Optional[Tuple[str, float]] = None
+    for objective in _OBJECTIVE_FIELDS:
+        median = _safe_float(((objectives.get(objective, {}) or {}).get("median")))
+        if median is None:
+            continue
+        if best is None or median > best[1]:
+            best = (objective, median)
+    return best
+
+
+def _objective_median(action_candidate: Dict[str, Any], objective: str) -> Optional[float]:
+    objectives = dict(((action_candidate.get("impact_distribution", {}) or {}).get("objectives", {}) or {}))
+    return _safe_float(((objectives.get(objective, {}) or {}).get("median")))
+
+
+def _humanize_action_id(action_id: str) -> str:
+    if not action_id:
+        return ""
+    leaf = action_id.split(".")[-1]
+    return leaf.replace("_", " ")
+
+
+def _humanize_mechanism_id(mechanism_id: str) -> str:
+    if not mechanism_id:
+        return ""
+    return mechanism_id.replace("_", " ")
+
+
+def _humanize_objective_name(objective_name: str) -> str:
+    mapping = {
+        "value_creation": "value creation",
+        "risk_reduction": "risk reduction",
+        "growth": "growth",
+        "rating_preservation": "rating preservation",
+        "optionality": "optionality",
+    }
+    return mapping.get(str(objective_name or ""), _humanize_text(str(objective_name or "")))
+
+
+def _market_window_description(value: Any, market_type: str) -> str:
+    score = _safe_float(value)
+    if score is None:
+        return "uncertain"
+    if score < 0.25:
+        return "tight"
+    if score < 0.45:
+        return "only partially open"
+    if score < 0.65:
+        return "open enough"
+    return "very supportive"
+
+
+def _humanize_condition(condition: str) -> str:
+    raw = str(condition or "").strip()
+    if not raw:
+        return ""
+    text = _humanize_text(raw)
+    if text.startswith("follow-on capacity remains available after "):
+        suffix = text[len("follow-on capacity remains available after ") :].strip()
+        return f"Only continue if capacity still exists after {suffix}."
+    enum_match = re.fullmatch(r"\s*([a-zA-Z0-9_.]+)\s+in\s+\[(.+)\]\s*", raw)
+    if enum_match:
+        field = _humanize_field_name(enum_match.group(1))
+        values = _humanize_condition_values(enum_match.group(2))
+        if field == "use of proceeds":
+            return f"Only continue if the use of proceeds remains limited to {values}."
+        return f"Only continue if {field} remains within {values}."
+    compare_match = re.fullmatch(r"\s*([a-zA-Z0-9_.]+)\s*(==|>=|<=|>|<)\s*['\"]?([^'\"]+)['\"]?\s*", raw)
+    if compare_match:
+        field = _humanize_field_name(compare_match.group(1))
+        operator = compare_match.group(2)
+        value = _humanize_text(compare_match.group(3).strip())
+        operator_text = {
+            "==": "is",
+            ">=": "stays at or above",
+            "<=": "stays at or below",
+            ">": "stays above",
+            "<": "stays below",
+        }.get(operator, operator)
+        return f"Only continue if {field} {operator_text} {value}."
+    directional_match = re.fullmatch(r"\s*([a-zA-Z0-9_.]+)\s+(drops below|falls below|rises above|moves above|improves)\s+(.+)\s*", raw)
+    if directional_match:
+        field = _humanize_field_name(directional_match.group(1))
+        verb = directional_match.group(2)
+        value = _humanize_text(directional_match.group(3).strip())
+        return f"Only continue if {field} {verb} {value}."
+    return text
+
+
+def _humanize_text(text: str) -> str:
+    if not text:
+        return ""
+    def repl(match: re.Match[str]) -> str:
+        return _humanize_action_id(match.group(0))
+    out = re.sub(r"\b[a-z_]+\.[a-z0-9_]+\b", repl, str(text or ""))
+    out = out.replace("post refi", "post-refinancing")
+    out = out.replace("_", " ")
+    return re.sub(r"\s+", " ", out).strip()
+
+
+def _edge_summary(edge_vs_wait: float, recommended_posture: str) -> str:
+    if recommended_posture == "conditional_action":
+        if edge_vs_wait >= 0.12:
+            return "The edge over waiting is meaningful, but the action still depends on conditions holding."
+        return "The edge over waiting is modest, so the action should stay conditional rather than automatic."
+    if edge_vs_wait >= 0.12:
+        return "The edge over waiting is meaningful enough to justify acting now."
+    if edge_vs_wait >= 0.05:
+        return "The edge over waiting is positive, though not overwhelming."
+    return "The edge over waiting is thin, so execution discipline matters."
+
+
+def _humanize_field_name(field_name: str) -> str:
+    field = str(field_name or "").strip()
+    if not field:
+        return ""
+    explicit = {
+        "use_of_proceeds": "use of proceeds",
+        "capital_structure.maturity_wall_ratio_24m": "the near-term maturity wall ratio",
+        "capital_structure.net_leverage": "net leverage",
+        "capital_structure.interest_coverage": "interest coverage",
+        "market.credit_window_proxy": "debt-market conditions",
+        "market.equity_window_proxy": "equity-market conditions",
+        "liquidity.runway_months": "the liquidity runway",
+    }
+    if field in explicit:
+        return explicit[field]
+    if "." in field:
+        field = field.split(".", 1)[1]
+    return field.replace("_", " ")
+
+
+def _humanize_condition_values(raw_values: str) -> str:
+    parts = [
+        _humanize_text(part.strip().strip("\"'"))
+        for part in str(raw_values or "").split(",")
+        if part.strip()
+    ]
+    if not parts:
+        return "the allowed set"
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} or {parts[1]}"
+    return ", ".join(parts[:-1]) + f", or {parts[-1]}"
+
+
+def _humanize_triggers(triggers: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for trigger in triggers:
+        row = dict(trigger or {})
+        row["condition"] = _humanize_condition(str(row.get("condition", "") or ""))
+        row["explanation"] = _humanize_explanation(str(row.get("explanation", "") or ""))
+        out.append(row)
+    return out
+
+
+def _humanize_branches(branches: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for branch in branches:
+        row = dict(branch or {})
+        row["branch_condition"] = _humanize_condition(str(row.get("branch_condition", "") or ""))
+        row["branch_plan_steps"] = [_humanize_action_id(str(x or "")) for x in list(row.get("branch_plan_steps", []) or [])]
+        row["explanation"] = _humanize_explanation(str(row['explanation'] or ""))
+        out.append(row)
+    return out
+
+
+def _humanize_explanation(text: str) :
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    follow_on = re.fullmatch(
+        r"Historical follow-on frequency supports ([a-z_]+\.[a-z0-9_]+) after ([a-z_]+\.[a-z0-9_]+)\.",
+        raw,
+    )
+    if follow_on:
+        return _follow_on_explanation(
+            target_action_id=follow_on.group(1),
+            source_action_id=follow_on.group(2),
+        )
+    unlock = re.fullmatch(r"Incremental debt capacity can unlock buyback actions\.", raw)
+    if unlock:
+        return "Additional debt capacity can support later share repurchases, but only if it clearly strengthens the balance-sheet plan first."
+    return _humanize_text(raw)
+
+
+def _follow_on_explanation(*, target_action_id: str, source_action_id: str) -> str:
+    target_leaf = str(target_action_id or "").split(".")[-1]
+    source = _humanize_action_id(source_action_id)
+    if target_leaf == "dividend_increase":
+        return f"After {source}, boards often revisit whether a higher recurring payout is supportable."
+    if target_leaf == "dividend_cut":
+        return f"After {source}, boards may need to revisit whether the current recurring payout still fits the balance sheet."
+    if target_leaf == "dividend_initiate":
+        return f"After {source}, a new recurring payout only becomes credible if clear excess capacity emerges."
+    if target_leaf == "special_dividend":
+        return f"After {source}, a one-time payout can be considered if surplus capital remains genuinely excess."
+    if target_leaf in {"open_market_buyback", "tender_offer_buyback", "accelerated_share_repurchase"}:
+        return f"After {source}, a follow-on share repurchase can become more credible if surplus capacity remains."
+    if target_leaf in {"new_debt_issuance", "refinancing", "revolver_draw_or_resize", "equity_issuance"}:
+        return f"After {source}, the board may revisit the financing mix if balance-sheet flexibility still needs work."
+    if target_leaf in {"tuck_in_acquisition", "platform_acquisition", "transformational_acquisition"}:
+        return f"After {source}, acquisitions become more realistic only if the balance sheet is still strong enough to support them."
+    return f"After {source}, the board may revisit {_humanize_action_id(target_action_id)} if conditions improve."
+
+
