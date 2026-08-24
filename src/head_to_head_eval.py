@@ -804,3 +804,12 @@ def _infer_baseline_type(text: str) -> str:
     return "management_ir"
 
 
+def _infer_task_match(*, baseline_type: str) -> str:
+    normalized = str(baseline_type or "").lower()
+    if normalized in {"activist", "investor_letter", "investor_campaign"}:
+        return "direct"
+    if normalized in {"rating_note", "transaction_rationale"}:
+        return "partial"
+    return "weak"
+
+

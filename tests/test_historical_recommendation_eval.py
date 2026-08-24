@@ -548,3 +548,78 @@ def test_aggregate_historical_cases_anchor_support_modes_do_not_exceed_completed
     assert sum(aggregate["anchor_support_mode_counts"].values()) == aggregate["completed_case_count"]
 
 
+def test_cached_snapshot_loader_uses_persistent_cache(tmp_path):
+    class DummyBuilder:
+        def __init__(self):
+            self.calls = 0
+
+        def build(self, *, company_id: str, as_of_time: str, extra_aliases=None):
+            self.calls += 1
+            return _DummySnapshot(
+                company_id=company_id,
+                as_of_time=as_of_time,
+                features={
+                    "marker": "built",
+                    "operating.revenue_ttm": {"value": 900.0, "support_mode": "exact"},
+                    "macro.hy_oas": {"value": 3.2, "support_mode": "exact"},
+                },
+            )
+
+    builder = DummyBuilder()
+    events = []
+    loader = _cached_snapshot_loader(
+        builder,
+        cache_dir=tmp_path / "snapshots",
+        progress_logger=events.append,
+    )
+
+    first = loader("ABC", pd.Timestamp("2024-01-01T00:00:00Z").to_pydatetime())
+    assert builder.calls == 1
+    assert first["company_id"] == "ABC"
+    precedent_view = feature_view_from_snapshot(first, view_name="precedent")
+    assert precedent_view["state_vector_v1.size_log_revenue"]["value"] == math.log10(900.0)
+    assert any(event["event"] == "snapshot_build_complete" for event in events)
+
+    builder_2 = DummyBuilder()
+    events_2 = []
+    loader_2 = _cached_snapshot_loader(
+        builder_2,
+        cache_dir=tmp_path / "snapshots",
+        progress_logger=events_2.append,
+    )
+    second = loader_2("ABC", pd.Timestamp("2024-01-01T00:00:00Z").to_pydatetime())
+    assert builder_2.calls == 0
+    assert second["company_id"] == "ABC"
+    precedent_view_2 = feature_view_from_snapshot(second, view_name="precedent")
+    assert precedent_view_2["state_vector_v1.credit_spread"]["value"] == 3.2
+    assert any(event["event"] == "snapshot_cache_hit" for event in events_2)
+
+
+def test_snapshot_coverage_rejects_empty_state_with_only_intent_defaults():
+    snapshot = {
+        "features": {
+            "strategic.intent.return_capital_priority": {"value": 0.0, "missing_reason": None},
+            "strategic.intent.deleveraging_priority": {"value": 0.0, "missing_reason": None},
+            "liquidity.cash": {"value": None, "missing_reason": "unavailable"},
+            "capital_structure.net_leverage": {"value": None, "missing_reason": "unavailable"},
+        }
+    }
+    coverage = _snapshot_coverage_summary(snapshot)
+    assert coverage["non_missing_core_feature_count"] == 0
+    assert _snapshot_has_meaningful_coverage(coverage, min_non_missing_core_features=1) is False
+
+
+def test_snapshot_coverage_accepts_snapshot_with_real_core_features():
+    snapshot = {
+        "features": {
+            "liquidity.cash": {"value": 100.0, "missing_reason": None},
+            "capital_structure.net_leverage": {"value": 2.5, "missing_reason": None},
+            "market.market_cap": {"value": 5000.0, "missing_reason": None},
+            "strategic.intent.return_capital_priority": {"value": 0.0, "missing_reason": None},
+        }
+    }
+    coverage = _snapshot_coverage_summary(snapshot)
+    assert coverage["non_missing_core_feature_count"] == 3
+    assert _snapshot_has_meaningful_coverage(coverage, min_non_missing_core_features=3) is True
+
+
