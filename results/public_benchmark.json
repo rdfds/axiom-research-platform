@@ -1,0 +1,91 @@
+{
+  "all_placebo_comparisons": [
+    {
+      "actual_beats_placebo_rate": 0.0,
+      "actual_mean_mae_improvement": 0.0,
+      "actual_minus_placebo": 0.0,
+      "lambda": 0.0,
+      "placebo_mean_mae_improvement": 0.0
+    },
+    {
+      "actual_beats_placebo_rate": 0.6907894736842105,
+      "actual_mean_mae_improvement": 0.0026280427089779403,
+      "actual_minus_placebo": 0.002652381171826286,
+      "lambda": 0.1,
+      "placebo_mean_mae_improvement": -2.4338462848346038e-05
+    },
+    {
+      "actual_beats_placebo_rate": 0.6820175438596491,
+      "actual_mean_mae_improvement": 0.0047034534369894705,
+      "actual_minus_placebo": 0.004787664220845644,
+      "lambda": 0.2,
+      "placebo_mean_mae_improvement": -8.421078385617326e-05
+    },
+    {
+      "actual_beats_placebo_rate": 0.6557017543859649,
+      "actual_mean_mae_improvement": 0.006736486452875759,
+      "actual_minus_placebo": 0.006975656928539615,
+      "lambda": 0.35,
+      "placebo_mean_mae_improvement": -0.00023917047566385715
+    },
+    {
+      "actual_beats_placebo_rate": 0.6348684210526315,
+      "actual_mean_mae_improvement": 0.007413079306394106,
+      "actual_minus_placebo": 0.007885185456210397,
+      "lambda": 0.5,
+      "placebo_mean_mae_improvement": -0.00047210614981628993
+    },
+    {
+      "actual_beats_placebo_rate": 0.6118421052631579,
+      "actual_mean_mae_improvement": 0.00683811461493029,
+      "actual_minus_placebo": 0.007620383858299066,
+      "lambda": 0.65,
+      "placebo_mean_mae_improvement": -0.0007822692433687763
+    },
+    {
+      "actual_beats_placebo_rate": 0.5756578947368421,
+      "actual_mean_mae_improvement": 0.005002640862583673,
+      "actual_minus_placebo": 0.006172926550260435,
+      "lambda": 0.8,
+      "placebo_mean_mae_improvement": -0.0011702856876767617
+    },
+    {
+      "actual_beats_placebo_rate": 0.5208333333333334,
+      "actual_mean_mae_improvement": 0.0006732746688570549,
+      "actual_minus_placebo": 0.0024821363498170527,
+      "lambda": 1.0,
+      "placebo_mean_mae_improvement": -0.0018088616809599973
+    }
+  ],
+  "benchmark": "forward-gap lambda policy",
+  "evaluation": {
+    "as_of": "2024-12-31",
+    "candidates_attempted": 84,
+    "mode": "walk_forward",
+    "placebo_runs": 3,
+    "successful_driver_horizon_evaluations": 912,
+    "test_window_years": 2,
+    "train_end_dates": [
+      "2014-12-31",
+      "2016-12-31",
+      "2018-12-31",
+      "2020-12-31"
+    ]
+  },
+  "placebo_comparison": {
+    "actual_beats_placebo_rate": 0.6348684210526315,
+    "actual_mean_mae_improvement": 0.007413079306394106,
+    "actual_minus_placebo": 0.007885185456210397,
+    "lambda": 0.5,
+    "placebo_mean_mae_improvement": -0.00047210614981628993
+  },
+  "schema_version": 1,
+  "selected_policy": {
+    "lambda": 0.5,
+    "mean_mae_improvement": 0.007413079306394106
+  },
+  "source": {
+    "path": "examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_energy.sample.md",
+    "sha256": "fb30a9d62e958310b516dbb53fc1894a0c3b05567122a20961b28d87243b493d"
+  }
+}
