@@ -22,10 +22,26 @@ jobs:
           cache: pip
 
       - name: Install public runtime dependencies
-        run: python -m pip install -e . pytest
+        run: python -m pip install -e ".[dev]"
 
-      - name: Run public showcase tests
+      - name: Verify benchmark artifact
+        run: python scripts/build_public_benchmark.py --check
+
+      - name: Run portable ML and product contract
         run: >-
           python -m pytest -q
+          tests/test_public_benchmark_artifact.py
           tests/test_public_showcase_examples.py
           tests/test_hd_market_expectations_demo.py
+          tests/test_company_state_validation.py
+          tests/test_model_feature_bundle.py
+          tests/test_recommendation_run_orchestrator.py
+          tests/test_backtest_protocol.py
+          tests/test_backtest_scorecard.py
+          tests/test_precedent_ranking_calibration.py
+          tests/test_parameter_backtest.py
+          tests/test_head_to_head_eval.py
+          tests/test_dossier_eval.py
+          tests/test_precedent_quality_learning.py
+          tests/test_planner_eval.py
+          tests/test_planner_brain.py

@@ -12,6 +12,24 @@ This is not a dashboard wrapper or a single prediction model. It is an evidence 
 
 ![Axiom market expectations demo](docs/assets/market_expectations_hd.png)
 
+## Observed public benchmark
+
+The committed forward-gap benchmark evaluates 84 candidate policies across **912 successful driver/horizon evaluations**, four walk-forward training cutoffs, fixed two-year test windows, and three shuffled placebos. The selected policy (`lambda = 0.5`) beat its placebo in **63.5%** of evaluations and improved mean absolute error by **0.0079** relative to placebo.
+
+| Evidence artifact | What a reviewer can verify |
+|---|---|
+| [Model card](MODEL_CARD.md) | Intended use, system layers, evaluation design, failure modes, and limitations |
+| [Benchmark JSON](results/public_benchmark.json) | Exact metrics, split metadata, selected policy, source path, and source hash |
+| [Validation report](examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_energy.sample.md) | Candidate, slice, sector, and placebo results |
+
+Reproduce the committed artifact from the source report:
+
+```bash
+python scripts/build_public_benchmark.py --check
+```
+
+This result supports a narrow error-improvement claim under the documented evaluation design; it is not a claim of causal identification, trading performance, or production impact.
+
 ## What Axiom does
 
 - **Builds an auditable company state** from financial, market, filing, macro, and corporate-action inputs.
@@ -98,16 +116,20 @@ Axiom treats validation as part of the product, not an afterthought. The public 
 - model-family quality gates before evidence becomes a recommendation
 - explicit limitations when samples are thin or a mechanism is not identified
 
-See the [validation overview](docs/validation/README.md), [data contract](docs/data_contract.md), and [model monitoring notes](docs/model_monitoring.md).
+See the [model card](MODEL_CARD.md), [validation overview](docs/validation/README.md), [data contract](docs/data_contract.md), and [model monitoring contract](docs/model_monitoring.md).
 
 ## Quickstart
 
 ```bash
-python -m pip install -e . pytest
-python -m pytest -q tests/test_public_showcase_examples.py tests/test_hd_market_expectations_demo.py
+python -m pip install -e ".[dev]"
+python scripts/build_public_benchmark.py --check
+python -m pytest -q \
+  tests/test_public_benchmark_artifact.py \
+  tests/test_public_showcase_examples.py \
+  tests/test_hd_market_expectations_demo.py
 ```
 
-The GitHub Actions workflow runs the same public contract checks on every push and pull request.
+The GitHub Actions workflow runs the benchmark drift check plus 86 deterministic tests spanning public examples, point-in-time state, feature bundles, backtests, learned precedent quality, ranking, orchestration, planner behavior, and dossier evaluation. The repository contains additional provider-backed tests, but those are not presented as portable public CI results.
 
 ## Repository layout
 
