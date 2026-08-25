@@ -1,73 +1,79 @@
-# Model Monitoring
+# Model Monitoring Contract
 
-Validated on March 14, 2026.
+This document defines the review and promotion contract for Axiom model and policy changes. It intentionally separates checks reproducible from the public fixtures from provider-backed checks that require private data.
 
-## Scope
+## 1. Data contract
 
-This is the current broader monitoring path for the accepted production baseline:
+Before scoring or training, validate:
 
-- precedent corpus:
-  - `./data/curated/action_outcomes_with_credit_ratings.normalized_full.parquet`
-- causal model:
-  - `./data/models/causal_impact_model_v5_5_hybrid.json`
-- causal blocklist:
-  - `./config/causal_action_blocklist_prod_v2.txt`
+- as-of timestamps and publication dates are compatible with the decision date;
+- entity identifiers resolve without ambiguous joins;
+- units, currencies, and fiscal periods are normalized;
+- required provenance and confidence fields are present;
+- missingness and fallback rates stay within the candidate artifact's declared bounds.
 
-## Broad Canary
+A material schema, coverage, or fallback-rate change blocks promotion until the affected slices are reviewed.
 
-Use the broader 20-company sample as the non-regression canary outside the fixed 5-company set.
+## 2. Temporal performance
 
-Latest accepted gate:
+Temporal claims require time-ordered evaluation. Record:
 
-- source runs:
-  - `/tmp/recommendation_runs_prod_causal_v2_20`
-- source run IDs:
-  - `/tmp/recommendation_runs_prod_causal_v2_20_run_ids.txt`
-- gate output:
-  - `/tmp/recommendation_canary_gate_20.json`
+- training cutoff and fixed test window;
+- eligible population and excluded sectors or families;
+- baseline and candidate metrics by slice, not only in aggregate;
+- candidate count, successful evaluation count, and failure reasons.
 
-Latest gate metrics:
+The committed forward-gap benchmark uses four training cutoffs and two-year test windows. Its exact result is stored in [`../results/public_benchmark.json`](../results/public_benchmark.json).
 
-- `runs_analyzed = 20`
-- `causal_rate_mean = 0.848167`
-- `strict_all_mean = 0.848167`
-- `strict_causal_mean = 1.0`
-- `precedent_conf_mean = 0.346832`
-- `precedent_oos_mean = 0.308`
+## 3. Baseline and placebo gates
 
-Thresholds used:
-
-- `min_causal_rate_mean = 0.82`
-- `min_strict_all_mean = 0.82`
-- `min_strict_causal_mean = 0.95`
-- `min_precedent_conf_mean = 0.34`
-- `max_precedent_oos_mean = 0.33`
-
-## Gate Command
+A candidate must improve on the current baseline and pass the applicable negative control. For the public forward-gap policy, the negative control shuffles gap values within each driver/horizon panel before scoring the same validation split.
 
 ```bash
-cd .
-
-PYTHONPATH=. \
-python ./scripts/gate_recommendation_canary.py \
-  --runs-roots /tmp/recommendation_runs_prod_causal_v2_20 \
-  --run-ids-file /tmp/recommendation_runs_prod_causal_v2_20_run_ids.txt \
-  --out /tmp/recommendation_canary_gate_20.json \
-  --min-action-rows 1 \
-  --min-causal-rate-mean 0.82 \
-  --min-strict-all-mean 0.82 \
-  --min-strict-causal-mean 0.95 \
-  --min-precedent-conf-mean 0.34 \
-  --max-precedent-oos-mean 0.33
+python scripts/build_public_benchmark.py --check
 ```
 
-## Decision Rule
+Review aggregate lift, pass rate, and family/sector slices. A positive aggregate result does not override a severe regression in a high-support slice.
 
-- if the gate passes, the current production baseline is still healthy on the broader canary
-- if the gate fails:
-  - inspect action-level causal rows with `./scripts/audit_full_ml_status.py`
-  - check whether the regression is:
-    - precedent quality
-    - causal coverage
-    - strict-gate quality
-    - or run failure / pipeline health
+## 4. Retrieval, support, and calibration
+
+For learned precedent ranking and action-evidence components, review:
+
+- ranking quality against the accepted baseline;
+- support coverage and out-of-support rate;
+- calibration and confidence by action family;
+- fallback frequency and mismatch reasons;
+- behavior on intentionally sparse, contradictory, or low-quality evidence.
+
+If support is insufficient, the correct behavior is a broader cohort, a lower-confidence result, or no claim—not an extrapolated high-confidence score.
+
+## 5. Product-contract checks
+
+Model output must survive into the final recommendation contract without losing provenance or limitations. CI therefore covers company-state validation, feature bundles, ranking and backtest behavior, learned-quality evaluation, orchestration, planner behavior, dossier evaluation, and end-to-end public examples.
+
+These tests establish deterministic implementation behavior on committed fixtures. They do not claim provider-scale coverage or production uptime.
+
+## 6. Drift and operational monitoring
+
+Provider-backed deployments should track:
+
+- schema and missingness drift;
+- feature-distribution and support-coverage drift;
+- ranking, calibration, and baseline-relative performance by slice;
+- run failures, latency, and fallback rates;
+- changes in recommendation mix or confidence distribution.
+
+Alert thresholds belong with the versioned candidate artifact and evaluation manifest. This public repository does not publish private provider paths, credentials, or live operational metrics.
+
+## 7. Promotion and rollback
+
+A promotion record should contain the candidate artifact, data window, metric table, thresholds, failed-slice analysis, reviewer, and rollback target. Promote only when all required data, temporal, placebo/baseline, support, calibration, and product-contract gates pass.
+
+On failure:
+
+1. stop promotion or roll back to the recorded accepted artifact;
+2. identify whether the regression is caused by data coverage, model behavior, support/calibration, or pipeline health;
+3. reproduce the failing slice with a fixed fixture;
+4. add a regression test before reevaluating the candidate.
+
+See the [`../MODEL_CARD.md`](../MODEL_CARD.md) for intended use, public metrics, data boundaries, and limitations.
