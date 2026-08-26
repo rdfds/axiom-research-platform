@@ -848,3 +848,91 @@ def _persist_execution_config(
         return
 
 
+def _retrieve_precedents(
+    run: RecommendationRun,
+    feasible_candidates: List[Dict[str, Any]],
+    precedent_runner: Callable[..., Any],
+    precedent_top_k: int,
+    snapshot: Dict[str, Any],
+    snapshot_root: Optional[str | Path],
+    snapshot_path: Optional[str | Path],
+    outcomes_path: Optional[str | Path],
+    config_path: Optional[str | Path],
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> List[Dict[str, Any]]:
+    _, _, _, _parse_ts, _, _, _, _ = _run_store_bindings()
+    _, _, MechanismBrain = _candidate_bindings()
+    as_of_date = _parse_ts(run.as_of_time).strftime("%Y-%m-%d")
+    selected_candidates = _select_precedent_candidates(feasible_candidates, precedent_top_k)
+    total = len(selected_candidates)
+    if progress_callback:
+        progress_callback(0, total)
+    if total == 0:
+        return []
+
+    def _build_match(cand: Dict[str, Any]) -> Dict[str, Any]:
+        t0 = time.perf_counter()
+        pack = precedent_runner(
+            company_id=run.company_id,
+            as_of_date=as_of_date,
+            action_id=cand["action_id"],
+            action_type=cand.get("action_type"),
+            action_subtype=cand.get("action_subtype"),
+            action_params=dict(cand.get("parameters", cand.get("params", {})) or {}),
+            config_path=str(config_path) if config_path else None,
+            outcomes_path=str(outcomes_path) if outcomes_path else None,
+            state_snapshot_root=str(snapshot_root) if snapshot_root else None,
+            state_snapshot_path=str(snapshot_path) if snapshot_path else None,
+            state_snapshot=snapshot,
+            run_id=str(getattr(run, "run_id", "")),
+            candidate_id=str(cand.get("candidate_id", "")),
+        )
+        pack_dict = _pack_to_dict(pack)
+        blended_candidate = MechanismBrain.blend_precedent_into_action_candidate(
+            action_candidate=dict(cand),
+            precedent_pack=pack_dict,
+        )
+        return {
+            "candidate": blended_candidate,
+            "precedent_pack": pack_dict,
+            "profiling": {
+                "precedent_seconds": round(time.perf_counter() - t0, 6),
+            },
+        }
+
+    workers = _precedent_worker_count(total)
+    if workers <= 1:
+        out: List[Dict[str, Any]] = []
+        for idx, cand in enumerate(selected_candidates, start=1):
+            out.append(_build_match(cand))
+            if progress_callback and (idx == total or idx % 5 == 0):
+                progress_callback(idx, total)
+        return out
+
+    ordered: List[Optional[Dict[str, Any]]] = [None] * total
+    completed = 0
+
+    # Warm the cold path once before fan-out. Without this, the first wave of
+    # threadpool tasks all pay the same one-time import/cache setup cost, which
+    # shows up as pathological first-company precedent latency.
+    ordered[0] = _build_match(selected_candidates[0])
+    completed = 1
+    if progress_callback:
+        progress_callback(completed, total)
+
+    if total == 1:
+        return [row for row in ordered if row is not None]
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_to_index = {
+            pool.submit(_build_match, cand): i for i, cand in enumerate(selected_candidates[1:], start=1)
+        }
+        for fut in as_completed(future_to_index):
+            idx = future_to_index[fut]
+            ordered[idx] = fut.result()
+            completed += 1
+            if progress_callback and (completed == total or completed % 5 == 0):
+                progress_callback(completed, total)
+    return [row for row in ordered if row is not None]
+
+
