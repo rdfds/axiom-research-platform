@@ -327,3 +327,177 @@ def test_build_board_ready_dossier_clamps_implausible_debt_tenor():
     assert "The edge over waiting" in dossier["executive_summary"]
 
 
+def test_build_board_ready_dossier_uses_specific_financing_diagnosis_and_role_text():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            value_creation=0.02,
+            risk_reduction=0.05,
+            rating_preservation=0.03,
+            optionality=0.02,
+            params={
+                "amount_usd": 2_000_000_000.0,
+                "tenor_years": 5.0,
+                "secured_flag": False,
+                "use_of_proceeds": "refinancing",
+                "fixed_vs_floating": "fixed",
+                "instrument_type": "bond",
+            },
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    problem_statement = dossier["recommendation_thesis"]["problem_statement"].lower()
+    why_this_plan = dossier["recommendation_thesis"]["why_this_plan"].lower()
+    why_now = dossier["recommendation_thesis"]["why_now"].lower()
+    assert "term out an elevated near-term maturity wall" in problem_statement
+    assert "raise about $2.0b of new debt" in why_this_plan
+    assert "roughly 5.0-year tenor" in why_this_plan
+    assert "term out upcoming maturities" in why_this_plan
+    assert "24-month maturity wall is already 22.0%" in why_now
+    assert "debt markets are currently" in why_now
+
+
+def test_build_board_ready_dossier_uses_specific_capital_return_diagnosis():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            value_creation=0.29,
+            optionality=0.11,
+            params={"size_pct_market_cap": 0.06},
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    problem_statement = dossier["recommendation_thesis"]["problem_statement"].lower()
+    why_this_plan = dossier["recommendation_thesis"]["why_this_plan"].lower()
+    assert "excess deployable capital relative to near-term operating demand" in problem_statement
+    assert "at about 6.0% of market value" in why_this_plan
+
+
+def test_build_board_ready_dossier_populates_fallback_alternatives_when_plan_set_is_thin():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            value_creation=0.02,
+            risk_reduction=0.05,
+            rating_preservation=0.03,
+            optionality=0.02,
+            params={"amount_usd": 2_000_000_000.0, "tenor_years": 5.0, "use_of_proceeds": "refinancing"},
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            value_creation=0.015,
+            risk_reduction=0.04,
+            rating_preservation=0.02,
+            optionality=0.015,
+            params={"amount_refinanced_usd": 1_500_000_000.0, "new_tenor_years": 5.0},
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            value_creation=0.03,
+            optionality=0.01,
+            params={"size_pct_market_cap": 0.03},
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    assert dossier["alternative_analysis"]
+    assert dossier["alternative_analysis"][0]["action_ids"]
+    assert dossier["alternative_analysis"][0]["why_not_preferred"]
+
+
+def test_build_board_ready_dossier_act_now_case_for_wait_is_not_self_defeating():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_return.tender_offer_buyback",
+            value_creation=0.06,
+            optionality=0.01,
+            params={
+                "size_absolute_usd": 1_250_000_000.0,
+                "funding_mix": {"cash": 1.0, "debt": 0.0, "equity": 0.0},
+            },
+            evaluation_confidence=0.86,
+            precedent_confidence=0.48,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+
+    assert dossier["recommendation_thesis"]["recommended_posture"] == "act_now"
+    assert all("incremental benefit over waiting is still modest" not in item.lower() for item in dossier["recommendation_thesis"]["case_for_wait"])
+    assert dossier["risk_case"]["main_failure_modes"]
+    assert "adverse tail in" not in dossier["risk_case"]["main_failure_modes"][0].lower()
+
+

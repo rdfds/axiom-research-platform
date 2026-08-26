@@ -2846,3 +2846,325 @@ def _follow_on_explanation(*, target_action_id: str, source_action_id: str) -> s
     return f"After {source}, the board may revisit {_humanize_action_id(target_action_id)} if conditions improve."
 
 
+def _humanize_tail_metric(*, metric: str, horizon: str, direction: str) -> str:
+    metric_key = str(metric or "").strip()
+    horizon_text = f"{str(horizon).strip()} " if str(horizon or "").strip() else ""
+    mapping = {
+        "equity_return_vs_sector": "relative share performance",
+        "valuation_multiple_change": "valuation multiple performance",
+        "credit_spread_change": "credit spread performance",
+        "ebitda_change": "EBITDA performance",
+        "fcf_change": "free-cash-flow performance",
+    }
+    label = mapping.get(metric_key, metric_key.replace("_", " "))
+    return f"{direction} tail in {horizon_text}{label}."
+
+
+def _dedupe_trigger_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen_conditions: set[str] = set()
+    for row in rows:
+        condition = str((row or {}).get("condition", "") or "").strip()
+        if not condition or condition in seen_conditions:
+            continue
+        seen_conditions.add(condition)
+        out.append(dict(row or {}))
+    return out
+
+
+def _tail_descriptions(precedent_pack: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for tail in list((precedent_pack.get("tail_events", []) or [])):
+        description = str((tail or {}).get("description", "") or "").strip()
+        metric = str((tail or {}).get("metric", "") or "").strip()
+        horizon = str((tail or {}).get("horizon", "") or "").strip()
+        generic = description in {"Bottom decile historical outcome.", "Top decile historical outcome."}
+        if generic and metric:
+            direction = "Adverse" if "Bottom" in description else "Favorable"
+            out.append(_humanize_tail_metric(metric=metric, horizon=horizon, direction=direction))
+            continue
+        if description:
+            out.append(_humanize_text(description))
+        elif metric:
+            out.append(_humanize_tail_metric(metric=metric, horizon=horizon, direction="Adverse"))
+    return _dedupe(out)
+
+
+def _fallback_monitoring_triggers(first_action: str, snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    if _has_capital_return([first_action]):
+        out.append(
+            {
+                "trigger_type": "balance_sheet_condition",
+                "condition": "Pause if leverage rises materially from the current baseline.",
+                "evaluation_frequency": "monthly",
+                "trigger_probability": 0.35,
+                "explanation": "Capital return should stop if balance-sheet capacity erodes.",
+            }
+        )
+        out.append(
+            {
+                "trigger_type": "capital_allocation_condition",
+                "condition": "Pause if a higher-return strategic use for capital appears.",
+                "evaluation_frequency": "monthly",
+                "trigger_probability": 0.25,
+                "explanation": "The recommendation assumes no better use of cash emerges.",
+            }
+        )
+    if _is_balance_sheet_action(first_action):
+        out.append(
+            {
+                "trigger_type": "market_window_condition",
+                "condition": "Only proceed if financing terms still improve flexibility rather than just add gross debt.",
+                "evaluation_frequency": "weekly",
+                "trigger_probability": 0.4,
+                "explanation": "The financing step is only justified while the market window is constructive.",
+            }
+        )
+        if credit_window is not None and credit_window > 0.0:
+            out.append(
+                {
+                    "trigger_type": "market_window_condition",
+                    "condition": (
+                        "Reassess if debt-market conditions weaken meaningfully from the current "
+                        f"{_market_window_description(credit_window, 'debt')} backdrop."
+                    ),
+                    "evaluation_frequency": "weekly",
+                    "trigger_probability": 0.3,
+                    "explanation": "Closing credit markets can invalidate the financing thesis.",
+                }
+            )
+    if _is_mna_action(first_action):
+        out.append(
+            {
+                "trigger_type": "valuation_condition",
+                "condition": "Proceed only if the deal still clears the internal return hurdle after financing costs.",
+                "evaluation_frequency": "weekly",
+                "trigger_probability": 0.3,
+                "explanation": "The acquisition case depends on the spread between deal returns and the next-best use of capital.",
+            }
+        )
+    if _is_divestiture_action(first_action):
+        out.append(
+            {
+                "trigger_type": "execution_condition",
+                "condition": "Proceed only if the asset can be sold at a price that clearly improves focus or flexibility.",
+                "evaluation_frequency": "monthly",
+                "trigger_probability": 0.3,
+                "explanation": "A divestiture is only worth doing if the sale price and strategic simplification are both credible.",
+            }
+        )
+    return out[:3]
+
+
+def _has_only_generic_tail_descriptions(items: Sequence[str]) -> bool:
+    cleaned = [str(item or "").strip() for item in items if str(item or "").strip()]
+    if not cleaned:
+        return False
+    return all(item.startswith("Adverse tail in ") for item in cleaned)
+
+
+def _looks_generic_execution_risk(text: str) -> bool:
+    lower = str(text or "").strip().lower()
+    if not lower:
+        return True
+    generic_markers = (
+        "requires disciplined execution",
+        "requires disciplined market timing",
+        "plan has explicit monitoring triggers",
+        "not reliant on one path only",
+    )
+    return any(marker in lower for marker in generic_markers)
+
+
+def _fallback_failure_modes(first_action: str, snapshot: Dict[str, Any]) -> List[str]:
+    if _has_capital_return([first_action]):
+        return [
+            "Capital is returned just before the company needs that cash for resilience, refinancing, or reinvestment.",
+            "The market does not reward the payout decision enough to offset the lost balance-sheet flexibility.",
+        ]
+    if _is_balance_sheet_action(first_action):
+        return [
+            "Funding arrives on terms that add gross debt but do not improve real financing flexibility.",
+            "The transaction buys time without moving enough maturity pressure or leverage risk off the balance sheet.",
+        ]
+    if _is_mna_action(first_action):
+        return [
+            "The transaction clears strategically but destroys value through price or integration risk.",
+            "Financing the deal leaves the company with less resilience than the growth is worth.",
+        ]
+    if _is_divestiture_action(first_action):
+        return [
+            "The asset is sold too cheaply relative to its strategic or cash-flow value.",
+            "The sale simplifies the portfolio but fails to create enough flexibility to justify the loss of earnings.",
+        ]
+    return ["The recommendation fails because the expected strategic benefit does not survive real execution conditions."]
+
+
+def _fallback_execution_risks(first_action: str, snapshot: Dict[str, Any]) -> List[str]:
+    if _has_capital_return([first_action]):
+        return [
+            "Execution has to preserve enough liquidity that the company does not regret returning cash into a weaker backdrop.",
+            "Management has to show that capital return is the best remaining use of cash, not the default after growth options ran thin.",
+        ]
+    if _is_balance_sheet_action(first_action):
+        return [
+            "Management has to avoid issuing financing that solves a short-term need but leaves the company with the same structural problem later.",
+            "Terms have to improve maturity profile or liquidity headroom, not just increase gross funding.",
+        ]
+    if _is_mna_action(first_action):
+        return ["Execution requires valuation discipline, financing discipline, and integration discipline at the same time."]
+    if _is_divestiture_action(first_action):
+        return ["Execution requires clean buyer interest and a sale process that does not weaken the remaining business."]
+    return ["Execution assumptions have to hold through completion, not just at announcement."]
+
+
+def _resolve_plan_action_candidate(
+    *,
+    plan: Dict[str, Any],
+    action_id: str,
+    candidate_by_action: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    for action in list(plan.get("actions", []) or []):
+        row = dict(action or {})
+        if str(row.get("action_id", "") or "") == action_id:
+            return row
+    return dict(candidate_by_action.get(action_id) or {})
+
+
+def _build_alternative_rebuttal_reasons(
+    *,
+    top_plan: Dict[str, Any],
+    alt_plan: Dict[str, Any],
+    top_components: Dict[str, Any],
+    alt_components: Dict[str, Any],
+    top_action_ids: Sequence[str],
+    alt_action_ids: Sequence[str],
+    top_candidate: Dict[str, Any],
+    alt_candidate: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+    precedent_by_action: Dict[str, Dict[str, Any]],
+) -> List[str]:
+    reasons: List[str] = []
+    top_utility = float(top_components.get("expected_utility", 0.0) or 0.0)
+    alt_utility = float(alt_components.get("expected_utility", 0.0) or 0.0)
+    if top_utility > alt_utility + 0.03:
+        reasons.append(f"It carries higher modeled expected utility ({top_utility:.3f} vs {alt_utility:.3f}).")
+
+    top_support = float(top_components.get("support_factor", 0.0) or 0.0)
+    alt_support = float(alt_components.get("support_factor", 0.0) or 0.0)
+    if top_support > alt_support + 0.03:
+        reasons.append(f"It has stronger empirical support ({top_support:.3f} vs {alt_support:.3f}).")
+
+    top_tail = float(top_components.get("tail_risk_penalty", 0.0) or 0.0)
+    alt_tail = float(alt_components.get("tail_risk_penalty", 0.0) or 0.0)
+    if alt_tail > top_tail + 0.02:
+        reasons.append(f"It takes more downside risk (tail penalty {alt_tail:.3f} vs {top_tail:.3f}).")
+
+    top_time = float(top_components.get("time_discount_factor", 1.0) or 1.0)
+    alt_time = float(alt_components.get("time_discount_factor", 1.0) or 1.0)
+    if alt_time < top_time - 0.03:
+        reasons.append(f"It pushes value further out in time (discount factor {alt_time:.3f} vs {top_time:.3f}).")
+
+    top_precedent = _precedent_confidence(precedent_by_action.get(str((top_action_ids[0] if top_action_ids else "") or ""), {}))
+    alt_precedent = _precedent_confidence(precedent_by_action.get(str((alt_action_ids[0] if alt_action_ids else "") or ""), {}))
+    if top_precedent > alt_precedent + 0.03:
+        reasons.append(f"It has a cleaner precedent match ({top_precedent:.3f} vs {alt_precedent:.3f}).")
+
+    reasons.extend(
+        _alternative_specific_reasons(
+            top_action_ids=top_action_ids,
+            alt_action_ids=alt_action_ids,
+            top_candidate=top_candidate,
+            alt_candidate=alt_candidate,
+            snapshot=snapshot,
+            diagnosed=diagnosed,
+        )
+    )
+    reasons = _dedupe(reasons)
+    if not reasons:
+        reasons.append("It addresses the diagnosed problem less directly than the top plan.")
+    return reasons[:4]
+
+
+def _format_alternative_rebuttal(reasons: Sequence[str]) -> str:
+    items = [str(reason or "").strip() for reason in reasons if str(reason or "").strip()]
+    if not items:
+        return "Not preferred because it addresses the diagnosed problem less directly than the top plan."
+    if len(items) == 1:
+        return f"Not preferred because {items[0][0].lower() + items[0][1:] if len(items[0]) > 1 else items[0].lower()}"
+    first = items[0]
+    second = items[1]
+    connector = " It also " if not second.lower().startswith(("it ", "this ")) else " Also, "
+    sentence = f"Not preferred because {first[0].lower() + first[1:] if len(first) > 1 else first.lower()}"
+    sentence += connector + (second if connector == " Also, " else second[0].lower() + second[1:] if len(second) > 1 else second.lower())
+    return sentence
+
+
+def _alternative_specific_reasons(
+    *,
+    top_action_ids: Sequence[str],
+    alt_action_ids: Sequence[str],
+    top_candidate: Dict[str, Any],
+    alt_candidate: Dict[str, Any],
+    snapshot: Dict[str, Any],
+    diagnosed: Dict[str, Any],
+) -> List[str]:
+    top_first = str((top_action_ids[0] if top_action_ids else "") or "")
+    alt_first = str((alt_action_ids[0] if alt_action_ids else "") or "")
+    reasons: List[str] = []
+    liquidity = _safe_float(_feature_value(snapshot, "liquidity.available_for_actions"))
+    market_cap = _safe_float(_feature_value(snapshot, "market.market_cap"))
+    liquidity_to_mcap = (liquidity / market_cap) if liquidity is not None and market_cap not in (None, 0.0) else None
+    net_leverage = _safe_float(_feature_value(snapshot, "capital_structure.net_leverage"))
+    maturity_wall = _safe_float(_feature_value(snapshot, "capital_structure.maturity_wall_ratio_24m"))
+    credit_window = _safe_float(_feature_value(snapshot, "market.credit_window_proxy"))
+    pursue_mna_priority = _safe_float(_feature_value(snapshot, "strategic.intent.pursue_mna_priority"))
+    if top_first == "capital_structure.new_debt_issuance" and alt_first == "capital_structure.equity_issuance":
+        reasons.append("It is more dilutive for a similar financing outcome.")
+    if top_first == "capital_structure.new_debt_issuance" and alt_first == "capital_structure.refinancing":
+        reasons.append("It creates less fresh capacity to solve the financing problem.")
+    if _is_buyback_action(top_first) and alt_first == "capital_return.open_market_buyback":
+        reasons.append("It is a less decisive capital-return mechanism.")
+    if _is_capital_return_action(top_first) and _is_balance_sheet_action(alt_first) and (liquidity_to_mcap or 0.0) >= 0.03:
+        reasons.append(f"It solves the capital-return question less directly even though deployable liquidity is already {_fmt_pct(liquidity_to_mcap)} of market value.")
+    if _is_balance_sheet_action(top_first) and _has_capital_return(top_action_ids[1:]) and not _has_capital_return(alt_action_ids):
+        reasons.append("It does not unlock the planned return-of-capital step.")
+    if _is_divestiture_action(top_first) and not _is_divestiture_action(alt_first):
+        reasons.append("It raises or redeploys capital without simplifying the portfolio.")
+    if _is_mna_action(top_first) and not _is_mna_action(alt_first) and pursue_mna_priority is not None:
+        reasons.append(f"It does not address the external-growth problem despite an M&A-priority score of {_fmt_score(pursue_mna_priority)}.")
+    if "balance-sheet capacity" in str(diagnosed.get("primary_problem", "")).lower() and _is_balance_sheet_action(top_first) and not _is_balance_sheet_action(alt_first):
+        if maturity_wall is not None and maturity_wall >= 0.15:
+            reasons.append(f"It leaves a {_fmt_pct(maturity_wall)} 24-month maturity wall unresolved before using capacity elsewhere.")
+        else:
+            reasons.append("It addresses the balance-sheet-capacity problem less directly.")
+    if _is_balance_sheet_action(top_first) and _has_capital_return(alt_action_ids) and maturity_wall is not None and maturity_wall >= 0.15:
+        reasons.append(f"It spends capital before a {_fmt_pct(maturity_wall)} maturity wall is repaired.")
+    if _is_buyback_action(top_first) and alt_first in {"capital_return.dividend_increase", "capital_return.special_dividend", "capital_return.dividend_initiate"}:
+        reasons.append("It locks the company into a stickier payout instead of a more reversible repurchase program.")
+    if _is_buyback_action(top_first) and _uses_equity_markets([alt_first]) and liquidity_to_mcap is not None:
+        reasons.append(f"It raises dilutive capital even though deployable liquidity already equals {_fmt_pct(liquidity_to_mcap)} of market value.")
+    if _is_mna_action(top_first) and _has_capital_return([alt_first]) and pursue_mna_priority is not None:
+        reasons.append(f"It returns capital instead of pursuing the external-growth agenda implied by the {_fmt_score(pursue_mna_priority)} M&A-priority signal.")
+    if _is_balance_sheet_action(top_first) and credit_window is not None and _uses_equity_markets([alt_first]):
+        reasons.append(
+            f"It prefers equity even though debt markets are currently "
+            f"{_market_window_description(credit_window, 'debt')}."
+        )
+    if _is_capital_return_action(top_first) and _is_capital_return_action(alt_first):
+        top_value = _objective_median(top_candidate, "value_creation")
+        alt_value = _objective_median(alt_candidate, "value_creation")
+        if top_value is not None and alt_value is not None and top_value > alt_value + 0.03:
+            reasons.append(f"It is the weaker capital-return tool on value creation ({alt_value:+.3f} vs {top_value:+.3f}).")
+    if _uses_equity_markets([alt_first]) and net_leverage is not None and net_leverage < 2.5 and not _uses_equity_markets([top_first]):
+        reasons.append(f"It adds dilution even though net leverage is only {_fmt_x(net_leverage)}.")
+    return reasons
+
+
+def _has_capital_return(action_ids: Sequence[str]) -> bool:
+    return any(_is_capital_return_action(action_id) for action_id in action_ids)
+
+
