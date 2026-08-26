@@ -357,3 +357,85 @@ def test_execute_recommendation_run_precedent_top_k_limits_calls(tmp_path: Path)
     assert summary["counts"]["precedent"] == 1
 
 
+def test_execute_recommendation_run_uses_runtime_feature_adapter_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER", "1")
+    monkeypatch.setenv(
+        "AXIOM_RUNTIME_FEATURE_ADAPTER_RULES",
+        "normalized_available_liquidity,normalized_net_debt,normalized_net_leverage,normalized_operating_earnings_fill,pe_ratio_compatibility_alias",
+    )
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    root = tmp_path / "snapshots"
+    keyed = root / "keyed" / "as_of_date=2026-02-28"
+    keyed.mkdir(parents=True, exist_ok=True)
+    row = {
+        "snapshot_id": "snap-456",
+        "company_id": "0000320193",
+        "as_of_time": "2026-02-28T00:00:00+00:00",
+        "features": {
+            "liquidity.available_liquidity_normalized": {"value": 250.0, "support_mode": "exact"},
+            "capital_structure.net_debt_normalized": {"value": 100.0, "support_mode": "exact"},
+            "capital_structure.net_leverage_normalized": {"value": 1.5, "support_mode": "exact"},
+            "operating.operating_earnings_normalized": {"value": 80.0, "support_mode": "exact"},
+            "market.market_cap": {"value": 1000.0},
+            "market.pe_ratio": {"value": 12.0, "support_mode": "exact"},
+            "liquidity.cash": {"value": 500.0},
+        },
+        "regime": {"credit_regime": "neutral"},
+        "provenance": {"computation_version": "state_builder_v5"},
+    }
+    (keyed / "company_id=0000320193.json").write_text(json.dumps(row) + "\n")
+
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    summary = execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=root,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback"],
+        precedent_runner=_stub_precedent_runner,
+    )
+
+    assert summary["ok"] is True
+    assert summary["runtime_feature_adapter"]["replacement_count"] >= 3
+
+    run = store.get_run(run_id)
+    assert run is not None
+    artifact_map = run.metadata.get("artifacts", {})
+    adapter_payload = json.loads(Path(artifact_map["RuntimeFeatureAdapterDiagnostics"]).read_text())
+    bundle_payload = json.loads(Path(artifact_map["ModelFeatureBundleDiagnostics"]).read_text())
+    assert adapter_payload["diagnostics"]["counts_by_target"]["capital_structure.net_leverage"] == 1
+    assert "liquidity.available_for_actions" not in adapter_payload["diagnostics"]["counts_by_target"]
+    assert bundle_payload["diagnostics"]["canonical_count"] > 0
+
+    dossier_payload = json.loads(Path(artifact_map["BoardReadyDossier"]).read_text())
+    if "supporting_evidence" in dossier_payload:
+        evidence_by_metric = {row["metric"]: row for row in dossier_payload["supporting_evidence"]}
+        assert evidence_by_metric["liquidity.available_for_actions"]["value"] is None
+        assert evidence_by_metric["capital_structure.net_leverage"]["value"] == 1.5
+
+
+def test_select_precedent_candidates_zero_top_k_skips_retrieval():
+    feasible = [
+        {
+            "candidate_id": "c1",
+            "action_id": "capital_return.open_market_buyback",
+            "generation_confidence": 0.9,
+            "evaluation_confidence": 0.7,
+        }
+    ]
+    assert _select_precedent_candidates(feasible, precedent_top_k=0) == []
+
+

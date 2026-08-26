@@ -936,3 +936,56 @@ def _retrieve_precedents(
     return [row for row in ordered if row is not None]
 
 
+def _precedent_worker_count(total_candidates: int) -> int:
+    if total_candidates <= 1:
+        return 1
+    if total_candidates < 10:
+        return 1
+    env_value = str(os.environ.get("RECO_PRECEDENT_WORKERS", "")).strip()
+    if env_value:
+        try:
+            return max(1, min(total_candidates, int(env_value)))
+        except Exception:
+            pass
+    return max(1, min(total_candidates, 6))
+
+
+def _update_stage_progress(
+    store: RecommendationRunStore,
+    run_id: str,
+    stage: str,
+    completed: int,
+    total: int,
+) -> None:
+    try:
+        run = store.get_run(run_id)
+        if run is None:
+            return
+        metadata = dict(run.metadata or {})
+        by_stage = dict(metadata.get("progress_by_stage", {}) or {})
+        safe_total = max(0, int(total))
+        safe_completed = max(0, int(completed))
+        ratio = 1.0 if safe_total == 0 else min(1.0, safe_completed / float(safe_total))
+        by_stage[stage] = {
+            "stage": stage,
+            "completed": safe_completed,
+            "total": safe_total,
+            "ratio": ratio,
+            "updated_at": _now_iso(),
+        }
+        metadata["progress_by_stage"] = by_stage
+        metadata["progress"] = by_stage.get(stage)
+        run.metadata = metadata
+        store.update_run(run, sync_index=False)
+    except Exception:
+        return
+
+
+def _percentile_seconds(values: Sequence[float], q: float) -> float:
+    if not values:
+        return 0.0
+    arr = sorted(float(v) for v in values)
+    idx = min(len(arr) - 1, max(0, int(round(q * (len(arr) - 1)))))
+    return float(arr[idx])
+
+
