@@ -439,3 +439,49 @@ def test_select_precedent_candidates_zero_top_k_skips_retrieval():
     assert _select_precedent_candidates(feasible, precedent_top_k=0) == []
 
 
+def test_execute_recommendation_run_persists_execution_config(tmp_path: Path, monkeypatch):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+    store = RecommendationRunStore(root=runs_root)
+
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps({"version": "causal_impact_model_v2_hybrid"}))
+    blocklist_path = tmp_path / "blocklist.txt"
+    blocklist_path.write_text("mna.platform_acquisition\n")
+
+    monkeypatch.setenv("CAUSAL_IMPACT_MODEL_PATH", str(model_path))
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST_PATH", str(blocklist_path))
+    monkeypatch.setenv("CAUSAL_STRICT_MIN_CONTROL_ROWS", "20000")
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    execute_recommendation_run(
+        run_id=run_id,
+        runs_root=runs_root,
+        snapshot_root=snapshot_root,
+        entity_identifier_path=entity_identifier,
+        action_ids=["capital_return.open_market_buyback"],
+        max_candidates=50,
+        min_candidates_target=50,
+        precedent_top_k=5,
+        top_plans=1,
+        precedent_runner=_stub_precedent_runner,
+    )
+
+    run = store.get_run(run_id)
+    assert run is not None
+    cfg = dict((run.metadata or {}).get("config") or {})
+    assert cfg["execution"]["max_candidates"] == 50
+    assert cfg["execution"]["precedent_top_k"] == 5
+    assert cfg["runtime_env"]["causal"]["model"]["path"] == str(model_path)
+    assert "mna.platform_acquisition" in cfg["runtime_env"]["causal"]["blocklist"]["entries"]
+
+

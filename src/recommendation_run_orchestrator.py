@@ -989,3 +989,133 @@ def _percentile_seconds(values: Sequence[float], q: float) -> float:
     return float(arr[idx])
 
 
+def _slowest_candidates(
+    rows: Sequence[Dict[str, Any]],
+    latency_key: str,
+    count: int = 10,
+) -> List[Dict[str, Any]]:
+    ranked: List[Dict[str, Any]] = []
+    for row in rows:
+        profiling = dict(row.get("profiling", {}) or {})
+        seconds = float(profiling.get(latency_key, 0.0) or 0.0)
+        candidate = dict(row.get("candidate", {}) or row.get("action_candidate", {}) or {})
+        item: Dict[str, Any] = {
+            "candidate_id": str(candidate.get("candidate_id", "")),
+            "action_id": str(candidate.get("action_id", "")),
+            "seconds": round(seconds, 6),
+        }
+        for extra_key in (
+            "bulk_mechanism_eval_seconds_share",
+            "post_eval_seconds",
+            "validation_seconds",
+            "action_eval_to_dict_seconds",
+            "hard_constraint_seconds",
+        ):
+            if extra_key in profiling:
+                item[extra_key] = round(float(profiling.get(extra_key, 0.0) or 0.0), 6)
+        ranked.append(item)
+    ranked.sort(key=lambda x: (-float(x["seconds"]), x["action_id"], x["candidate_id"]))
+    return ranked[:count]
+
+
+def _feasibility_profile(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    vals = [
+        float(dict(row.get("profiling", {}) or {}).get("estimated_total_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    post_eval_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("post_eval_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    validation_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("validation_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    to_dict_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("action_eval_to_dict_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    hard_constraint_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("hard_constraint_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    bulk_share_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("bulk_mechanism_eval_seconds_share", 0.0) or 0.0)
+        for row in rows
+    ]
+    bulk_unattributed_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("bulk_mechanism_unattributed_seconds_share", 0.0) or 0.0)
+        for row in rows
+    ]
+    schema_lookup_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("schema_lookup_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    mech_feas_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("mechanism_feasibility_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    mech_activation_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("mechanism_activation_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    impact_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("impact_distribution_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    structural_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("structural_checks_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    risk_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("risk_identification_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    assumptions_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("assumptions_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    eval_conf_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("evaluation_confidence_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    candidate_id_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("candidate_id_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    mechanism_total_vals = [
+        float(dict(row.get("profiling", {}) or {}).get("mechanism_total_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    return {
+        "count": int(len(rows)),
+        "p50_seconds": round(_percentile_seconds(vals, 0.50), 6),
+        "p95_seconds": round(_percentile_seconds(vals, 0.95), 6),
+        "max_seconds": round(max(vals) if vals else 0.0, 6),
+        "post_eval_p50_seconds": round(_percentile_seconds(post_eval_vals, 0.50), 6),
+        "post_eval_p95_seconds": round(_percentile_seconds(post_eval_vals, 0.95), 6),
+        "validation_p50_seconds": round(_percentile_seconds(validation_vals, 0.50), 6),
+        "validation_p95_seconds": round(_percentile_seconds(validation_vals, 0.95), 6),
+        "action_eval_to_dict_p50_seconds": round(_percentile_seconds(to_dict_vals, 0.50), 6),
+        "action_eval_to_dict_p95_seconds": round(_percentile_seconds(to_dict_vals, 0.95), 6),
+        "hard_constraint_p50_seconds": round(_percentile_seconds(hard_constraint_vals, 0.50), 6),
+        "hard_constraint_p95_seconds": round(_percentile_seconds(hard_constraint_vals, 0.95), 6),
+        "schema_lookup_p50_seconds": round(_percentile_seconds(schema_lookup_vals, 0.50), 6),
+        "mechanism_feasibility_p50_seconds": round(_percentile_seconds(mech_feas_vals, 0.50), 6),
+        "mechanism_activation_p50_seconds": round(_percentile_seconds(mech_activation_vals, 0.50), 6),
+        "impact_distribution_p50_seconds": round(_percentile_seconds(impact_vals, 0.50), 6),
+        "structural_checks_p50_seconds": round(_percentile_seconds(structural_vals, 0.50), 6),
+        "risk_identification_p50_seconds": round(_percentile_seconds(risk_vals, 0.50), 6),
+        "assumptions_p50_seconds": round(_percentile_seconds(assumptions_vals, 0.50), 6),
+        "evaluation_confidence_p50_seconds": round(_percentile_seconds(eval_conf_vals, 0.50), 6),
+        "candidate_id_p50_seconds": round(_percentile_seconds(candidate_id_vals, 0.50), 6),
+        "mechanism_total_p50_seconds": round(_percentile_seconds(mechanism_total_vals, 0.50), 6),
+        "mechanism_total_p95_seconds": round(_percentile_seconds(mechanism_total_vals, 0.95), 6),
+        "bulk_mechanism_eval_seconds_share": round(_percentile_seconds(bulk_share_vals, 0.50), 6),
+        "bulk_mechanism_eval_seconds_total": round(sum(bulk_share_vals), 6),
+        "bulk_mechanism_unattributed_seconds_share": round(_percentile_seconds(bulk_unattributed_vals, 0.50), 6),
+        "bulk_mechanism_unattributed_seconds_total": round(sum(bulk_unattributed_vals), 6),
+        "slowest": _slowest_candidates(rows, "estimated_total_seconds"),
+    }
+
+
