@@ -3168,3 +3168,16 @@ def _has_capital_return(action_ids: Sequence[str]) -> bool:
     return any(_is_capital_return_action(action_id) for action_id in action_ids)
 
 
+def _is_capital_return_action(action_id: str) -> bool:
+    return str(action_id or "").startswith("capital_return.")
+
+
+def _is_buyback_action(action_id: str) -> bool:
+    aid = str(action_id or "")
+    return aid in {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+        "capital_return.tender_offer_buyback",
+    }
+
+

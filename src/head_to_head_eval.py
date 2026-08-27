@@ -1036,3 +1036,60 @@ def _aggregate_ex_post(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _compute_significance(*, model_wins: int, baseline_wins: int) -> Dict[str, Any]:
+    comparable = int(model_wins) + int(baseline_wins)
+    if comparable <= 0:
+        return {
+            "comparable_case_count": 0,
+            "sign_test_p_value": None,
+            "model_win_rate_ci_95": None,
+        }
+    win_rate = float(model_wins) / float(comparable)
+    return {
+        "comparable_case_count": comparable,
+        "sign_test_p_value": round(_exact_two_sided_sign_test(k=max(model_wins, baseline_wins), n=comparable), 6),
+        "model_win_rate_ci_95": tuple(round(x, 6) for x in _wilson_interval(successes=model_wins, n=comparable, z=1.96)),
+        "model_win_rate": round(win_rate, 6),
+    }
+
+
+def _exact_two_sided_sign_test(*, k: int, n: int) -> float:
+    if n <= 0:
+        return 1.0
+    tail = sum(math.comb(n, i) for i in range(0, min(k, n - k) + 1)) / float(2**n)
+    return min(1.0, 2.0 * tail)
+
+
+def _wilson_interval(*, successes: int, n: int, z: float) -> Tuple[float, float]:
+    if n <= 0:
+        return (0.0, 1.0)
+    p = float(successes) / float(n)
+    denom = 1.0 + (z * z) / float(n)
+    center = (p + (z * z) / (2.0 * n)) / denom
+    spread = (z / denom) * math.sqrt((p * (1.0 - p) / float(n)) + ((z * z) / (4.0 * n * n)))
+    return (max(0.0, center - spread), min(1.0, center + spread))
+
+
+def _median(values: Sequence[float]) -> float:
+    ordered = sorted(float(x) for x in values)
+    if not ordered:
+        return 0.0
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def _fmt_optional(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return str(value)
+
+
+def _fmt_interval(value: Any) -> str:
+    if not value:
+        return "n/a"
+    left, right = value
+    return f"{left:.3f}, {right:.3f}"
