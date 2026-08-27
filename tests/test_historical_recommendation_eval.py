@@ -623,3 +623,28 @@ def test_snapshot_coverage_accepts_snapshot_with_real_core_features():
     assert _snapshot_has_meaningful_coverage(coverage, min_non_missing_core_features=3) is True
 
 
+def test_aggregate_historical_cases_separates_unsupported_cases():
+    aggregate = _aggregate_historical_cases(
+        [
+            {"company_id": "A", "unsupported_reason": "insufficient_snapshot_coverage"},
+            {
+                "company_id": "B",
+                "recommended_posture": "act_now",
+                "top_action_ids": ["capital_structure.refinancing"],
+                "anchor_action_family": "capital_structure",
+                "historical_alignment": {
+                    "score": 1.0,
+                    "primary_exact_match": True,
+                    "primary_family_match": True,
+                    "any_exact_match": True,
+                    "any_family_match": True,
+                },
+            },
+        ]
+    )
+    assert aggregate["completed_case_count"] == 1
+    assert aggregate["unsupported_case_count"] == 1
+    assert aggregate["scored_case_count"] == 1
+    assert aggregate["coverage_skip_rate"] == 0.5
+
+

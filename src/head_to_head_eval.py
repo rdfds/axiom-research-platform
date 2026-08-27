@@ -849,3 +849,159 @@ def _humanize_action(action_id: str) -> str:
     return action_id.split(".")[-1].replace("_", " ")
 
 
+def _load_realized_outcomes_lookup(path: Path) -> Dict[str, List[Tuple[Any, str, str]]]:
+    import pandas as pd
+
+    frame = pd.read_parquet(
+        path,
+        columns=["company_id", "action_date", "normalized_action_id", "normalized_action_family"],
+    )
+    frame["action_date"] = pd.to_datetime(frame["action_date"], utc=True, errors="coerce")
+    frame = frame.dropna(subset=["company_id", "action_date"])
+    lookup: Dict[str, List[Tuple[Any, str, str]]] = {}
+    for company_id, group in frame.groupby("company_id", sort=False):
+        ordered = group.sort_values("action_date")
+        lookup[str(company_id)] = [
+            (
+                row.action_date,
+                str(row.normalized_action_id or ""),
+                str(row.normalized_action_family or ""),
+            )
+            for row in ordered.itertuples(index=False)
+        ]
+    return lookup
+
+
+def _build_ex_post_comparison(
+    *,
+    company_id: str,
+    as_of_time: str,
+    model_packet: CanonicalPacket,
+    baseline_packet: CanonicalPacket,
+    outcomes_lookup: Optional[Dict[str, List[Tuple[Any, str, str]]]],
+    alignment_horizon_days: int,
+) -> Dict[str, Any]:
+    if outcomes_lookup is None:
+        return {}
+    model_alignment = _score_ex_post_alignment(
+        company_id=company_id,
+        as_of_time=as_of_time,
+        packet=model_packet,
+        outcomes_lookup=outcomes_lookup,
+        alignment_horizon_days=alignment_horizon_days,
+    )
+    baseline_alignment = _score_ex_post_alignment(
+        company_id=company_id,
+        as_of_time=as_of_time,
+        packet=baseline_packet,
+        outcomes_lookup=outcomes_lookup,
+        alignment_horizon_days=alignment_horizon_days,
+    )
+    model_score = model_alignment.get("score")
+    baseline_score = baseline_alignment.get("score")
+    winner: Optional[str]
+    if model_score is None or baseline_score is None:
+        winner = None
+    elif float(model_score) > float(baseline_score):
+        winner = "model"
+    elif float(model_score) < float(baseline_score):
+        winner = "baseline"
+    else:
+        winner = "tie"
+    return {
+        "model": model_alignment,
+        "baseline": baseline_alignment,
+        "winner": winner,
+    }
+
+
+def _score_ex_post_alignment(
+    *,
+    company_id: str,
+    as_of_time: str,
+    packet: CanonicalPacket,
+    outcomes_lookup: Dict[str, List[Tuple[Any, str, str]]],
+    alignment_horizon_days: int,
+) -> Dict[str, Any]:
+    import pandas as pd
+
+    targets = list(packet.action_path or _infer_action_path(" ".join([packet.primary_recommendation, packet.recommendation_thesis])))
+    target_families = sorted({_action_family(action_id) for action_id in targets if _action_family(action_id)})
+    company_events = list(outcomes_lookup.get(company_id, []) or [])
+    if not company_events:
+        return {"score": None, "reason": "no_company_events"}
+    as_of_ts = pd.Timestamp(as_of_time)
+    end_ts = as_of_ts + pd.Timedelta(days=max(1, int(alignment_horizon_days)))
+    future_events = [
+        (ts, action_id, family)
+        for ts, action_id, family in company_events
+        if ts > as_of_ts and ts <= end_ts
+    ]
+    if not future_events:
+        return {"score": None, "reason": "no_future_events_within_horizon"}
+    if not targets and not target_families:
+        return {"score": None, "reason": "no_inferred_action_target"}
+    future_ids = {action_id for _, action_id, _ in future_events if action_id}
+    future_families = {family for _, _, family in future_events if family}
+    primary = targets[0] if targets else ""
+    primary_family = _action_family(primary) if primary else ""
+    exact_primary = bool(primary and primary in future_ids)
+    exact_any = bool(set(targets) & future_ids)
+    family_primary = bool(primary_family and primary_family in future_families)
+    family_any = bool(set(target_families) & future_families)
+    if exact_primary:
+        score = 1.0
+    elif exact_any:
+        score = 0.85
+    elif family_primary:
+        score = 0.6
+    elif family_any:
+        score = 0.4
+    else:
+        score = 0.0
+    return {
+        "score": round(score, 6),
+        "reason": "matched" if score > 0.0 else "no_alignment",
+        "primary_exact_match": exact_primary,
+        "any_exact_match": exact_any,
+        "primary_family_match": family_primary,
+        "any_family_match": family_any,
+        "future_action_ids_sample": sorted(future_ids)[:5],
+        "future_action_families_sample": sorted(future_families)[:5],
+    }
+
+
+def _action_family(action_id: str) -> str:
+    text = str(action_id or "")
+    if not text or "." not in text:
+        return ""
+    return text.split(".", 1)[0]
+
+
+def _aggregate_cases_by_bucket(*, cases: Sequence[Dict[str, Any]], field: str) -> Dict[str, Any]:
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for case in cases:
+        baseline = dict(case.get("baseline_packet", {}) or {})
+        label = str(baseline.get(field, "") or "unknown")
+        buckets.setdefault(label, []).append(case)
+    out: Dict[str, Any] = {}
+    for label, bucket_cases in sorted(buckets.items()):
+        count = float(len(bucket_cases))
+        model_wins = sum(1 for case in bucket_cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "model")
+        baseline_wins = sum(1 for case in bucket_cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "baseline")
+        ties = sum(1 for case in bucket_cases if str((case.get("comparison", {}) or {}).get("winner", "")) == "tie")
+        significance = _compute_significance(model_wins=model_wins, baseline_wins=baseline_wins)
+        deltas = [float((case.get("comparison", {}) or {}).get("score_delta", 0.0) or 0.0) for case in bucket_cases]
+        out[label] = {
+            "case_count": int(count),
+            "model_win_rate": round(model_wins / count, 6) if count else None,
+            "baseline_win_rate": round(baseline_wins / count, 6) if count else None,
+            "tie_rate": round(ties / count, 6) if count else None,
+            "mean_score_delta": round(sum(deltas) / count, 6) if count else None,
+            "median_score_delta": round(_median(deltas), 6) if count else None,
+            "sign_test_p_value": significance["sign_test_p_value"],
+            "model_win_rate_ci_95": significance["model_win_rate_ci_95"],
+        }
+    return out
+
+
