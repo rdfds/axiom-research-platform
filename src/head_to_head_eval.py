@@ -1005,3 +1005,34 @@ def _aggregate_cases_by_bucket(*, cases: Sequence[Dict[str, Any]], field: str) -
     return out
 
 
+def _aggregate_ex_post(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    comparable: List[Tuple[float, float, str]] = []
+    coverage = 0
+    for case in cases:
+        ex_post = dict(case.get("ex_post", {}) or {})
+        model_score = ((ex_post.get("model", {}) or {}).get("score"))
+        baseline_score = ((ex_post.get("baseline", {}) or {}).get("score"))
+        if model_score is not None or baseline_score is not None:
+            coverage += 1
+        if model_score is None or baseline_score is None:
+            continue
+        comparable.append((float(model_score), float(baseline_score), str(ex_post.get("winner", "") or "tie")))
+    if not comparable and not coverage:
+        return {}
+    model_wins = sum(1 for _, _, winner in comparable if winner == "model")
+    baseline_wins = sum(1 for _, _, winner in comparable if winner == "baseline")
+    ties = sum(1 for _, _, winner in comparable if winner == "tie")
+    significance = _compute_significance(model_wins=model_wins, baseline_wins=baseline_wins)
+    return {
+        "coverage_rate": round(float(coverage) / float(len(cases)), 6) if cases else 0.0,
+        "comparable_case_count": len(comparable),
+        "model_mean_score": round(sum(x for x, _, _ in comparable) / len(comparable), 6) if comparable else None,
+        "baseline_mean_score": round(sum(y for _, y, _ in comparable) / len(comparable), 6) if comparable else None,
+        "model_win_rate": round(float(model_wins) / len(comparable), 6) if comparable else None,
+        "baseline_win_rate": round(float(baseline_wins) / len(comparable), 6) if comparable else None,
+        "tie_rate": round(float(ties) / len(comparable), 6) if comparable else None,
+        "sign_test_p_value": significance["sign_test_p_value"],
+        "model_win_rate_ci_95": significance["model_win_rate_ci_95"],
+    }
+
+

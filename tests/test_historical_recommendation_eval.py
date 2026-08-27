@@ -648,3 +648,77 @@ def test_aggregate_historical_cases_separates_unsupported_cases():
     assert aggregate["coverage_skip_rate"] == 0.5
 
 
+def test_resolve_supported_historical_entities_maps_by_ticker(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    frame = pd.DataFrame(
+        [
+            {
+                "company_id": "005606",
+                "ticker": "HPQ",
+                "action_date": pd.Timestamp("2024-12-30T00:00:00Z"),
+                "normalized_action_id": "capital_structure.equity_issuance",
+                "normalized_action_family": "capital_structure",
+            }
+        ]
+    )
+    entity_identifier_path = tmp_path / "entity_identifier.parquet"
+    entity_table_path = tmp_path / "entity.parquet"
+    pd.DataFrame(
+        [
+            {
+                "entity_id": "0000047217",
+                "identifier_type": "ticker",
+                "identifier_value": "HPQ",
+                "valid_from": "2024-01-01T00:00:00Z",
+                "valid_to": None,
+            }
+        ]
+    ).to_parquet(entity_identifier_path, index=False)
+    pd.DataFrame(
+        [{"entity_id": "0000047217", "entity_type": "company"}]
+    ).to_parquet(entity_table_path, index=False)
+
+    resolved = _resolve_supported_historical_entities(
+        frame=frame,
+        entity_identifier_path=entity_identifier_path,
+        entity_table_path=entity_table_path,
+        lookback_days=120,
+    )
+    assert len(resolved) == 1
+    assert resolved.iloc[0]["resolved_company_id"] == "0000047217"
+    assert resolved.iloc[0]["mapping_method"] == "ticker_identifier"
+
+
+def test_prefilter_support_requires_real_core_sources():
+    assert _prefilter_support_is_eligible({"facts_hits": 10, "timeseries_hits": 5, "estimated_supported": True}) is True
+    assert _prefilter_support_is_eligible({"timeseries_hits": 5, "ownership_hits": 1, "estimated_supported": False}) is False
+
+
+def test_prioritize_historical_cases_prefers_supported_profiles():
+    cases = [
+        {
+            "company_id": "A",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_structure.refinancing",
+            "anchor_action_family": "capital_structure",
+        },
+        {
+            "company_id": "B",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "anchor_action_family": "capital_return",
+        },
+    ]
+    profiles = {
+        _historical_case_key(cases[0]): {"estimated_supported": False, "score": 0.2, "strong_source_count": 0},
+        _historical_case_key(cases[1]): {"estimated_supported": True, "score": 4.5, "strong_source_count": 3},
+    }
+    family_summary = _summarize_case_support_by_family(cases, profiles)
+    ordered = _prioritize_historical_cases(
+        cases,
+        case_support_prefilter=profiles,
+        family_prefilter_summary=family_summary,
+    )
+    assert [case["company_id"] for case in ordered] == ["B", "A"]
+
+
