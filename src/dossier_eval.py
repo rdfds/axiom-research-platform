@@ -167,3 +167,74 @@ def _resolve_run_ids(
     return by_id
 
 
+def _build_case_report(
+    *,
+    runs_root: Path,
+    snapshot_root: Path,
+    run_id: str,
+    registry: Any,
+    expected_postures: Dict[str, Any],
+) -> Dict[str, Any]:
+    run_payload = json.loads((runs_root / "runs" / f"run_id={run_id}.json").read_text())
+    recommendation_run = RecommendationRun.from_dict(run_payload)
+    artifacts_root = runs_root / "artifacts" / f"run_id={run_id}"
+    feasibility = json.loads((artifacts_root / "FeasibilityResults.json").read_text())
+    precedent = json.loads((artifacts_root / "PrecedentMatches.json").read_text())
+    feasible_candidates = [
+        row.get("action_candidate") or row.get("candidate") or {}
+        for row in list(feasibility.get("results", []) or [])
+        if row['feasible']
+    ]
+    plan_set = build_plan_set(
+        run=recommendation_run,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+        top_plans=5,
+    )
+    snapshot = _load_snapshot(snapshot_root=snapshot_root, company_id=str(recommendation_run.company_id), as_of_time=str(recommendation_run.as_of_time))
+    dossier = build_board_ready_dossier(
+        run=recommendation_run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=list(precedent.get("results", []) or []),
+        registry=registry,
+    )
+    heuristic = _heuristic_summary(dossier=dossier)
+    top_steps = list(((plan_set.get("plans", []) or [{}])[0].get("steps", []) or []))
+    top_action = str((top_steps[0].get("action_id", "") if top_steps else ""))
+    expectation = _resolve_expected_posture(
+        expected_postures=expected_postures,
+        run_id=run_id,
+        company_id=str(recommendation_run.company_id),
+    )
+    predicted_posture = str(((dossier.get("status_quo_view", {}) or {}).get("recommended_posture", "")) or "")
+    return {
+        "run_id": run_id,
+        "runs_root": str(runs_root),
+        "company_id": recommendation_run.company_id,
+        "top_action": top_action,
+        "predicted_posture": predicted_posture,
+        "expected_posture": expectation,
+        "posture_match": (predicted_posture == expectation) if expectation else None,
+        "heuristic": heuristic,
+        "dossier": {
+            "confidence_posture": dossier.get("confidence_posture"),
+            "executive_summary": dossier.get("executive_summary"),
+            "recommendation_thesis": dossier.get("recommendation_thesis"),
+            "status_quo_view": dossier.get("status_quo_view"),
+            "sizing_guidance": dossier.get("sizing_guidance"),
+            "parameter_optimization": dossier.get("parameter_optimization"),
+            "regret_analysis": dossier.get("regret_analysis"),
+            "rating_cliff_analysis": dossier.get("rating_cliff_analysis"),
+            "signaling_analysis": dossier.get("signaling_analysis"),
+            "ranked_action_views": dossier.get("ranked_action_views"),
+            "alternative_analysis": dossier.get("alternative_analysis"),
+            "risk_case": dossier.get("risk_case"),
+            "monitoring": dossier.get("monitoring"),
+            "scorecard": dossier.get("scorecard"),
+        },
+    }
+
+
