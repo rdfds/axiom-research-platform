@@ -2802,7 +2802,7 @@ def _humanize_branches(branches: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
         row = dict(branch or {})
         row["branch_condition"] = _humanize_condition(str(row.get("branch_condition", "") or ""))
         row["branch_plan_steps"] = [_humanize_action_id(str(x or "")) for x in list(row.get("branch_plan_steps", []) or [])]
-        row["explanation"] = _humanize_explanation(str(row['explanation'] or ""))
+        row["explanation"] = _humanize_explanation(str(row.get("explanation", "") or ""))
         out.append(row)
     return out
 

@@ -813,3 +813,39 @@ def _infer_task_match(*, baseline_type: str) -> str:
     return "weak"
 
 
+def _resolve_run_ids(
+    *,
+    runs_roots: Sequence[Path],
+    run_ids: Optional[Sequence[str]],
+    limit: Optional[int],
+) -> List[Tuple[str, Path]]:
+    by_id: List[Tuple[str, Path]] = []
+    explicit = list(run_ids or [])
+    if explicit:
+        for run_id in explicit:
+            for runs_root in runs_roots:
+                if (runs_root / "runs" / f"run_id={run_id}.json").exists():
+                    by_id.append((run_id, runs_root))
+                    break
+            else:
+                raise FileNotFoundError(f"run_id={run_id} not found under any runs root")
+    else:
+        for runs_root in runs_roots:
+            for run_path in sorted((runs_root / "runs").glob("run_id=*.json")):
+                by_id.append((run_path.stem.replace("run_id=", "", 1), runs_root))
+    if limit is not None:
+        by_id = by_id[: max(0, int(limit))]
+    return by_id
+
+
+def _load_snapshot(*, snapshot_root: Path, company_id: str, as_of_time: str) -> Dict[str, Any]:
+    as_of_date = as_of_time[:10]
+    return json.loads((snapshot_root / "keyed" / f"as_of_date={as_of_date}" / f"company_id={company_id}.json").read_text())
+
+
+def _humanize_action(action_id: str) -> str:
+    if not action_id:
+        return ""
+    return action_id.split(".")[-1].replace("_", " ")
+
+
