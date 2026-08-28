@@ -722,3 +722,27 @@ def test_prioritize_historical_cases_prefers_supported_profiles():
     assert [case["company_id"] for case in ordered] == ["B", "A"]
 
 
+def test_summarize_case_support_by_family_sorts_best_family_first():
+    cases = [
+        {
+            "company_id": "A",
+            "as_of_time": "2024-01-01T00:00:00+00:00",
+            "anchor_action_id": "capital_structure.refinancing",
+            "anchor_action_family": "capital_structure",
+        },
+        {
+            "company_id": "B",
+            "as_of_time": "2024-01-02T00:00:00+00:00",
+            "anchor_action_id": "capital_return.open_market_buyback",
+            "anchor_action_family": "capital_return",
+        },
+    ]
+    profiles = {
+        _historical_case_key(cases[0]): {"estimated_supported": False, "score": 0.1},
+        _historical_case_key(cases[1]): {"estimated_supported": True, "score": 3.2},
+    }
+    summary = _summarize_case_support_by_family(cases, profiles)
+    assert list(summary.keys())[0] == "capital_return"
+    assert summary["capital_return"]["estimated_supported_count"] == 1
+
+

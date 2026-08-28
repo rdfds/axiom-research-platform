@@ -1119,3 +1119,25 @@ def _feasibility_profile(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _precedent_profile(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    vals = [
+        float(dict(row.get("profiling", {}) or {}).get("precedent_seconds", 0.0) or 0.0)
+        for row in rows
+    ]
+    action_counts: Dict[str, int] = {}
+    for row in rows:
+        candidate = dict(row.get("candidate", {}) or {})
+        action_id = str(candidate.get("action_id", "") or "")
+        if not action_id:
+            continue
+        action_counts[action_id] = action_counts.get(action_id, 0) + 1
+    return {
+        "count": int(len(rows)),
+        "p50_seconds": round(_percentile_seconds(vals, 0.50), 6),
+        "p95_seconds": round(_percentile_seconds(vals, 0.95), 6),
+        "max_seconds": round(max(vals) if vals else 0.0, 6),
+        "slowest": _slowest_candidates(rows, "precedent_seconds"),
+        "selected_action_counts": dict(sorted(action_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]),
+    }
+
+

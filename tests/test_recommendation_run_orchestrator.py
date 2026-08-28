@@ -485,3 +485,29 @@ def test_execute_recommendation_run_persists_execution_config(tmp_path: Path, mo
     assert "mna.platform_acquisition" in cfg["runtime_env"]["causal"]["blocklist"]["entries"]
 
 
+def test_select_precedent_candidates_prioritizes_strict_causal_rows():
+    feasible = [
+        {
+            "candidate_id": "c_low",
+            "action_id": "capital_return.dividend_increase",
+            "generation_confidence": 0.95,
+            "evaluation_confidence": 0.60,
+            "impact_distribution": {"key_drivers": []},
+        },
+        {
+            "candidate_id": "c_high",
+            "action_id": "capital_return.open_market_buyback",
+            "generation_confidence": 0.40,
+            "evaluation_confidence": 0.70,
+            "impact_distribution": {
+                "key_drivers": [
+                    {"driver_name": "causal_model_mode", "contribution": 1.0},
+                    {"driver_name": "causal_model_quality", "contribution": 0.25},
+                    {"driver_name": "causal_model_support_score", "contribution": 0.80},
+                ]
+            },
+        },
+    ]
+    selected = _select_precedent_candidates(feasible, precedent_top_k=1)
+    assert len(selected) == 1
+    assert selected[0]["candidate_id"] == "c_high"
