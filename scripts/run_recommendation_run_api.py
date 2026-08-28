@@ -31,3 +31,14 @@ def _default_precedent_outcomes_path() -> str:
     return str(repo_root / "data" / "curated" / "action_outcomes_with_credit_ratings.normalized_full.parquet")
 
 
+def _recommendation_run_bindings():
+    from src.recommendation_run import (
+        RecommendationRunStore,
+        _resolve_snapshot,
+        _snapshot_company_aliases,
+        create_recommendation_run,
+    )
+
+    return RecommendationRunStore, _resolve_snapshot, _snapshot_company_aliases, create_recommendation_run
+
+

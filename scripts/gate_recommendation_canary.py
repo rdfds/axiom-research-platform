@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from audit_full_ml_status import build_ml_status_audit  # noqa: E402
 
 
-def _parse_args() :
+def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Gate recommendation canary runs against regression thresholds.")
     p.add_argument("--runs-roots", nargs="+", required=True)
     p.add_argument("--run-ids-file", required=True)
