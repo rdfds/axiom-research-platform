@@ -746,3 +746,33 @@ def test_summarize_case_support_by_family_sorts_best_family_first():
     assert summary["capital_return"]["estimated_supported_count"] == 1
 
 
+def test_render_historical_recommendation_markdown_handles_null_alignment_score():
+    report = {
+        "case_count_requested": 1,
+        "candidate_case_count": 1,
+        "runs_analyzed": 1,
+        "supported_case_count": 1,
+        "family_prefilter_summary": {},
+        "aggregate": {
+            "completed_case_count": 1,
+            "scored_case_count": 0,
+            "unsupported_case_count": 0,
+            "mean_alignment_score": 0.0,
+            "strong_alignment_rate": 0.0,
+            "anchor_primary_exact_rate": 0.0,
+            "anchor_primary_family_rate": 0.0,
+            "future_any_exact_rate": 0.0,
+            "future_any_family_rate": 0.0,
+        },
+        "cases": [
+            {
+                "company_id": "A",
+                "as_of_time": "2024-01-01T00:00:00Z",
+                "anchor_action_id": "capital_structure.refinancing",
+                "top_action_ids": ["capital_structure.refinancing"],
+                "historical_alignment": {"score": None, "reason": "no_company_events"},
+            }
+        ],
+    }
+    rendered = render_historical_recommendation_markdown(report)
+    assert "score=`n/a`" in rendered

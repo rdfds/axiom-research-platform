@@ -1238,3 +1238,38 @@ def _select_precedent_candidates(
     return selected[:k]
 
 
+def _select_distribution(pack: Dict[str, Any]) -> Dict[str, Any]:
+    dists = pack.get("legacy_distributions", []) if isinstance(pack.get("legacy_distributions"), list) else []
+    if not dists and isinstance(pack.get("distributions"), list):
+        dists = pack.get("distributions", [])
+    if not dists:
+        return {}
+    # Prefer 12m PE distribution, then any 12m, then first.
+    for metric in ("outcome_pe_12m", "outcome_ev_ebitda_12m", "outcome_pe_6m"):
+        for d in dists:
+            if str(d.get("metric", "")) == metric:
+                return d
+    for d in dists:
+        if str(d.get("metric", "")).endswith("_12m"):
+            return d
+    return dists[0]
+
+
+def _build_plan_set(
+    run: RecommendationRun,
+    feasible_candidates: List[Dict[str, Any]],
+    precedent_matches: List[Dict[str, Any]],
+    registry: ActionSchemaRegistry,
+    top_plans: int,
+) -> Dict[str, Any]:
+    from .planner_brain import build_plan_set
+
+    return build_plan_set(
+        run=run,
+        feasible_candidates=feasible_candidates,
+        precedent_matches=precedent_matches,
+        registry=registry,
+        top_plans=top_plans,
+    )
+
+
