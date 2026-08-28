@@ -3219,3 +3219,69 @@ def _uses_equity_markets(action_ids: Sequence[str]) -> bool:
     )
 
 
+def _is_capacity_then_return_sequence(action_ids: Sequence[str]) -> bool:
+    if len(action_ids) < 2:
+        return False
+    return _is_balance_sheet_action(action_ids[0]) and _has_capital_return(action_ids[1:])
+
+
+def _feature_value(snapshot: Dict[str, Any], key: str) -> Any:
+    features = feature_view_from_snapshot(snapshot, view_name="dossier")
+    return resolve_feature_value(features, key)
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _fmt_currency(value: Any) -> str:
+    num = _safe_float(value)
+    if num is None:
+        return "n/a"
+    abs_num = abs(num)
+    if abs_num >= 1.0e9:
+        return f"${num / 1.0e9:.1f}B"
+    if abs_num >= 1.0e6:
+        return f"${num / 1.0e6:.1f}M"
+    if abs_num >= 1.0e3:
+        return f"${num / 1.0e3:.1f}K"
+    return f"${num:.0f}"
+
+
+def _fmt_pct(value: Any) -> str:
+    num = _safe_float(value)
+    if num is None:
+        return "n/a"
+    return f"{num * 100.0:.1f}%"
+
+
+def _fmt_x(value: Any) -> str:
+    num = _safe_float(value)
+    if num is None:
+        return "n/a"
+    return f"{num:.2f}x"
+
+
+def _fmt_ratio(value: Any) -> str:
+    num = _safe_float(value)
+    if num is None:
+        return "n/a"
+    return f"{num:.2f}x"
+
+
+def _fmt_score(value: Any) -> str:
+    num = _safe_float(value)
+    if num is None:
+        return "n/a"
+    return f"{num:.2f}/1.00"
+
+
+def _clip(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+

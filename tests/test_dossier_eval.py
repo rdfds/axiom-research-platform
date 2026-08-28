@@ -181,3 +181,85 @@ def test_build_dossier_eval_report_and_markdown(tmp_path: Path):
     assert "Regret balance:" in markdown
 
 
+def test_build_dossier_eval_report_scores_negative_wait_case(tmp_path: Path):
+    runs_root = tmp_path / "runs_root_wait"
+    (runs_root / "runs").mkdir(parents=True, exist_ok=True)
+    artifacts = runs_root / "artifacts" / "run_id=run-wait"
+    artifacts.mkdir(parents=True, exist_ok=True)
+
+    run = _run()
+    run.run_id = "run-wait"
+    run.company_id = "0000099999"
+    (runs_root / "runs" / "run_id=run-wait.json").write_text(json.dumps(run.to_dict()))
+
+    snap_root = tmp_path / "snapshots_wait"
+    keyed = snap_root / "keyed" / "as_of_date=2026-02-28"
+    keyed.mkdir(parents=True, exist_ok=True)
+    (keyed / "company_id=0000099999.json").write_text(
+        json.dumps(
+            {
+                "company_id": "0000099999",
+                "as_of_time": "2026-02-28T00:00:00+00:00",
+                "features": {
+                    "liquidity.available_for_actions": {"value": 850_000_000.0},
+                    "market.market_cap": {"value": 8_500_000_000.0},
+                    "capital_structure.net_leverage": {"value": 1.85},
+                    "capital_structure.maturity_wall_ratio_24m": {"value": 0.22},
+                "operating.fcf_conversion": {"value": 0.82},
+                "operating.revenue_yoy_last_q": {"value": 0.01},
+                "market.credit_window_proxy": {"value": 0.74},
+                "market.credit_spread_percentile_2y": {"value": 79.0},
+                "market.equity_window_proxy": {"value": 0.57},
+                "capital_structure.rating_state": {"value": {"rating": "BBB-", "outlook": "negative", "score": 10.0}},
+                "strategic.intent.return_capital_priority": {"value": 0.87},
+            },
+        }
+        )
+    )
+
+    weak = _candidate("capital_return.dividend_initiate")
+    weak["impact_distribution"]["objectives"]["value_creation"]["median"] = 0.01
+    weak["impact_distribution"]["objectives"]["optionality"]["median"] = -0.04
+    weak["evaluation_confidence"] = 0.22
+    weak["feasibility"]["pass_probability"] = 0.58
+    weak_precedent = {
+        "precedent_confidence": 0.12,
+        "mismatch_diagnostics": {"out_of_sample_flag": False, "retrieval_tier": "exact"},
+        "tail_events": [],
+        "outcome_distributions": {"horizon_12m": {"valuation_multiple_change": {"sample_size": 8}}},
+    }
+    (artifacts / "FeasibilityResults.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "candidate": {"candidate_id": weak["candidate_id"], "action_id": weak["action_id"]},
+                        "action_candidate": weak,
+                        "feasible": True,
+                        "pass_probability": 0.58,
+                    }
+                ]
+            }
+        )
+    )
+    (artifacts / "PrecedentMatches.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"candidate": weak, "precedent_pack": weak_precedent},
+                ]
+            }
+        )
+    )
+
+    report = build_dossier_eval_report(
+        runs_roots=[runs_root],
+        snapshot_root=snap_root,
+        review_count=5,
+        expected_postures={"0000099999": "wait"},
+    )
+
+    assert report["cases"][0]["predicted_posture"] == "wait"
+    assert report["cases"][0]["posture_match"] is True
+    assert report["aggregate"]["expected_posture_coverage_rate"] == 1.0
+    assert report["aggregate"]["negative_case_accuracy"] == 1.0

@@ -510,3 +510,16 @@ def test_humanize_condition_rewrites_raw_dependency_rules():
     )
 
 
+def test_humanize_triggers_rewrites_follow_on_explanations():
+    triggers = _humanize_triggers(
+        [
+            {
+                "condition": "follow-on capacity remains available after capital_structure.new_debt_issuance",
+                "explanation": "Historical follow-on frequency supports capital_return.dividend_increase after capital_structure.new_debt_issuance.",
+            }
+        ]
+    )
+    assert triggers[0]["condition"] == "Only continue if capacity still exists after new debt issuance."
+    assert triggers[0]["explanation"] == "After new debt issuance, boards often revisit whether a higher recurring payout is supportable."
+
+
