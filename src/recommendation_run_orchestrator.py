@@ -1141,3 +1141,100 @@ def _precedent_profile(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _emit_stage_profile(stage: str, profile: Dict[str, Any]) -> None:
+    try:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "stage_profile",
+                    "stage": str(stage),
+                    **dict(profile or {}),
+                }
+            ),
+            flush=True,
+        )
+    except Exception:
+        return
+
+
+def _select_precedent_candidates(
+    feasible_candidates: List[Dict[str, Any]],
+    precedent_top_k: int,
+) -> List[Dict[str, Any]]:
+    debt_action_ids = {
+        "capital_structure.new_debt_issuance",
+        "capital_structure.refinancing",
+    }
+    k = int(precedent_top_k or 0)
+    if k <= 0:
+        return []
+    if len(feasible_candidates) <= k:
+        return feasible_candidates
+
+    def _driver_contribution(c: Dict[str, Any], driver_name: str) -> float:
+        impact = dict(c.get("impact_distribution", {}) or {})
+        drivers = impact.get("key_drivers") or []
+        for row in drivers:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("driver_name", "")) != str(driver_name):
+                continue
+            try:
+                return float(row.get("contribution", 0.0) or 0.0)
+            except Exception:
+                return 0.0
+        return 0.0
+
+    def _strict_causal_priority(c: Dict[str, Any]) -> float:
+        mode = _driver_contribution(c, "causal_model_mode")
+        blend = _driver_contribution(c, "causal_model_blend_weight")
+        if mode >= 0.5 or blend > 0.0:
+            quality = max(0.0, _driver_contribution(c, "causal_model_quality"))
+            support = max(0.0, _driver_contribution(c, "causal_model_support_score"))
+            return 1.0 + (quality * support)
+        return 0.0
+
+    def _key(c: Dict[str, Any]) -> Any:
+        strict_priority = _strict_causal_priority(c)
+        eval_conf = float(c.get("evaluation_confidence", 0.0) or 0.0)
+        score = float(c.get("generation_confidence", 0.0) or 0.0)
+        action_id = str(c.get("action_id", "") or "")
+        signature = str(c.get("candidate_signature", "") or "")
+        cid = str(c.get("candidate_id", "") or "")
+        return (-strict_priority, -eval_conf, -score, action_id, signature, cid)
+
+    ranked = sorted(feasible_candidates, key=_key)
+
+    env_cap = str(os.environ.get("RECO_PRECEDENT_MAX_PER_ACTION", "")).strip()
+    try:
+        per_action_cap = max(1, int(env_cap)) if env_cap else 3
+    except Exception:
+        per_action_cap = 3
+    env_debt_cap = str(os.environ.get("RECO_PRECEDENT_MAX_PER_DEBT_ACTION", "")).strip()
+    try:
+        debt_action_cap = max(1, int(env_debt_cap)) if env_debt_cap else per_action_cap
+    except Exception:
+        debt_action_cap = per_action_cap
+
+    selected: List[Dict[str, Any]] = []
+    overflow: List[Dict[str, Any]] = []
+    action_counts: Dict[str, int] = {}
+
+    for cand in ranked:
+        action_id = str(cand.get("action_id", "") or "")
+        max_for_action = debt_action_cap if action_id in debt_action_ids else per_action_cap
+        current = int(action_counts.get(action_id, 0))
+        if current < max_for_action:
+            selected.append(cand)
+            action_counts[action_id] = current + 1
+            if len(selected) >= k:
+                return selected[:k]
+        else:
+            overflow.append(cand)
+
+    if len(selected) < k:
+        selected.extend(overflow[: max(0, k - len(selected))])
+    return selected[:k]
+
+
