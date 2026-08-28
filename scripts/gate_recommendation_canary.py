@@ -39,3 +39,74 @@ def _mean(payload: Dict[str, Any], *keys: str) -> float:
     return float(out)
 
 
+def evaluate_canary_gate(audit: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+    status_counts = dict(audit.get("status_counts", {}) or {})
+    completed = int(status_counts.get("completed", 0) or 0)
+    failed = int(status_counts.get("failed", 0) or 0)
+    runs_analyzed = int(audit.get("runs_analyzed", 0) or 0)
+    causal_rate_mean = _mean(audit, "causal_summary", "causal_rate", "mean")
+    strict_all_mean = _mean(audit, "causal_summary", "strict_pass_rate_among_all", "mean")
+    strict_causal_mean = _mean(audit, "causal_summary", "strict_pass_rate_among_causal", "mean")
+    precedent_conf_mean = _mean(audit, "precedent_summary", "precedent_confidence_mean", "mean")
+    precedent_oos_mean = _mean(audit, "precedent_summary", "out_of_sample_rate", "mean")
+
+    checks = [
+        {
+            "name": "no_failed_runs",
+            "pass": failed == 0,
+            "actual": failed,
+            "expected": 0,
+        },
+        {
+            "name": "all_runs_completed",
+            "pass": completed == runs_analyzed,
+            "actual": completed,
+            "expected": runs_analyzed,
+        },
+        {
+            "name": "causal_rate_mean",
+            "pass": causal_rate_mean >= float(args.min_causal_rate_mean),
+            "actual": causal_rate_mean,
+            "expected_min": float(args.min_causal_rate_mean),
+        },
+        {
+            "name": "strict_all_mean",
+            "pass": strict_all_mean >= float(args.min_strict_all_mean),
+            "actual": strict_all_mean,
+            "expected_min": float(args.min_strict_all_mean),
+        },
+        {
+            "name": "strict_causal_mean",
+            "pass": strict_causal_mean >= float(args.min_strict_causal_mean),
+            "actual": strict_causal_mean,
+            "expected_min": float(args.min_strict_causal_mean),
+        },
+        {
+            "name": "precedent_conf_mean",
+            "pass": precedent_conf_mean >= float(args.min_precedent_conf_mean),
+            "actual": precedent_conf_mean,
+            "expected_min": float(args.min_precedent_conf_mean),
+        },
+        {
+            "name": "precedent_oos_mean",
+            "pass": precedent_oos_mean <= float(args.max_precedent_oos_mean),
+            "actual": precedent_oos_mean,
+            "expected_max": float(args.max_precedent_oos_mean),
+        },
+    ]
+
+    return {
+        "gate_pass": all(bool(c.get("pass")) for c in checks),
+        "metrics": {
+            "runs_analyzed": runs_analyzed,
+            "status_counts": status_counts,
+            "causal_rate_mean": causal_rate_mean,
+            "strict_all_mean": strict_all_mean,
+            "strict_causal_mean": strict_causal_mean,
+            "precedent_conf_mean": precedent_conf_mean,
+            "precedent_oos_mean": precedent_oos_mean,
+        },
+        "checks": checks,
+    }
+
+
