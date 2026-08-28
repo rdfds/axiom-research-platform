@@ -425,3 +425,24 @@ def _specific_timing_score(text: str) -> float:
     return min(score, 1.0)
 
 
+def _evidence_quality_score(evidence: Sequence[Dict[str, Any]]) :
+    if not evidence:
+        return 0.0
+    snapshot_count = sum(1 for item in evidence if str(item.get("source", "")) == "snapshot")
+    precedent_count = sum(1 for item in evidence if str(item.get("source", "")) == "precedent")
+    modeled_count = sum(1 for item in evidence if str(item.get("source", "")) in {"causal", "causal_and_precedent", "precedent", "model_only", "feasibility"})
+    numeric_count = sum(1 for item in evidence if item.get("formatted_value"))
+    score = 0.0
+    if len(evidence) >= 4:
+        score += 0.3
+    if snapshot_count >= 2:
+        score += 0.3
+    if precedent_count >= 1:
+        score += 0.2
+    if modeled_count >= 1:
+        score += 0.1
+    if numeric_count >= 3:
+        score += 0.1
+    return min(score, 1.0)
+
+
