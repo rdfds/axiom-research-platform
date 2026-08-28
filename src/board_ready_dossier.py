@@ -3181,3 +3181,41 @@ def _is_buyback_action(action_id: str) -> bool:
     }
 
 
+def _is_balance_sheet_action(action_id: str) -> bool:
+    aid = str(action_id or "")
+    return aid.startswith("capital_structure.")
+
+
+def _is_mna_action(action_id: str) -> bool:
+    return str(action_id or "").startswith("mna.")
+
+
+def _is_divestiture_action(action_id: str) -> bool:
+    return str(action_id or "").startswith("portfolio.")
+
+
+def _uses_credit_markets(action_ids: Sequence[str]) -> bool:
+    return any(
+        action_id in {
+            "capital_structure.refinancing",
+            "capital_structure.new_debt_issuance",
+            "capital_structure.revolver_draw_or_resize",
+            "capital_structure.tender_offer_debt",
+            "capital_structure.exchange_offer",
+            "capital_structure.liability_management_exercise",
+        }
+        for action_id in action_ids
+    )
+
+
+def _uses_equity_markets(action_ids: Sequence[str]) -> bool:
+    return any(
+        action_id in {
+            "capital_structure.equity_issuance",
+            "capital_structure.convertible_issuance",
+            "capital_structure.preferred_issuance",
+        }
+        for action_id in action_ids
+    )
+
+

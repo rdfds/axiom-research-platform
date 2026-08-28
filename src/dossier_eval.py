@@ -238,3 +238,9 @@ def _build_case_report(
     }
 
 
+def _load_snapshot(*, snapshot_root: Path, company_id: str, as_of_time: str) -> Dict[str, Any]:
+    as_of_date = as_of_time[:10]
+    path = snapshot_root / "keyed" / f"as_of_date={as_of_date}" / f"company_id={company_id}.json"
+    return json.loads(path.read_text())
+
+
