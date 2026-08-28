@@ -239,3 +239,38 @@ def test_build_plan_set_constructs_multistep_plan_and_branch():
     assert 0.0 <= top_plan["score"] <= 1.0
 
 
+def test_build_plan_set_never_combines_conflicting_actions():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row("capital_return.open_market_buyback", utility=0.35),
+        _candidate_row("mna.transformational_acquisition", utility=0.45, growth=0.25),
+        _candidate_row("capital_structure.refinancing", utility=0.16, risk_reduction=0.22),
+    ]
+
+    plan_set = build_plan_set(run=run, precedent_matches=rows, registry=registry, top_plans=5)
+
+    for plan in plan_set["plans"]:
+        action_ids = {step["action_id"] for step in plan["steps"]}
+        assert not {
+            "capital_return.open_market_buyback",
+            "mna.transformational_acquisition",
+        }.issubset(action_ids)
+
+
+def test_build_plan_set_ranking_is_deterministic_under_input_reorder():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row("capital_structure.refinancing", utility=0.18, risk_reduction=0.32),
+        _candidate_row("capital_return.open_market_buyback", utility=0.34, optionality=0.1),
+        _candidate_row("mna.tuck_in_acquisition", utility=0.05, growth=0.12),
+    ]
+
+    plan_set_a = build_plan_set(run=run, precedent_matches=rows, registry=registry, top_plans=3)
+    plan_set_b = build_plan_set(run=run, precedent_matches=list(reversed(rows)), registry=registry, top_plans=3)
+
+    assert [plan["plan_id"] for plan in plan_set_a["plans"]] == [plan["plan_id"] for plan in plan_set_b["plans"]]
+    assert [plan["score"] for plan in plan_set_a["plans"]] == [plan["score"] for plan in plan_set_b["plans"]]
+
+

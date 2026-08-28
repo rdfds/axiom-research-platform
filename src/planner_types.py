@@ -71,3 +71,33 @@ class PlanTrigger:
         return asdict(self)
 
 
+@dataclass
+class PlanBranch:
+    branch_condition: str
+    branch_plan_steps: List[str]
+    branch_probability: float
+    explanation: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PlanRisk:
+    main_failure_modes: List[str] = field(default_factory=list)
+    regime_sensitivity: List[str] = field(default_factory=list)
+    execution_risks: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PlanTimeline:
+    start_time: Optional[str]
+    step_schedule: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
