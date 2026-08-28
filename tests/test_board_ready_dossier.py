@@ -573,3 +573,29 @@ def test_build_board_ready_dossier_dedupes_monitoring_conditions():
     assert triggers[0]["condition"] == "Only continue if capacity still exists after refinancing."
 
 
+def test_decision_boundaries_avoid_zero_credit_window_baseline():
+    boundaries = _decision_boundaries(
+        "capital_structure.new_debt_issuance",
+        {"features": {"market.credit_window_proxy": {"value": 0.0}}},
+        {"triggers": []},
+    )
+    assert "0.00/1.00" not in " ".join(boundaries)
+    assert any("credit conditions deteriorate materially" in item for item in boundaries)
+
+
+def test_build_board_ready_dossier_handles_missing_plan():
+    run = _run()
+
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=_snapshot(),
+        plan_set={"plans": []},
+        feasible_candidates=[],
+        precedent_matches=[],
+        registry=build_default_action_schema_registry(),
+    )
+
+    assert dossier["status"] == "no_plan"
+    assert dossier["executive_summary"] == "No feasible plan was generated."
+
+
