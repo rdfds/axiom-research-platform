@@ -1273,7 +1273,7 @@ def _build_plan_set(
     )
 
 
-def _now_iso() :
+def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
