@@ -167,3 +167,75 @@ def _candidate_row(
     }
 
 
+def test_zero_blend_causal_metadata_does_not_count_as_support():
+    inactive = _candidate_row(
+        "capital_structure.equity_issuance",
+        utility=0.04,
+        risk_reduction=0.06,
+        rating_preservation=0.04,
+        precedent_confidence=0.0,
+        causal=False,
+        causal_blend_weight=0.0,
+    )["candidate"]
+    active = _candidate_row(
+        "capital_structure.equity_issuance",
+        utility=0.04,
+        risk_reduction=0.06,
+        rating_preservation=0.04,
+        precedent_confidence=0.0,
+        causal_blend_weight=0.25,
+    )["candidate"]
+
+    assert _has_causal_support(inactive) is False
+    assert _has_causal_support(active) is True
+
+
+def test_build_plan_set_constructs_multistep_plan_and_branch():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.18,
+            risk_reduction=0.32,
+            second_order_effects=[
+                {"follow_on_action_id": "capital_return.open_market_buyback", "frequency": 0.45},
+                {"follow_on_action_id": "mna.tuck_in_acquisition", "frequency": 0.25},
+            ],
+            narrative="Refinancing reduces near-term balance-sheet pressure.",
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.34,
+            optionality=0.1,
+            narrative="Buybacks deploy excess capital into a discounted share base.",
+        ),
+        _candidate_row(
+            "mna.tuck_in_acquisition",
+            utility=-0.05,
+            growth=0.12,
+            pass_probability=0.72,
+            narrative="A tuck-in becomes interesting only after financing capacity improves.",
+        ),
+    ]
+
+    plan_set = build_plan_set(run=run, precedent_matches=rows, registry=registry, top_plans=3)
+
+    assert plan_set["dependency_graph"]["nodes"] == [
+        "capital_return.open_market_buyback",
+        "capital_structure.refinancing",
+        "mna.tuck_in_acquisition",
+    ]
+    top_plan = plan_set["plans"][0]
+    step_actions = [step["action_id"] for step in top_plan["steps"]]
+    assert step_actions[:2] == [
+        "capital_structure.refinancing",
+        "capital_return.open_market_buyback",
+    ]
+    assert top_plan["steps"][1]["prerequisites"] == ["capital_structure.refinancing"]
+    assert top_plan["timeline"]["step_schedule"][1]["start_time"] == "2026-03-30T00:00:00+00:00"
+    assert any(branch["branch_plan_steps"] == ["mna.tuck_in_acquisition"] for branch in top_plan["branches"])
+    assert top_plan["triggers"][0]["trigger_type"] == "liquidity_condition"
+    assert 0.0 <= top_plan["score"] <= 1.0
+
+

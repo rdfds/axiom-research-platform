@@ -59,3 +59,15 @@ class PlanExplanation:
         return asdict(self)
 
 
+@dataclass
+class PlanTrigger:
+    trigger_type: str
+    condition: str
+    evaluation_frequency: str
+    trigger_probability: float
+    explanation: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
