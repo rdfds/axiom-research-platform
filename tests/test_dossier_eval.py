@@ -100,3 +100,84 @@ def _candidate(action_id: str) -> dict:
     }
 
 
+def test_build_dossier_eval_report_and_markdown(tmp_path: Path):
+    runs_root = tmp_path / "runs_root"
+    (runs_root / "runs").mkdir(parents=True, exist_ok=True)
+    artifacts = runs_root / "artifacts" / "run_id=run-1"
+    artifacts.mkdir(parents=True, exist_ok=True)
+
+    run = _run()
+    (runs_root / "runs" / "run_id=run-1.json").write_text(json.dumps(run.to_dict()))
+
+    buyback = _candidate("capital_return.open_market_buyback")
+    refi = _candidate("capital_structure.refinancing")
+    precedent_pack = {
+        "precedent_confidence": 0.41,
+        "mismatch_diagnostics": {"out_of_sample_flag": False, "retrieval_tier": "exact"},
+        "tail_events": [
+            {
+                "metric": "equity_return_vs_sector",
+                "horizon": "12m",
+                "value": -0.44,
+                "description": "Bottom decile historical outcome.",
+            }
+        ],
+        "outcome_distributions": {"horizon_12m": {"valuation_multiple_change": {"sample_size": 24}}},
+    }
+    (artifacts / "FeasibilityResults.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "candidate": {"candidate_id": buyback["candidate_id"], "action_id": buyback["action_id"]},
+                        "action_candidate": buyback,
+                        "feasible": True,
+                        "pass_probability": 0.94,
+                    },
+                    {
+                        "candidate": {"candidate_id": refi["candidate_id"], "action_id": refi["action_id"]},
+                        "action_candidate": refi,
+                        "feasible": True,
+                        "pass_probability": 0.94,
+                    },
+                ]
+            }
+        )
+    )
+    (artifacts / "PrecedentMatches.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"candidate": buyback, "precedent_pack": precedent_pack},
+                    {"candidate": refi, "precedent_pack": precedent_pack},
+                ]
+            }
+        )
+    )
+
+    report = build_dossier_eval_report(
+        runs_roots=[runs_root],
+        snapshot_root=_snapshot_root(tmp_path),
+        review_count=5,
+        expected_postures={"0000320193": "act_now"},
+    )
+    markdown = render_dossier_eval_markdown(report)
+
+    assert report["runs_analyzed"] == 1
+    assert report["aggregate"]["heuristic_overall_mean"] > 0.0
+    assert report["aggregate"]["status_quo_comparison_rate"] == 1.0
+    assert report["aggregate"]["sizing_specificity_rate"] == 1.0
+    assert report["aggregate"]["parameter_optimization_rate"] == 1.0
+    assert report["aggregate"]["regret_analysis_rate"] == 1.0
+    assert report["aggregate"]["scenario_sizing_rate"] == 1.0
+    assert report["aggregate"]["rating_analysis_rate"] == 1.0
+    assert report["aggregate"]["signaling_analysis_rate"] == 1.0
+    assert report["aggregate"]["posture_match_rate"] == 1.0
+    assert report["review_queue"]
+    assert "Board Dossier Evaluation Report" in markdown
+    assert "Why now:" in markdown
+    assert "Sizing:" in markdown
+    assert "Parameter summary:" in markdown
+    assert "Regret balance:" in markdown
+
+

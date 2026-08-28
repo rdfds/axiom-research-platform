@@ -244,3 +244,184 @@ def _load_snapshot(*, snapshot_root: Path, company_id: str, as_of_time: str) -> 
     return json.loads(path.read_text())
 
 
+def _heuristic_summary(dossier: Dict[str, Any]) -> Dict[str, Any]:
+    thesis = dict(dossier.get("recommendation_thesis", {}) or {})
+    risk_case = dict(dossier.get("risk_case", {}) or {})
+    monitoring = dict(dossier.get("monitoring", {}) or {})
+    status_quo_view = dict(dossier.get("status_quo_view", {}) or {})
+    sizing_guidance = dict(dossier.get("sizing_guidance", {}) or {})
+    parameter_optimization = dict(dossier.get("parameter_optimization", {}) or {})
+    regret_analysis = dict(dossier.get("regret_analysis", {}) or {})
+    rating_cliff_analysis = dict(dossier.get("rating_cliff_analysis", {}) or {})
+    signaling_analysis = dict(dossier.get("signaling_analysis", {}) or {})
+    supporting_evidence = list(dossier.get("supporting_evidence", []) or [])
+    alternative_analysis = list(dossier.get("alternative_analysis", []) or [])
+
+    flags: List[str] = []
+    completeness = all(
+        [
+            dossier.get("executive_summary"),
+            thesis.get("problem_statement"),
+            thesis.get("why_this_plan"),
+            thesis.get("why_now"),
+            thesis.get("what_has_to_be_true"),
+            thesis.get("what_would_change_our_mind"),
+            risk_case.get("kill_criteria"),
+        ]
+    )
+    if not completeness:
+        flags.append("missing_core_thesis")
+
+    humanized_ok = not _contains_raw_action_ids(
+        [
+            dossier.get("executive_summary"),
+            thesis.get("why_this_plan"),
+            thesis.get("why_now"),
+            *list(thesis.get("what_would_change_our_mind", []) or []),
+            *list(risk_case.get("main_failure_modes", []) or []),
+            *[item.get("condition") for item in list(monitoring.get("triggers", []) or [])],
+            *[item.get("branch_condition") for item in list(monitoring.get("branches", []) or [])],
+        ]
+    )
+    if not humanized_ok:
+        flags.append("raw_action_id_leak")
+
+    specific_timing = _specific_timing_score(str(thesis.get("why_now", "") or "")) >= 0.6
+    if not specific_timing:
+        flags.append("generic_why_now")
+
+    evidence_quality = _evidence_quality_score(supporting_evidence)
+    if evidence_quality < 0.6:
+        flags.append("weak_evidence_stack")
+
+    alternatives_present = len(alternative_analysis) > 0
+    if not alternatives_present:
+        flags.append("missing_alternative_rebuttal")
+
+    alternative_depth = any(
+        "lower expected utility" in str(item.get("why_not_preferred", "") or "")
+        or "weaker empirical support" in str(item.get("why_not_preferred", "") or "")
+        or "higher tail risk" in str(item.get("why_not_preferred", "") or "")
+        or "value arrives later" in str(item.get("why_not_preferred", "") or "")
+        or "more dilution" in str(item.get("why_not_preferred", "") or "")
+        or "less fresh capacity" in str(item.get("why_not_preferred", "") or "")
+        or "less decisive capital-return mechanism" in str(item.get("why_not_preferred", "") or "")
+        or "does not unlock the planned return-of-capital step" in str(item.get("why_not_preferred", "") or "")
+        or "addresses the capacity problem less directly" in str(item.get("why_not_preferred", "") or "")
+        or "does not address the external-growth problem" in str(item.get("why_not_preferred", "") or "")
+        for item in alternative_analysis
+    )
+    if alternatives_present and not alternative_depth:
+        flags.append("shallow_alternative_rebuttal")
+
+    risk_specificity = _risk_specificity_score(risk_case)
+    if risk_specificity < 0.6:
+        flags.append("generic_risk_case")
+
+    monitoring_quality = bool(monitoring.get("triggers")) and bool(risk_case.get("kill_criteria"))
+    if not monitoring_quality:
+        flags.append("weak_monitoring")
+
+    status_quo_comparison = all(
+        [
+            status_quo_view.get("recommended_posture"),
+            status_quo_view.get("why_act_now"),
+            status_quo_view.get("why_wait"),
+            status_quo_view.get("case_for_action"),
+            status_quo_view.get("case_for_wait"),
+        ]
+    )
+    if not status_quo_comparison:
+        flags.append("missing_status_quo_comparison")
+
+    sizing_specificity = _sizing_specificity_score(sizing_guidance)
+    if sizing_specificity < 0.6:
+        flags.append("generic_sizing_guidance")
+
+    parameter_optimization_score = 1.0 if parameter_optimization.get("summary") and dict(parameter_optimization.get("recommended_parameters", {}) or {}) else 0.0
+    if parameter_optimization_score < 1.0:
+        flags.append("missing_parameter_optimization")
+
+    regret_quality = 1.0 if regret_analysis.get("if_we_act_and_are_wrong") and regret_analysis.get("if_we_wait_and_are_wrong") else 0.0
+    if regret_quality < 1.0:
+        flags.append("missing_regret_analysis")
+
+    scenario_sizing = list(sizing_guidance.get("scenario_overrides", []) or [])
+    scenario_sizing_score = 1.0 if len(scenario_sizing) >= 2 else 0.0
+    if scenario_sizing_score < 1.0:
+        flags.append("missing_scenario_sizing")
+
+    rating_analysis_score = 1.0 if rating_cliff_analysis.get("constraint_posture") and list(rating_cliff_analysis.get("constraints_to_watch", []) or []) else 0.0
+    if rating_analysis_score < 1.0:
+        flags.append("missing_rating_analysis")
+
+    signaling_score = 1.0 if signaling_analysis.get("signal_posture") and list(signaling_analysis.get("what_market_has_to_believe", []) or []) else 0.0
+    if signaling_score < 1.0:
+        flags.append("missing_signaling_analysis")
+
+    completeness_score = 1.0 if completeness else 0.0
+    humanized_score = 1.0 if humanized_ok else 0.0
+    timing_score = _specific_timing_score(str(thesis.get("why_now", "") or ""))
+    alternatives_score = 1.0 if alternatives_present and alternative_depth else (0.5 if alternatives_present else 0.0)
+    risk_score = risk_specificity
+    status_quo_score = 1.0 if status_quo_comparison else 0.0
+    overall = round(
+        (
+            completeness_score
+            + humanized_score
+            + timing_score
+            + evidence_quality
+            + alternatives_score
+            + risk_score
+            + status_quo_score
+            + sizing_specificity
+            + parameter_optimization_score
+            + regret_quality
+            + scenario_sizing_score
+            + rating_analysis_score
+            + signaling_score
+        )
+        / 13.0,
+        6,
+    )
+    return {
+        "flags": flags,
+        "overall_score": overall,
+        "completeness_score": completeness_score,
+        "humanized_score": humanized_score,
+        "timing_score": round(timing_score, 6),
+        "evidence_score": round(evidence_quality, 6),
+        "alternatives_score": alternatives_score,
+        "risk_score": round(risk_score, 6),
+        "status_quo_score": status_quo_score,
+        "sizing_score": round(sizing_specificity, 6),
+        "parameter_optimization_score": parameter_optimization_score,
+        "regret_score": regret_quality,
+        "scenario_sizing_score": scenario_sizing_score,
+        "rating_analysis_score": rating_analysis_score,
+        "signaling_score": signaling_score,
+    }
+
+
+def _contains_raw_action_ids(values: Sequence[Any]) -> bool:
+    for value in values:
+        text = str(value or "")
+        if _RAW_ACTION_ID_RE.search(text):
+            return True
+    return False
+
+
+def _specific_timing_score(text: str) -> float:
+    if not text:
+        return 0.0
+    score = 0.0
+    lower = text.lower()
+    if any(token in lower for token in ["lead time", "maturity", "window", "waiting", "urgent", "supportive now", "front-of-plan", "after "]):
+        score += 0.4
+    if bool(re.search(r"\b\d+(\.\d+)?\b", text)):
+        score += 0.3
+    if any(token in lower for token in ["credit", "equity", "liquidity", "market value"]):
+        score += 0.3
+    return min(score, 1.0)
+
+

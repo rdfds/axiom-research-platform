@@ -501,3 +501,12 @@ def test_build_board_ready_dossier_act_now_case_for_wait_is_not_self_defeating()
     assert "adverse tail in" not in dossier["risk_case"]["main_failure_modes"][0].lower()
 
 
+def test_humanize_condition_rewrites_raw_dependency_rules():
+    assert _humanize_condition("use_of_proceeds in ['buyback','general_corporate']") == (
+        "Only continue if the use of proceeds remains limited to buyback or general corporate."
+    )
+    assert _humanize_condition("capital_structure.maturity_wall_ratio_24m drops below 0.2") == (
+        "Only continue if the near-term maturity wall ratio drops below 0.2."
+    )
+
+

@@ -2807,7 +2807,7 @@ def _humanize_branches(branches: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
     return out
 
 
-def _humanize_explanation(text: str) :
+def _humanize_explanation(text: str) -> str:
     raw = str(text or "").strip()
     if not raw:
         return ""
