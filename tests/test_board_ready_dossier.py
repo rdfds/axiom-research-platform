@@ -523,3 +523,53 @@ def test_humanize_triggers_rewrites_follow_on_explanations():
     assert triggers[0]["explanation"] == "After new debt issuance, boards often revisit whether a higher recurring payout is supportable."
 
 
+def test_build_board_ready_dossier_dedupes_monitoring_conditions():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            value_creation=0.16,
+            risk_reduction=0.31,
+        ),
+    ]
+    plan_set = {
+        "plans": [
+            {
+                "plan_id": "p1",
+                "steps": [
+                    {
+                        "action_id": "capital_structure.refinancing",
+                        "parameters": {"amount_refinanced_usd": 1_000_000_000.0, "new_tenor_years": 5.0},
+                    }
+                ],
+                "actions": [rows[0]["candidate"]],
+                "triggers": [
+                    {
+                        "condition": "follow-on capacity remains available after capital_structure.refinancing",
+                        "explanation": "Historical follow-on frequency supports capital_return.dividend_cut after capital_structure.refinancing.",
+                        "trigger_probability": 0.7,
+                    },
+                    {
+                        "condition": "follow-on capacity remains available after capital_structure.refinancing",
+                        "explanation": "Historical follow-on frequency supports capital_return.dividend_increase after capital_structure.refinancing.",
+                        "trigger_probability": 0.7,
+                    },
+                ],
+            }
+        ]
+    }
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+    triggers = dossier["monitoring"]["triggers"]
+    assert len(triggers) == 1
+    assert triggers[0]["condition"] == "Only continue if capacity still exists after refinancing."
+
+

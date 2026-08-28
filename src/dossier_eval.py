@@ -183,7 +183,7 @@ def _build_case_report(
     feasible_candidates = [
         row.get("action_candidate") or row.get("candidate") or {}
         for row in list(feasibility.get("results", []) or [])
-        if row['feasible']
+        if row.get("feasible")
     ]
     plan_set = build_plan_set(
         run=recommendation_run,

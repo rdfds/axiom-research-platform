@@ -3285,3 +3285,27 @@ def _clip(value: float, lower: float, upper: float) -> float:
     return max(lower, min(upper, value))
 
 
+def _pressure_label(value: float) -> str:
+    if value >= 0.28:
+        return "high"
+    if value >= 0.16:
+        return "elevated"
+    if value >= 0.08:
+        return "moderate"
+    return "low"
+
+
+def _dedupe(values: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat() + "Z"
