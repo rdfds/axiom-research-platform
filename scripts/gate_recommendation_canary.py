@@ -110,3 +110,28 @@ def evaluate_canary_gate(audit: Dict[str, Any], args: argparse.Namespace) -> Dic
     }
 
 
+def main() -> None:
+    args = _parse_args()
+    run_ids: set[str] = set()
+    for line in Path(args.run_ids_file).read_text().splitlines():
+        parts = [x for x in line.strip().split() if x]
+        if parts:
+            run_ids.add(parts[-1])
+
+    audit = build_ml_status_audit(
+        runs_roots=args.runs_roots,
+        include_run_ids=run_ids,
+        min_action_rows=int(args.min_action_rows),
+    )
+    gate = evaluate_canary_gate(audit, args)
+    out = {
+        "audit": audit,
+        "gate": gate,
+    }
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, indent=2))
+    print(json.dumps({"ok": bool(gate["gate_pass"]), "out": str(out_path), **gate}))
+    raise SystemExit(0 if gate["gate_pass"] else 1)
+
+

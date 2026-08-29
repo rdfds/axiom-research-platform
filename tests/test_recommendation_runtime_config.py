@@ -27,3 +27,9 @@ def test_capture_runtime_env_config_uses_current_champion_default(monkeypatch):
     assert config["causal"]["routing"]["path"] == str(DEFAULT_CAUSAL_ROUTING_CONFIG_PATH)
 
 
+def test_capture_runtime_env_config_uses_compact_precedent_default(monkeypatch):
+    monkeypatch.delenv("PRECEDENT_RETRIEVAL_VERSION", raising=False)
+
+    config = capture_runtime_env_config()
+
+    assert config["precedent"]["retrieval_version"] == DEFAULT_PRECEDENT_RETRIEVAL_VERSION
