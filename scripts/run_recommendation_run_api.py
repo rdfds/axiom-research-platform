@@ -42,3 +42,9 @@ def _recommendation_run_bindings():
     return RecommendationRunStore, _resolve_snapshot, _snapshot_company_aliases, create_recommendation_run
 
 
+def _build_default_registry():
+    from src.action_ontology import build_default_action_schema_registry
+
+    return build_default_action_schema_registry(version="v1.0")
+
+
