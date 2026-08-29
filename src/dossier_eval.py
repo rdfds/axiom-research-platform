@@ -446,3 +446,19 @@ def _evidence_quality_score(evidence: Sequence[Dict[str, Any]]) :
     return min(score, 1.0)
 
 
+def _risk_specificity_score(risk_case: Dict[str, Any]) -> float:
+    failure_modes = [str(x or "") for x in list(risk_case.get("main_failure_modes", []) or [])]
+    kill_criteria = [str(x or "") for x in list(risk_case.get("kill_criteria", []) or [])]
+    why_acceptable = [str(x or "") for x in list(risk_case.get("why_risks_acceptable", []) or [])]
+    score = 0.0
+    if failure_modes:
+        score += 0.3
+    if any("Adverse tail" in x or bool(re.search(r"\(\+|-|\d", x)) for x in failure_modes):
+        score += 0.3
+    if len(kill_criteria) >= 2:
+        score += 0.2
+    if why_acceptable:
+        score += 0.2
+    return min(score, 1.0)
+
+

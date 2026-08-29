@@ -599,3 +599,42 @@ def test_build_board_ready_dossier_handles_missing_plan():
     assert dossier["executive_summary"] == "No feasible plan was generated."
 
 
+def test_risk_case_humanizes_tail_metric_names():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    snapshot = _snapshot()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            value_creation=0.16,
+            risk_reduction=0.31,
+        ),
+    ]
+    rows[0]["precedent_pack"]["tail_events"] = [
+        {
+            "metric": "equity_return_vs_sector",
+            "description": "Bottom decile historical outcome.",
+            "horizon": "12m",
+            "value": -85.42,
+        }
+    ]
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=1,
+    )
+    dossier = build_board_ready_dossier(
+        run=run,
+        snapshot=snapshot,
+        plan_set=plan_set,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+    )
+    assert not any("equity_return_vs_sector" in item for item in dossier["risk_case"]["main_failure_modes"])
+    assert any(
+        item in {"Adverse tail in 12m relative share performance.", "Bottom decile historical outcome."}
+        for item in dossier["risk_case"]["main_failure_modes"]
+    )
