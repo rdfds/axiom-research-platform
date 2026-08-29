@@ -17,3 +17,13 @@ def test_default_causal_model_path_points_to_current_champion(monkeypatch):
     assert _default_model_path() == DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT
 
 
+def test_capture_runtime_env_config_uses_current_champion_default(monkeypatch):
+    monkeypatch.delenv("CAUSAL_IMPACT_MODEL_PATH", raising=False)
+    monkeypatch.delenv("CAUSAL_ROUTING_CONFIG_PATH", raising=False)
+
+    config = capture_runtime_env_config()
+
+    assert config["causal"]["model"]["path"] == str(DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT)
+    assert config["causal"]["routing"]["path"] == str(DEFAULT_CAUSAL_ROUTING_CONFIG_PATH)
+
+
