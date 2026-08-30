@@ -19,3 +19,7 @@ def _default_path(*parts: str) -> str:
     return str(_REPO_ROOT.joinpath(*parts))
 
 
+def _default_precedent_outcomes_path() -> str:
+    return _default_path("data", "curated", "action_outcomes_with_credit_ratings.normalized_full.parquet")
+
+
