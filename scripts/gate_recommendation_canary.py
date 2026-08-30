@@ -135,3 +135,5 @@ def main() -> None:
     raise SystemExit(0 if gate["gate_pass"] else 1)
 
 
+if __name__ == "__main__":
+    main()

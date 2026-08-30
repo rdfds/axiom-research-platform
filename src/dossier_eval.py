@@ -462,3 +462,18 @@ def _risk_specificity_score(risk_case: Dict[str, Any]) -> float:
     return min(score, 1.0)
 
 
+def _sizing_specificity_score(sizing_guidance: Dict[str, Any]) -> float:
+    if not sizing_guidance:
+        return 0.0
+    score = 0.0
+    if sizing_guidance.get("recommended_range"):
+        score += 0.3
+    if list(sizing_guidance.get("rationale", []) or []):
+        score += 0.3
+    if sizing_guidance.get("why_not_larger"):
+        score += 0.2
+    if sizing_guidance.get("why_not_smaller"):
+        score += 0.2
+    return min(score, 1.0)
+
+
