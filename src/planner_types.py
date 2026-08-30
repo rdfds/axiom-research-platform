@@ -101,3 +101,22 @@ class PlanTimeline:
         return asdict(self)
 
 
+@dataclass
+class PlanStep:
+    step_id: str
+    action_id: str
+    parameters: Dict[str, Any]
+    earliest_start: Optional[str]
+    expected_duration: Dict[str, Any]
+    prerequisites: List[str] = field(default_factory=list)
+    probability_of_success: float = 0.0
+    impact_contribution: Dict[str, Any] = field(default_factory=dict)
+    explanation: Optional[PlanExplanation] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        out = asdict(self)
+        if self.explanation is not None:
+            out["explanation"] = self.explanation.to_dict()
+        return out
+
+
