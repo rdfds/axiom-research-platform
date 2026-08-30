@@ -120,3 +120,18 @@ class PlanStep:
         return out
 
 
+@dataclass
+class PlanScoreBreakdown:
+    expected_utility: float = 0.0
+    feasibility_chain: float = 0.0
+    robustness_score: float = 0.0
+    tail_risk_penalty: float = 0.0
+    complexity_penalty: float = 0.0
+    time_discount_factor: float = 1.0
+    total_score: float = 0.0
+    components: Dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+

@@ -425,7 +425,7 @@ def _specific_timing_score(text: str) -> float:
     return min(score, 1.0)
 
 
-def _evidence_quality_score(evidence: Sequence[Dict[str, Any]]) :
+def _evidence_quality_score(evidence: Sequence[Dict[str, Any]]) -> float:
     if not evidence:
         return 0.0
     snapshot_count = sum(1 for item in evidence if str(item.get("source", "")) == "snapshot")
