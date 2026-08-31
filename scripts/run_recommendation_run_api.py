@@ -48,3 +48,25 @@ def _build_default_registry():
     return build_default_action_schema_registry(version="v1.0")
 
 
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Serve RecommendationRun orchestration over HTTP.")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8090)
+    p.add_argument("--runs-root", default="data/recommendation_runs")
+    p.add_argument("--snapshot-root", default=None)
+    p.add_argument("--snapshot-path", default=None)
+    p.add_argument("--entity-graph-path", default="data/inputs_layer/entity_graph.parquet")
+    p.add_argument("--entity-identifier-path", default="data/inputs_layer/entity_identifier.parquet")
+    p.add_argument("--outcomes-path", default=_default_precedent_outcomes_path())
+    p.add_argument("--config", default=None)
+    p.add_argument("--max-candidates", type=int, default=12)
+    p.add_argument("--min-candidates-target", type=int, default=300)
+    p.add_argument("--precedent-top-k", type=int, default=25)
+    p.add_argument("--top-plans", type=int, default=3)
+    p.add_argument("--startup-warmup", dest="startup_warmup", action="store_true", default=True)
+    p.add_argument("--no-startup-warmup", dest="startup_warmup", action="store_false")
+    p.add_argument("--warmup-company-id", default="0000320193")
+    p.add_argument("--warmup-as-of", default="2026-02-28")
+    return p.parse_args()
+
+

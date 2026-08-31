@@ -97,3 +97,13 @@ def _safe_run_ids_write(path: Path, pairs: List[str]) -> None:
     path.write_text("\n".join(pairs) + ("\n" if pairs else ""))
 
 
+def _event_ts(event: Dict[str, Any]) -> float | None:
+    raw = str(event.get("timestamp", "") or "")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+

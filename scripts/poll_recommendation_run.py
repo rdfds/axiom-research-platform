@@ -27,7 +27,7 @@ def main() -> None:
         if run_path.exists():
             obj = json.loads(run_path.read_text())
             metadata = obj.get("metadata", {}) or {}
-            progress = metadata['progress'] or {}
+            progress = metadata.get("progress") or {}
             audit_log = obj.get("audit_log") or []
             last_event = audit_log[-1].get("event_type", "") if audit_log else ""
             line = {
