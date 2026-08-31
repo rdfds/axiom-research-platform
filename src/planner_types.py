@@ -135,3 +135,30 @@ class PlanScoreBreakdown:
         return asdict(self)
 
 
+@dataclass
+class Plan:
+    plan_id: str
+    run_id: str
+    steps: List[PlanStep]
+    timeline: PlanTimeline
+    triggers: List[PlanTrigger] = field(default_factory=list)
+    branches: List[PlanBranch] = field(default_factory=list)
+    score_breakdown: PlanScoreBreakdown = field(default_factory=PlanScoreBreakdown)
+    risks: PlanRisk = field(default_factory=PlanRisk)
+    summary_explanation: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        out = {
+            "plan_id": self.plan_id,
+            "run_id": self.run_id,
+            "steps": [step.to_dict() for step in self.steps],
+            "timeline": self.timeline.to_dict(),
+            "triggers": [trigger.to_dict() for trigger in self.triggers],
+            "branches": [branch.to_dict() for branch in self.branches],
+            "score_breakdown": self.score_breakdown.to_dict(),
+            "risks": self.risks.to_dict(),
+            "summary_explanation": self.summary_explanation,
+        }
+        return out
+
+
