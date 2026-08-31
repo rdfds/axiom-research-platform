@@ -50,3 +50,5 @@ def main() -> None:
         time.sleep(max(0.1, float(args.interval_seconds)))
 
 
+if __name__ == "__main__":
+    main()
