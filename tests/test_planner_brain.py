@@ -274,3 +274,82 @@ def test_build_plan_set_ranking_is_deterministic_under_input_reorder():
     assert [plan["score"] for plan in plan_set_a["plans"]] == [plan["score"] for plan in plan_set_b["plans"]]
 
 
+def test_planner_uses_feasible_candidates_beyond_precedent_subset():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    feasible_rows = [
+        _candidate_row("capital_structure.refinancing", utility=0.08, risk_reduction=0.24),
+        _candidate_row("capital_return.open_market_buyback", utility=0.11, optionality=0.28),
+        _candidate_row("capital_return.dividend_increase", utility=0.2, growth=-0.18, rating_preservation=-0.05, optionality=-0.04),
+    ]
+    precedent_subset = [
+        feasible_rows[0],
+        feasible_rows[2],
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in feasible_rows],
+        precedent_matches=precedent_subset,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert any(
+        "capital_return.open_market_buyback" in [step["action_id"] for step in plan["steps"]]
+        for plan in plan_set["plans"]
+    )
+
+
+def test_buyback_refi_fixture_prefers_refi_plus_buyback_over_dividend_policy():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.12,
+            risk_reduction=0.34,
+            growth=0.08,
+            rating_preservation=0.12,
+            precedent_confidence=0.38,
+            second_order_effects=[{"follow_on_action_id": "capital_return.open_market_buyback", "frequency": 0.45}],
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.12,
+            optionality=0.32,
+            precedent_confidence=0.34,
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            utility=0.26,
+            growth=-0.22,
+            rating_preservation=-0.05,
+            optionality=-0.03,
+            precedent_confidence=0.41,
+        ),
+        _candidate_row(
+            "capital_return.dividend_cut",
+            utility=0.10,
+            growth=-0.03,
+            rating_preservation=-0.04,
+            optionality=-0.03,
+            precedent_confidence=0.35,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    top_actions = [step["action_id"] for step in plan_set["plans"][0]["steps"]]
+    assert top_actions == [
+        "capital_structure.refinancing",
+        "capital_return.open_market_buyback",
+    ]
+
+

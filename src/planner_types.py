@@ -162,3 +162,16 @@ class Plan:
         return out
 
 
+__all__ = [
+    "ActionDependencyGraph",
+    "DependencyEdge",
+    "LeadTimeDistribution",
+    "Plan",
+    "PlanBranch",
+    "PlanExplanation",
+    "PlanRisk",
+    "PlanScoreBreakdown",
+    "PlanStep",
+    "PlanTimeline",
+    "PlanTrigger",
+]
