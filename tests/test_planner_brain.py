@@ -353,3 +353,57 @@ def test_buyback_refi_fixture_prefers_refi_plus_buyback_over_dividend_policy():
     ]
 
 
+def test_acquisition_fixture_prefers_refi_then_tuck_in_when_acquisition_is_supported():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.10,
+            risk_reduction=0.22,
+            growth=0.05,
+            rating_preservation=0.08,
+            precedent_confidence=0.33,
+            second_order_effects=[{"follow_on_action_id": "mna.tuck_in_acquisition", "frequency": 0.35}],
+        ),
+        _candidate_row(
+            "mna.tuck_in_acquisition",
+            utility=0.32,
+            growth=0.42,
+            optionality=0.12,
+            pass_probability=0.82,
+            evaluation_confidence=0.78,
+            precedent_confidence=0.39,
+            regime_sensitivity=[{"regime_condition": "risk_off", "effect_shift": -0.04}],
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.08,
+            optionality=0.16,
+            precedent_confidence=0.32,
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            utility=0.22,
+            growth=-0.18,
+            rating_preservation=-0.04,
+            optionality=-0.03,
+            precedent_confidence=0.41,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    top_actions = [step["action_id"] for step in plan_set["plans"][0]["steps"]]
+    assert top_actions == [
+        "capital_structure.refinancing",
+        "mna.tuck_in_acquisition",
+    ]
+
+
