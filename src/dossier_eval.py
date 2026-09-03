@@ -477,3 +477,54 @@ def _sizing_specificity_score(sizing_guidance: Dict[str, Any]) -> float:
     return min(score, 1.0)
 
 
+def _aggregate_cases(cases: Sequence[Dict[str, Any]], missing_artifacts: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    if not cases:
+        return {
+            "heuristic_overall_mean": 0.0,
+            "completeness_rate": 0.0,
+            "humanized_language_rate": 0.0,
+            "specific_timing_rate": 0.0,
+            "alternatives_present_rate": 0.0,
+            "risk_specificity_rate": 0.0,
+            "status_quo_comparison_rate": 0.0,
+            "sizing_specificity_rate": 0.0,
+            "parameter_optimization_rate": 0.0,
+            "regret_analysis_rate": 0.0,
+            "scenario_sizing_rate": 0.0,
+            "rating_analysis_rate": 0.0,
+            "signaling_analysis_rate": 0.0,
+            "expected_posture_coverage_rate": None,
+            "posture_match_rate": None,
+            "negative_case_accuracy": None,
+            "missing_artifact_rate": 1.0 if missing_artifacts else 0.0,
+            "flag_counts": {},
+        }
+    flag_counts = Counter()
+    for case in cases:
+        for flag in list((case.get("heuristic", {}) or {}).get("flags", []) or []):
+            flag_counts[str(flag)] += 1
+    count = float(len(cases))
+    posture_cases = [case for case in cases if case.get("expected_posture")]
+    negative_cases = [case for case in posture_cases if case.get("expected_posture") == "wait"]
+    return {
+        "heuristic_overall_mean": round(sum(float((case.get("heuristic", {}) or {}).get("overall_score", 0.0) or 0.0) for case in cases) / count, 6),
+        "completeness_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("completeness_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "humanized_language_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("humanized_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "specific_timing_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("timing_score", 0.0) or 0.0) >= 0.6) / count, 6),
+        "alternatives_present_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("alternatives_score", 0.0) or 0.0) >= 0.5) / count, 6),
+        "risk_specificity_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("risk_score", 0.0) or 0.0) >= 0.6) / count, 6),
+        "status_quo_comparison_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("status_quo_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "sizing_specificity_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("sizing_score", 0.0) or 0.0) >= 0.6) / count, 6),
+        "parameter_optimization_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("parameter_optimization_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "regret_analysis_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("regret_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "scenario_sizing_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("scenario_sizing_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "rating_analysis_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("rating_analysis_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "signaling_analysis_rate": round(sum(1.0 for case in cases if float((case.get("heuristic", {}) or {}).get("signaling_score", 0.0) or 0.0) >= 1.0) / count, 6),
+        "expected_posture_coverage_rate": round(len(posture_cases) / count, 6) if posture_cases else None,
+        "posture_match_rate": round(sum(1.0 for case in posture_cases if case.get("posture_match")) / len(posture_cases), 6) if posture_cases else None,
+        "negative_case_accuracy": round(sum(1.0 for case in negative_cases if case.get("posture_match")) / len(negative_cases), 6) if negative_cases else None,
+        "missing_artifact_rate": round(len(missing_artifacts) / (len(cases) + len(missing_artifacts)), 6) if (cases or missing_artifacts) else 0.0,
+        "flag_counts": dict(flag_counts),
+    }
+
+

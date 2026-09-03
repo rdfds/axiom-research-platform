@@ -407,3 +407,107 @@ def test_acquisition_fixture_prefers_refi_then_tuck_in_when_acquisition_is_suppo
     ]
 
 
+def test_divestiture_fixture_prefers_divestiture_over_narrow_payout_moves():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "portfolio.divestiture_partial",
+            utility=0.22,
+            risk_reduction=0.28,
+            rating_preservation=0.12,
+            optionality=0.14,
+            pass_probability=0.7,
+            evaluation_confidence=0.82,
+            precedent_confidence=0.38,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.04,
+            risk_reduction=0.14,
+            growth=0.02,
+            precedent_confidence=0.31,
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            utility=0.28,
+            growth=-0.16,
+            rating_preservation=-0.04,
+            optionality=-0.03,
+            precedent_confidence=0.40,
+        ),
+        _candidate_row(
+            "capital_return.dividend_cut",
+            utility=0.09,
+            growth=-0.02,
+            rating_preservation=-0.03,
+            optionality=-0.03,
+            precedent_confidence=0.34,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert [step["action_id"] for step in plan_set["plans"][0]["steps"]] == ["portfolio.divestiture_partial"]
+
+
+def test_dividend_initiation_requires_clear_edge_over_financing_actions():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_return.dividend_initiate",
+            utility=-0.01,
+            risk_reduction=-0.01,
+            growth=-0.02,
+            rating_preservation=-0.02,
+            optionality=-0.01,
+            pass_probability=0.95,
+            evaluation_confidence=0.825,
+            precedent_confidence=0.47,
+        ),
+        _candidate_row(
+            "capital_structure.equity_issuance",
+            utility=0.025,
+            risk_reduction=0.01,
+            growth=0.04,
+            rating_preservation=0.02,
+            optionality=0.01,
+            pass_probability=0.95,
+            evaluation_confidence=0.833,
+            precedent_confidence=0.43,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.025,
+            risk_reduction=0.01,
+            growth=0.03,
+            rating_preservation=0.03,
+            optionality=0.01,
+            pass_probability=0.95,
+            evaluation_confidence=0.833,
+            precedent_confidence=0.43,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    top_action = plan_set["plans"][0]["steps"][0]["action_id"]
+    assert top_action in {"capital_structure.equity_issuance", "capital_structure.refinancing"}
+    dividend_plan = next(plan for plan in plan_set["plans"] if plan["steps"][0]["action_id"] == "capital_return.dividend_initiate")
+    assert dividend_plan["score_components"]["negative_utility_penalty"] > 0.0
+    assert dividend_plan["score_components"]["action_specific_penalty"] >= 0.06
+
+
