@@ -42,3 +42,15 @@ class FeatureContribution:
     human_label: str  # e.g., "Net Debt / EBITDA"
 
 
+@dataclass
+class SignalDetail:
+    """Full detail for a single signal."""
+    name: str
+    value: str  # "high", "medium", "low"
+    score: float  # 0-100
+    confidence: float  # 0-1
+    drivers: List[FeatureContribution]
+    explanation: str  # 1-sentence banker-friendly explanation
+    evidence_refs: Dict[str, List[str]]  # warehouse_rows, doc_chunks
+
+
