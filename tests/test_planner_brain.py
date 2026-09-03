@@ -511,3 +511,309 @@ def test_dividend_initiation_requires_clear_edge_over_financing_actions():
     assert dividend_plan["score_components"]["action_specific_penalty"] >= 0.06
 
 
+def test_causal_dividend_initiate_relief_is_narrow_and_conservative():
+    strong_causal = _candidate_row(
+        "capital_return.dividend_initiate",
+        utility=0.043,
+        risk_reduction=-0.02,
+        growth=-0.003,
+        rating_preservation=-0.072,
+        optionality=-0.026,
+        evaluation_confidence=0.66,
+        precedent_confidence=0.42,
+        causal_blend_weight=0.266,
+        causal_quality=0.124,
+        causal_support_score=0.944,
+        causal_min_oos_r2=0.124,
+        uncertainty_score=0.41,
+    )["candidate"]
+    weak_causal = _candidate_row(
+        "capital_return.dividend_initiate",
+        utility=0.043,
+        risk_reduction=-0.02,
+        growth=-0.003,
+        rating_preservation=-0.072,
+        optionality=-0.026,
+        evaluation_confidence=0.66,
+        precedent_confidence=0.42,
+        causal_blend_weight=0.08,
+        causal_quality=0.05,
+        causal_support_score=0.7,
+        causal_min_oos_r2=0.05,
+        uncertainty_score=0.41,
+    )["candidate"]
+
+    strong_penalty = _action_specific_penalty(strong_causal, {"calibration_confidence": 0.42})
+    weak_penalty = _action_specific_penalty(weak_causal, {"calibration_confidence": 0.42})
+    strong_hurdle = _status_quo_hurdle(
+        weighted_utility=-0.03,
+        weighted_components={
+            "value_creation": 0.015,
+            "risk_reduction": -0.005,
+            "growth": 0.0,
+            "rating_preservation": -0.01,
+            "optionality": -0.004,
+        },
+        action_ids=["capital_return.dividend_initiate"],
+        support_factor=0.73,
+        candidates=[strong_causal],
+    )
+    weak_hurdle = _status_quo_hurdle(
+        weighted_utility=-0.03,
+        weighted_components={
+            "value_creation": 0.015,
+            "risk_reduction": -0.005,
+            "growth": 0.0,
+            "rating_preservation": -0.01,
+            "optionality": -0.004,
+        },
+        action_ids=["capital_return.dividend_initiate"],
+        support_factor=0.73,
+        candidates=[weak_causal],
+    )
+
+    assert strong_penalty < weak_penalty
+    assert strong_penalty >= 0.03
+    assert strong_hurdle < weak_hurdle
+    assert strong_hurdle >= 0.0
+
+
+def test_causal_dividend_initiate_support_improves_close_case_scoring():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    strong_rows = [
+        _candidate_row(
+            "capital_return.dividend_initiate",
+            utility=0.043,
+            risk_reduction=-0.02,
+            growth=-0.003,
+            rating_preservation=-0.072,
+            optionality=-0.026,
+            pass_probability=0.9,
+            evaluation_confidence=0.657,
+            precedent_confidence=0.42,
+            causal_blend_weight=0.266,
+            causal_quality=0.124,
+            causal_support_score=0.944,
+            causal_min_oos_r2=0.124,
+            uncertainty_score=0.41,
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.04,
+            risk_reduction=-0.016,
+            growth=0.002,
+            rating_preservation=-0.01,
+            optionality=0.06,
+            pass_probability=0.9,
+            evaluation_confidence=0.636,
+            precedent_confidence=0.342,
+            causal=False,
+            uncertainty_score=0.2,
+        ),
+    ]
+    weak_rows = [
+        _candidate_row(
+            "capital_return.dividend_initiate",
+            utility=0.043,
+            risk_reduction=-0.02,
+            growth=-0.003,
+            rating_preservation=-0.072,
+            optionality=-0.026,
+            pass_probability=0.9,
+            evaluation_confidence=0.657,
+            precedent_confidence=0.42,
+            causal_blend_weight=0.08,
+            causal_quality=0.05,
+            causal_support_score=0.7,
+            causal_min_oos_r2=0.05,
+            uncertainty_score=0.41,
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.04,
+            risk_reduction=-0.016,
+            growth=0.002,
+            rating_preservation=-0.01,
+            optionality=0.06,
+            pass_probability=0.9,
+            evaluation_confidence=0.636,
+            precedent_confidence=0.342,
+            causal=False,
+            uncertainty_score=0.2,
+        ),
+    ]
+
+    strong_plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in strong_rows],
+        precedent_matches=strong_rows,
+        registry=registry,
+        top_plans=3,
+    )
+    weak_plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in weak_rows],
+        precedent_matches=weak_rows,
+        registry=registry,
+        top_plans=3,
+    )
+
+    strong_dividend_plan = next(plan for plan in strong_plan_set["plans"] if plan["steps"][0]["action_id"] == "capital_return.dividend_initiate")
+    weak_dividend_plan = next(plan for plan in weak_plan_set["plans"] if plan["steps"][0]["action_id"] == "capital_return.dividend_initiate")
+
+    assert strong_dividend_plan["score_components"]["action_specific_penalty"] < weak_dividend_plan["score_components"]["action_specific_penalty"]
+    assert strong_dividend_plan["score_components"]["raw_total_score"] > weak_dividend_plan["score_components"]["raw_total_score"]
+
+
+def test_buyback_maturity_wall_relief_is_narrow_and_can_flip_close_case():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    dividend_row = _candidate_row(
+        "capital_return.dividend_initiate",
+        utility=0.05568,
+        risk_reduction=-0.02067,
+        growth=-0.00312,
+        rating_preservation=-0.083746,
+        optionality=-0.02252,
+        pass_probability=0.95,
+        evaluation_confidence=0.852,
+        precedent_confidence=0.0,
+        causal_blend_weight=0.266,
+        causal_quality=0.124,
+        causal_support_score=0.89,
+        causal_min_oos_r2=0.124,
+        uncertainty_score=0.19,
+        params={"initial_yield_pct": 0.01},
+    )
+    relieved_buyback_row = _candidate_row(
+        "capital_return.open_market_buyback",
+        utility=0.057987,
+        risk_reduction=-0.012833,
+        growth=0.001027,
+        rating_preservation=-0.008213,
+        optionality=-0.009453,
+        pass_probability=0.54,
+        evaluation_confidence=0.766,
+        precedent_confidence=0.0,
+        causal_blend_weight=0.0,
+        uncertainty_score=0.58,
+        params={
+            "funding_mix": {"cash": 0.7, "debt": 0.3, "equity": 0.0},
+            "size_pct_market_cap": 0.02,
+        },
+        feasibility_status="conditional",
+        feasibility_blockers=[
+            {
+                "blocker_type": "maturity_wall_conflict",
+                "severity": "soft",
+                "explanation": "Action consumes liquidity while near-term maturities are elevated.",
+            }
+        ],
+        gating_signals=[
+            {"feature_name": "liquidity.runway_months_proforma", "value": 23.23},
+            {"feature_name": "capital_structure.maturity_wall_ratio_24m", "value": 0.2836},
+            {"feature_name": "capital_structure.proforma_interest_coverage", "value": 34.89},
+        ],
+    )
+    unreleived_buyback_row = _candidate_row(
+        "capital_return.open_market_buyback",
+        utility=0.057987,
+        risk_reduction=-0.012833,
+        growth=0.001027,
+        rating_preservation=-0.008213,
+        optionality=-0.009453,
+        pass_probability=0.54,
+        evaluation_confidence=0.766,
+        precedent_confidence=0.0,
+        causal_blend_weight=0.0,
+        uncertainty_score=0.58,
+        params={
+            "funding_mix": {"cash": 0.7, "debt": 0.3, "equity": 0.0},
+            "size_pct_market_cap": 0.02,
+        },
+        feasibility_status="conditional",
+        feasibility_blockers=[
+            {
+                "blocker_type": "maturity_wall_conflict",
+                "severity": "soft",
+                "explanation": "Action consumes liquidity while near-term maturities are elevated.",
+            }
+        ],
+        gating_signals=[
+            {"feature_name": "liquidity.runway_months_proforma", "value": 12.0},
+            {"feature_name": "capital_structure.maturity_wall_ratio_24m", "value": 0.2836},
+            {"feature_name": "capital_structure.proforma_interest_coverage", "value": 8.0},
+        ],
+    )
+
+    relieved_penalty = _action_specific_penalty(relieved_buyback_row["candidate"], relieved_buyback_row["precedent_pack"])
+    unreleived_penalty = _action_specific_penalty(unreleived_buyback_row["candidate"], unreleived_buyback_row["precedent_pack"])
+
+    relieved_plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[dividend_row["candidate"], relieved_buyback_row["candidate"]],
+        precedent_matches=[dividend_row, relieved_buyback_row],
+        registry=registry,
+        top_plans=3,
+    )
+    unreleived_plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[dividend_row["candidate"], unreleived_buyback_row["candidate"]],
+        precedent_matches=[dividend_row, unreleived_buyback_row],
+        registry=registry,
+        top_plans=3,
+    )
+
+    relieved_top = relieved_plan_set["plans"][0]["steps"][0]["action_id"]
+    unreleived_top = unreleived_plan_set["plans"][0]["steps"][0]["action_id"]
+
+    assert relieved_penalty < unreleived_penalty
+    assert relieved_penalty == 0.11
+    assert unreleived_penalty == 0.15
+    assert relieved_top == "capital_return.open_market_buyback"
+    assert unreleived_top == "capital_return.dividend_initiate"
+
+
+def test_thin_equity_issuance_does_not_dominate_refinancing():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.equity_issuance",
+            utility=0.0144,
+            risk_reduction=0.0495,
+            growth=0.0027,
+            rating_preservation=0.032,
+            optionality=0.0261,
+            pass_probability=0.95,
+            evaluation_confidence=0.8331,
+            precedent_confidence=0.43,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.0144,
+            risk_reduction=0.0495,
+            growth=0.0027,
+            rating_preservation=0.032,
+            optionality=0.0261,
+            pass_probability=0.95,
+            evaluation_confidence=0.8331,
+            precedent_confidence=0.33,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert plan_set["plans"][0]["steps"][0]["action_id"] == "capital_structure.refinancing"
+    equity_plan = next(plan for plan in plan_set["plans"] if plan["steps"][0]["action_id"] == "capital_structure.equity_issuance")
+    assert equity_plan["score_components"]["action_specific_penalty"] >= 0.1
+    assert equity_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
+
+

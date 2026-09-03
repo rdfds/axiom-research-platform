@@ -118,3 +118,63 @@ def build_plan_set(
     }
 
 
+def _select_nodes(
+    feasible_candidates: List[Dict[str, Any]],
+    precedent_matches: List[Dict[str, Any]],
+    registry: Any,
+    run: RecommendationRun,
+) -> List[PlannerNode]:
+    precedent_by_candidate_id: Dict[str, Dict[str, Any]] = {}
+    precedent_by_action_id: Dict[str, Dict[str, Any]] = {}
+    for row in precedent_matches:
+        candidate = _normalize_candidate(dict(row.get("candidate", {}) or {}))
+        action_id = str(candidate.get("action_id", "") or "")
+        candidate_id = str(candidate.get("candidate_id", "") or "")
+        pack = dict(row.get("precedent_pack", {}) or {})
+        if candidate_id:
+            current = precedent_by_candidate_id.get(candidate_id)
+            if current is None or _precedent_confidence(pack) > _precedent_confidence(current):
+                precedent_by_candidate_id[candidate_id] = pack
+        if action_id:
+            current = precedent_by_action_id.get(action_id)
+            if current is None or _precedent_confidence(pack) > _precedent_confidence(current):
+                precedent_by_action_id[action_id] = pack
+
+    best_by_action: Dict[str, PlannerNode] = {}
+    source_candidates: List[Dict[str, Any]] = []
+    for cand in feasible_candidates:
+        source_candidates.append(_normalize_candidate(dict(cand or {})))
+    if not source_candidates:
+        for row in precedent_matches:
+            source_candidates.append(_normalize_candidate(dict(row.get("candidate", {}) or {})))
+
+    for candidate in source_candidates:
+        action_id = str(candidate.get("action_id", "") or "")
+        if not action_id:
+            continue
+        schema = registry.get_action(action_id) or {}
+        candidate_id = str(candidate.get("candidate_id", "") or "")
+        precedent_pack = dict(precedent_by_candidate_id.get(candidate_id) or precedent_by_action_id.get(action_id) or {})
+        node = PlannerNode(
+            action_id=action_id,
+            candidate=candidate,
+            precedent_pack=precedent_pack,
+            schema=schema,
+            lead_time=registry.fetch_planner_lead_time_distribution(action_id),
+            base_rank_score=_base_rank_score(candidate=candidate, precedent_pack=precedent_pack, run=run),
+        )
+        current = best_by_action.get(action_id)
+        if current is None or node.base_rank_score > current.base_rank_score:
+            best_by_action[action_id] = node
+    return sorted(best_by_action.values(), key=lambda node: (-node.base_rank_score, node.action_id))
+
+
+def _normalize_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(candidate)
+    if "parameters" not in out and "params" in out:
+        out["parameters"] = dict(out.get("params", {}) or {})
+    if "params" not in out and "parameters" in out:
+        out["params"] = dict(out.get("parameters", {}) or {})
+    return out
+
+

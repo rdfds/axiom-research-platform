@@ -107,3 +107,53 @@ def _event_ts(event: Dict[str, Any]) -> float | None:
         return None
 
 
+def _run_stage_seconds(runs_root: Path, run_id: str) -> Dict[str, float]:
+    p = runs_root / "runs" / f"run_id={run_id}.json"
+    if not p.exists():
+        return {}
+    try:
+        run = json.loads(p.read_text())
+    except Exception:
+        return {}
+    events = run.get("audit_log") or []
+    if not isinstance(events, list):
+        return {}
+
+    by_type: Dict[str, float] = {}
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        ts = _event_ts(e)
+        if ts is not None:
+            by_type[str(e.get("event_type", ""))] = ts
+
+    out: Dict[str, float] = {}
+
+    def _dur(start: str, end: str, key: str) -> None:
+        if start in by_type and end in by_type:
+            out[key] = round(max(0.0, by_type[end] - by_type[start]), 3)
+
+    _dur("snapshot_frozen", "candidate_generation_started", "snapshot_load")
+    _dur("candidate_generation_started", "candidate_generation_completed", "candidate_generation")
+    _dur("feasibility_eval_started", "feasibility_eval_completed", "feasibility")
+    _dur("precedent_retrieval_started", "precedent_retrieval_completed", "precedent")
+    _dur("planning_started", "planning_completed", "planning")
+    _dur("run_created", "run_completed", "total_run")
+    return out
+
+
+def _build_keyed_snapshot_loader(snapshot_root: Path):
+    def _loader(company_id: str, as_of_time: datetime) -> Dict[str, Any]:
+        p = (
+            snapshot_root
+            / "keyed"
+            / f"as_of_date={as_of_time.strftime('%Y-%m-%d')}"
+            / f"company_id={company_id}.json"
+        )
+        if not p.exists():
+            raise FileNotFoundError(f"Keyed snapshot not found: {p}")
+        return json.loads(p.read_text())
+
+    return _loader
+
+
