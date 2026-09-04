@@ -157,3 +157,7 @@ def _build_keyed_snapshot_loader(snapshot_root: Path):
     return _loader
 
 
+def _keyed_snapshot_path(snapshot_root: Path, as_of: str, company_id: str) -> Path:
+    return snapshot_root / "keyed" / f"as_of_date={as_of}" / f"company_id={company_id}.json"
+
+

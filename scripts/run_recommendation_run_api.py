@@ -74,3 +74,21 @@ def _json_bytes(payload: Dict[str, Any]) -> bytes:
     return json.dumps(payload, default=str).encode("utf-8")
 
 
+def _read_json_body(handler: BaseHTTPRequestHandler) -> Tuple[Dict[str, Any], Optional[str]]:
+    raw_len = handler.headers.get("Content-Length", "0")
+    try:
+        length = int(raw_len)
+    except Exception:
+        return {}, "invalid_content_length"
+    if length <= 0:
+        return {}, "empty_body"
+    raw = handler.rfile.read(length)
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return {}, "invalid_json"
+    if not isinstance(obj, dict):
+        return {}, "body_must_be_object"
+    return obj, None
+
+

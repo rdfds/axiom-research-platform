@@ -50,3 +50,13 @@ def _normalize_env_value(raw: Any) -> Optional[str]:
     return value
 
 
+def _safe_float(raw: Any) -> Optional[float]:
+    try:
+        out = float(raw)
+    except Exception:
+        return None
+    if out != out:
+        return None
+    return float(out)
+
+
