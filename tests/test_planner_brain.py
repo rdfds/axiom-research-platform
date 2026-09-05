@@ -942,3 +942,45 @@ def test_weak_governance_default_does_not_beat_financing_action():
     assert governance_plan["score_components"]["action_specific_penalty"] >= 0.07
 
 
+def test_weak_stock_split_default_does_not_beat_financing_action():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "governance.stock_split",
+            utility=0.012,
+            risk_reduction=0.0,
+            growth=0.0,
+            rating_preservation=0.0,
+            optionality=0.0,
+            pass_probability=0.95,
+            evaluation_confidence=0.82,
+            precedent_confidence=0.36,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.049,
+            risk_reduction=0.01,
+            growth=0.0,
+            rating_preservation=0.01,
+            optionality=0.0,
+            pass_probability=0.95,
+            evaluation_confidence=0.83,
+            precedent_confidence=0.32,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert plan_set["plans"][0]["steps"][0]["action_id"] == "capital_structure.refinancing"
+    split_plan = next(plan for plan in plan_set["plans"] if plan["steps"][0]["action_id"] == "governance.stock_split")
+    assert split_plan["score_components"]["action_specific_penalty"] >= 0.07
+    assert split_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
+
+
