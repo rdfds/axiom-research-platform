@@ -92,3 +92,7 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> Tuple[Dict[str, Any], Op
     return obj, None
 
 
+def _pick(body: Dict[str, Any], key: str, default: Any) -> Any:
+    return body[key] if key in body else default
+
+
