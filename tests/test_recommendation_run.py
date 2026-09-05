@@ -75,3 +75,51 @@ def _snapshot_hash(snapshot: dict) -> str:
     return hashlib.sha256(txt.encode("utf-8")).hexdigest()
 
 
+def test_create_recommendation_run_normalizes_objectives_and_freezes_snapshot(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    runs_root = tmp_path / "runs"
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        objectives={
+            "value_creation_weight": 2.0,
+            "risk_reduction_weight": 1.0,
+            "growth_weight": 1.0,
+            "rating_preservation_weight": 0.0,
+            "optionality_weight": 0.0,
+        },
+        run_store=RecommendationRunStore(root=runs_root),
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+        planner_random_seed=7,
+    )
+
+    store = RecommendationRunStore(root=runs_root)
+    run = store.get_run(run_id)
+    assert run is not None
+    assert run.company_id == "001690"
+    assert run.status == "initialized"
+    assert abs(
+        run.objectives.value_creation_weight
+        + run.objectives.risk_reduction_weight
+        + run.objectives.growth_weight
+        + run.objectives.rating_preservation_weight
+        + run.objectives.optionality_weight
+        - 1.0
+    ) < 1e-12
+    assert run.data_cutoff.published_at_lte == run.as_of_time
+    assert run.data_cutoff.ingested_at_lte == run.as_of_time
+
+    raw_snapshot = json.loads(
+        (snapshot_root / "keyed" / "as_of_date=2026-02-28" / "company_id=0000320193.json").read_text().strip()
+    )
+    assert run.frozen_state.snapshot_hash == _snapshot_hash(raw_snapshot)
+    assert run.frozen_state.snapshot_version == "state_builder_v5"
+
+    event_types = [e.event_type for e in run.audit_log]
+    assert event_types == ["run_created", "snapshot_frozen"]
+
+

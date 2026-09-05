@@ -165,7 +165,7 @@ def _start_heartbeat(
     company_id: str,
     start_ts: float,
     every_seconds: float,
-) :
+) -> tuple[threading.Event, Optional[threading.Thread]]:
     stop = threading.Event()
     if every_seconds <= 0:
         return stop, None
