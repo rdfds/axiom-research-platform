@@ -70,3 +70,8 @@ def _write_keyed_snapshot(tmp_path: Path, company_id: str = "0000320193", as_of:
     return root
 
 
+def _snapshot_hash(snapshot: dict) -> str:
+    txt = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(txt.encode("utf-8")).hexdigest()
+
+
