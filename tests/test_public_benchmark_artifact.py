@@ -21,3 +21,7 @@ def test_public_benchmark_preserves_evaluation_contract() -> None:
     )
 
 
+def test_committed_public_benchmark_is_reproducible() -> None:
+    artifact = REPOSITORY_ROOT / Path("results/public_benchmark.json")
+
+    assert json.loads(artifact.read_text(encoding="utf-8")) == build_payload()

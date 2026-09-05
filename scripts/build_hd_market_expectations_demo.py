@@ -48,3 +48,28 @@ def build_demo(sample_dir: Path, build_dir: Path) :
     return build_dir / "valuation_action_bridge.html"
 
 
+def main() -> int:
+    root = repo_root()
+    default_sample_dir = root / "examples" / "hd_market_expectations"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--sample-dir",
+        type=Path,
+        default=default_sample_dir,
+        help="Directory containing the *.sample.* inputs.",
+    )
+    parser.add_argument(
+        "--build-dir",
+        type=Path,
+        default=default_sample_dir / "build",
+        help="Output directory for runtime inputs and generated HTML.",
+    )
+    args = parser.parse_args()
+
+    html = build_demo(args.sample_dir.resolve(), args.build_dir.resolve())
+    print(f"Built HD market-expectations demo: {html}#HD")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
