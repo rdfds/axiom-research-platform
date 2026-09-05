@@ -44,3 +44,9 @@ def load_components():
     return snapshot, engine, regime, actions_db, analyzer, evidence_builder
 
 
+@st.cache_resource
+def get_market_provider():
+    """Create a single Refinitiv market data provider."""
+    return MarketDataProvider()
+
+
