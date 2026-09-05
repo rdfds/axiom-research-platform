@@ -60,3 +60,10 @@ def _safe_float(raw: Any) -> Optional[float]:
     return float(out)
 
 
+def _safe_int(raw: Any) -> Optional[int]:
+    val = _safe_float(raw)
+    if val is None:
+        return None
+    return int(val)
+
+

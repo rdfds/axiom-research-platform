@@ -213,3 +213,190 @@ def _apply_runtime_env(args: argparse.Namespace) -> Dict[str, str]:
     return env_map
 
 
+def run_production_batch(
+    args: argparse.Namespace,
+    create_and_execute_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    applied_env = _apply_runtime_env(args)
+    import_t0 = time.time()
+    print(json.dumps({"ok": True, "event": "startup", "stage": "import_orchestrator"}), flush=True)
+    registry = None
+    precedent_runner = None
+    if create_and_execute_fn is None:
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "import_recommendation_run_orchestrator"}),
+            flush=True,
+        )
+        from src.recommendation_run_orchestrator import create_and_execute_recommendation_run
+
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "import_action_ontology"}),
+            flush=True,
+        )
+        from src.action_ontology import build_default_action_schema_registry
+
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "import_causal_model_risk"}),
+            flush=True,
+        )
+        from src.causal_model_risk import build_causal_model_risk_report as _warm_causal_model_risk  # noqa: F401
+
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "import_precedent_runtime"}),
+            flush=True,
+        )
+        from src.pipeline.run import run_precedent, warm_precedent_runtime
+
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "build_action_schema_registry:start"}),
+            flush=True,
+        )
+        registry = build_default_action_schema_registry(version="v1.0")
+        print(
+            json.dumps({"ok": True, "event": "startup", "stage": "build_action_schema_registry:done"}),
+            flush=True,
+        )
+        precedent_runner = run_precedent
+        if bool(args.warm_precedent_runtime):
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "event": "startup",
+                        "stage": "warm_precedent_runtime:start",
+                        "outcomes_path": str(args.outcomes_path),
+                    }
+                ),
+                flush=True,
+            )
+            try:
+                warm_precedent_runtime(args.outcomes_path)
+                print(
+                    json.dumps({"ok": True, "event": "startup", "stage": "warm_precedent_runtime:done"}),
+                    flush=True,
+                )
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "event": "startup",
+                            "stage": "warm_precedent_runtime:failed",
+                            "error": str(exc),
+                        }
+                    ),
+                    flush=True,
+                )
+
+        create_and_execute_fn = create_and_execute_recommendation_run
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "event": "startup",
+                "stage": "import_done",
+                "elapsed_seconds": round(time.time() - import_t0, 3),
+            }
+        ),
+        flush=True,
+    )
+
+    runs_root = Path(args.runs_root)
+    runs_root.mkdir(parents=True, exist_ok=True)
+    snapshot_root = Path(args.snapshot_root)
+    keyed_loader = _build_keyed_snapshot_loader(snapshot_root)
+
+    run_pairs: List[str] = []
+    summaries: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+
+    for company_id in args.companies:
+        t0 = time.time()
+        hb_stop, hb_thread = _start_heartbeat(str(company_id), t0, float(args.heartbeat_seconds))
+        keyed_snapshot = _keyed_snapshot_path(snapshot_root, str(args.as_of), str(company_id))
+        snapshot_path_arg = str(keyed_snapshot) if keyed_snapshot.exists() else None
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "event": "company_started",
+                    "company_id": str(company_id),
+                    "snapshot_mode": "keyed_file" if snapshot_path_arg else "snapshot_root_lookup",
+                }
+            ),
+            flush=True,
+        )
+        try:
+            summary = create_and_execute_fn(
+                company_id=str(company_id),
+                as_of_time=str(args.as_of),
+                runs_root=str(runs_root),
+                snapshot_root=str(snapshot_root),
+                snapshot_path=snapshot_path_arg,
+                snapshot_loader=keyed_loader,
+                entity_graph_path=str(args.entity_graph_path),
+                entity_identifier_path=str(args.entity_identifier_path),
+                action_ids=[str(x) for x in (args.action_ids or [])] or None,
+                max_candidates=int(args.max_candidates),
+                min_candidates_target=int(args.min_candidates_target),
+                strict_evidence=bool(args.strict_evidence),
+                precedent_top_k=int(args.precedent_top_k),
+                outcomes_path=str(args.outcomes_path),
+                config_path=str(args.config_path) if args.config_path else None,
+                top_plans=int(args.top_plans),
+                metadata={"runner": {"script": str(Path(__file__).resolve()), "mode": "production"}},
+                registry=registry,
+                precedent_runner=precedent_runner,
+            )
+            run_id = str(summary.get("run_id", "") or "")
+            if run_id:
+                run_pairs.append(f"{company_id} {run_id}")
+            stage_seconds = _run_stage_seconds(runs_root, run_id) if run_id else {}
+            company_summary = {
+                "ok": True,
+                "event": "company_completed",
+                "company_id": str(company_id),
+                "run_id": run_id,
+                "status": summary.get("status"),
+                "counts": summary.get("counts", {}),
+                "stage_seconds": stage_seconds,
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+            summaries.append(company_summary)
+            print(json.dumps(company_summary), flush=True)
+        except Exception as exc:
+            failure = {
+                "ok": False,
+                "company_id": str(company_id),
+                "error": str(exc),
+                "traceback": traceback.format_exc(limit=3),
+                "elapsed_seconds": round(time.time() - t0, 3),
+            }
+            failures.append(failure)
+            print(json.dumps(failure), flush=True)
+        finally:
+            hb_stop.set()
+            if hb_thread is not None:
+                hb_thread.join(timeout=1.0)
+
+    run_ids_out = Path(str(args.run_ids_out))
+    _safe_run_ids_write(run_ids_out, run_pairs)
+    final = {
+        "ok": len(failures) == 0,
+        "runs_root": str(runs_root),
+        "run_ids_out": str(run_ids_out),
+        "requested_companies": len(args.companies),
+        "completed_runs": len(run_pairs),
+        "failed_runs": len(failures),
+        "runtime_env": applied_env,
+        "failures": failures,
+        "summaries": summaries,
+    }
+    print(json.dumps(final), flush=True)
+    if str(args.summary_out or "").strip():
+        out_path = Path(str(args.summary_out))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(final, indent=2))
+    return final
+
+
