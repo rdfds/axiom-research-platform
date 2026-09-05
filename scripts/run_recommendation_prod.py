@@ -189,3 +189,27 @@ def _start_heartbeat(
     return stop, th
 
 
+def _apply_runtime_env(args: argparse.Namespace) -> Dict[str, str]:
+    env_map = {
+        "RECOMMENDATION_RUN_TMP_DIR": str(Path(args.runs_root) / "tmp"),
+        "CAUSAL_IMPACT_MODEL_PATH": str(args.causal_model_path),
+        "CAUSAL_ROUTING_CONFIG_PATH": str(args.causal_routing_config_path),
+        "CAUSAL_IMPACT_MODE": str(args.causal_impact_mode),
+        "CAUSAL_MIN_OBJECTIVE_OOS_R2": str(args.causal_min_objective_oos_r2),
+        "CAUSAL_STRICT_QUALITY_FLOOR": str(args.causal_strict_quality_floor),
+        "CAUSAL_STRICT_SUPPORT_FLOOR": str(args.causal_strict_support_floor),
+        "CAUSAL_STRICT_MIN_TRAIN_ROWS": str(args.causal_strict_min_train_rows),
+        "CAUSAL_STRICT_MIN_OOS_R2": str(args.causal_strict_min_oos_r2),
+        "CAUSAL_STRICT_MIN_TREATED_ROWS": str(args.causal_strict_min_treated_rows),
+        "CAUSAL_STRICT_MIN_CONTROL_ROWS": str(args.causal_strict_min_control_rows),
+    }
+    if str(args.causal_action_blocklist_path or "").strip():
+        env_map["CAUSAL_ACTION_BLOCKLIST_PATH"] = str(args.causal_action_blocklist_path)
+    if int(args.precedent_workers or 0) > 0:
+        env_map["RECO_PRECEDENT_WORKERS"] = str(int(args.precedent_workers))
+    for key, value in env_map.items():
+        os.environ[str(key)] = str(value)
+    Path(env_map["RECOMMENDATION_RUN_TMP_DIR"]).mkdir(parents=True, exist_ok=True)
+    return env_map
+
+

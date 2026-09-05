@@ -94,7 +94,7 @@ def build_plan_set(
 
     plans.sort(
         key=lambda item: (
-            -float((item.get("score_components") or {}).get("raw_total_score", item['score']) or 0.0),
+            -float((item.get("score_components") or {}).get("raw_total_score", item.get("score", 0.0)) or 0.0),
             -float(item.get("score", 0.0) or 0.0),
             str(item.get("plan_id", "")),
         )

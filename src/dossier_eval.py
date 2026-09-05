@@ -540,3 +540,21 @@ def _select_review_queue(cases: Sequence[Dict[str, Any]], review_count: int) -> 
     return ranked[: max(0, int(review_count))]
 
 
+def _resolve_expected_posture(
+    *,
+    expected_postures: Dict[str, Any],
+    run_id: str,
+    company_id: str,
+) -> Optional[str]:
+    if not expected_postures:
+        return None
+    for key in (run_id, company_id):
+        if key not in expected_postures:
+            continue
+        value = expected_postures[key]
+        if isinstance(value, dict):
+            text = str(value.get("expected_posture", "") or "").strip()
+            return text or None
+        text = str(value or "").strip()
+        return text or None
+    return None
