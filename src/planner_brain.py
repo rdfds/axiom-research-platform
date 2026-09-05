@@ -178,3 +178,34 @@ def _normalize_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _base_rank_score(candidate: Dict[str, Any], precedent_pack: Dict[str, Any], run: RecommendationRun) -> float:
+    impact_distribution = dict(candidate.get("impact_distribution", {}) or {})
+    weighted_components = _weighted_objective_components(impact_distribution, run)
+    utility = _aggregate_weighted_objectives(weighted_components)
+    pass_probability = float(((candidate.get("feasibility", {}) or {}).get("pass_probability", 0.0) or 0.0))
+    feasibility_factor = _feasibility_factor(pass_probability)
+    precedent_confidence = _precedent_confidence(precedent_pack)
+    confidence = float(candidate.get("evaluation_confidence", 0.0) or 0.0)
+    utility_score = _bounded_signal(utility)
+    strategic_penalty = _action_specific_penalty(candidate=candidate, precedent_pack=precedent_pack)
+    negative_utility_penalty = _negative_utility_penalty(
+        weighted_utility=utility,
+        weighted_components=weighted_components,
+        action_ids=[str(candidate.get("action_id", "") or "")],
+    )
+    status_quo_hurdle = _status_quo_hurdle(
+        weighted_utility=utility,
+        weighted_components=weighted_components,
+        action_ids=[str(candidate.get("action_id", "") or "")],
+        candidates=[candidate],
+    )
+    structural_bonus = _structural_action_bonus(candidate=candidate, precedent_pack=precedent_pack)
+    return round(
+        utility_score
+        * feasibility_factor
+        * max(0.25, 0.55 + (0.45 * confidence))
+        * max(0.25, 0.55 + (0.45 * precedent_confidence)),
+        6,
+    ) - strategic_penalty - negative_utility_penalty - status_quo_hurdle + structural_bonus
+
+

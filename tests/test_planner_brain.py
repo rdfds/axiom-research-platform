@@ -817,3 +817,46 @@ def test_thin_equity_issuance_does_not_dominate_refinancing():
     assert equity_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
 
 
+def test_deleveraging_equity_recap_case_can_rank_ahead_of_refinancing():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.equity_issuance",
+            utility=0.016,
+            risk_reduction=0.072,
+            growth=0.01,
+            rating_preservation=0.055,
+            optionality=0.04,
+            pass_probability=0.9,
+            evaluation_confidence=0.83,
+            precedent_confidence=0.43,
+            params={"amount_usd": 100_000_000.0, "use_of_proceeds": "deleveraging"},
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.016,
+            risk_reduction=0.072,
+            growth=0.006,
+            rating_preservation=0.05,
+            optionality=0.035,
+            pass_probability=0.95,
+            evaluation_confidence=0.83,
+            precedent_confidence=0.33,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert plan_set["plans"][0]["steps"][0]["action_id"] == "capital_structure.equity_issuance"
+    top_plan = plan_set["plans"][0]
+    assert top_plan["score_components"]["structural_bonus"] >= 0.02
+    assert top_plan["score_components"]["status_quo_hurdle"] == 0.0
+
+
