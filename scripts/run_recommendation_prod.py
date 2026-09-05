@@ -161,3 +161,31 @@ def _keyed_snapshot_path(snapshot_root: Path, as_of: str, company_id: str) -> Pa
     return snapshot_root / "keyed" / f"as_of_date={as_of}" / f"company_id={company_id}.json"
 
 
+def _start_heartbeat(
+    company_id: str,
+    start_ts: float,
+    every_seconds: float,
+) :
+    stop = threading.Event()
+    if every_seconds <= 0:
+        return stop, None
+
+    def _run() -> None:
+        while not stop.wait(every_seconds):
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "event": "company_heartbeat",
+                        "company_id": company_id,
+                        "elapsed_seconds": round(time.time() - start_ts, 3),
+                    }
+                ),
+                flush=True,
+            )
+
+    th = threading.Thread(target=_run, daemon=True)
+    th.start()
+    return stop, th
+
+
