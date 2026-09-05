@@ -209,3 +209,30 @@ def _base_rank_score(candidate: Dict[str, Any], precedent_pack: Dict[str, Any], 
     ) - strategic_penalty - negative_utility_penalty - status_quo_hurdle + structural_bonus
 
 
+def _build_dependency_graph(node_by_action: Dict[str, PlannerNode], registry: Any) -> ActionDependencyGraph:
+    available_actions = set(node_by_action)
+    edges: List[DependencyEdge] = []
+    seen: set[Tuple[str, str, str]] = set()
+    for action_id in sorted(available_actions):
+        for raw in registry.fetch_planner_dependency_edges(action_id):
+            src = str(raw.get("source_action") or "")
+            dst = str(raw.get("target_action") or "")
+            rel = str(raw.get("relationship_type") or "")
+            key = (src, dst, rel)
+            if not src or not dst or dst not in available_actions or key in seen:
+                continue
+            seen.add(key)
+            edges.append(
+                DependencyEdge(
+                    source_action=src,
+                    target_action=dst,
+                    relationship_type=rel,
+                    condition=raw.get("condition"),
+                    strength=raw.get("strength"),
+                    explanation=raw.get("explanation"),
+                    original_rule_type=raw.get("original_rule_type"),
+                )
+            )
+    return ActionDependencyGraph(nodes=sorted(available_actions), edges=sorted(edges, key=lambda e: (e.source_action, e.target_action, e.relationship_type)))
+
+

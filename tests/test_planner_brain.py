@@ -984,3 +984,42 @@ def test_weak_stock_split_default_does_not_beat_financing_action():
     assert split_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
 
 
+def test_strong_restructuring_case_can_still_rank_first():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "restructuring.working_capital_program",
+            utility=0.08,
+            risk_reduction=0.12,
+            growth=0.03,
+            rating_preservation=0.09,
+            optionality=0.02,
+            pass_probability=0.9,
+            evaluation_confidence=0.81,
+            precedent_confidence=0.42,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.03,
+            risk_reduction=0.06,
+            growth=0.01,
+            rating_preservation=0.04,
+            optionality=0.01,
+            pass_probability=0.95,
+            evaluation_confidence=0.83,
+            precedent_confidence=0.3,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert plan_set["plans"][0]["steps"][0]["action_id"] == "restructuring.working_capital_program"
+
+
