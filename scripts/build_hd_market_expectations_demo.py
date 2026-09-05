@@ -32,3 +32,19 @@ def copy_sample_inputs(sample_dir: Path, build_dir: Path) -> None:
         shutil.copy2(src, build_dir / runtime_name)
 
 
+def build_demo(sample_dir: Path, build_dir: Path) :
+    root = repo_root()
+    copy_sample_inputs(sample_dir, build_dir)
+
+    env = os.environ.copy()
+    env["AXIOM_MNA_INSIGHTS_DIR"] = str(build_dir)
+
+    subprocess.run(
+        [sys.executable, str(root / "scripts" / "build_valuation_action_bridge.py")],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+    return build_dir / "valuation_action_bridge.html"
+
+

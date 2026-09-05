@@ -50,3 +50,24 @@ def get_market_provider():
     return MarketDataProvider()
 
 
+@st.cache_data(ttl=60)
+def fetch_quote(ric: str) -> Dict:
+    return get_market_provider().get_quote(ric)
+
+
+@st.cache_data(ttl=60)
+def fetch_intraday(ric: str) -> Dict:
+    return get_market_provider().get_intraday_quote(ric)
+
+
+@st.cache_data
+def load_ric_map():
+    """Load RIC map for ticker -> RIC suggestions."""
+    path = Path("data/refinitiv/ric_to_cusip_map.parquet")
+    if not path.exists():
+        return pd.DataFrame(columns=["ric", "ticker"])
+    df = pd.read_parquet(path, columns=["ric", "ticker"])
+    df["ticker"] = df["ticker"].astype("string").str.upper().str.strip()
+    return df
+
+
