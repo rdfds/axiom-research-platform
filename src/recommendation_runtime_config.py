@@ -67,3 +67,19 @@ def _safe_int(raw: Any) -> Optional[int]:
     return int(val)
 
 
+def _path_digest(path_value: str) -> Dict[str, Any]:
+    raw = str(path_value or "").strip()
+    out: Dict[str, Any] = {"path": raw or None, "exists": False, "sha256": None}
+    if not raw:
+        return out
+    p = Path(raw)
+    out["exists"] = p.exists()
+    if not p.exists() or not p.is_file():
+        return out
+    try:
+        out["sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
+    except Exception:
+        out["sha256"] = None
+    return out
+
+
