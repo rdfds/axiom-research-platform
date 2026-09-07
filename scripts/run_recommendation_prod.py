@@ -400,3 +400,8 @@ def run_production_batch(
     return final
 
 
+def main() -> None:
+    args = _parse_args()
+    run_production_batch(args)
+
+

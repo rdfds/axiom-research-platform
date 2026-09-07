@@ -123,3 +123,59 @@ def test_create_recommendation_run_normalizes_objectives_and_freezes_snapshot(tm
     assert event_types == ["run_created", "snapshot_frozen"]
 
 
+def test_create_recommendation_run_persists_runtime_config_metadata(tmp_path: Path, monkeypatch):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    model_path = tmp_path / "model.json"
+    model_path.write_text(json.dumps({"version": "causal_impact_model_v2"}))
+    blocklist_path = tmp_path / "blocklist.txt"
+    blocklist_path.write_text("capital_return.special_dividend\n")
+
+    monkeypatch.setenv("CAUSAL_IMPACT_MODEL_PATH", str(model_path))
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST_PATH", str(blocklist_path))
+    monkeypatch.setenv("CAUSAL_IMPACT_MODE", "None")
+    monkeypatch.setenv("CAUSAL_ACTION_BLOCKLIST", "none")
+    monkeypatch.setenv("CAUSAL_STRICT_QUALITY_FLOOR", "0.10")
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=RecommendationRunStore(root=tmp_path / "runs"),
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+        planner_random_seed=11,
+    )
+
+    run = RecommendationRunStore(root=tmp_path / "runs").get_run(run_id)
+    assert run is not None
+    cfg = dict((run.metadata or {}).get("config") or {})
+    assert cfg["create"]["snapshot_root"] == str(snapshot_root)
+    assert cfg["create"]["planner_random_seed"] == 11
+    assert cfg["runtime_env"]["causal"]["model"]["path"] == str(model_path)
+    assert cfg["runtime_env"]["causal"]["mode"] == "blend"
+    assert "none" not in cfg["runtime_env"]["causal"]["blocklist"]["entries"]
+    assert "capital_return.special_dividend" in cfg["runtime_env"]["causal"]["blocklist"]["entries"]
+
+
+def test_snapshot_hash_immutable_after_creation(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    store = RecommendationRunStore(root=tmp_path / "runs")
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+    run = store.get_run(run_id)
+    assert run is not None
+
+    run.frozen_state.snapshot_hash = "tampered"
+    with pytest.raises(ValueError, match="snapshot_hash"):
+        store.update_run(run)
+
+

@@ -83,3 +83,37 @@ def _path_digest(path_value: str) -> Dict[str, Any]:
     return out
 
 
+def _parse_action_tokens(text: str) -> list[str]:
+    raw = str(text or "").replace("\n", ",")
+    out: list[str] = []
+    for token in raw.split(","):
+        value = str(token or "").strip().lower()
+        if not value:
+            continue
+        if value in {"none", "null"}:
+            continue
+        if value not in out:
+            out.append(value)
+    return out
+
+
+def _load_action_tokens_from_file(path_value: str) -> list[str]:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return []
+    p = Path(raw)
+    if not p.exists():
+        return []
+    return _parse_action_tokens(p.read_text())
+
+
+def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(base or {})
+    for key, value in dict(patch or {}).items():
+        if isinstance(out.get(key), dict) and isinstance(value, dict):
+            out[key] = _deep_merge(dict(out.get(key) or {}), dict(value or {}))
+        else:
+            out[key] = value
+    return out
+
+

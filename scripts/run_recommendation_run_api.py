@@ -96,3 +96,14 @@ def _pick(body: Dict[str, Any], key: str, default: Any) -> Any:
     return body[key] if key in body else default
 
 
+def _parse_bool_flag(raw: str, default: bool = False) -> bool:
+    v = str(raw or "").strip().lower()
+    if not v:
+        return bool(default)
+    if v in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+
