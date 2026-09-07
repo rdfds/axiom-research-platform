@@ -107,3 +107,69 @@ def _parse_bool_flag(raw: str, default: bool = False) -> bool:
     return bool(default)
 
 
+def _coerce_action_ids(raw: Any) -> Optional[List[str]]:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        val = raw.strip()
+        return [val] if val else None
+    if isinstance(raw, list):
+        out = [str(x).strip() for x in raw if str(x).strip()]
+        return out or None
+    raise ValueError("action_ids must be string or list")
+
+
+def _canonical_request_signature(
+    company_id: str,
+    as_of: str,
+    action_ids: Optional[List[str]],
+    action_type: Optional[str],
+    objectives: Optional[Dict[str, Any]],
+    constraints: Optional[Dict[str, Any]],
+    scenario: Optional[Dict[str, Any]],
+    max_candidates: int,
+    min_candidates_target: int,
+    precedent_top_k: int,
+    strict_evidence: bool,
+    top_plans: int,
+) -> str:
+    payload = {
+        "company_id": str(company_id),
+        "as_of": str(as_of),
+        "action_ids": sorted(action_ids or []),
+        "action_type": action_type,
+        "objectives": objectives or {},
+        "constraints": constraints or {},
+        "scenario": scenario or {},
+        "max_candidates": int(max_candidates),
+        "min_candidates_target": int(min_candidates_target),
+        "precedent_top_k": int(precedent_top_k),
+        "strict_evidence": bool(strict_evidence),
+        "top_plans": int(top_plans),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _read_json_if_exists(path: str | Path) -> Optional[Dict[str, Any]]:
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        obj = json.loads(p.read_text())
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _audit_event_to_dict(event: Any) -> Dict[str, Any]:
+    if isinstance(event, dict):
+        return dict(event)
+    return {
+        "event_id": str(getattr(event, "event_id", "")),
+        "timestamp": str(getattr(event, "timestamp", "")),
+        "event_type": str(getattr(event, "event_type", "")),
+        "details": dict(getattr(event, "details", {}) or {}),
+    }
+
+
