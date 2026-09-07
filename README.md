@@ -47,3 +47,22 @@ Corporate-finance decisions fail quietly when the data is not aligned to the dec
 4. **Honest uncertainty**: thin precedent or action families fall back to broader evidence instead of receiving false precision.
 5. **Decision translation**: model output becomes sizing guidance, objections, regret cases, and monitoring triggers rather than a chart with no action.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    A["Market, financial, filing, estimate, deal, and action data"] --> B["As-of data plane"]
+    B --> C["CompanyStateSnapshot"]
+    C --> D["Valuation driver surface"]
+    C --> E["Precedent retrieval"]
+    C --> F["Action-impact evidence"]
+    D --> G["Market-implied expectations"]
+    E --> H["EvidencePack"]
+    F --> H
+    G --> H
+    H --> I["CFO decision surface"]
+    I --> J["Recommendation and monitoring contract"]
+```
+
+Read the system map in [docs/architecture.md](docs/architecture.md).
+
