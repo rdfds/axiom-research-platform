@@ -200,3 +200,20 @@ def test_model_versions_are_immutable(tmp_path: Path):
         store.update_run(run)
 
 
+def test_data_cutoff_filter_removes_forward_rows():
+    cutoff = DataCutoffSpec(
+        published_at_lte="2026-02-28T00:00:00+00:00",
+        ingested_at_lte="2026-02-28T00:00:00+00:00",
+    )
+    df = pd.DataFrame(
+        [
+            {"x": 1, "published_at": "2026-02-27T00:00:00+00:00", "ingested_at": "2026-02-27T00:00:00+00:00"},
+            {"x": 2, "published_at": "2026-03-01T00:00:00+00:00", "ingested_at": "2026-02-27T00:00:00+00:00"},
+            {"x": 3, "published_at": "2026-02-27T00:00:00+00:00", "ingested_at": "2026-03-01T00:00:00+00:00"},
+        ]
+    )
+
+    got = enforce_data_cutoff(df, cutoff)
+    assert got["x"].tolist() == [1]
+
+
