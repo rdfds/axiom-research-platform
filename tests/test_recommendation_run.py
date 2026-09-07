@@ -179,3 +179,24 @@ def test_snapshot_hash_immutable_after_creation(tmp_path: Path):
         store.update_run(run)
 
 
+def test_model_versions_are_immutable(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    store = RecommendationRunStore(root=tmp_path / "runs")
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+    run = store.get_run(run_id)
+    assert run is not None
+
+    run.model_versions.planner_model_version = "planner_model_v99"
+    with pytest.raises(ValueError, match="Model versions are immutable"):
+        store.update_run(run)
+
+
