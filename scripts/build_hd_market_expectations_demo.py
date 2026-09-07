@@ -32,7 +32,7 @@ def copy_sample_inputs(sample_dir: Path, build_dir: Path) -> None:
         shutil.copy2(src, build_dir / runtime_name)
 
 
-def build_demo(sample_dir: Path, build_dir: Path) :
+def build_demo(sample_dir: Path, build_dir: Path) -> Path:
     root = repo_root()
     copy_sample_inputs(sample_dir, build_dir)
 
