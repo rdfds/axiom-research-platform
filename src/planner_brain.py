@@ -236,3 +236,109 @@ def _build_dependency_graph(node_by_action: Dict[str, PlannerNode], registry: An
     return ActionDependencyGraph(nodes=sorted(available_actions), edges=sorted(edges, key=lambda e: (e.source_action, e.target_action, e.relationship_type)))
 
 
+def _search_sequences(
+    run: RecommendationRun,
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+    beam_width: int,
+    max_depth: int,
+) -> List[Tuple[str, ...]]:
+    seeds = _initial_sequences(node_by_action=node_by_action, dep_graph=dep_graph, max_depth=max_depth)
+    ranked = _rank_sequences(run=run, sequences=seeds, node_by_action=node_by_action, dep_graph=dep_graph)
+    beam = [seq for seq, _ in ranked[:beam_width]]
+    all_sequences = set(beam)
+
+    for _ in range(1, max_depth):
+        expanded: set[Tuple[str, ...]] = set()
+        for seq in beam:
+            for action_id in sorted(node_by_action):
+                if action_id in seq:
+                    continue
+                if not _can_append(seq=seq, action_id=action_id, dep_graph=dep_graph):
+                    continue
+                expanded.add(seq + (action_id,))
+        if not expanded:
+            break
+        ranked = _rank_sequences(run=run, sequences=expanded, node_by_action=node_by_action, dep_graph=dep_graph)
+        beam = [seq for seq, _ in ranked[:beam_width]]
+        all_sequences.update(beam)
+
+    return [seq for seq, _ in _rank_sequences(run=run, sequences=all_sequences, node_by_action=node_by_action, dep_graph=dep_graph)]
+
+
+def _initial_sequences(node_by_action: Dict[str, PlannerNode], dep_graph: ActionDependencyGraph, max_depth: int) -> set[Tuple[str, ...]]:
+    sequences: set[Tuple[str, ...]] = {(action_id,) for action_id in node_by_action}
+    templates = PlaybookRegistry.default().templates
+    available = set(node_by_action)
+
+    for template in templates:
+        actions = [action_id for action_id in template.action_sequence_template if action_id in available]
+        for start in range(len(actions)):
+            window = actions[start : start + max_depth]
+            for length in range(2, len(window) + 1):
+                seq = tuple(window[:length])
+                if _sequence_is_valid(seq, dep_graph):
+                    sequences.add(seq)
+
+    for edge in dep_graph.edges:
+        if edge.relationship_type == "unlocks":
+            seq = (edge.source_action, edge.target_action)
+        elif edge.relationship_type in {"requires", "recommended_after"}:
+            seq = (edge.target_action, edge.source_action)
+        else:
+            continue
+        if len(seq) <= max_depth and _sequence_is_valid(seq, dep_graph):
+            sequences.add(seq)
+    return sequences
+
+
+def _rank_sequences(
+    run: RecommendationRun,
+    sequences: Iterable[Tuple[str, ...]],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+) -> List[Tuple[Tuple[str, ...], float]]:
+    ranked: List[Tuple[Tuple[str, ...], float]] = []
+    for seq in sequences:
+        score = _score_sequence_prefix(run=run, sequence=seq, node_by_action=node_by_action, dep_graph=dep_graph)
+        ranked.append((tuple(seq), score))
+    ranked.sort(key=lambda item: (-item[1], item[0]))
+    return ranked
+
+
+def _score_sequence_prefix(
+    run: RecommendationRun,
+    sequence: Sequence[str],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+) -> float:
+    utilities = []
+    pass_probs = []
+    confidences = []
+    for action_id in sequence:
+        node = node_by_action[action_id]
+        utilities.append(_weighted_objective_sum(node.candidate.get("impact_distribution", {}), run))
+        pass_probs.append(float(((node.candidate.get("feasibility", {}) or {}).get("pass_probability", 0.0) or 0.0)))
+        confidences.append(_precedent_confidence(node.precedent_pack))
+
+    expected_utility = _bounded_signal(sum(utilities))
+    feasibility_chain = _feasibility_factor(min(pass_probs) if pass_probs else 0.0)
+    confidence_factor = sum(confidences) / len(confidences) if confidences else 0.0
+    ordering_bonus = _transition_bonus(sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph)
+    order_penalty = _ordering_penalty(sequence=sequence, dep_graph=dep_graph)
+    structural_bonus = sum(
+        _structural_action_bonus(
+            candidate=node_by_action[action_id].candidate,
+            precedent_pack=node_by_action[action_id].precedent_pack,
+        )
+        for action_id in sequence
+    )
+    return round(
+        (expected_utility * max(0.2, feasibility_chain) * max(0.2, 0.6 + (0.4 * confidence_factor)))
+        + ordering_bonus
+        + structural_bonus
+        - order_penalty,
+        6,
+    )
+
+

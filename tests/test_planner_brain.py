@@ -1023,3 +1023,45 @@ def test_strong_restructuring_case_can_still_rank_first():
     assert plan_set["plans"][0]["steps"][0]["action_id"] == "restructuring.working_capital_program"
 
 
+def test_thin_restructuring_default_does_not_beat_capital_action():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "restructuring.working_capital_program",
+            utility=0.017,
+            risk_reduction=0.0,
+            growth=0.0,
+            rating_preservation=0.0,
+            optionality=0.0,
+            pass_probability=0.95,
+            evaluation_confidence=0.82,
+            precedent_confidence=0.41,
+        ),
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            utility=0.04,
+            risk_reduction=0.03,
+            growth=0.02,
+            rating_preservation=0.03,
+            optionality=0.01,
+            pass_probability=0.95,
+            evaluation_confidence=0.83,
+            precedent_confidence=0.31,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert plan_set["plans"][0]["steps"][0]["action_id"] == "capital_structure.new_debt_issuance"
+    restructuring_plan = next(plan for plan in plan_set["plans"] if plan["steps"][0]["action_id"] == "restructuring.working_capital_program")
+    assert restructuring_plan["score_components"]["action_specific_penalty"] >= 0.1
+    assert restructuring_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
+
+

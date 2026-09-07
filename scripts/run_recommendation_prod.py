@@ -405,3 +405,5 @@ def main() -> None:
     run_production_batch(args)
 
 
+if __name__ == "__main__":
+    main()
