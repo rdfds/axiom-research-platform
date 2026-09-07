@@ -46,3 +46,16 @@ Then select `HD`, or open directly:
 open ./data/mna_insights/valuation_action_bridge.html#HD
 ```
 
+## Sample Inputs
+
+The rebuild uses committed sample files:
+
+```text
+examples/hd_market_expectations/valuation_driver_data.sample.json
+examples/hd_market_expectations/expectation_driver_history.sample.json
+examples/hd_market_expectations/expectation_evidence_cohort.sample.json
+examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_energy.sample.md
+```
+
+The sample includes only the HD company payload plus aggregate cohort evidence needed by the visualization. The broader local artifact contains other company payloads and generated workspace outputs that are intentionally omitted here.
+
