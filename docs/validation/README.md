@@ -63,3 +63,45 @@ Interpretation:
 - The placebo check is important: shuffled gaps do not produce the same MAE lift.
 - The model should describe the residual bucket honestly as "outside measured financial drivers," not as a bug.
 
+## Valuation Driver Surface
+
+The public company-state and valuation examples are documented in:
+
+- `docs/company_state.md`
+- `docs/signal_taxonomy.md`
+- `src/company_state_builder.py`
+- `src/company_state_validation.py`
+
+Native display contract:
+
+- P/E display can route driver weights through P/Revenue.
+- EV/EBITDA display can route driver weights through EV/Revenue.
+- Native fair multiples are translated algebraically from the value surface.
+- Driver weights must sum to 100% and be sorted by modeled impact.
+
+Named-company validation snapshot:
+
+| Ticker | Display | Weight surface | Grade | R2 | Rank IC | Top driver |
+|---|---|---|---|---:|---:|---|
+| NKE | P/E | P/Revenue | strong | 0.482 | 0.748 | EPS growth |
+| AAPL | P/E | P/Revenue | strong | 0.490 | 0.673 | FCF margin |
+| GOOGL | P/E | P/Revenue | strong | 0.666 | 0.794 | Revenue growth |
+| MSFT | P/E | P/Revenue | strong | 0.670 | 0.829 | Revenue growth |
+| AMZN | EV/EBITDA | EV/Revenue | strong | 0.704 | 0.755 | EPS growth |
+| CAT | EV/EBITDA | EV/Revenue | strong | 0.429 | 0.654 | EBITDA margin |
+| HD | P/E | P/Revenue | strong | 0.573 | 0.786 | Revenue growth |
+| PG | P/E | P/Revenue | strong | 0.582 | 0.807 | EPS growth |
+
+Historical v2 backtest:
+
+| Target | N | Weighted IC | Equal-weight IC | Weighted hit rate | Equal hit rate |
+|---|---:|---:|---:|---:|---:|
+| Business value | 745 | 0.137 | 0.095 | 55.6% | 55.4% |
+| Equity value | 745 | 0.182 | 0.160 | 59.4% | 59.1% |
+
+Interpretation:
+
+- The driver system is strongest as an explanatory value-surface model.
+- It should not be described as a causal recommendation engine.
+- The forward gap model is the separate layer that asks whether the market is pricing future driver movement.
+

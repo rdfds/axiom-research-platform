@@ -27,3 +27,25 @@ It is not designed to autonomously trade, provide investment advice, or establis
 | Action evidence | Observed actions, outcomes, and controls | Quality-gated evidence scores; causal language is withheld when identification is insufficient |
 | Decision contract | Model outputs and evidence packs | Recommendation, sizing, objections, regret cases, and monitoring triggers |
 
+## Reproducible benchmark
+
+The committed benchmark evaluates a forward-gap regularization policy. It uses four walk-forward cutoffs, two-year test windows, and three shuffled-placebo runs. The selected global lambda is `0.5`.
+
+| Measure | Result |
+|---|---:|
+| Successful driver/horizon evaluations | 912 |
+| Candidate configurations attempted | 84 |
+| Walk-forward training cutoffs | 4 |
+| Placebo runs per validation split | 3 |
+| Actual mean MAE improvement | 0.007413 |
+| Lift over shuffled placebo | 0.007885 |
+| Evaluations where actual beat placebo | 63.49% |
+
+These values are parsed from the committed validation report into [`results/public_benchmark.json`](results/public_benchmark.json). CI fails if the report and artifact diverge:
+
+```bash
+python scripts/build_public_benchmark.py --check
+```
+
+The benchmark supports a narrow claim: the selected forward-gap policy improved the reported error measure more often than its shuffled placebo under this evaluation design. It does not by itself establish economic materiality, future performance, or causal identification.
+
