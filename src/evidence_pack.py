@@ -54,3 +54,15 @@ class SignalDetail:
     evidence_refs: Dict[str, List[str]]  # warehouse_rows, doc_chunks
 
 
+@dataclass
+class SignalProfileV2:
+    """Enhanced signal profile with full audit trail."""
+    company_id: str
+    company_name: str
+    as_of_time: str
+    signal_schema_version: str
+    signals: Dict[str, SignalDetail]
+    composite_score: float
+    vector: List[float]  # For similarity computation
+
+

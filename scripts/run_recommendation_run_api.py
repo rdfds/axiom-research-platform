@@ -173,3 +173,31 @@ def _audit_event_to_dict(event: Any) -> Dict[str, Any]:
     }
 
 
+def _find_cached_completed_run(
+    store: RecommendationRunStore,
+    company_id: str,
+    as_of: str,
+    request_signature: str,
+) -> Optional[Dict[str, Any]]:
+    runs = store.list_runs(company_id=company_id, as_of_time=as_of, status="completed")
+    for run in reversed(runs):
+        md = run.metadata if isinstance(run.metadata, dict) else {}
+        if str(md.get("request_signature", "")) != str(request_signature):
+            continue
+        artifacts = md.get("artifacts", {}) if isinstance(md.get("artifacts", {}), dict) else {}
+        rec_path = artifacts.get("RecommendationPackage")
+        if not rec_path:
+            continue
+        rec = _read_json_if_exists(rec_path)
+        if rec is None:
+            continue
+        return {
+            "run_id": run.run_id,
+            "status": run.status,
+            "artifacts": artifacts,
+            "recommendation_package": rec,
+            "created_at": run.created_at,
+        }
+    return None
+
+
