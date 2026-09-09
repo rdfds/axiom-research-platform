@@ -217,3 +217,42 @@ def test_data_cutoff_filter_removes_forward_rows():
     assert got["x"].tolist() == [1]
 
 
+def test_hard_constraints_never_violated_in_plan():
+    constraints = ConstraintSet(
+        hard_constraints=[
+            Constraint(
+                constraint_type="no_equity_issuance",
+                parameters={},
+                source="user_input",
+                priority="hard",
+            ),
+            Constraint(
+                constraint_type="forbidden_action_type",
+                parameters={"action_id": "capital_structure.equity_issuance"},
+                source="user_input",
+                priority="hard",
+            ),
+            Constraint(
+                constraint_type="required_action_type",
+                parameters={"action_id": "capital_structure.refinancing"},
+                source="user_input",
+                priority="hard",
+            ),
+        ]
+    )
+
+    violating_plan = [
+        {"action_id": "capital_structure.equity_issuance", "action_type": "capital_structure", "params": {}},
+        {"action_id": "capital_return.open_market_buyback", "action_type": "capital_return", "params": {}},
+    ]
+    violations = validate_plan_hard_constraints(violating_plan, constraints)
+    assert len(violations) >= 2
+
+    valid_plan = [
+        {"action_id": "capital_structure.refinancing", "action_type": "capital_structure", "params": {}},
+        {"action_id": "capital_return.open_market_buyback", "action_type": "capital_return", "params": {}},
+    ]
+    no_violations = validate_plan_hard_constraints(valid_plan, constraints)
+    assert no_violations == []
+
+
