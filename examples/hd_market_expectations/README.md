@@ -59,3 +59,23 @@ examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_en
 
 The sample includes only the HD company payload plus aggregate cohort evidence needed by the visualization. The broader local artifact contains other company payloads and generated workspace outputs that are intentionally omitted here.
 
+## Full Generated Inputs
+
+The original full workspace demo was built from:
+
+```text
+./data/mna_insights/valuation_driver_data.json
+```
+
+The current builder is:
+
+```text
+scripts/build_valuation_action_bridge.py
+```
+
+The upstream company/data builder is:
+
+```text
+scripts/build_curated_company_valuation_drivers.py
+```
+

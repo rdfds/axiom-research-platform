@@ -50,3 +50,20 @@ A CFO needs to know:
 
 The decision surface turns model artifacts into that language.
 
+## Example Reads
+
+The sample includes a Home Depot M&A decision summary where the system:
+
+- selects a digestible tuck-in size
+- identifies where deal size starts becoming dangerous
+- compares M&A against buyback, debt issuance, dividends, and other actions
+- flags evidence conflicts when the historical neighborhood challenges the model direction
+
+The dossier excerpt demonstrates a separate board-ready recommendation contract:
+
+- recommendation thesis
+- sizing guardrails
+- regret framing
+- monitoring triggers
+- supporting evidence and precedent confidence
+
