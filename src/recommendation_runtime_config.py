@@ -117,3 +117,7 @@ def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def merge_metadata_patch(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    return _deep_merge(dict(base or {}), dict(patch or {}))
+
+
