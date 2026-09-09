@@ -26,3 +26,31 @@ def _required(pattern: str, text: str, label: str) -> str:
     return match.group(1)
 
 
+def _parse_placebo_rows(text: str) -> list[dict[str, float]]:
+    section = _required(
+        r"## Placebo Check\n\n([\s\S]*?)(?=\n## )",
+        text,
+        "placebo table",
+    )
+    rows: list[dict[str, float]] = []
+    for line in section.splitlines():
+        if not line.startswith("|") or "---" in line or "Lambda" in line:
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) != 5:
+            continue
+        values = [float(cell) for cell in cells]
+        rows.append(
+            {
+                "lambda": values[0],
+                "actual_mean_mae_improvement": values[1],
+                "placebo_mean_mae_improvement": values[2],
+                "actual_minus_placebo": values[3],
+                "actual_beats_placebo_rate": values[4],
+            }
+        )
+    if not rows:
+        raise ValueError(f"Could not parse placebo rows from {SOURCE_PATH}")
+    return rows
+
+

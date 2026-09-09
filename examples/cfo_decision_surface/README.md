@@ -35,3 +35,18 @@ The dossier excerpt includes:
 - `supporting_evidence`
 - `recommendation_contract`
 
+## Why This Matters
+
+This is the application layer. It proves the system is not just producing scores.
+
+A CFO needs to know:
+
+- what action is recommended
+- why now
+- how large it should be
+- what evidence supports it
+- what could go wrong
+- when to stop or revisit the plan
+
+The decision surface turns model artifacts into that language.
+

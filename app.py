@@ -71,3 +71,27 @@ def load_ric_map():
     return df
 
 
+def pick_best_ric(candidates: List[str]) -> Optional[str]:
+    def rank_ric(ric: str) :
+        if not isinstance(ric, str):
+            return 99
+        ric = ric.upper()
+        if ric.endswith(".N"):
+            return 0
+        if ric.endswith(".OQ"):
+            return 1
+        if ric.endswith(".Q"):
+            return 2
+        if ric.endswith(".A"):
+            return 3
+        if ric.endswith(".K"):
+            return 4
+        if ric.endswith(".P"):
+            return 5
+        return 9
+
+    if not candidates:
+        return None
+    return sorted(candidates, key=rank_ric)[0]
+
+
