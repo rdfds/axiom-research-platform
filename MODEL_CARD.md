@@ -49,3 +49,13 @@ python scripts/build_public_benchmark.py --check
 
 The benchmark supports a narrow claim: the selected forward-gap policy improved the reported error measure more often than its shuffled placebo under this evaluation design. It does not by itself establish economic materiality, future performance, or causal identification.
 
+## Evaluation design
+
+- **Temporal integrity:** training cutoffs precede fixed two-year test windows; company-state contracts reject incompatible timing and provenance.
+- **Baselines and placebos:** forward-gap claims are compared with an unregularized baseline and within-panel shuffled placebos.
+- **Retrieval evaluation:** repository tests cover ranking calibration, learned quality weights, head-to-head evaluation, and fallback behavior.
+- **Product contracts:** orchestration, dossier evaluation, and example-contract tests check that model evidence survives into deterministic downstream output.
+- **Reproducibility:** the repository contract runs entirely from committed fixtures without paid data-provider access.
+
+See [`docs/validation/README.md`](docs/validation/README.md) for the broader validation inventory.
+
