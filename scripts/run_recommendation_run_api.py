@@ -201,3 +201,230 @@ def _find_cached_completed_run(
     return None
 
 
+class _WarmRuntime:
+    def __init__(self, snapshot_cache_size: int = 512, max_workers: int = 2) -> None:
+        self._registry = None
+        self.snapshot_cache_size = int(max(8, snapshot_cache_size))
+        self._snapshot_cache: Dict[Tuple[str, str, str, str, str], Dict[str, Any]] = {}
+        self._aliases_cache: Dict[Tuple[str, str, str], List[str]] = {}
+        self._executor = ThreadPoolExecutor(max_workers=max(1, int(max_workers)))
+        self._jobs: Dict[str, Future] = {}
+        self._jobs_meta: Dict[str, Dict[str, Any]] = {}
+        self._lock = Lock()
+        self._execute_run_fn: Optional[Callable[..., Dict[str, Any]]] = None
+        self._create_and_execute_run_fn: Optional[Callable[..., Dict[str, Any]]] = None
+        self._warmup_meta: Dict[str, Any] = {"state": "idle"}
+        self._warmup_thread: Optional[Thread] = None
+
+    @property
+    def registry(self):
+        if self._registry is None:
+            self._registry = _build_default_registry()
+        return self._registry
+
+    @staticmethod
+    def _entity_version(path: str | Path) -> str:
+        p = Path(path)
+        if not p.exists():
+            return "missing"
+        st = p.stat()
+        return f"{st.st_mtime_ns}:{st.st_size}"
+
+    def _cache_put_snapshot(self, key: Tuple[str, str, str, str, str], value: Dict[str, Any]) -> None:
+        self._snapshot_cache[key] = value
+        if len(self._snapshot_cache) <= self.snapshot_cache_size:
+            return
+        oldest_key = next(iter(self._snapshot_cache.keys()))
+        self._snapshot_cache.pop(oldest_key, None)
+
+    def _aliases_for(self, company_id: str, entity_identifier_path: str | Path) -> List[str]:
+        _, _, snapshot_company_aliases, _ = _recommendation_run_bindings()
+        path = str(entity_identifier_path)
+        version = self._entity_version(path)
+        key = (path, version, str(company_id))
+        if key in self._aliases_cache:
+            return list(self._aliases_cache[key])
+        aliases = snapshot_company_aliases(str(company_id), Path(path))
+        self._aliases_cache[key] = list(aliases)
+        return list(aliases)
+
+    def build_snapshot_loader(
+        self,
+        snapshot_root: Optional[str | Path],
+        snapshot_path: Optional[str | Path],
+        entity_identifier_path: str | Path,
+    ) -> Callable[[str, datetime], Dict[str, Any]]:
+        snap_root = Path(snapshot_root) if snapshot_root else None
+        snap_path = Path(snapshot_path) if snapshot_path else None
+        snap_root_s = str(snap_root) if snap_root else ""
+        snap_path_s = str(snap_path) if snap_path else ""
+        ent_path_s = str(entity_identifier_path)
+
+        def _loader(company_id: str, as_of_time: datetime) -> Dict[str, Any]:
+            _, resolve_snapshot, _, _ = _recommendation_run_bindings()
+            key = (
+                str(company_id),
+                as_of_time.strftime("%Y-%m-%d"),
+                snap_root_s,
+                snap_path_s,
+                self._entity_version(ent_path_s),
+            )
+            cached = self._snapshot_cache.get(key)
+            if cached is not None:
+                return dict(cached)
+
+            aliases = self._aliases_for(company_id, ent_path_s)
+            snap = resolve_snapshot(
+                company_id=str(company_id),
+                as_of_time=as_of_time,
+                snapshot_root=snap_root,
+                snapshot_path=snap_path,
+                snapshot_builder=None,
+                snapshot_loader=None,
+                aliases=aliases,
+            )
+            self._cache_put_snapshot(key, dict(snap))
+            return dict(snap)
+
+        return _loader
+
+    def _ensure_orchestrator(self) -> None:
+        if self._execute_run_fn is not None and self._create_and_execute_run_fn is not None:
+            return
+        from src.recommendation_run_orchestrator import (  # lazy import for faster API boot
+            create_and_execute_recommendation_run,
+            execute_recommendation_run,
+        )
+
+        self._execute_run_fn = execute_recommendation_run
+        self._create_and_execute_run_fn = create_and_execute_recommendation_run
+
+    def execute_run_fn(self) -> Callable[..., Dict[str, Any]]:
+        self._ensure_orchestrator()
+        assert self._execute_run_fn is not None
+        return self._execute_run_fn
+
+    def create_and_execute_run_fn(self) -> Callable[..., Dict[str, Any]]:
+        self._ensure_orchestrator()
+        assert self._create_and_execute_run_fn is not None
+        return self._create_and_execute_run_fn
+
+    def submit_execution(
+        self,
+        run_id: str,
+        exec_fn: Callable[..., Dict[str, Any]],
+        exec_kwargs: Dict[str, Any],
+    ) -> None:
+        with self._lock:
+            if run_id in self._jobs and not self._jobs[run_id].done():
+                return
+
+            self._jobs_meta[run_id] = {"state": "queued", "submitted_at": _now_iso()}
+
+            def _runner() -> Dict[str, Any]:
+                with self._lock:
+                    self._jobs_meta[run_id] = {"state": "running", "started_at": _now_iso()}
+                try:
+                    summary = exec_fn(**exec_kwargs)
+                    with self._lock:
+                        self._jobs_meta[run_id] = {
+                            "state": "completed",
+                            "completed_at": _now_iso(),
+                            "summary": summary,
+                        }
+                    return summary
+                except Exception as exc:
+                    with self._lock:
+                        self._jobs_meta[run_id] = {
+                            "state": "failed",
+                            "failed_at": _now_iso(),
+                            "error": str(exc),
+                        }
+                    raise
+
+            fut = self._executor.submit(_runner)
+            self._jobs[run_id] = fut
+
+    def job_state(self, run_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            meta = self._jobs_meta.get(run_id)
+            return dict(meta) if isinstance(meta, dict) else None
+
+    def warmup_state(self) -> Dict[str, Any]:
+        with self._lock:
+            return dict(self._warmup_meta)
+
+    def start_background_warmup(
+        self,
+        *,
+        outcomes_path: Optional[str | Path],
+        snapshot_root: Optional[str | Path],
+        snapshot_path: Optional[str | Path],
+        entity_identifier_path: str | Path,
+        warmup_company_id: str,
+        warmup_as_of: str,
+    ) -> None:
+        if not outcomes_path:
+            with self._lock:
+                self._warmup_meta = {"state": "skipped", "reason": "outcomes_path_not_set", "updated_at": _now_iso()}
+            return
+        with self._lock:
+            state = str(self._warmup_meta.get("state", ""))
+            if state in {"queued", "running", "completed"}:
+                return
+            self._warmup_meta = {"state": "queued", "queued_at": _now_iso(), "outcomes_path": str(outcomes_path)}
+
+        def _runner() -> None:
+            with self._lock:
+                self._warmup_meta = {
+                    **self._warmup_meta,
+                    "state": "running",
+                    "started_at": _now_iso(),
+                }
+            try:
+                from src.pipeline.run import warm_precedent_runtime
+
+                report = warm_precedent_runtime(str(outcomes_path))
+
+                # Optional snapshot-loader warmup for common request path.
+                snapshot_warm = {"attempted": False, "ok": False}
+                if warmup_company_id and warmup_as_of:
+                    snapshot_warm["attempted"] = True
+                    try:
+                        loader = self.build_snapshot_loader(
+                            snapshot_root=snapshot_root,
+                            snapshot_path=snapshot_path,
+                            entity_identifier_path=entity_identifier_path,
+                        )
+                        asof = datetime.fromisoformat(str(warmup_as_of).replace("Z", "+00:00"))
+                        _ = loader(str(warmup_company_id), asof)
+                        snapshot_warm["ok"] = True
+                    except Exception as exc:
+                        snapshot_warm["error"] = str(exc)
+
+                with self._lock:
+                    self._warmup_meta = {
+                        "state": "completed",
+                        "completed_at": _now_iso(),
+                        "report": report,
+                        "snapshot_warmup": snapshot_warm,
+                    }
+            except Exception as exc:
+                with self._lock:
+                    self._warmup_meta = {
+                        "state": "failed",
+                        "failed_at": _now_iso(),
+                        "error": str(exc),
+                    }
+
+        t = Thread(target=_runner, daemon=True, name="api-startup-warmup")
+        self._warmup_thread = t
+        t.start()
+
+
+def _execute_recommendation_run_entrypoint(**kwargs: Any) -> Dict[str, Any]:
+    from src.recommendation_run_orchestrator import execute_recommendation_run
+
+    return execute_recommendation_run(**kwargs)
+
+
