@@ -95,3 +95,41 @@ def pick_best_ric(candidates: List[str]) -> Optional[str]:
     return sorted(candidates, key=rank_ric)[0]
 
 
+def guess_ric_from_ticker(ticker: Optional[str]) -> Optional[str]:
+    if ticker is None:
+        return None
+    if pd.isna(ticker):
+        return None
+    df = load_ric_map()
+    if df.empty:
+        return None
+    matches = df[df["ticker"] == str(ticker).upper()].copy()
+    if matches.empty:
+        return None
+    return pick_best_ric(matches["ric"].dropna().unique().tolist())
+
+
+def render_live_quote(ric: str):
+    if not ric:
+        st.sidebar.info("Enter a RIC to load live data.")
+        return
+
+    quote = fetch_quote(ric)
+    intraday = fetch_intraday(ric)
+
+    if quote.get("error") and intraday.get("error"):
+        st.sidebar.warning(f"No live data for {ric}.")
+        return
+
+    price = intraday.get("last") or quote.get("price")
+    change_pct = quote.get("change_pct")
+    volume = intraday.get("volume") or quote.get("volume")
+
+    st.sidebar.markdown("**Live Quote**")
+    st.sidebar.metric("Last Price", f"{price:.2f}" if price is not None else "N/A")
+    st.sidebar.metric("Change (1D)", f"{change_pct:+.2f}%" if change_pct is not None else "N/A")
+    st.sidebar.metric("Volume", f"{int(volume):,}" if volume is not None else "N/A")
+
+    st.sidebar.caption("Source: Refinitiv (RDP)")
+
+
