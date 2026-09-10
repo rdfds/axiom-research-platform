@@ -66,3 +66,30 @@ class SignalProfileV2:
     vector: List[float]  # For similarity computation
 
 
+@dataclass
+class RegimeContext:
+    """Market regime with transition context."""
+    regime_id: str  # "LOOSE", "SELECTIVE", "TIGHT"
+    confidence: float
+    since: Optional[str]  # When this regime started
+    is_transitioning: bool
+    transition_direction: Optional[str]  # "tightening" or "loosening"
+    characteristics: Dict[str, str]
+
+
+@dataclass
+class OutcomeDistribution:
+    """Outcome distribution for a cohort."""
+    metric_name: str  # e.g., "tsr_12m"
+    n: int
+    p10: Optional[float]
+    p25: Optional[float]
+    p50: Optional[float]  # median
+    p75: Optional[float]
+    p90: Optional[float]
+    mean: Optional[float]
+    std: Optional[float]
+    pct_positive: Optional[float]  # % with positive outcome
+    pct_beat_benchmark: Optional[float]
+
+

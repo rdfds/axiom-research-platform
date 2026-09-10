@@ -256,3 +256,39 @@ def test_hard_constraints_never_violated_in_plan():
     assert no_violations == []
 
 
+def test_status_lifecycle_appends_audit_events(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+    store = RecommendationRunStore(root=tmp_path / "runs")
+
+    run_id = create_recommendation_run(
+        company_id="001690",
+        as_of_time="2026-02-28",
+        run_store=store,
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    store.transition_status(run_id, "candidate_generation")
+    store.transition_status(run_id, "feasibility_evaluation")
+    store.transition_status(run_id, "precedent_retrieval")
+    store.transition_status(run_id, "plan_search")
+    store.transition_status(run_id, "completed")
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert run.status == "completed"
+
+    event_types = [e.event_type for e in run.audit_log]
+    assert "candidate_generation_started" in event_types
+    assert "candidate_generation_completed" in event_types
+    assert "feasibility_eval_started" in event_types
+    assert "feasibility_eval_completed" in event_types
+    assert "precedent_retrieval_started" in event_types
+    assert "precedent_retrieval_completed" in event_types
+    assert "planning_started" in event_types
+    assert "planning_completed" in event_types
+    assert "run_completed" in event_types
+
+

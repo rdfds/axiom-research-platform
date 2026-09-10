@@ -428,3 +428,9 @@ def _execute_recommendation_run_entrypoint(**kwargs: Any) -> Dict[str, Any]:
     return execute_recommendation_run(**kwargs)
 
 
+def _create_and_execute_recommendation_run_entrypoint(**kwargs: Any) -> Dict[str, Any]:
+    from src.recommendation_run_orchestrator import create_and_execute_recommendation_run
+
+    return create_and_execute_recommendation_run(**kwargs)
+
+
