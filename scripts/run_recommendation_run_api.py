@@ -434,3 +434,7 @@ def _create_and_execute_recommendation_run_entrypoint(**kwargs: Any) -> Dict[str
     return create_and_execute_recommendation_run(**kwargs)
 
 
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat() + "Z"
+
+
