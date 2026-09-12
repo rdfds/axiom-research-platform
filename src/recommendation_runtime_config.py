@@ -121,3 +121,7 @@ def merge_metadata_patch(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[st
     return _deep_merge(dict(base or {}), dict(patch or {}))
 
 
+def _runtime_env_raw(keys: Iterable[str] = _RUNTIME_ENV_KEYS) -> Dict[str, Optional[str]]:
+    return {str(k): _normalize_env_value(os.environ.get(str(k))) for k in keys}
+
+
