@@ -645,7 +645,7 @@ def build_handler(defaults: argparse.Namespace):
                     "status": run.status,
                     "artifacts": artifacts,
                     "config": metadata.get("config"),
-                    "progress": metadata['progress'],
+                    "progress": metadata.get("progress"),
                     "recommendation_package": rec,
                 },
             )

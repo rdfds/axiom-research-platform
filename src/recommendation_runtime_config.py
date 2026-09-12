@@ -125,3 +125,56 @@ def _runtime_env_raw(keys: Iterable[str] = _RUNTIME_ENV_KEYS) -> Dict[str, Optio
     return {str(k): _normalize_env_value(os.environ.get(str(k))) for k in keys}
 
 
+def capture_runtime_env_config() -> Dict[str, Any]:
+    raw = _runtime_env_raw()
+    model_path = raw.get("CAUSAL_IMPACT_MODEL_PATH") or str(DEFAULT_CAUSAL_IMPACT_MODEL_ARTIFACT)
+    routing_path = raw.get("CAUSAL_ROUTING_CONFIG_PATH") or str(DEFAULT_CAUSAL_ROUTING_CONFIG_PATH)
+    blocklist_path = raw.get("CAUSAL_ACTION_BLOCKLIST_PATH") or ""
+    inline_tokens = _parse_action_tokens(
+        ",".join(
+            x
+            for x in (
+                raw.get("CAUSAL_ACTION_BLOCKLIST") or "",
+                raw.get("CAUSAL_ACTION_DENYLIST") or "",
+            )
+            if x
+        )
+    )
+    file_tokens = _load_action_tokens_from_file(blocklist_path)
+    all_block_tokens = sorted(set(inline_tokens + file_tokens))
+    return {
+        "python_executable": sys.executable,
+        "runtime_feature_adapter": {
+            "enabled": raw.get("AXIOM_ENABLE_RUNTIME_FEATURE_ADAPTER"),
+            "profile": raw.get("AXIOM_RUNTIME_FEATURE_ADAPTER_PROFILE"),
+            "rules": raw.get("AXIOM_RUNTIME_FEATURE_ADAPTER_RULES"),
+        },
+        "causal": {
+            "model": _path_digest(model_path),
+            "routing": _path_digest(routing_path),
+            "mode": raw.get("CAUSAL_IMPACT_MODE") or "blend",
+            "minimum_objective_oos_r2": _safe_float(raw.get("CAUSAL_MIN_OBJECTIVE_OOS_R2")),
+            "strict_quality_floor": _safe_float(raw.get("CAUSAL_STRICT_QUALITY_FLOOR")),
+            "strict_support_floor": _safe_float(raw.get("CAUSAL_STRICT_SUPPORT_FLOOR")),
+            "strict_min_train_rows": _safe_int(raw.get("CAUSAL_STRICT_MIN_TRAIN_ROWS")),
+            "strict_min_oos_r2": _safe_float(raw.get("CAUSAL_STRICT_MIN_OOS_R2")),
+            "strict_min_treated_rows": _safe_int(raw.get("CAUSAL_STRICT_MIN_TREATED_ROWS")),
+            "strict_min_control_rows": _safe_int(raw.get("CAUSAL_STRICT_MIN_CONTROL_ROWS")),
+            "blocklist": {
+                "file": _path_digest(blocklist_path),
+                "inline_entries": inline_tokens,
+                "entries": all_block_tokens,
+                "entry_count": len(all_block_tokens),
+            },
+        },
+        "precedent": {
+            "worker_count": _safe_int(raw.get("RECO_PRECEDENT_WORKERS")),
+            "retrieval_version": raw.get("PRECEDENT_RETRIEVAL_VERSION") or DEFAULT_PRECEDENT_RETRIEVAL_VERSION,
+        },
+        "paths": {
+            "recommendation_run_tmp_dir": raw.get("RECOMMENDATION_RUN_TMP_DIR"),
+        },
+        "raw_env": raw,
+    }
+
+

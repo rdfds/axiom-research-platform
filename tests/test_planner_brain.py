@@ -1105,3 +1105,163 @@ def test_unsupported_actions_are_demoted_below_supported_actions():
     assert ranked_first_actions[0] == "capital_structure.refinancing"
 
 
+def test_real_run_like_buyback_refi_case_prefers_financing_then_buyback():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            utility=0.057,
+            risk_reduction=-0.181,
+            growth=0.267,
+            rating_preservation=0.032,
+            optionality=0.026,
+            pass_probability=0.95,
+            evaluation_confidence=0.70,
+            precedent_confidence=0.348,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.057,
+            risk_reduction=-0.181,
+            growth=0.267,
+            rating_preservation=0.032,
+            optionality=0.026,
+            pass_probability=0.95,
+            evaluation_confidence=0.70,
+            precedent_confidence=0.32,
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.047,
+            risk_reduction=-0.016,
+            growth=0.002,
+            rating_preservation=-0.01,
+            optionality=0.462,
+            pass_probability=0.90,
+            evaluation_confidence=0.636,
+            precedent_confidence=0.342,
+        ),
+        _candidate_row(
+            "capital_return.accelerated_share_repurchase",
+            utility=0.045,
+            risk_reduction=-0.019,
+            growth=-0.001,
+            rating_preservation=-0.013,
+            optionality=0.459,
+            pass_probability=0.95,
+            evaluation_confidence=0.635,
+            precedent_confidence=0.341,
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            utility=0.269,
+            risk_reduction=-0.021,
+            growth=-0.145,
+            rating_preservation=-0.015,
+            optionality=-0.027,
+            pass_probability=0.95,
+            evaluation_confidence=0.712,
+            precedent_confidence=0.48,
+        ),
+        _candidate_row(
+            "capital_return.dividend_cut",
+            utility=0.141,
+            risk_reduction=-0.021,
+            growth=-0.003,
+            rating_preservation=-0.015,
+            optionality=-0.027,
+            pass_probability=0.95,
+            evaluation_confidence=0.793,
+            precedent_confidence=0.473,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    top_actions = [step["action_id"] for step in plan_set["plans"][0]["steps"]]
+    assert top_actions[0] in {"capital_structure.new_debt_issuance", "capital_structure.refinancing"}
+    assert top_actions[1] in {
+        "capital_return.open_market_buyback",
+        "capital_return.accelerated_share_repurchase",
+    }
+
+
+def test_real_run_like_divestiture_case_prefers_divestiture():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "portfolio.divestiture_partial",
+            utility=0.104,
+            risk_reduction=0.021,
+            growth=0.007,
+            rating_preservation=0.012,
+            optionality=0.026,
+            pass_probability=0.59,
+            evaluation_confidence=0.80,
+            precedent_confidence=0.351,
+        ),
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            utility=0.019,
+            risk_reduction=-0.362,
+            growth=0.230,
+            rating_preservation=0.032,
+            optionality=0.026,
+            pass_probability=0.95,
+            evaluation_confidence=0.653,
+            precedent_confidence=0.301,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.019,
+            risk_reduction=-0.362,
+            growth=0.230,
+            rating_preservation=0.032,
+            optionality=0.026,
+            pass_probability=0.95,
+            evaluation_confidence=0.682,
+            precedent_confidence=0.306,
+        ),
+        _candidate_row(
+            "capital_return.dividend_increase",
+            utility=0.415,
+            risk_reduction=-0.021,
+            growth=-0.145,
+            rating_preservation=-0.015,
+            optionality=-0.027,
+            pass_probability=0.95,
+            evaluation_confidence=0.663,
+            precedent_confidence=0.412,
+        ),
+        _candidate_row(
+            "capital_return.dividend_cut",
+            utility=0.087,
+            risk_reduction=-0.021,
+            growth=-0.003,
+            rating_preservation=-0.015,
+            optionality=-0.027,
+            pass_probability=0.95,
+            evaluation_confidence=0.811,
+            precedent_confidence=0.358,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    assert [step["action_id"] for step in plan_set["plans"][0]["steps"]] == ["portfolio.divestiture_partial"]
+
+

@@ -401,3 +401,18 @@ def test_create_recommendation_run_allows_explicit_alias_snapshot_fallback_when_
     assert run.frozen_state.snapshot_version == "state_builder_v5"
 
 
+def test_json_sanitize_handles_naive_pandas_timestamps():
+    payload = {"ts": pd.Timestamp("2026-02-28 00:00:00")}
+    out = _json_sanitize(payload)
+    assert str(out["ts"]).endswith("+00:00")
+
+
+def test_stage_path_is_unique_per_write(tmp_path: Path):
+    store = RecommendationRunStore(root=tmp_path / "runs", temp_dir=tmp_path / "tmp")
+    out = store.root / "run_index.parquet"
+    staged_a = store._stage_path(out)
+    staged_b = store._stage_path(out)
+
+    assert staged_a != staged_b
+    assert staged_a.parent.exists()
+    assert staged_b.parent.exists()
