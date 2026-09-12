@@ -980,3 +980,22 @@ def build_handler(defaults: argparse.Namespace):
     return Handler
 
 
+def main() -> None:
+    args = _parse_args()
+    handler = build_handler(args)
+    server = ThreadingHTTPServer((args.host, args.port), handler)
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "message": "recommendation_run_api_started",
+                "host": args.host,
+                "port": args.port,
+                "runs_root": args.runs_root,
+            }
+        ),
+        flush=True,
+    )
+    server.serve_forever()
+
+

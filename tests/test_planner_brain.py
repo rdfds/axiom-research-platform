@@ -1065,3 +1065,43 @@ def test_thin_restructuring_default_does_not_beat_capital_action():
     assert restructuring_plan["score_components"]["raw_total_score"] < plan_set["plans"][0]["score_components"]["raw_total_score"]
 
 
+def test_unsupported_actions_are_demoted_below_supported_actions():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    supported = _candidate_row(
+        "capital_structure.refinancing",
+        utility=0.08,
+        risk_reduction=0.19,
+        growth=0.04,
+        precedent_confidence=0.32,
+        causal=True,
+    )
+    unsupported_restructuring = _candidate_row(
+        "restructuring.working_capital_program",
+        utility=0.13,
+        risk_reduction=0.08,
+        evaluation_confidence=0.62,
+        precedent_confidence=0.0,
+        causal=False,
+    )
+    unsupported_governance = _candidate_row(
+        "governance.board_refresh",
+        utility=0.12,
+        optionality=0.04,
+        evaluation_confidence=0.6,
+        precedent_confidence=0.0,
+        causal=False,
+    )
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[supported["candidate"], unsupported_restructuring["candidate"], unsupported_governance["candidate"]],
+        precedent_matches=[supported],
+        registry=registry,
+        top_plans=5,
+    )
+
+    ranked_first_actions = [[step["action_id"] for step in plan["steps"]][0] for plan in plan_set["plans"][:3]]
+    assert ranked_first_actions[0] == "capital_structure.refinancing"
+
+

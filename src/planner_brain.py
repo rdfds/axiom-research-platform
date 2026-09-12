@@ -342,3 +342,252 @@ def _score_sequence_prefix(
     )
 
 
+def _assemble_plan(
+    run: RecommendationRun,
+    sequence: Sequence[str],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+) -> Optional[Dict[str, Any]]:
+    nodes = [node_by_action[action_id] for action_id in sequence]
+    plan_actions = [dict(node.candidate) for node in nodes]
+    hard_violations = validate_plan_hard_constraints(plan_actions=plan_actions, constraints=run.constraints, projected_state={})
+    if hard_violations:
+        return None
+
+    steps = _build_steps(run=run, sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph)
+    timeline = _build_timeline(run=run, steps=steps)
+    branches, triggers = _build_branches_and_triggers(sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph)
+    score_breakdown = _score_plan(run=run, sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph, timeline=timeline)
+    risks = _build_plan_risk(sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph)
+
+    plan = Plan(
+        plan_id="plan_" + "__".join(sequence),
+        run_id=run.run_id,
+        steps=steps,
+        timeline=timeline,
+        triggers=triggers,
+        branches=branches,
+        score_breakdown=score_breakdown,
+        risks=risks,
+        summary_explanation=_plan_summary(sequence=sequence, node_by_action=node_by_action),
+    )
+    payload = plan.to_dict()
+    payload["score"] = score_breakdown.total_score
+    payload["score_components"] = dict(score_breakdown.components)
+    payload["actions"] = [dict(node.candidate) for node in nodes]
+    payload["hard_constraint_violations"] = hard_violations
+    return payload
+
+
+def _build_steps(
+    run: RecommendationRun,
+    sequence: Sequence[str],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+) -> List[PlanStep]:
+    steps: List[PlanStep] = []
+    current_dt = _parse_run_time(run.as_of_time)
+    for idx, action_id in enumerate(sequence, start=1):
+        node = node_by_action[action_id]
+        lead = dict(node.lead_time)
+        prerequisites = _prerequisites_for_step(action_id=action_id, sequence=sequence, dep_graph=dep_graph)
+        step = PlanStep(
+            step_id=f"step_{idx:02d}",
+            action_id=action_id,
+            parameters=dict(node.candidate.get("parameters", {}) or {}),
+            earliest_start=current_dt.isoformat(),
+            expected_duration=lead,
+            prerequisites=prerequisites,
+            probability_of_success=float(((node.candidate.get("feasibility", {}) or {}).get("pass_probability", 0.0) or 0.0)),
+            impact_contribution=_impact_contribution(node.candidate),
+            explanation=_build_step_explanation(
+                action_id=action_id,
+                node=node,
+                sequence=sequence,
+                dep_graph=dep_graph,
+            ),
+        )
+        steps.append(step)
+        current_dt = current_dt + timedelta(days=int(lead.get("median_days", 0) or 0))
+    return steps
+
+
+def _build_timeline(run: RecommendationRun, steps: Sequence[PlanStep]) -> PlanTimeline:
+    schedule: List[Dict[str, Any]] = []
+    current_dt = _parse_run_time(run.as_of_time)
+    for step in steps:
+        lead = dict(step.expected_duration or {})
+        start_dt = current_dt
+        end_dt = start_dt + timedelta(days=int(lead.get("median_days", 0) or 0))
+        schedule.append(
+            {
+                "step_id": step.step_id,
+                "action_id": step.action_id,
+                "start_time": start_dt.isoformat(),
+                "expected_completion_time": end_dt.isoformat(),
+                "minimum_days": int(lead.get("minimum_days", 0) or 0),
+                "median_days": int(lead.get("median_days", 0) or 0),
+                "p90_days": int(lead.get("p90_days", 0) or 0),
+            }
+        )
+        current_dt = end_dt
+    return PlanTimeline(start_time=_parse_run_time(run.as_of_time).isoformat(), step_schedule=schedule)
+
+
+def _build_branches_and_triggers(
+    sequence: Sequence[str],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+) -> Tuple[List[PlanBranch], List[PlanTrigger]]:
+    in_plan = set(sequence)
+    candidates: List[Tuple[str, float, str, str]] = []
+    for edge in dep_graph.edges:
+        if edge.source_action not in in_plan or edge.target_action in in_plan:
+            continue
+        if edge.relationship_type not in {"unlocks", "recommended_after"}:
+            continue
+        probability = _branch_probability(source=node_by_action[edge.source_action], target_action=edge.target_action)
+        condition = str(edge.condition or f"{edge.target_action} becomes attractive after {edge.source_action}")
+        explanation = str(edge.explanation or f"{edge.source_action} creates an opening for {edge.target_action}.")
+        candidates.append((edge.target_action, probability, condition, explanation))
+
+    for source_action in sequence:
+        source_node = node_by_action[source_action]
+        for outcome in list(source_node.precedent_pack.get("second_order_effects", []) or []):
+            target_action = str(outcome.get("follow_on_action_id", "") or "")
+            if not target_action or target_action in in_plan or target_action not in node_by_action:
+                continue
+            frequency = float(outcome.get("frequency", 0.0) or 0.0)
+            if frequency <= 0.1:
+                continue
+            condition = f"follow-on capacity remains available after {source_action}"
+            explanation = f"Historical follow-on frequency supports {target_action} after {source_action}."
+            candidates.append((target_action, _clip(0.2 + frequency, 0.2, 0.7), condition, explanation))
+
+    branch_rows: List[Tuple[str, float, str, str]] = []
+    seen_actions: set[str] = set()
+    for target_action, probability, condition, explanation in sorted(candidates, key=lambda row: (-row[1], row[0])):
+        if target_action in seen_actions:
+            continue
+        seen_actions.add(target_action)
+        branch_rows.append((target_action, probability, condition, explanation))
+        if len(branch_rows) >= 2:
+            break
+
+    branches: List[PlanBranch] = []
+    triggers: List[PlanTrigger] = []
+    for target_action, probability, condition, explanation in branch_rows:
+        branches.append(
+            PlanBranch(
+                branch_condition=condition,
+                branch_plan_steps=[target_action],
+                branch_probability=probability,
+                explanation=explanation,
+            )
+        )
+        triggers.append(
+            PlanTrigger(
+                trigger_type=_trigger_type(condition),
+                condition=condition,
+                evaluation_frequency=_trigger_frequency(condition),
+                trigger_probability=probability,
+                explanation=explanation,
+            )
+        )
+    return branches, triggers
+
+
+def _score_plan(
+    run: RecommendationRun,
+    sequence: Sequence[str],
+    node_by_action: Dict[str, PlannerNode],
+    dep_graph: ActionDependencyGraph,
+    timeline: PlanTimeline,
+) -> PlanScoreBreakdown:
+    objective_components = _objective_components(sequence=sequence, node_by_action=node_by_action, run=run)
+    weighted_net_utility = sum(
+        _weighted_objective_sum(node_by_action[action_id].candidate.get("impact_distribution", {}), run)
+        for action_id in sequence
+    )
+    expected_utility = _bounded_signal(weighted_net_utility)
+    negative_utility_penalty = _negative_utility_penalty(
+        weighted_utility=weighted_net_utility,
+        weighted_components=objective_components,
+        action_ids=sequence,
+    )
+    feasibility_chain = _feasibility_factor(
+        min(float(((node_by_action[action_id].candidate.get("feasibility", {}) or {}).get("pass_probability", 0.0) or 0.0)) for action_id in sequence)
+    )
+    robustness_score = _robustness_score(sequence=sequence, node_by_action=node_by_action)
+    tail_risk_penalty = _tail_risk_penalty(sequence=sequence, node_by_action=node_by_action)
+    complexity_penalty = _complexity_penalty(sequence=sequence, node_by_action=node_by_action)
+    total_days = 0
+    if timeline.step_schedule:
+        first = timeline.step_schedule[0]
+        last = timeline.step_schedule[-1]
+        start_dt = _parse_run_time(first["start_time"])
+        end_dt = _parse_run_time(last["expected_completion_time"])
+        total_days = max(0, (end_dt - start_dt).days)
+    time_discount_factor = round(math.exp(-0.001 * float(total_days)), 6)
+    transition_bonus = _transition_bonus(sequence=sequence, node_by_action=node_by_action, dep_graph=dep_graph)
+    support_factor = _support_factor(sequence=sequence, node_by_action=node_by_action)
+    action_penalty = sum(
+        _action_specific_penalty(
+            candidate=node_by_action[action_id].candidate,
+            precedent_pack=node_by_action[action_id].precedent_pack,
+        )
+        for action_id in sequence
+    )
+    structural_bonus = sum(
+        _structural_action_bonus(
+            candidate=node_by_action[action_id].candidate,
+            precedent_pack=node_by_action[action_id].precedent_pack,
+        )
+        for action_id in sequence
+    )
+    status_quo_hurdle = _status_quo_hurdle(
+        weighted_utility=weighted_net_utility,
+        weighted_components=objective_components,
+        action_ids=sequence,
+        support_factor=support_factor,
+        transition_bonus=transition_bonus,
+        structural_bonus=structural_bonus,
+        candidates=[node_by_action[action_id].candidate for action_id in sequence],
+    )
+    raw_total_score = (
+        (expected_utility * feasibility_chain * robustness_score * time_discount_factor * support_factor)
+        + transition_bonus
+        + structural_bonus
+        - tail_risk_penalty
+    )
+    raw_total_score = raw_total_score - action_penalty - negative_utility_penalty - status_quo_hurdle
+    total_score = _clip(raw_total_score, 0.0, 1.0)
+    components = {
+        **objective_components,
+        "weighted_net_utility": round(weighted_net_utility, 6),
+        "expected_utility": round(expected_utility, 6),
+        "feasibility_chain": round(feasibility_chain, 6),
+        "robustness_score": round(robustness_score, 6),
+        "time_discount_factor": round(time_discount_factor, 6),
+        "support_factor": round(support_factor, 6),
+        "transition_bonus": round(transition_bonus, 6),
+        "structural_bonus": round(structural_bonus, 6),
+        "tail_risk_penalty": round(tail_risk_penalty, 6),
+        "complexity_penalty": round(complexity_penalty, 6),
+        "action_specific_penalty": round(action_penalty, 6),
+        "negative_utility_penalty": round(negative_utility_penalty, 6),
+        "status_quo_hurdle": round(status_quo_hurdle, 6),
+        "raw_total_score": round(raw_total_score, 6),
+    }
+    return PlanScoreBreakdown(
+        expected_utility=round(expected_utility, 6),
+        feasibility_chain=round(feasibility_chain, 6),
+        robustness_score=round(robustness_score, 6),
+        tail_risk_penalty=round(tail_risk_penalty, 6),
+        complexity_penalty=round(complexity_penalty, 6),
+        time_discount_factor=round(time_discount_factor, 6),
+        total_score=round(total_score, 6),
+        components=components,
+    )
+
+
