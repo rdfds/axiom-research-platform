@@ -72,7 +72,7 @@ def load_ric_map():
 
 
 def pick_best_ric(candidates: List[str]) -> Optional[str]:
-    def rank_ric(ric: str) :
+    def rank_ric(ric: str) -> int:
         if not isinstance(ric, str):
             return 99
         ric = ric.upper()
