@@ -67,3 +67,11 @@ The dossier excerpt demonstrates a separate board-ready recommendation contract:
 - monitoring triggers
 - supporting evidence and precedent confidence
 
+## Related Code
+
+- `src/cfo_decision_surface.py`
+- `src/board_ready_dossier.py`
+- `src/recommendation_run_orchestrator.py`
+- `src/evidence_pack.py`
+- `tests/test_cfo_decision_surface.py`
+- `tests/test_board_ready_dossier.py`
