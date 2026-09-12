@@ -79,3 +79,12 @@ The upstream company/data builder is:
 scripts/build_curated_company_valuation_drivers.py
 ```
 
+## What The View Shows
+
+The market-expectations section has four jobs:
+
+1. Translate the valuation premium/discount into a money and multiple gap.
+2. Allocate the gap between validated driver expectations and residual outside-model factors.
+3. Show each priced driver as a two-path forecast: fundamentals-only versus market-gap-enhanced.
+4. Expose validation context through evidence-vs-placebo and cohort reads.
+
