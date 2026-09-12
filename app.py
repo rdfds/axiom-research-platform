@@ -172,3 +172,93 @@ def render_metrics_header(pack: EvidencePack):
         st.metric("EV/EBITDA", "N/A")  # Would need market cap
 
 
+def render_action_card(card: ActionCard, index: int):
+    """Render full action card with all evidence."""
+
+    # Status colors
+    status_colors = {
+        'NEWLY_ACTIONABLE': '#22c55e',
+        'PERSISTENT': '#3b82f6',
+        'WINDOW_OPEN': '#f59e0b',
+    }
+    status_color = status_colors.get(card.status, '#6b7280')
+
+    # Card header
+    st.markdown(f"""
+    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; background: white;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="background: {status_color}; color: white; padding: 2px 10px; border-radius: 4px; font-size: 0.75em; font-weight: 500; text-transform: uppercase;">{card.status.replace('_', ' ')}</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="color: #6b7280; font-size: 0.9em;">#{index}</span>
+            <span style="font-size: 1.3em; font-weight: 600;">{card.action_human}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Why Now section
+    with st.expander("**Why Now**", expanded=True):
+        for bullet in card.why_now_bullets:
+            text = bullet.get('text', '')
+            source = bullet.get('source', '')
+
+            # Add source indicator
+            if source == 'fundamentals':
+                icon = "📊"
+            elif source == 'precedent':
+                icon = "📈"
+            elif source == 'regime':
+                icon = "🌐"
+            else:
+                icon = "✓"
+
+            st.markdown(f"{icon} {text}")
+
+        # Active since (if available)
+        # st.caption("Active since Q2 2025 (6 months)")
+
+    # Conditions section
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if card.works_when:
+            st.markdown("**Works When:**")
+            for condition in card.works_when:
+                st.markdown(f"<span style='color: #22c55e;'>✓</span> {condition}", unsafe_allow_html=True)
+
+    with col2:
+        if card.fails_when:
+            st.markdown("**Fails When:**")
+            for condition in card.fails_when:
+                st.markdown(f"<span style='color: #ef4444;'>✗</span> {condition}", unsafe_allow_html=True)
+
+    # Value / Impact row
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**Value Lever**")
+        st.caption(card.value_lever)
+
+    with col2:
+        st.markdown("**Economic Impact**")
+        st.caption(card.economic_impact)
+
+    with col3:
+        st.markdown("**Share Price Impact**")
+        if card.share_price_impact_range:
+            st.markdown(f"<span style='color: #22c55e; font-weight: 600;'>{card.share_price_impact_range}</span>", unsafe_allow_html=True)
+            if card.cohort and card.cohort.n >= 5:
+                st.caption(f"Based on {card.cohort.n} precedent transactions")
+        else:
+            st.caption(card.share_price_impact_range or "Depends on execution")
+
+    # Objections section (collapsed)
+    if card.objections:
+        with st.expander("**Objection Prep**"):
+            for obj in card.objections:
+                st.markdown(f"**Q: {obj.question}**")
+                for point in obj.grounded_answer_points:
+                    st.markdown(f"- {point}")
+
+
