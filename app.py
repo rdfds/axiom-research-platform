@@ -330,3 +330,59 @@ def render_signal_chart(pack: EvidencePack):
     return fig
 
 
+def render_decision_table(pack: EvidencePack):
+    """Render decision table based on signals."""
+
+    st.markdown("**DECISION TABLE**")
+    st.markdown('<div style="color: #6b7280; font-size: 0.85em; margin-bottom: 12px;">IF THIS HAPPENS → DOMINANT IDEA</div>', unsafe_allow_html=True)
+
+    signals = pack.state_summary.signals
+
+    rules = []
+
+    # Growth-based rules
+    growth_sig = signals.get('growth_momentum')
+    val_sig = signals.get('valuation_dislocation')
+
+    if growth_sig and growth_sig.score <= 40:
+        if val_sig and val_sig.score >= 60:
+            rules.append(("Growth slows + valuation premium persists", "Buybacks", None))
+        else:
+            rules.append(("Growth slows + valuation compresses", "Buybacks", "(more attractive)"))
+
+    # Regime-based rules
+    if pack.regime.regime_id == 'LOOSE':
+        rules.append(("Credit spreads remain tight", "M&A Advisory", "(window strengthens)"))
+    elif pack.regime.regime_id == 'TIGHT':
+        rules.append(("Credit spreads widen further", "Defensive positioning", "(preserve optionality)"))
+
+    # Margin-based rules
+    margin_sig = signals.get('margin_trend')
+    if margin_sig:
+        if margin_sig.score >= 60:
+            rules.append(("Margins stabilize at current levels", "Reinvestment", "(M&A urgency fades)"))
+        elif margin_sig.score <= 40:
+            rules.append(("Margin pressure continues", "Cost rationalization", "(divestitures possible)"))
+
+    for condition, action, note in rules:
+        note_str = f' <span style="color: #6b7280;">{note}</span>' if note else ''
+        st.markdown(f"- {condition} → **{action}**{note_str}", unsafe_allow_html=True)
+
+
+def render_signal_explanations(pack: EvidencePack):
+    """Render signal explanations with drivers."""
+
+    for sig_name, sig_detail in pack.state_summary.signals.items():
+        score = sig_detail.score
+        color = "#22c55e" if score >= 70 else "#f59e0b" if score >= 40 else "#ef4444"
+
+        with st.expander(f"**{sig_name.replace('_', ' ').title()}** — {sig_detail.value.upper()} ({score:.0f}/100)"):
+            st.markdown(sig_detail.explanation)
+
+            if sig_detail.drivers:
+                st.markdown("**Key Drivers:**")
+                for driver in sig_detail.drivers:
+                    direction_icon = "↑" if driver.direction == 'positive' else "↓"
+                    st.markdown(f"- {direction_icon} {driver.human_label}")
+
+

@@ -105,3 +105,6 @@ That distinction matters. It separates:
 - drivers the market appears to be pricing differently
 - residual premium/discount that likely reflects brand, defensiveness, risk, sentiment, duration, or factors not captured in the model
 
+## Why this example matters
+
+This is the clearest compact demonstration of Axiom's central design choice: make the model's support and uncertainty visible. The view does not hide the residual, overstate causal language, or require a private data account to inspect the product behavior.
