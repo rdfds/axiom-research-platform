@@ -39,3 +39,15 @@ Example feature:
 }
 ```
 
+## Why This Matters
+
+Most model demos quietly use whatever data is available today. That makes historical validation fragile because future information can leak into the past.
+
+Axiom's company-state layer is designed around point-in-time semantics:
+
+- what was known
+- when it was known
+- where it came from
+- whether a fallback was used
+- whether the value is strong enough for decision evidence
+

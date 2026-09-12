@@ -88,3 +88,20 @@ The market-expectations section has four jobs:
 3. Show each priced driver as a two-path forecast: fundamentals-only versus market-gap-enhanced.
 4. Expose validation context through evidence-vs-placebo and cohort reads.
 
+## Why This Is Different From A Normal Comp Sheet
+
+A normal comp sheet says:
+
+> HD trades at a premium because the market likes the company.
+
+The Axiom view tries to say:
+
+> Of the premium, this amount is statistically underwritten by specific forward driver expectations, and this amount is outside the measured financial drivers. The underwritten driver claims only appear when the valuation gap historically improved out-of-sample forecasts for that driver.
+
+That distinction matters. It separates:
+
+- drivers that matter to valuation
+- drivers where HD is currently strong or weak
+- drivers the market appears to be pricing differently
+- residual premium/discount that likely reflects brand, defensiveness, risk, sentiment, duration, or factors not captured in the model
+

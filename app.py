@@ -262,3 +262,71 @@ def render_action_card(card: ActionCard, index: int):
                     st.markdown(f"- {point}")
 
 
+def render_historical_precedent(pack: EvidencePack):
+    """Render historical precedent summary."""
+
+    # Gather all cohorts
+    all_cohorts = []
+    for card in pack.action_cards:
+        if card.cohort:
+            all_cohorts.append(card.cohort)
+
+    if not all_cohorts:
+        return
+
+    total_n = sum(c.n for c in all_cohorts)
+
+    st.markdown(f"**HISTORICAL PRECEDENT** ({total_n} similar companies, 2010-2024)")
+
+    cols = st.columns(min(len(all_cohorts) + 1, 4))
+
+    for i, cohort in enumerate(all_cohorts[:3]):
+        with cols[i]:
+            tsr = cohort.outcomes.get('tsr_12m')
+            if tsr:
+                tsr_color = '#22c55e' if tsr.p50 and tsr.p50 > 0 else '#ef4444'
+                tsr_str = f"+{tsr.p50:.0f}%" if tsr.p50 and tsr.p50 > 0 else f"{tsr.p50:.0f}%" if tsr.p50 else "N/A"
+                pct = cohort.n / total_n * 100 if total_n > 0 else 0
+
+                st.markdown(f"""
+                <div style="background: #f9fafb; border-radius: 8px; padding: 12px; text-align: center;">
+                    <div style="font-weight: 600; margin-bottom: 4px;">{cohort.action_human}</div>
+                    <div style="color: #6b7280; font-size: 0.85em;">{pct:.0f}% did this → <span style="color: {tsr_color}">{tsr_str} avg return</span></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    st.caption("See Logic tab for full precedent analysis")
+
+
+def render_signal_chart(pack: EvidencePack):
+    """Render radar chart of signals."""
+    signals = pack.state_summary.signals
+
+    categories = [s.replace('_', ' ').title() for s in signals.keys()]
+    values = [signals[s].score for s in signals.keys()]
+
+    # Close the radar chart
+    categories = categories + [categories[0]]
+    values = values + [values[0]]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=categories,
+        fill='toself',
+        name='State Profile',
+        line_color='#1f77b4',
+        fillcolor='rgba(31, 119, 180, 0.3)',
+    ))
+
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=False,
+        height=350,
+        margin=dict(l=60, r=60, t=30, b=30),
+    )
+
+    return fig
+
+
