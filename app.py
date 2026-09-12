@@ -133,3 +133,42 @@ def render_live_quote(ric: str):
     st.sidebar.caption("Source: Refinitiv (RDP)")
 
 
+def render_metrics_header(pack: EvidencePack):
+    """Render the metrics header bar."""
+    metrics = pack.company_metrics
+
+    st.markdown(f"""
+    <div style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px;">
+        <div style="display: flex; align-items: baseline; gap: 12px;">
+            <span style="font-size: 1.3em; font-weight: 600;">{pack.company_name}</span>
+            <span style="color: #6b7280;">As of {pack.as_of_time}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(6)
+
+    with cols[0]:
+        rev = metrics.get('revenue')
+        st.metric("Revenue", f"${rev:.0f}B" if rev else "N/A")
+
+    with cols[1]:
+        growth = metrics.get('revenue_growth_yoy')
+        st.metric("Growth", f"{growth:+.0f}%" if growth is not None else "N/A")
+
+    with cols[2]:
+        margin = metrics.get('ebitda_margin')
+        st.metric("EBITDA Margin", f"{margin:.0f}%" if margin else "N/A")
+
+    with cols[3]:
+        fcf = metrics.get('fcf')
+        st.metric("FCF", f"${fcf:.1f}B" if fcf else "N/A")
+
+    with cols[4]:
+        lev = metrics.get('net_leverage')
+        st.metric("Leverage", f"{lev:.1f}x" if lev is not None else "N/A")
+
+    with cols[5]:
+        st.metric("EV/EBITDA", "N/A")  # Would need market cap
+
+
