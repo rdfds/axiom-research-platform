@@ -349,3 +349,55 @@ def test_create_recommendation_run_accepts_explicit_company_aliases_for_validati
     )
 
 
+def test_create_recommendation_run_allows_explicit_alias_snapshot_fallback_when_entity_graph_is_missing(tmp_path: Path):
+    entity_graph = tmp_path / "entity_graph.parquet"
+    entity_identifier = tmp_path / "entity_identifier.parquet"
+    pd.DataFrame(
+        columns=[
+            "entity_id",
+            "related_id",
+            "valid_from",
+            "effective_at",
+            "published_at",
+            "ingested_at",
+        ]
+    ).to_parquet(entity_graph, index=False)
+    pd.DataFrame(columns=["entity_id", "identifier_value"]).to_parquet(entity_identifier, index=False)
+
+    runs_root = tmp_path / "runs"
+
+    def snapshot_loader(company_id: str, as_of_time):
+        assert company_id == "205876"
+        ts = pd.Timestamp(as_of_time)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        return {
+            "snapshot_id": "snap-exto-fallback",
+            "company_id": "EXTO",
+            "as_of_time": ts.isoformat(),
+            "features": {
+                "liquidity.available_for_actions": {"value": 150.0},
+                "market.market_cap": {"value": 1000.0},
+            },
+            "regime": {"credit_regime": "neutral"},
+            "provenance": {"computation_version": "state_builder_v5"},
+        }
+
+    run_id = create_recommendation_run(
+        company_id="205876",
+        company_aliases=["EXTO"],
+        as_of_time="2026-02-28",
+        run_store=RecommendationRunStore(root=runs_root),
+        snapshot_loader=snapshot_loader,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    run = RecommendationRunStore(root=runs_root).get_run(run_id)
+    assert run is not None
+    assert run.company_id == "205876"
+    assert run.frozen_state.snapshot_version == "state_builder_v5"
+
+
