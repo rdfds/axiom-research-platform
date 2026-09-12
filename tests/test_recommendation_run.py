@@ -307,3 +307,45 @@ def test_as_of_must_not_be_before_earliest_company_data(tmp_path: Path):
         )
 
 
+def test_create_recommendation_run_accepts_explicit_company_aliases_for_validation_and_snapshot_lookup(tmp_path: Path):
+    entity_graph = tmp_path / "entity_graph.parquet"
+    entity_identifier = tmp_path / "entity_identifier.parquet"
+    pd.DataFrame(
+        [
+            {
+                "entity_id": "resolved-exto",
+                "related_id": "issuer-exto",
+                "valid_from": "2001-01-01T00:00:00Z",
+                "effective_at": "2001-01-01T00:00:00Z",
+                "published_at": "2001-01-01T00:00:00Z",
+                "ingested_at": "2001-01-01T00:00:00Z",
+            }
+        ]
+    ).to_parquet(entity_graph, index=False)
+    pd.DataFrame(
+        [
+            {"entity_id": "resolved-exto", "identifier_value": "EXTO"},
+        ]
+    ).to_parquet(entity_identifier, index=False)
+
+    snapshot_root = _write_keyed_snapshot(tmp_path, company_id="EXTO")
+    runs_root = tmp_path / "runs"
+
+    run_id = create_recommendation_run(
+        company_id="205876",
+        company_aliases=["EXTO"],
+        as_of_time="2026-02-28",
+        run_store=RecommendationRunStore(root=runs_root),
+        snapshot_root=snapshot_root,
+        entity_graph_path=entity_graph,
+        entity_identifier_path=entity_identifier,
+    )
+
+    run = RecommendationRunStore(root=runs_root).get_run(run_id)
+    assert run is not None
+    assert run.company_id == "205876"
+    assert run.frozen_state.snapshot_hash == _snapshot_hash(
+        json.loads((snapshot_root / "keyed" / "as_of_date=2026-02-28" / "company_id=EXTO.json").read_text().strip())
+    )
+
+
