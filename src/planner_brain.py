@@ -591,3 +591,90 @@ def _score_plan(
     )
 
 
+def _objective_components(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode], run: RecommendationRun) -> Dict[str, float]:
+    totals = {name: 0.0 for name in _OBJECTIVE_FIELDS}
+    for action_id in sequence:
+        objectives = dict(((node_by_action[action_id].candidate.get("impact_distribution", {}) or {}).get("objectives", {}) or {}))
+        totals["value_creation"] += run.objectives.value_creation_weight * float((objectives.get("value_creation", {}) or {}).get("median", 0.0) or 0.0)
+        totals["risk_reduction"] += run.objectives.risk_reduction_weight * float((objectives.get("risk_reduction", {}) or {}).get("median", 0.0) or 0.0)
+        totals["growth"] += run.objectives.growth_weight * float((objectives.get("growth", {}) or {}).get("median", 0.0) or 0.0)
+        totals["rating_preservation"] += run.objectives.rating_preservation_weight * float((objectives.get("rating_preservation", {}) or {}).get("median", 0.0) or 0.0)
+        totals["optionality"] += run.objectives.optionality_weight * float((objectives.get("optionality", {}) or {}).get("median", 0.0) or 0.0)
+    return {key: round(value, 6) for key, value in totals.items()}
+
+
+def _build_plan_risk(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode], dep_graph: ActionDependencyGraph) -> PlanRisk:
+    failure_modes: List[str] = []
+    regime_risks: List[str] = []
+    execution_risks: List[str] = []
+
+    for action_id in sequence:
+        node = node_by_action[action_id]
+        for risk in list(node.candidate.get("risks", []) or []):
+            explanation = str(risk.get("explanation", "") or "").strip()
+            if explanation:
+                failure_modes.append(explanation)
+        for tail in list(node.precedent_pack.get("tail_events", []) or []):
+            description = str(tail.get("description") or tail.get("explanation") or "").strip()
+            if description and _is_adverse_tail(tail):
+                failure_modes.append(description)
+        for regime in list((node.candidate.get("impact_distribution", {}) or {}).get("regime_sensitivity", []) or []):
+            effect_shift = float(regime.get("effect_shift", 0.0) or 0.0)
+            if effect_shift < 0:
+                regime_risks.append(f"{action_id} weakens under {regime.get('regime_condition')}.")
+        complexity = float((node.schema.get("execution_complexity_prior", {}) or {}).get("base_complexity_score", 3) or 3)
+        if complexity >= 4:
+            execution_risks.append(f"{action_id} has elevated execution complexity.")
+
+    for edge in dep_graph.edges:
+        if edge.source_action in sequence and edge.target_action in sequence and edge.relationship_type == "conflicts":
+            execution_risks.append(f"{edge.source_action} conflicts with {edge.target_action}.")
+
+    return PlanRisk(
+        main_failure_modes=_dedupe_keep_order(failure_modes)[:5],
+        regime_sensitivity=_dedupe_keep_order(regime_risks)[:4],
+        execution_risks=_dedupe_keep_order(execution_risks)[:4],
+    )
+
+
+def _plan_summary(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode]) -> str:
+    if not sequence:
+        return ""
+    parts = []
+    for action_id in sequence:
+        narrative = str((((node_by_action[action_id].candidate.get("mechanism_activation", {}) or {}).get("narrative_explanation", "")) or "")).strip()
+        if narrative:
+            parts.append(narrative)
+    if not parts:
+        return " -> ".join(sequence)
+    return " ".join(_dedupe_keep_order(parts)[:2])
+
+
+def _build_step_explanation(action_id: str, node: PlannerNode, sequence: Sequence[str], dep_graph: ActionDependencyGraph) -> PlanExplanation:
+    narrative = str((((node.candidate.get("mechanism_activation", {}) or {}).get("narrative_explanation", "")) or "")).strip()
+    driver_facts = []
+    for driver in list(((node.candidate.get("impact_distribution", {}) or {}).get("key_drivers", []) or [])):
+        explanation = str(driver.get("explanation", "") or "").strip()
+        if explanation:
+            driver_facts.append(explanation)
+    tradeoffs = [str(risk.get("explanation", "") or "").strip() for risk in list(node.candidate.get("risks", []) or []) if str(risk.get("explanation", "") or "").strip()]
+    alternatives = []
+    for edge in dep_graph.edges:
+        if edge.source_action == action_id and edge.relationship_type == "conflicts":
+            alternatives.append(f"Avoid combining with {edge.target_action}.")
+    prerequisites = _prerequisites_for_step(action_id=action_id, sequence=sequence, dep_graph=dep_graph)
+    why_now = "Dependencies are satisfied." if prerequisites else "This step can start immediately under the current plan."
+    if prerequisites:
+        why_now = f"Sequence after {', '.join(prerequisites)} so the prerequisite actions land first."
+    problem_statement = narrative or f"{action_id} addresses a current strategic constraint."
+    why_this_action = driver_facts[0] if driver_facts else f"{action_id} offers a favorable trade-off versus nearby alternatives."
+    return PlanExplanation(
+        problem_statement=problem_statement,
+        why_this_action=why_this_action,
+        why_now=why_now,
+        key_supporting_facts=_dedupe_keep_order(driver_facts)[:3],
+        main_tradeoffs=_dedupe_keep_order(tradeoffs)[:3],
+        why_not_alternatives=_dedupe_keep_order(alternatives)[:3],
+    )
+
+
