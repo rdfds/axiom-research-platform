@@ -66,3 +66,17 @@ flowchart LR
 
 Read the system map in [docs/architecture.md](docs/architecture.md).
 
+## Core modules
+
+| Layer | Implementation | Role |
+|---|---|---|
+| Company state | [`src/company_state_builder.py`](src/company_state_builder.py) | Builds as-of snapshots from normalized inputs. |
+| State contracts | [`src/company_state_validation.py`](src/company_state_validation.py) | Enforces provenance, confidence, fallback, and invariant checks. |
+| Evidence packaging | [`src/evidence_pack.py`](src/evidence_pack.py) | Carries citations, cohorts, objections, and action cards into downstream output. |
+| Precedent retrieval | [`src/pipeline/precedent_brain.py`](src/pipeline/precedent_brain.py) | Finds and scores comparable historical actions. |
+| Learned similarity | [`src/pipeline/precedent_distance_v2_learning.py`](src/pipeline/precedent_distance_v2_learning.py) | Learns distance weights by objective and action family. |
+| Action evidence | [`src/causal_impact_model.py`](src/causal_impact_model.py) | Scores action-impact evidence with calibration and risk controls. |
+| Decision dossier | [`src/board_ready_dossier.py`](src/board_ready_dossier.py) | Shapes evidence into a decision-ready dossier. |
+| Run orchestration | [`src/recommendation_run_orchestrator.py`](src/recommendation_run_orchestrator.py) | Produces reproducible end-to-end recommendation runs. |
+| Static demo | [`scripts/build_valuation_action_bridge.py`](scripts/build_valuation_action_bridge.py) | Materializes the valuation/action view from committed sample inputs. |
+

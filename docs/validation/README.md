@@ -105,3 +105,61 @@ Interpretation:
 - It should not be described as a causal recommendation engine.
 - The forward gap model is the separate layer that asks whether the market is pricing future driver movement.
 
+## Precedent and Causal Monitoring
+
+Source docs and implementation:
+
+- `docs/precedent_baseline.md`
+- `docs/causal_baseline.md`
+- `docs/model_monitoring.md`
+
+Accepted broad 20-company canary:
+
+| Metric | Value |
+|---|---:|
+| causal_rate_mean | 0.848 |
+| strict_all_mean | 0.848 |
+| strict_causal_mean | 1.000 |
+| precedent_conf_mean | 0.347 |
+| precedent_oos_mean | 0.308 |
+
+Gate thresholds:
+
+| Metric | Threshold |
+|---|---:|
+| min_causal_rate_mean | 0.82 |
+| min_strict_all_mean | 0.82 |
+| min_strict_causal_mean | 0.95 |
+| min_precedent_conf_mean | 0.34 |
+| max_precedent_oos_mean | 0.33 |
+
+Known limitation:
+
+- `capital_structure.revolver_draw_or_resize` remains precedent-driven because targeted causal rescue training did not clear OOS quality gates.
+
+That limitation should stay visible. It makes the public story more credible because the system refuses to label weak cells as strong.
+
+## Stock Impact and Action Surface
+
+Source docs:
+
+- `docs/stock_impact_validation_artifacts.md`
+- `src/causal_impact_model.py`
+- `src/causal_benchmark.py`
+
+Refreshed families include:
+
+- stock splits
+- debt refinancing
+- M&A disclosed, tuck-in, platform, transformational
+- dividend increase/initiation/cut/special dividend
+- debt issuance
+- buyback
+- equity issuance
+
+Important modeling choice:
+
+- direct abnormal-return regressors are noisy
+- classifier-calibrated return-band evidence often gives a more stable product signal
+- exact thin families can fall back to broader family evidence when appropriate
+
