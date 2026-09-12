@@ -438,3 +438,545 @@ def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
+def build_handler(defaults: argparse.Namespace):
+    runtime = _WarmRuntime(max_workers=2)
+    if bool(getattr(defaults, "startup_warmup", True)):
+        runtime.start_background_warmup(
+            outcomes_path=_pick(vars(defaults), "outcomes_path", None),
+            snapshot_root=_pick(vars(defaults), "snapshot_root", None),
+            snapshot_path=_pick(vars(defaults), "snapshot_path", None),
+            entity_identifier_path=_pick(vars(defaults), "entity_identifier_path", "data/inputs_layer/entity_identifier.parquet"),
+            warmup_company_id=str(_pick(vars(defaults), "warmup_company_id", "0000320193")),
+            warmup_as_of=str(_pick(vars(defaults), "warmup_as_of", "2026-02-28")),
+        )
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, status: int, payload: Dict[str, Any]) -> None:
+            body = _json_bytes(payload)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args) -> None:
+            return
+
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                self._send(200, {"ok": True, "warmup": runtime.warmup_state()})
+                return
+            parsed = urlparse(self.path)
+            if parsed.path == "/precedent_query":
+                self._handle_precedent_query(parsed)
+                return
+            if parsed.path == "/run_status":
+                self._handle_run_status(parsed)
+                return
+            if parsed.path == "/run_result":
+                self._handle_run_result(parsed)
+                return
+            self._send(404, {"ok": False, "error": "not_found"})
+
+        def do_POST(self) -> None:
+            if self.path not in {
+                "/create_run",
+                "/execute_run",
+                "/create_and_execute_run",
+                "/recommend",
+                "/execute_run_async",
+            }:
+                self._send(404, {"ok": False, "error": "not_found"})
+                return
+
+            body, err = _read_json_body(self)
+            if err:
+                self._send(400, {"ok": False, "error": err})
+                return
+
+            try:
+                if self.path == "/create_run":
+                    self._handle_create_run(body)
+                    return
+                if self.path == "/execute_run":
+                    self._handle_execute_run(body)
+                    return
+                if self.path == "/execute_run_async":
+                    self._handle_execute_run_async(body)
+                    return
+                if self.path == "/recommend":
+                    self._handle_recommend(body)
+                    return
+                self._handle_create_and_execute_run(body)
+            except ValueError as exc:
+                self._send(400, {"ok": False, "error": str(exc)})
+            except Exception as exc:
+                self._send(500, {"ok": False, "error": str(exc)})
+
+        def _load_store(self, body: Dict[str, Any]) -> RecommendationRunStore:
+            RecommendationRunStore, _, _, _ = _recommendation_run_bindings()
+            return RecommendationRunStore(root=_pick(body, "runs_root", defaults.runs_root))
+
+        def _handle_precedent_query(self, parsed) -> None:
+            q = parse_qs(parsed.query)
+            run_id = str((q.get("run_id") or [""])[0]).strip()
+            if not run_id:
+                self._send(400, {"ok": False, "error": "run_id_required"})
+                return
+            runs_root = str((q.get("runs_root") or [defaults.runs_root])[0])
+            RecommendationRunStore, _, _, _ = _recommendation_run_bindings()
+            store = RecommendationRunStore(root=runs_root)
+            run = store.get_run(run_id)
+            if run is None:
+                self._send(404, {"ok": False, "error": "run_not_found"})
+                return
+            md = run.metadata if isinstance(run.metadata, dict) else {}
+            artifacts = md.get("artifacts", {}) if isinstance(md.get("artifacts"), dict) else {}
+            idx_path = str(artifacts.get("PrecedentIndex") or "")
+            idx = _read_json_if_exists(idx_path) if idx_path else None
+            from src.pipeline.precedent_index import INDEX_VERSION as PRECEDENT_INDEX_VERSION
+
+            stale_index = not (isinstance(idx, dict) and str(idx.get("index_version", "")) == PRECEDENT_INDEX_VERSION)
+            if idx is None or stale_index:
+                pm_path = str(artifacts.get("PrecedentMatches") or "")
+                pm_obj = _read_json_if_exists(pm_path) if pm_path else None
+                if not isinstance(pm_obj, dict):
+                    self._send(409, {"ok": False, "error": "precedent_artifact_not_ready"})
+                    return
+                from src.pipeline.precedent_index import build_precedent_index
+
+                idx = build_precedent_index(run_id=run_id, precedent_matches=pm_obj.get("results", []))
+                try:
+                    idx_saved = store.attach_artifact(run_id, "PrecedentIndex", idx)
+                    idx_path = str(idx_saved)
+                except Exception:
+                    idx_path = ""
+            from src.pipeline.precedent_index import query_precedent_index
+
+            try:
+                limit = int((q.get("limit") or ["200"])[0])
+            except Exception:
+                limit = 200
+            try:
+                min_sample_size = int((q.get("min_sample_size") or ["0"])[0])
+            except Exception:
+                min_sample_size = 0
+            try:
+                min_precedent_confidence = float((q.get("min_precedent_confidence") or ["0"])[0])
+            except Exception:
+                min_precedent_confidence = 0.0
+            exclude_out_of_sample = _parse_bool_flag((q.get("exclude_out_of_sample") or ["false"])[0], default=False)
+            result = query_precedent_index(
+                idx if isinstance(idx, dict) else {},
+                action_type=str((q.get("action_type") or [""])[0]).strip() or None,
+                action_id=str((q.get("action_id") or [""])[0]).strip() or None,
+                regime=str((q.get("regime") or [""])[0]).strip() or None,
+                sector=str((q.get("sector") or [""])[0]).strip() or None,
+                time_horizon=str((q.get("time_horizon") or [""])[0]).strip() or None,
+                min_sample_size=max(0, min_sample_size),
+                min_precedent_confidence=max(0.0, min_precedent_confidence),
+                exclude_out_of_sample=exclude_out_of_sample,
+                limit=max(1, min(2000, limit)),
+            )
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "status": run.status,
+                    "index_artifact": idx_path,
+                    **result,
+                },
+            )
+
+        def _handle_run_status(self, parsed) -> None:
+            q = parse_qs(parsed.query)
+            run_id = str((q.get("run_id") or [""])[0]).strip()
+            if not run_id:
+                self._send(400, {"ok": False, "error": "run_id_required"})
+                return
+            runs_root = str((q.get("runs_root") or [defaults.runs_root])[0])
+            RecommendationRunStore, _, _, _ = _recommendation_run_bindings()
+            store = RecommendationRunStore(root=runs_root)
+            run = store.get_run(run_id)
+            if run is None:
+                self._send(404, {"ok": False, "error": "run_not_found"})
+                return
+            events = [_audit_event_to_dict(e) for e in run.audit_log[-10:]]
+            metadata = run.metadata if isinstance(run.metadata, dict) else {}
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "status": run.status,
+                    "job_state": runtime.job_state(run_id),
+                    "last_events": events,
+                    "artifacts": metadata.get("artifacts", {}),
+                    "config": metadata.get("config"),
+                    "progress": metadata.get("progress"),
+                    "progress_by_stage": metadata.get("progress_by_stage", {}),
+                },
+            )
+
+        def _handle_run_result(self, parsed) -> None:
+            q = parse_qs(parsed.query)
+            run_id = str((q.get("run_id") or [""])[0]).strip()
+            if not run_id:
+                self._send(400, {"ok": False, "error": "run_id_required"})
+                return
+            runs_root = str((q.get("runs_root") or [defaults.runs_root])[0])
+            RecommendationRunStore, _, _, _ = _recommendation_run_bindings()
+            store = RecommendationRunStore(root=runs_root)
+            run = store.get_run(run_id)
+            if run is None:
+                self._send(404, {"ok": False, "error": "run_not_found"})
+                return
+            metadata = run.metadata if isinstance(run.metadata, dict) else {}
+            artifacts = metadata.get("artifacts", {})
+            rec = None
+            if isinstance(artifacts, dict) and artifacts.get("RecommendationPackage"):
+                rec = _read_json_if_exists(artifacts["RecommendationPackage"])
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "status": run.status,
+                    "artifacts": artifacts,
+                    "config": metadata.get("config"),
+                    "progress": metadata['progress'],
+                    "recommendation_package": rec,
+                },
+            )
+
+        def _handle_create_run(self, body: Dict[str, Any]) -> None:
+            company_id = str(body.get("company_id") or "").strip()
+            as_of = str(body.get("as_of") or body.get("as_of_time") or "").strip()
+            if not company_id or not as_of:
+                raise ValueError("company_id and as_of are required")
+
+            snapshot_root = _pick(body, "snapshot_root", defaults.snapshot_root)
+            snapshot_path = _pick(body, "snapshot_path", defaults.snapshot_path)
+            entity_identifier_path = _pick(body, "entity_identifier_path", defaults.entity_identifier_path)
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+            action_ids = _coerce_action_ids(raw_action_ids)
+            signature = _canonical_request_signature(
+                company_id=company_id,
+                as_of=as_of,
+                action_ids=action_ids,
+                action_type=_pick(body, "action_type", None),
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+            )
+            metadata = dict(_pick(body, "metadata", None) or {})
+            metadata["request_signature"] = signature
+
+            RecommendationRunStore, _, _, create_recommendation_run = _recommendation_run_bindings()
+            run_id = create_recommendation_run(
+                company_id=company_id,
+                as_of_time=as_of,
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                run_store=RecommendationRunStore(root=_pick(body, "runs_root", defaults.runs_root)),
+                snapshot_root=snapshot_root,
+                snapshot_path=snapshot_path,
+                snapshot_loader=runtime.build_snapshot_loader(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_identifier_path=entity_identifier_path,
+                ),
+                entity_graph_path=_pick(body, "entity_graph_path", defaults.entity_graph_path),
+                entity_identifier_path=entity_identifier_path,
+                planner_random_seed=_pick(body, "planner_random_seed", None),
+                metadata=metadata,
+            )
+            self._send(
+                200,
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "runs_root": _pick(body, "runs_root", defaults.runs_root),
+                },
+            )
+
+        def _handle_execute_run(self, body: Dict[str, Any]) -> None:
+            run_id = str(body.get("run_id") or "").strip()
+            if not run_id:
+                raise ValueError("run_id is required")
+
+            snapshot_root = _pick(body, "snapshot_root", defaults.snapshot_root)
+            snapshot_path = _pick(body, "snapshot_path", defaults.snapshot_path)
+            entity_identifier_path = _pick(body, "entity_identifier_path", defaults.entity_identifier_path)
+
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+
+            summary = _execute_recommendation_run_entrypoint(
+                run_id=run_id,
+                runs_root=_pick(body, "runs_root", defaults.runs_root),
+                snapshot_root=snapshot_root,
+                snapshot_path=snapshot_path,
+                snapshot_loader=runtime.build_snapshot_loader(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_identifier_path=entity_identifier_path,
+                ),
+                entity_identifier_path=entity_identifier_path,
+                action_ids=_coerce_action_ids(raw_action_ids),
+                action_type=_pick(body, "action_type", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                outcomes_path=_pick(body, "outcomes_path", defaults.outcomes_path),
+                config_path=_pick(body, "config", defaults.config),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+                registry=runtime.registry,
+            )
+            self._send(200, summary)
+
+        def _exec_kwargs(self, body: Dict[str, Any], run_id: str) -> Dict[str, Any]:
+            snapshot_root = _pick(body, "snapshot_root", defaults.snapshot_root)
+            snapshot_path = _pick(body, "snapshot_path", defaults.snapshot_path)
+            entity_identifier_path = _pick(body, "entity_identifier_path", defaults.entity_identifier_path)
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+            return {
+                "run_id": run_id,
+                "runs_root": _pick(body, "runs_root", defaults.runs_root),
+                "snapshot_root": snapshot_root,
+                "snapshot_path": snapshot_path,
+                "snapshot_loader": runtime.build_snapshot_loader(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_identifier_path=entity_identifier_path,
+                ),
+                "entity_identifier_path": entity_identifier_path,
+                "action_ids": _coerce_action_ids(raw_action_ids),
+                "action_type": _pick(body, "action_type", None),
+                "max_candidates": int(_pick(body, "max_candidates", defaults.max_candidates)),
+                "min_candidates_target": int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                "precedent_top_k": int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                "strict_evidence": bool(_pick(body, "strict_evidence", False)),
+                "outcomes_path": _pick(body, "outcomes_path", defaults.outcomes_path),
+                "config_path": _pick(body, "config", defaults.config),
+                "top_plans": int(_pick(body, "top_plans", defaults.top_plans)),
+                "registry": runtime.registry,
+            }
+
+        def _handle_execute_run_async(self, body: Dict[str, Any]) -> None:
+            run_id = str(body.get("run_id") or "").strip()
+            if not run_id:
+                raise ValueError("run_id is required")
+            exec_kwargs = self._exec_kwargs(body, run_id)
+            runtime.submit_execution(run_id, _execute_recommendation_run_entrypoint, exec_kwargs)
+            self._send(
+                202,
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "status": "accepted",
+                    "job_state": runtime.job_state(run_id),
+                },
+            )
+
+        def _create_run_for_request(self, body: Dict[str, Any]) -> Tuple[str, str]:
+            company_id = str(body.get("company_id") or "").strip()
+            as_of = str(body.get("as_of") or body.get("as_of_time") or "").strip()
+            if not company_id or not as_of:
+                raise ValueError("company_id and as_of are required")
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+            action_ids = _coerce_action_ids(raw_action_ids)
+
+            signature = _canonical_request_signature(
+                company_id=company_id,
+                as_of=as_of,
+                action_ids=action_ids,
+                action_type=_pick(body, "action_type", None),
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+            )
+            snapshot_root = _pick(body, "snapshot_root", defaults.snapshot_root)
+            snapshot_path = _pick(body, "snapshot_path", defaults.snapshot_path)
+            entity_identifier_path = _pick(body, "entity_identifier_path", defaults.entity_identifier_path)
+            metadata = dict(_pick(body, "metadata", None) or {})
+            metadata["request_signature"] = signature
+            metadata["request_action_ids"] = action_ids or []
+            metadata["request_action_type"] = _pick(body, "action_type", None)
+
+            RecommendationRunStore, _, _, create_recommendation_run = _recommendation_run_bindings()
+            run_id = create_recommendation_run(
+                company_id=company_id,
+                as_of_time=as_of,
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                run_store=self._load_store(body),
+                snapshot_root=snapshot_root,
+                snapshot_path=snapshot_path,
+                snapshot_loader=runtime.build_snapshot_loader(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_identifier_path=entity_identifier_path,
+                ),
+                entity_graph_path=_pick(body, "entity_graph_path", defaults.entity_graph_path),
+                entity_identifier_path=entity_identifier_path,
+                planner_random_seed=_pick(body, "planner_random_seed", None),
+                metadata=metadata,
+            )
+            return run_id, signature
+
+        def _handle_recommend(self, body: Dict[str, Any]) -> None:
+            company_id = str(body.get("company_id") or "").strip()
+            as_of = str(body.get("as_of") or body.get("as_of_time") or "").strip()
+            if not company_id or not as_of:
+                raise ValueError("company_id and as_of are required")
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+            action_ids = _coerce_action_ids(raw_action_ids)
+            signature = _canonical_request_signature(
+                company_id=company_id,
+                as_of=as_of,
+                action_ids=action_ids,
+                action_type=_pick(body, "action_type", None),
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+            )
+            store = self._load_store(body)
+            force_refresh = bool(_pick(body, "force_refresh", False))
+            if not force_refresh:
+                cached = _find_cached_completed_run(store, company_id, as_of, signature)
+                if cached is not None:
+                    self._send(
+                        200,
+                        {
+                            "ok": True,
+                            "mode": "cache_hit",
+                            "cached": True,
+                            **cached,
+                        },
+                    )
+                    return
+
+            run_id, _ = self._create_run_for_request(body)
+            exec_kwargs = self._exec_kwargs(body, run_id)
+            runtime.submit_execution(run_id, _execute_recommendation_run_entrypoint, exec_kwargs)
+            self._send(
+                202,
+                {
+                    "ok": True,
+                    "mode": "started",
+                    "cached": False,
+                    "run_id": run_id,
+                    "status": "accepted",
+                    "job_state": runtime.job_state(run_id),
+                },
+            )
+
+        def _handle_create_and_execute_run(self, body: Dict[str, Any]) -> None:
+            company_id = str(body.get("company_id") or "").strip()
+            as_of = str(body.get("as_of") or body.get("as_of_time") or "").strip()
+            if not company_id or not as_of:
+                raise ValueError("company_id and as_of are required")
+
+            snapshot_root = _pick(body, "snapshot_root", defaults.snapshot_root)
+            snapshot_path = _pick(body, "snapshot_path", defaults.snapshot_path)
+            entity_identifier_path = _pick(body, "entity_identifier_path", defaults.entity_identifier_path)
+            raw_action_ids = body.get("action_ids")
+            if raw_action_ids is None and body.get("action_id") is not None:
+                raw_action_ids = [body.get("action_id")]
+            action_ids = _coerce_action_ids(raw_action_ids)
+            signature = _canonical_request_signature(
+                company_id=company_id,
+                as_of=as_of,
+                action_ids=action_ids,
+                action_type=_pick(body, "action_type", None),
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+            )
+            metadata = dict(_pick(body, "metadata", None) or {})
+            metadata["request_signature"] = signature
+            metadata["request_action_ids"] = action_ids or []
+            metadata["request_action_type"] = _pick(body, "action_type", None)
+
+            summary = _create_and_execute_recommendation_run_entrypoint(
+                company_id=company_id,
+                as_of_time=as_of,
+                objectives=_pick(body, "objectives", None),
+                constraints=_pick(body, "constraints", None),
+                scenario=_pick(body, "scenario", None),
+                runs_root=_pick(body, "runs_root", defaults.runs_root),
+                snapshot_root=snapshot_root,
+                snapshot_path=snapshot_path,
+                snapshot_loader=runtime.build_snapshot_loader(
+                    snapshot_root=snapshot_root,
+                    snapshot_path=snapshot_path,
+                    entity_identifier_path=entity_identifier_path,
+                ),
+                entity_graph_path=_pick(body, "entity_graph_path", defaults.entity_graph_path),
+                entity_identifier_path=entity_identifier_path,
+                planner_random_seed=_pick(body, "planner_random_seed", None),
+                metadata=metadata,
+                action_ids=action_ids,
+                action_type=_pick(body, "action_type", None),
+                max_candidates=int(_pick(body, "max_candidates", defaults.max_candidates)),
+                min_candidates_target=int(
+                    _pick(body, "min_candidates_target", defaults.min_candidates_target)
+                ),
+                precedent_top_k=int(_pick(body, "precedent_top_k", defaults.precedent_top_k)),
+                strict_evidence=bool(_pick(body, "strict_evidence", False)),
+                outcomes_path=_pick(body, "outcomes_path", defaults.outcomes_path),
+                config_path=_pick(body, "config", defaults.config),
+                top_plans=int(_pick(body, "top_plans", defaults.top_plans)),
+                registry=runtime.registry,
+            )
+            self._send(200, summary)
+
+    return Handler
+
+

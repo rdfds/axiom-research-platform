@@ -292,3 +292,18 @@ def test_status_lifecycle_appends_audit_events(tmp_path: Path):
     assert "run_completed" in event_types
 
 
+def test_as_of_must_not_be_before_earliest_company_data(tmp_path: Path):
+    entity_graph, entity_identifier = _write_entity_files(tmp_path)
+    snapshot_root = _write_keyed_snapshot(tmp_path)
+
+    with pytest.raises(ValueError, match="earliest company data"):
+        create_recommendation_run(
+            company_id="001690",
+            as_of_time="1999-01-01",
+            run_store=RecommendationRunStore(root=tmp_path / "runs"),
+            snapshot_root=snapshot_root,
+            entity_graph_path=entity_graph,
+            entity_identifier_path=entity_identifier,
+        )
+
+
