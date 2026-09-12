@@ -1,0 +1,31 @@
+# Forward Gap Lambda Policy Validation
+
+As of: `2024-12-31`
+Validation mode: **walk_forward**
+Walk-forward splits: train ends `2014-12-31, 2016-12-31, 2018-12-31, 2020-12-31`, test window `2` years
+Placebo runs: **3** (shuffle gap values within each driver/horizon panel before scoring the same validation split)
+Candidates attempted: **84**
+Successful driver/horizon evaluations: **912**
+Excluded sectors: **10 Energy, 40 Financials, 55 Utilities, 60 Real Estate**
+
+## Global Lambda
+
+Best lambda: `0.5`
+Mean MAE improvement: `0.007413079306394106`
+Stable lambda `0.5` mean MAE improvement: `0.007413079306394106`
+
+| Scope | Best lambda | Eval count | Mean MAE improvement | Pass rate |
+|---|---:|---:|---:|---:|
+| balance_sheet:1Y | 0.8 | 46 | 0.009426001121214672 | 0.5434782608695652 |
+| balance_sheet:2Y | 1.0 | 46 | 0.016849984619269544 | 0.5652173913043478 |
+| capital_efficiency:1Y | 1.0 | 1 | 0.015327586264884618 | 1.0 |
+| capital_efficiency:2Y | 0.8 | 1 | 0.012917128594530314 | 1.0 |
+| cash_conversion:1Y | 0.1 | 39 | -0.0005592925220244996 | 0.358974358974359 |
+| cash_conversion:2Y | 0.35 | 39 | 0.004466469628785725 | 0.6923076923076923 |
+| cash_margin:1Y | 0.5 | 21 | 0.014509210556127316 | 0.7619047619047619 |
+| cash_margin:2Y | 0.35 | 21 | 0.011985615366864176 | 0.6666666666666666 |
+| growth:1Y | 0.35 | 185 | 0.005477723823706469 | 0.6756756756756757 |
+| growth:2Y | 0.35 | 185 | 0.0023758326106086327 | 0.5135135135135135 |
+| margin:1Y | 0.65 | 164 | 0.014274419544686326 | 0.6951219512195121 |
+| margin:2Y | 0.65 | 164 | 0.012161836404387892 | 0.6524390243902439 |
+
