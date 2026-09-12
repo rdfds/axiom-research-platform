@@ -93,3 +93,30 @@ class OutcomeDistribution:
     pct_beat_benchmark: Optional[float]
 
 
+@dataclass
+class KeySplit:
+    """A condition that materially changes outcomes."""
+    condition: str  # e.g., "valuation_dislocation = high"
+    condition_human: str  # e.g., "When stock is undervalued vs peers"
+    effect: str  # e.g., "+4% median TSR"
+    effect_magnitude: float
+    n_with_condition: int
+    n_without_condition: int
+    outcomes_with: OutcomeDistribution
+    outcomes_without: OutcomeDistribution
+    statistical_significance: float  # p-value or confidence
+
+
+@dataclass
+class ExampleCase:
+    """A specific historical case for narrative use."""
+    case_id: str
+    company_name: str
+    date: str
+    action_type: str
+    similarity_score: float
+    signal_profile_summary: Dict[str, float]  # key signals at time of action
+    outcome_tsr_12m: Optional[float]
+    context_summary: str  # 1-2 sentence description
+
+
