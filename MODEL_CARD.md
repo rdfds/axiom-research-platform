@@ -59,3 +59,11 @@ The benchmark supports a narrow claim: the selected forward-gap policy improved 
 
 See [`docs/validation/README.md`](docs/validation/README.md) for the broader validation inventory.
 
+## Data access
+
+The system supports licensed and private data sources. This repository contains schemas, transformations, model and evaluation code, and representative fixtures, but not the underlying licensed datasets. Consequently:
+
+- repository checks validate implementation and product contracts rather than licensed-source coverage;
+- the benchmark is an offline evaluation rather than a current live-system score;
+- provider-specific ingestion and large-scale backfills require credentials not included here.
+

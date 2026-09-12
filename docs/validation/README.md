@@ -163,3 +163,6 @@ Important modeling choice:
 - classifier-calibrated return-band evidence often gives a more stable product signal
 - exact thin families can fall back to broader family evidence when appropriate
 
+## Current public scope
+
+The committed examples intentionally emphasize the parts a reviewer can run and inspect: point-in-time contracts, provenance, retrieval evidence, conservative action gates, and decision translation. Provider-backed ingestion and large generated workspaces remain outside the documented path.
