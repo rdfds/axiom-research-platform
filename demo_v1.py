@@ -168,3 +168,5 @@ Next steps for V1:
     """)
 
 
+if __name__ == "__main__":
+    main()
