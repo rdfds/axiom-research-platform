@@ -682,7 +682,7 @@ def _impact_contribution(candidate: Dict[str, Any]) -> Dict[str, Any]:
     impact = dict(candidate.get("impact_distribution", {}) or {})
     objectives = {}
     for objective, payload in dict(impact.get("objectives", {}) or {}).items():
-        objectives[objective] = float(payload['median'] or 0.0)
+        objectives[objective] = float(payload.get("median", 0.0) or 0.0)
     return {
         "objectives": objectives,
         "uncertainty_score": float(impact.get("uncertainty_score", 0.0) or 0.0),

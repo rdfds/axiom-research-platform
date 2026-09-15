@@ -82,3 +82,10 @@ The system supports licensed and private data sources. This repository contains 
 
 Changes to models or policies should pass data-contract checks, time-based backtests, baseline/placebo comparisons, support and calibration review, and the portable public test contract. Promotion decisions should record the candidate artifact, evaluation window, thresholds, failure analysis, and rollback target. The complete public monitoring contract is documented in [`docs/model_monitoring.md`](docs/model_monitoring.md).
 
+## Limitations
+
+- Historical relationships can change across regimes, sectors, and data vendors.
+- A positive aggregate result may conceal weak slices; sector and family/horizon results must be inspected.
+- Shuffled placebos test one class of spurious signal and are not a substitute for full causal identification.
+- Representative fixtures do not reproduce the scale, coverage, or operational behavior of provider-backed runs.
+- Decision usefulness and financial impact require evaluation beyond the committed offline benchmark.

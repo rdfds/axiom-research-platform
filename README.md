@@ -104,3 +104,40 @@ Print a compact contract check for all committed examples:
 python scripts/inspect_examples.py
 ```
 
+## Validation standard
+
+Axiom treats validation as part of the product, not an afterthought. The public checks emphasize:
+
+- point-in-time inputs and no look-ahead leakage
+- walk-forward evaluation where the claim is temporal
+- placebo or baseline comparisons for expectation claims
+- model-family quality gates before evidence becomes a recommendation
+- explicit limitations when samples are thin or a mechanism is not identified
+
+See the [model card](MODEL_CARD.md), [validation overview](docs/validation/README.md), [data contract](docs/data_contract.md), and [model monitoring contract](docs/model_monitoring.md).
+
+## Quickstart
+
+```bash
+python -m pip install -e ".[dev]"
+python scripts/build_public_benchmark.py --check
+python -m pytest -q \
+  tests/test_public_benchmark_artifact.py \
+  tests/test_example_contracts.py \
+  tests/test_hd_market_expectations_demo.py
+```
+
+GitHub Actions runs the benchmark drift check plus 86 deterministic tests spanning examples, point-in-time state, feature bundles, backtests, learned precedent quality, ranking, orchestration, planner behavior, and dossier evaluation.
+
+## Repository layout
+
+```text
+src/          Core modeling, retrieval, evidence, and decision modules
+scripts/      Ingestion, builders, validation, and operational tooling
+examples/     Small guided examples with committed sample inputs
+docs/         Architecture, contracts, validation, and monitoring notes
+schemas/      Company-state and input-layer JSON schemas
+configs/      Model policies, routing rules, and evaluation manifests
+tests/        Unit tests and product-contract checks
+```
+
