@@ -141,3 +141,15 @@ configs/      Model policies, routing rules, and evaluation manifests
 tests/        Unit tests and product-contract checks
 ```
 
+## Data access
+
+Licensed datasets and credentials are not included. The model code, schemas, evaluation logic, tests, and documented examples run from committed fixtures without paid data access.
+
+## Interpretation safeguards
+
+- Explanatory, predictive, and causal relationships remain separate throughout the evidence contract.
+- Thin or mismatched precedent support triggers broader cohorts, lower confidence, or an explicit abstention.
+- Residual valuation gaps remain unassigned when the available drivers do not explain them.
+- Recommendations preserve supporting evidence, objections, regret cases, and monitoring triggers.
+
+The goal is decision evidence that a CFO can challenge, audit, and use rather than an unexplained score.

@@ -887,3 +887,382 @@ def _negative_utility_penalty(weighted_utility: float, weighted_components: Dict
     return round(min(0.09, penalty), 6)
 
 
+def _impact_driver_contribution(candidate: Dict[str, Any], driver_name: str) -> float:
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    for driver in list(impact.get("key_drivers", []) or []):
+        if str(driver.get("driver_name", "") or "") != driver_name:
+            continue
+        try:
+            return float(driver.get("contribution", 0.0) or 0.0)
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+def _dividend_initiate_causal_relief(candidate: Dict[str, Any]) -> Dict[str, float]:
+    if str(candidate.get("action_id", "") or "") != "capital_return.dividend_initiate":
+        return {"action_specific_penalty_relief": 0.0, "status_quo_hurdle_relief": 0.0}
+    if not _has_causal_support(candidate):
+        return {"action_specific_penalty_relief": 0.0, "status_quo_hurdle_relief": 0.0}
+
+    blend_weight = _impact_driver_contribution(candidate, "causal_model_blend_weight")
+    model_quality = max(
+        _impact_driver_contribution(candidate, "causal_model_quality"),
+        _impact_driver_contribution(candidate, "causal_model_min_oos_r2"),
+    )
+    support_score = _impact_driver_contribution(candidate, "causal_model_support_score")
+    if blend_weight < 0.2 or model_quality < 0.1 or support_score < 0.85:
+        return {"action_specific_penalty_relief": 0.0, "status_quo_hurdle_relief": 0.0}
+
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    objectives = dict(impact.get("objectives", {}) or {})
+    value_creation = float((objectives.get("value_creation", {}) or {}).get("median", 0.0) or 0.0)
+    positive_count = sum(
+        1
+        for objective in _OBJECTIVE_FIELDS
+        if float((objectives.get(objective, {}) or {}).get("median", 0.0) or 0.0) > 0.01
+    )
+
+    action_relief = 0.01
+    status_quo_relief = 0.005
+    if blend_weight >= 0.24:
+        action_relief += 0.01
+        status_quo_relief += 0.005
+    if support_score >= 0.9:
+        action_relief += 0.01
+        status_quo_relief += 0.005
+    if model_quality >= 0.12:
+        action_relief += 0.005
+        status_quo_relief += 0.005
+    if value_creation >= 0.04:
+        action_relief += 0.005
+    if positive_count >= 1:
+        status_quo_relief += 0.005
+    return {
+        "action_specific_penalty_relief": round(min(0.04, action_relief), 6),
+        "status_quo_hurdle_relief": round(min(0.02, status_quo_relief), 6),
+    }
+
+
+def _buyback_maturity_wall_relief(candidate: Dict[str, Any]) -> float:
+    action_id = str(candidate.get("action_id", "") or "")
+    if action_id != "capital_return.open_market_buyback":
+        return 0.0
+
+    feasibility = dict(candidate.get("feasibility", {}) or {})
+    pass_probability = float(feasibility.get("pass_probability", 0.0) or 0.0)
+    if pass_probability < 0.5:
+        return 0.0
+
+    params = dict(candidate.get("parameters", {}) or {})
+    size_pct_market_cap = float(params.get("size_pct_market_cap", 0.0) or 0.0)
+    if size_pct_market_cap <= 0.0 or size_pct_market_cap > 0.02:
+        return 0.0
+
+    blockers = list(feasibility.get("blockers", []) or [])
+    if not blockers:
+        return 0.0
+    if any(str(blocker.get("severity", "") or "").lower() == "hard" for blocker in blockers):
+        return 0.0
+    blocker_types = {str(blocker.get("blocker_type", "") or "") for blocker in blockers}
+    if blocker_types != {"maturity_wall_conflict"}:
+        return 0.0
+
+    runway_months = 0.0
+    proforma_interest_coverage = 0.0
+    maturity_wall_ratio = 0.0
+    for signal in list(feasibility.get("gating_signals", []) or []):
+        name = str(signal.get("feature_name", "") or "")
+        try:
+            value = float(signal.get("value", 0.0) or 0.0)
+        except Exception:
+            continue
+        if name == "liquidity.runway_months_proforma":
+            runway_months = value
+        elif name == "capital_structure.proforma_interest_coverage":
+            proforma_interest_coverage = value
+        elif name == "capital_structure.maturity_wall_ratio_24m":
+            maturity_wall_ratio = value
+
+    if runway_months < 18.0 or proforma_interest_coverage < 10.0:
+        return 0.0
+    if maturity_wall_ratio <= 0.25 or maturity_wall_ratio > 0.3:
+        return 0.0
+
+    objectives = dict(dict(candidate.get("impact_distribution", {}) or {}).get("objectives", {}) or {})
+    value_creation = float((objectives.get("value_creation", {}) or {}).get("median", 0.0) or 0.0)
+    rating_preservation = float((objectives.get("rating_preservation", {}) or {}).get("median", 0.0) or 0.0)
+    if value_creation < 0.04 or rating_preservation < -0.02:
+        return 0.0
+
+    return 0.04
+
+
+def _status_quo_hurdle(
+    weighted_utility: float,
+    weighted_components: Dict[str, float],
+    action_ids: Sequence[str],
+    support_factor: float = 0.0,
+    transition_bonus: float = 0.0,
+    structural_bonus: float = 0.0,
+    candidates: Optional[Sequence[Dict[str, Any]]] = None,
+) -> float:
+    positive_count = sum(1 for value in weighted_components.values() if float(value) > 0.01)
+    if weighted_utility >= 0.02 and positive_count >= 2:
+        return 0.0
+    if transition_bonus >= 0.03 or structural_bonus >= 0.02:
+        return 0.0
+
+    soft_actions = {
+        "capital_return.dividend_initiate",
+        "capital_return.dividend_increase",
+        "capital_return.dividend_cut",
+        "capital_return.special_dividend",
+        "governance.board_refresh",
+        "governance.activist_settlement",
+        "governance.stock_split",
+        "restructuring.working_capital_program",
+    }
+    thin_financing_actions = {
+        "capital_structure.equity_issuance",
+        "capital_structure.new_debt_issuance",
+        "capital_structure.refinancing",
+        "capital_structure.revolver_draw_or_resize",
+    }
+
+    if action_ids and all(action_id in soft_actions for action_id in action_ids):
+        penalty = 0.025
+        if weighted_utility < 0.02:
+            penalty += 0.015
+        if positive_count <= 1:
+            penalty += 0.015
+        if support_factor and support_factor < 0.88:
+            penalty += 0.01
+        if candidates and all(str(candidate.get("action_id", "") or "") == "capital_return.dividend_initiate" for candidate in candidates):
+            relief = max(
+                (_dividend_initiate_causal_relief(candidate).get("status_quo_hurdle_relief", 0.0) or 0.0)
+                for candidate in candidates
+            )
+            penalty = max(0.0, penalty - float(relief))
+        return round(min(0.06, penalty), 6)
+
+    if action_ids and all(action_id in thin_financing_actions for action_id in action_ids):
+        penalty = 0.0
+        if weighted_utility < 0.03:
+            penalty += 0.02
+        if positive_count <= 2:
+            penalty += 0.015
+        if support_factor and support_factor < 0.88:
+            penalty += 0.01
+        return round(min(0.05, penalty), 6)
+
+    return 0.0
+
+
+def _is_deleveraging_equity_recap(candidate: Dict[str, Any]) -> bool:
+    action_id = str(candidate.get("action_id", "") or "")
+    if action_id != "capital_structure.equity_issuance":
+        return False
+
+    params = dict(candidate.get("parameters") or candidate.get("params") or {})
+    use_of_proceeds = str(params.get("use_of_proceeds", "") or "").strip().lower()
+    if use_of_proceeds != "deleveraging":
+        return False
+
+    return True
+
+
+def _action_specific_penalty(candidate: Dict[str, Any], precedent_pack: Optional[Dict[str, Any]] = None) -> float:
+    action_id = str(candidate.get("action_id", "") or "")
+    action_type = str(candidate.get("action_type", "") or "")
+    precedent_pack = dict(precedent_pack or {})
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    objectives = dict(impact.get("objectives", {}) or {})
+    medians = {
+        objective: float((objectives.get(objective, {}) or {}).get("median", 0.0) or 0.0)
+        for objective in _OBJECTIVE_FIELDS
+    }
+    recurring_dividend_actions = {
+        "capital_return.dividend_increase",
+        "capital_return.dividend_initiate",
+        "capital_return.dividend_cut",
+    }
+    if action_id in recurring_dividend_actions:
+        # Recurring dividend policy moves are narrower than capital-structure,
+        # portfolio, or acquisition plans. Require a clearer edge before they
+        # dominate the top plan.
+        penalty = 0.06 if action_id == "capital_return.dividend_initiate" else 0.05
+        positive = 0
+        negative = 0
+        for objective in _OBJECTIVE_FIELDS:
+            median = medians[objective]
+            if median > 0.01:
+                positive += 1
+            elif median < -0.01:
+                negative += 1
+        if positive <= 1 and negative >= 2:
+            penalty += 0.04
+        if float((impact.get("uncertainty_score", 0.0) or 0.0)) > 0.3:
+            penalty += 0.01
+        if action_id == "capital_return.dividend_initiate":
+            penalty -= float(_dividend_initiate_causal_relief(candidate).get("action_specific_penalty_relief", 0.0) or 0.0)
+            penalty = max(0.03, penalty)
+    elif action_id == "capital_return.special_dividend":
+        # One-time payouts are less sticky than dividend policy changes but
+        # still need a clearer edge than default financing or portfolio moves.
+        penalty = 0.035
+    elif action_id == "capital_structure.equity_issuance":
+        # External equity is dilutive and should only rank highly when it
+        # clearly solves a balance-sheet constraint or funds a strong strategic
+        # opportunity. Mildly positive generic financing effects are not enough.
+        structural_need = max(medians["risk_reduction"], medians["rating_preservation"])
+        strategic_need = max(medians["growth"], medians["optionality"])
+        value_creation = medians["value_creation"]
+        recap_context = _is_deleveraging_equity_recap(candidate)
+
+        penalty = 0.03
+        if structural_need < 0.06 and strategic_need < 0.06:
+            penalty += 0.05
+        elif structural_need < 0.08 and strategic_need < 0.08:
+            penalty += 0.03
+        if value_creation < 0.03:
+            penalty += 0.02
+        if float((impact.get("uncertainty_score", 0.0) or 0.0)) > 0.3:
+            penalty += 0.01
+        if structural_need >= 0.12:
+            penalty -= 0.03
+        elif strategic_need >= 0.12 and value_creation >= 0.05:
+            penalty -= 0.02
+        if recap_context:
+            if structural_need >= 0.04:
+                penalty -= 0.04
+            elif structural_need >= 0.03:
+                penalty -= 0.025
+            if value_creation >= 0.0 and strategic_need >= 0.02:
+                penalty -= 0.01
+        penalty = max(0.0, penalty)
+    elif action_type in {"governance", "restructuring"}:
+        # Generic governance and restructuring actions are valid, but they
+        # should not beat clearer capital allocation or financing actions on a
+        # thin edge. Require either a broad measurable benefit or unusually
+        # strong evidence.
+        structural_need = max(medians["risk_reduction"], medians["rating_preservation"])
+        strategic_need = max(medians["growth"], medians["optionality"])
+        value_creation = medians["value_creation"]
+        positive_count = sum(1 for value in medians.values() if value > 0.01)
+
+        penalty = 0.03
+        if positive_count <= 1:
+            penalty += 0.04
+        if max(value_creation, structural_need, strategic_need) < 0.05:
+            penalty += 0.04
+        if float((impact.get("uncertainty_score", 0.0) or 0.0)) > 0.3:
+            penalty += 0.01
+        if max(value_creation, structural_need, strategic_need) >= 0.1 and positive_count >= 2:
+            penalty -= 0.03
+        penalty = max(0.0, penalty)
+    else:
+        penalty = 0.0
+
+    has_precedent = _precedent_confidence(precedent_pack) > 0.0
+    has_causal = _has_causal_support(candidate)
+    if not has_precedent and not has_causal:
+        unsupported_penalty = 0.15
+        unsupported_penalty -= _buyback_maturity_wall_relief(candidate)
+        penalty += max(0.0, unsupported_penalty)
+    if action_type in {"governance", "restructuring"} and not has_precedent and not has_causal:
+        penalty += 0.08
+    if action_id == "capital_structure.revolver_draw_or_resize" and not has_precedent:
+        penalty += 0.1
+    return round(penalty, 6)
+
+
+def _structural_action_bonus(candidate: Dict[str, Any], precedent_pack: Optional[Dict[str, Any]] = None) -> float:
+    action_id = str(candidate.get("action_id", "") or "")
+    action_type = str(candidate.get("action_type", "") or "")
+    if action_id == "capital_structure.equity_issuance" and _is_deleveraging_equity_recap(candidate):
+        impact = dict(candidate.get("impact_distribution", {}) or {})
+        objectives = dict(impact.get("objectives", {}) or {})
+        structural_need = max(
+            float((objectives.get("risk_reduction", {}) or {}).get("median", 0.0) or 0.0),
+            float((objectives.get("rating_preservation", {}) or {}).get("median", 0.0) or 0.0),
+        )
+        optionality = float((objectives.get("optionality", {}) or {}).get("median", 0.0) or 0.0)
+        if structural_need >= 0.04 or optionality >= 0.03:
+            return 0.025
+        if structural_need >= 0.03:
+            return 0.015
+        return 0.0
+
+    if action_type != "portfolio" or action_id not in {
+        "portfolio.divestiture_partial",
+        "portfolio.divestiture_full",
+        "portfolio.asset_sale",
+    }:
+        return 0.0
+
+    precedent_confidence = _precedent_confidence(dict(precedent_pack or {}))
+    if precedent_confidence < 0.25:
+        return 0.0
+
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    objectives = dict(impact.get("objectives", {}) or {})
+    medians = {
+        objective: float((objectives.get(objective, {}) or {}).get("median", 0.0) or 0.0)
+        for objective in _OBJECTIVE_FIELDS
+    }
+    positive_count = sum(1 for value in medians.values() if value > 0.01)
+    negative_count = sum(1 for value in medians.values() if value < -0.01)
+    if positive_count < 3:
+        return 0.0
+
+    bonus = 0.0
+    if medians["risk_reduction"] > 0.05 and (medians["rating_preservation"] > 0.03 or medians["optionality"] > 0.05):
+        bonus += 0.03
+    if negative_count == 0 and positive_count >= 4:
+        bonus += 0.015
+    return round(min(0.05, bonus), 6)
+
+
+def _has_causal_support(candidate: Dict[str, Any]) -> bool:
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    for driver in list(impact.get("key_drivers", []) or []):
+        driver_name = str(driver.get("driver_name", "") or "")
+        try:
+            contribution = float(driver.get("contribution", 0.0) or 0.0)
+        except Exception:
+            contribution = 0.0
+        if driver_name == "causal_model_mode" and contribution >= 0.5:
+            return True
+        if driver_name == "causal_model_blend_weight" and contribution > 0.0:
+            return True
+    return False
+
+
+def _precedent_confidence(precedent_pack: Dict[str, Any]) -> float:
+    return float(
+        precedent_pack.get("precedent_confidence")
+        or precedent_pack.get("calibration_confidence")
+        or 0.0
+    )
+
+
+def _tail_severity(tail: Dict[str, Any]) -> float:
+    value = float(tail.get("value") or tail.get("outcome_value") or 0.0)
+    return min(1.0, abs(value))
+
+
+def _is_adverse_tail(tail: Dict[str, Any]) -> bool:
+    metric = str(tail.get("metric") or tail.get("outcome_metric") or "").lower()
+    value = float(tail.get("value") or tail.get("outcome_value") or 0.0)
+    if metric in {"credit_spread_change", "volatility_change"}:
+        return value > 0
+    if metric == "rating_migration":
+        return value < 0
+    return value < 0
+
+
+def _bounded_signal(value: float) -> float:
+    return round(0.5 + (0.5 * math.tanh(float(value))), 6)
+
+
