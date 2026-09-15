@@ -690,7 +690,7 @@ def _impact_contribution(candidate: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _prerequisites_for_step(action_id: str, sequence: Sequence[str], dep_graph: ActionDependencyGraph) :
+def _prerequisites_for_step(action_id: str, sequence: Sequence[str], dep_graph: ActionDependencyGraph) -> List[str]:
     seen: List[str] = []
     current_index = sequence.index(action_id)
     prior_actions = set(sequence[:current_index])

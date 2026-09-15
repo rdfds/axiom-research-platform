@@ -54,3 +54,18 @@ Stable lambda `0.5` mean MAE improvement: `0.007413079306394106`
 | 45 Information Technology | 0.65 | 116 | 0.010708313096124912 | 0.6120689655172413 |
 | 50 Communication Services | 0.5 | 128 | 0.004482100844784357 | 0.5703125 |
 
+## Recommended Policy
+
+```json
+{
+  "by_family_horizon": {
+    "cash_conversion:1Y": 0.1,
+    "cash_margin:2Y": 0.35
+  },
+  "default_lambda": 0.5,
+  "fallback_lambda": 0.5,
+  "min_group_evaluations": 20,
+  "min_mean_lift_vs_default": 0.001,
+  "min_pass_rate_lift_vs_default": 0.15
+}
+```

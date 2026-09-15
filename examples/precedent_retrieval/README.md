@@ -67,3 +67,12 @@ Precedents are central to banking and corporate finance, but they are usually ha
 - `tests/test_precedent_brain.py`
 - `tests/test_precedent_distance_v2_learning.py`
 
+## Original Lightweight Explorer
+
+The older class-project-style explorer remains under:
+
+```text
+precedent_retrieval_project/
+```
+
+The committed example pulls the core outputs into a concise application narrative.
