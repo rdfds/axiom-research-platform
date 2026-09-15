@@ -747,3 +747,73 @@ def _ordering_penalty(sequence: Sequence[str], dep_graph: ActionDependencyGraph)
     return round(min(0.2, penalty), 6)
 
 
+def _transition_bonus(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode], dep_graph: ActionDependencyGraph) -> float:
+    bonus = 0.0
+    position = {action_id: idx for idx, action_id in enumerate(sequence)}
+    for edge in dep_graph.edges:
+        src = edge.source_action
+        dst = edge.target_action
+        if src not in position or dst not in position:
+            continue
+        if position[dst] <= position[src]:
+            continue
+        if edge.relationship_type == "unlocks":
+            bonus += 0.04
+        elif edge.relationship_type == "requires":
+            bonus += 0.03
+        elif edge.relationship_type == "recommended_after":
+            bonus += 0.02
+    for left, right in zip(sequence, sequence[1:]):
+        for outcome in list(node_by_action[left].precedent_pack.get("second_order_effects", []) or []):
+            if str(outcome.get("follow_on_action_id", "")) == right:
+                bonus += min(0.05, 0.05 * float(outcome.get("frequency", 0.0) or 0.0))
+    return round(min(0.2, bonus), 6)
+
+
+def _support_factor(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode]) -> float:
+    vals = []
+    for action_id in sequence:
+        node = node_by_action[action_id]
+        precedent_confidence = _precedent_confidence(node.precedent_pack)
+        eval_conf = float(node.candidate.get("evaluation_confidence", 0.0) or 0.0)
+        vals.append((precedent_confidence + eval_conf) / 2.0)
+    avg = sum(vals) / len(vals) if vals else 0.0
+    return round(max(0.25, min(1.0, 0.6 + (0.4 * avg))), 6)
+
+
+def _branch_probability(source: PlannerNode, target_action: str) -> float:
+    freq = 0.0
+    for outcome in list(source.precedent_pack.get("second_order_effects", []) or []):
+        if str(outcome.get("follow_on_action_id", "")) == target_action:
+            freq = max(freq, float(outcome.get("frequency", 0.0) or 0.0))
+    return round(_clip(max(0.2, min(0.7, 0.2 + freq)), 0.2, 0.7), 6)
+
+
+def _trigger_type(condition: str) -> str:
+    text = str(condition or "").lower()
+    for keyword, trigger_type in _TRIGGER_KEYWORDS.items():
+        if keyword in text:
+            return trigger_type
+    return "strategic_condition"
+
+
+def _trigger_frequency(condition: str) -> str:
+    trigger_type = _trigger_type(condition)
+    if trigger_type in {"credit_condition", "valuation_condition", "market_regime"}:
+        return "weekly"
+    return "monthly"
+
+
+def _robustness_score(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode]) -> float:
+    worst_penalties = []
+    for action_id in sequence:
+        regime_rows = list(((node_by_action[action_id].candidate.get("impact_distribution", {}) or {}).get("regime_sensitivity", []) or []))
+        if not regime_rows:
+            worst_penalties.append(0.1)
+            continue
+        worst_shift = min(float(row.get("effect_shift", 0.0) or 0.0) for row in regime_rows)
+        worst_penalties.append(max(0.0, -worst_shift))
+    penalty = max(worst_penalties) if worst_penalties else 0.0
+    return round(_clip(1.0 - min(0.6, penalty), 0.35, 1.0), 6)
+
+
