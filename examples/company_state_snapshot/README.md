@@ -51,3 +51,11 @@ Axiom's company-state layer is designed around point-in-time semantics:
 - whether a fallback was used
 - whether the value is strong enough for decision evidence
 
+## Related Code
+
+- `src/company_state_builder.py`
+- `src/asof_store.py`
+- `docs/data_contract.md`
+- `schemas/company_state/snapshot.json`
+- `schemas/company_state/feature_record.json`
+
