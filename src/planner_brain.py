@@ -690,3 +690,60 @@ def _impact_contribution(candidate: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _prerequisites_for_step(action_id: str, sequence: Sequence[str], dep_graph: ActionDependencyGraph) :
+    seen: List[str] = []
+    current_index = sequence.index(action_id)
+    prior_actions = set(sequence[:current_index])
+    for edge in dep_graph.edges:
+        if edge.source_action != action_id:
+            continue
+        if edge.relationship_type not in {"requires", "recommended_after"}:
+            continue
+        if edge.target_action in prior_actions:
+            seen.append(edge.target_action)
+    return _dedupe_keep_order(seen)
+
+
+def _can_append(seq: Sequence[str], action_id: str, dep_graph: ActionDependencyGraph) -> bool:
+    for edge in dep_graph.edges:
+        if edge.relationship_type == "conflicts":
+            if (edge.source_action == action_id and edge.target_action in seq) or (
+                edge.target_action == action_id and edge.source_action in seq
+            ):
+                return False
+        if edge.source_action == action_id and edge.relationship_type == "requires" and edge.target_action not in seq:
+            return False
+    return _sequence_is_valid(tuple(seq) + (action_id,), dep_graph)
+
+
+def _sequence_is_valid(seq: Sequence[str], dep_graph: ActionDependencyGraph) -> bool:
+    if len(set(seq)) != len(seq):
+        return False
+    position = {action_id: idx for idx, action_id in enumerate(seq)}
+    for edge in dep_graph.edges:
+        src = edge.source_action
+        dst = edge.target_action
+        if src not in position or dst not in position:
+            continue
+        if edge.relationship_type == "conflicts":
+            return False
+        if edge.relationship_type in {"requires", "recommended_after"} and position[dst] > position[src]:
+            return False
+    return True
+
+
+def _ordering_penalty(sequence: Sequence[str], dep_graph: ActionDependencyGraph) -> float:
+    position = {action_id: idx for idx, action_id in enumerate(sequence)}
+    penalty = 0.0
+    for edge in dep_graph.edges:
+        if edge.relationship_type != "recommended_after":
+            continue
+        src = edge.source_action
+        dst = edge.target_action
+        if src in position and dst not in position:
+            penalty += 0.015
+        elif src in position and dst in position and position[dst] > position[src]:
+            penalty += 0.03
+    return round(min(0.2, penalty), 6)
+
+
