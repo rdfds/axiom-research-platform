@@ -678,3 +678,15 @@ def _build_step_explanation(action_id: str, node: PlannerNode, sequence: Sequenc
     )
 
 
+def _impact_contribution(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    impact = dict(candidate.get("impact_distribution", {}) or {})
+    objectives = {}
+    for objective, payload in dict(impact.get("objectives", {}) or {}).items():
+        objectives[objective] = float(payload['median'] or 0.0)
+    return {
+        "objectives": objectives,
+        "uncertainty_score": float(impact.get("uncertainty_score", 0.0) or 0.0),
+        "evaluation_confidence": float(candidate.get("evaluation_confidence", 0.0) or 0.0),
+    }
+
+
