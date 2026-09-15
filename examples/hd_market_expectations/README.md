@@ -32,9 +32,9 @@ Open the generated page directly:
 open examples/hd_market_expectations/build/valuation_action_bridge.html
 ```
 
-## Optional Full Local Demo
+## Optional Multi-Company Artifacts
 
-If you are on the original development machine, there may also be a full multi-company generated page under the local materialized artifacts directory. The public sample does not require that private/local artifact.
+If you have separately materialized a multi-company page, you can open it at the following path. That page and its upstream datasets are not included or required to rebuild the committed Home Depot sample.
 
 ```bash
 open ./data/mna_insights/valuation_action_bridge.html
@@ -59,9 +59,9 @@ examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_en
 
 The sample includes only the HD company payload plus aggregate cohort evidence needed by the visualization. The broader local artifact contains other company payloads and generated workspace outputs that are intentionally omitted here.
 
-## Full Generated Inputs
+## Upstream Inputs and Rebuild Scope
 
-The original full workspace demo was built from:
+The presentation builder accepts a materialized valuation input at:
 
 ```text
 ./data/mna_insights/valuation_driver_data.json
@@ -73,11 +73,7 @@ The current builder is:
 scripts/build_valuation_action_bridge.py
 ```
 
-The upstream company/data builder is:
-
-```text
-scripts/build_curated_company_valuation_drivers.py
-```
+The upstream company/data builder and full validation pipeline are not included. The sample rebuild reproduces the presentation from committed inputs; it does not regenerate those inputs or retrain the model. See the [model card](../../MODEL_CARD.md) for the evaluation scope.
 
 ## What The View Shows
 

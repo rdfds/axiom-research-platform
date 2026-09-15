@@ -64,7 +64,7 @@ flowchart LR
     I --> J["Recommendation and monitoring contract"]
 ```
 
-Read the system map in [docs/architecture.md](docs/architecture.md).
+Read the system map in [docs/architecture.md](docs/architecture.md) and follow the [repository tour](docs/repository_tour.md) to inspect the examples.
 
 ## Core modules
 

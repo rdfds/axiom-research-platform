@@ -1,5 +1,5 @@
 """
-Axiom V1 - Decision Intelligence for Capital Allocation
+Axiom - Decision Intelligence for Capital Allocation
 ========================================================
 Full EvidencePack-based UI.
 
@@ -630,7 +630,7 @@ def main():
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         st.caption(
-            f"Axiom V1 | EvidencePack ID: {pack.pack_id[:8]}... | "
+            f"Axiom | EvidencePack ID: {pack.pack_id[:8]}... | "
             f"Profiles: {len(analyzer.deal_profiles) if analyzer.deal_profiles is not None else 0:,}"
         )
     with col2:

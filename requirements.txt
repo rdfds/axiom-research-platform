@@ -1,4 +1,4 @@
-# Axiom V1 Dependencies
+# Axiom Dependencies
 
 # WRDS data access
 wrds>=3.1.0

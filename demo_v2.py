@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Axiom V2 Demo
+Axiom Corporate Actions Demo
 =============
 The expanded system that answers:
 "For companies in this state, what did they do next, and how did it turn out?"
@@ -31,7 +31,7 @@ def print_header(text):
 
 
 def main():
-    print_header("AXIOM V2 DEMO")
+    print_header("AXIOM CORPORATE ACTIONS DEMO")
     print("From 'What are similar M&A deals?' to")
     print("'What did companies like this do, and what happened?'")
 

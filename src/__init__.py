@@ -1,1 +1,1 @@
-# Axiom V1 - Decision Intelligence for Capital Allocation
+# Axiom - Decision Intelligence for Capital Allocation

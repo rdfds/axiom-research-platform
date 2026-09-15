@@ -1,5 +1,5 @@
 [project]
-name = "axiom-v1"
+name = "axiom-research-platform"
 version = "0.1.0"
 description = "Corporate finance intelligence engine for valuation, precedent retrieval, and CFO action evidence."
 readme = "README.md"

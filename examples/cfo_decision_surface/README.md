@@ -37,7 +37,7 @@ The dossier excerpt includes:
 
 ## Why This Matters
 
-This is the application layer. It proves the system is not just producing scores.
+This example illustrates how model outputs become decision guidance.
 
 A CFO needs to know:
 
@@ -69,9 +69,10 @@ The dossier excerpt demonstrates a separate board-ready recommendation contract:
 
 ## Related Code
 
-- `src/cfo_decision_surface.py`
 - `src/board_ready_dossier.py`
 - `src/recommendation_run_orchestrator.py`
 - `src/evidence_pack.py`
-- `tests/test_cfo_decision_surface.py`
+- `tests/test_example_contracts.py`
 - `tests/test_board_ready_dossier.py`
+
+The Home Depot surface is a committed output of upstream analysis. Its standalone generator and source datasets are not included. The modules above implement the dossier and recommendation layers; the example contract tests validate the committed surface and dossier fields.

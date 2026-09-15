@@ -55,7 +55,7 @@ def main():
     # Group by category for readability
     key_libraries = ['comp', 'crsp', 'tfn', 'tr', 'sdcm', 'dealscan']
 
-    print("Key libraries for Axiom V1:")
+    print("Key libraries for Axiom:")
     for lib in key_libraries:
         if lib in libraries:
             print(f"  ✓ {lib}")

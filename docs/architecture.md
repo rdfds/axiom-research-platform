@@ -2,6 +2,8 @@
 
 Axiom is organized as a layered corporate-finance decision engine. Each layer has a separate job: preserve point-in-time truth, model the company and market, retrieve historical analogs, validate action effects, then package the output into evidence a CFO can use.
 
+This repository includes the data-plane, company-state, precedent, causal-impact, and recommendation code, plus committed examples. The valuation-driver and market-expectations sections also describe upstream analysis represented by those examples; the upstream data builders and full validation pipeline are not included. The file lists below identify the implementation and evidence available here.
+
 ## System Map
 
 ```mermaid
@@ -82,13 +84,14 @@ The valuation driver system answers:
 
 It supports investor-native display lenses such as P/E and EV/EBITDA while routing driver weights through more stable value surfaces like P/Revenue or EV/Revenue when appropriate.
 
-Important files:
+Included presentation, sample, and contract checks:
 
-- `src/valuation_driver_validation.py`
-- `src/valuation_driver_interpretation.py`
-- `scripts/build_curated_company_valuation_drivers.py`
-- `tests/test_investor_native_valuation_lens.py`
-- `tests/test_cfo_native_valuation_basis.py`
+- `scripts/build_valuation_action_bridge.py`
+- `scripts/build_hd_market_expectations_demo.py`
+- `examples/hd_market_expectations/valuation_driver_data.sample.json`
+- `tests/test_hd_market_expectations_demo.py`
+
+These files rebuild the view from committed inputs. They do not regenerate the upstream valuation model or its source data.
 
 The interpretation layer intentionally labels these as conditional peer-set associations, not causal recommendations.
 
@@ -105,12 +108,15 @@ It compares two forecasts:
 
 If the gap-enhanced forecast improves out-of-sample MAE for a driver, the model treats that driver as market-priced. The current company gap is then allocated between validated driver expectations and a residual "outside measured drivers" bucket.
 
-Important files:
+Included evaluation evidence and reproducibility checks:
 
-- `scripts/validate_forward_gap_lambda_policy.py`
-- `scripts/build_valuation_action_bridge.py`
-- `tests/test_roic_materialization_valuation_drivers.py`
-- `tests/test_valuation_action_bridge_wwntbt.py`
+- `examples/hd_market_expectations/forward_gap_placebo_walk_forward_operating_ex_energy.sample.md`
+- `results/public_benchmark.json`
+- `scripts/build_public_benchmark.py`
+- `tests/test_public_benchmark_artifact.py`
+- `MODEL_CARD.md`
+
+The benchmark builder reproduces the JSON summary from the committed evaluation report. Re-running the underlying model evaluation requires the upstream pipeline and datasets, which are not included.
 
 ## 5. Precedent Retrieval
 
@@ -141,12 +147,13 @@ Examples:
 
 Important files:
 
-- `src/action_stock_impact_validation.py`
-- `src/action_valuation_rerating_validation.py`
 - `src/causal_impact_model.py`
+- `src/causal_benchmark.py`
+- `src/causal_model_risk.py`
 - `src/mechanism_brain.py`
-- `tests/test_action_stock_impact_validation.py`
-- `tests/test_action_valuation_rerating_validation.py`
+- `tests/test_causal_impact_model.py`
+- `tests/test_causal_benchmark.py`
+- `tests/test_causal_model_risk.py`
 - `tests/test_mechanism_causal_strict_gate.py`
 
 The system deliberately separates metric-routed decision evidence from generic causal descriptions.
@@ -158,20 +165,23 @@ The final product layer packages output into evidence that can be reviewed.
 Important files:
 
 - `src/evidence_pack.py`
-- `src/cfo_decision_surface.py`
 - `src/board_ready_dossier.py`
 - `src/recommendation_run_orchestrator.py`
+- `examples/cfo_decision_surface/cfo_decision_surface_hd.sample.json`
+- `tests/test_example_contracts.py`
+
+The committed sample includes a materialized CFO surface from upstream analysis and a dossier excerpt. The standalone upstream surface generator is not included; the dossier and recommendation modules listed above are available here.
 
 The EvidencePack concept matters because it gives every user-facing claim a bounded data source. It is the bridge between quantitative models and board-ready language.
 
-## Public Packaging Direction
+## Reproduce the Included Examples
 
-The active repo is still a broad workbench. The GitHub-facing version should emphasize:
+From the repository root:
 
-- a clean architecture story
-- one polished demo case
-- stable validation summaries
-- sample data rather than private/local artifacts
-- a small command-line path that rebuilds the demo from sample inputs
+```bash
+python scripts/inspect_examples.py
+python scripts/build_public_benchmark.py --check
+python scripts/build_hd_market_expectations_demo.py
+```
 
-The core modeling work is strong enough. The highest-return next work is packaging and curation.
+These commands use committed sample inputs without licensed data-provider access. See the [repository tour](repository_tour.md) for the available examples and the [model card](../MODEL_CARD.md) for evaluation scope and limitations.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-Axiom V1 Demo
+Axiom Snapshot and Signals Demo
 =============
-Demonstrates the complete V1 system:
+Demonstrates snapshot, signal, regime, and analog analysis:
 1. As-of snapshot building (no lookahead bias)
 2. State profile computation (7 signals)
 3. Market regime classification
@@ -28,7 +28,7 @@ def print_header(text):
 
 
 def main():
-    print_header("AXIOM V1 DEMO")
+    print_header("AXIOM SNAPSHOT AND SIGNALS DEMO")
     print("Decision Intelligence for Capital Allocation")
 
     # Initialize components

@@ -1,6 +1,6 @@
 # Axiom repository tour
 
-This is the fastest path for someone evaluating Axiom as a serious engineering project. Each example isolates one major technical layer, then the final example shows how the layers become a decision surface.
+Each example illustrates one technical layer. The final example shows how the layers combine into a decision surface.
 
 ## 1. Market-implied expectations
 
@@ -47,14 +47,12 @@ From the repository root:
 python scripts/inspect_examples.py
 ```
 
-For applications or interviews, the strongest sequence is:
+## Suggested Reading Order
 
 1. Open the README and architecture diagram.
 2. Rebuild the market-expectations demo.
-3. Show the company-state sample to establish data discipline.
-4. Show precedent retrieval to establish learned analog search.
-5. Finish with the CFO decision surface to establish end-to-end product thinking.
+3. Inspect the company-state sample's timing, provenance, and confidence fields.
+4. Inspect precedent retrieval, match diagnostics, and outcome distributions.
+5. Read the CFO decision surface and recommendation contract.
 
-The headline should be:
-
-> Axiom builds an auditable company state, explains valuation gaps, retrieves historical actions, evaluates evidence quality, and packages the result into CFO-grade decisions.
+The [architecture guide](architecture.md) distinguishes included implementation from upstream analysis represented by the samples. The [model card](../MODEL_CARD.md) describes evaluation scope and limitations.

@@ -1,7 +1,7 @@
 """
 Pull All Corporate Actions & Data from Refinitiv
 ================================================
-Comprehensive data pull for Axiom V1.
+Comprehensive data pull for Axiom.
 Requires Refinitiv Workspace/Eikon terminal to be running.
 
 Run with: python -u scripts/pull_refinitiv_all.py

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Download targeted SEC companyfacts JSON files to a non-iCloud local path.
-
-This is meant to avoid Desktop/iCloud file-provider issues by pulling only the
-CIKs we care about into a stable local folder such as `/Users/.../code/...`.
-"""
+"""Download SEC companyfacts JSON for selected CIKs to a specified directory."""
 
 from __future__ import annotations
 
@@ -25,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", required=True, help="Output folder for downloaded companyfacts JSON")
     parser.add_argument(
         "--user-agent",
-        default="AxiomResearch/1.0 (research contact: rvariankaval)",
+        default="AxiomResearch/1.0 (research contact: rohanvariankaval@gmail.com)",
         help="SEC fair-access User-Agent string",
     )
     parser.add_argument("--sleep-seconds", type=float, default=0.15, help="Delay between SEC requests")
