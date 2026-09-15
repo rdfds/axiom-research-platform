@@ -78,3 +78,7 @@ The system supports licensed and private data sources. This repository contains 
 | False precision in recommendations | Confidence labels, objections, regret cases, monitoring triggers, and human review |
 | Repository/provider reproducibility gap | CI is limited to committed fixtures; provider-backed metrics are evaluated separately |
 
+## Monitoring and promotion
+
+Changes to models or policies should pass data-contract checks, time-based backtests, baseline/placebo comparisons, support and calibration review, and the portable public test contract. Promotion decisions should record the candidate artifact, evaluation window, thresholds, failure analysis, and rollback target. The complete public monitoring contract is documented in [`docs/model_monitoring.md`](docs/model_monitoring.md).
+
