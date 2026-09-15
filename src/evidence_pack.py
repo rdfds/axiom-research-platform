@@ -133,3 +133,43 @@ class Cohort:
     quality_flags: List[str]  # e.g., ["small_sample", "regime_mismatch"]
 
 
+@dataclass
+class Objection:
+    """A pre-computed objection with grounded rebuttal."""
+    question: str  # e.g., "Why not wait 6 months?"
+    question_category: str  # "timing", "sizing", "alternative", "risk"
+    grounded_answer_points: List[str]
+    evidence_refs: List[str]
+    confidence: float
+
+
+@dataclass
+class ActionCard:
+    """Full evidence for one potential action."""
+    action_type: str
+    action_human: str
+    recommendation_score: int  # 0-100
+    recommendation_label: str  # "HIGH", "MEDIUM", etc.
+    status: str  # "NEWLY_ACTIONABLE", "PERSISTENT", "WINDOW_OPEN"
+
+    # Thesis
+    thesis_summary: str
+    value_lever: str
+    economic_impact: str
+    share_price_impact_range: Optional[str]
+
+    # Why Now bullets (grounded)
+    why_now_bullets: List[Dict[str, Any]]  # Each has text, metric, source
+
+    # Conditions
+    works_when: List[str]
+    fails_when: List[str]
+
+    # Evidence
+    cohort: Cohort
+    comparable_cohorts: List[Cohort]  # Alternative filters for comparison
+
+    # Objections
+    objections: List[Objection]
+
+

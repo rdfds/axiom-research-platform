@@ -1265,3 +1265,77 @@ def test_real_run_like_divestiture_case_prefers_divestiture():
     assert [step["action_id"] for step in plan_set["plans"][0]["steps"]] == ["portfolio.divestiture_partial"]
 
 
+def test_real_run_like_acquisition_negative_case_avoids_mna():
+    registry = build_default_action_schema_registry()
+    run = _run()
+    rows = [
+        _candidate_row(
+            "mna.platform_acquisition",
+            utility=-0.296,
+            risk_reduction=-0.021,
+            growth=-0.191,
+            rating_preservation=-0.016,
+            optionality=0.002,
+            pass_probability=0.51,
+            evaluation_confidence=0.728,
+            precedent_confidence=0.370,
+        ),
+        _candidate_row(
+            "mna.tuck_in_acquisition",
+            utility=-0.295,
+            risk_reduction=-0.022,
+            growth=-0.189,
+            rating_preservation=-0.017,
+            optionality=0.002,
+            pass_probability=0.59,
+            evaluation_confidence=0.738,
+            precedent_confidence=0.392,
+        ),
+        _candidate_row(
+            "capital_structure.new_debt_issuance",
+            utility=0.029,
+            risk_reduction=-0.201,
+            growth=0.257,
+            rating_preservation=0.026,
+            optionality=0.021,
+            pass_probability=0.59,
+            evaluation_confidence=0.659,
+            precedent_confidence=0.307,
+        ),
+        _candidate_row(
+            "capital_structure.refinancing",
+            utility=0.029,
+            risk_reduction=-0.201,
+            growth=0.257,
+            rating_preservation=0.026,
+            optionality=0.021,
+            pass_probability=0.59,
+            evaluation_confidence=0.687,
+            precedent_confidence=0.306,
+        ),
+        _candidate_row(
+            "capital_return.open_market_buyback",
+            utility=0.036,
+            risk_reduction=-0.017,
+            growth=-0.003,
+            rating_preservation=-0.012,
+            optionality=0.417,
+            pass_probability=0.59,
+            evaluation_confidence=0.667,
+            precedent_confidence=0.342,
+        ),
+    ]
+
+    plan_set = build_plan_set(
+        run=run,
+        feasible_candidates=[row["candidate"] for row in rows],
+        precedent_matches=rows,
+        registry=registry,
+        top_plans=5,
+    )
+
+    top_three = plan_set["plans"][:3]
+    assert not any(
+        any(step["action_id"].startswith("mna.") for step in plan["steps"])
+        for plan in top_three
+    )
