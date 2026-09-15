@@ -178,3 +178,56 @@ def capture_runtime_env_config() -> Dict[str, Any]:
     }
 
 
+def build_create_config(
+    *,
+    snapshot_root: Optional[str | Path],
+    snapshot_path: Optional[str | Path],
+    entity_graph_path: str | Path,
+    entity_identifier_path: str | Path,
+    planner_random_seed: Optional[int],
+) -> Dict[str, Any]:
+    return {
+        "snapshot_root": str(snapshot_root) if snapshot_root else None,
+        "snapshot_path": str(snapshot_path) if snapshot_path else None,
+        "entity_graph_path": str(entity_graph_path),
+        "entity_identifier_path": str(entity_identifier_path),
+        "planner_random_seed": planner_random_seed,
+    }
+
+
+def build_execution_config(
+    *,
+    runs_root: str | Path,
+    snapshot_root: Optional[str | Path],
+    snapshot_path: Optional[str | Path],
+    entity_identifier_path: str | Path,
+    action_ids: Optional[Iterable[str]],
+    action_type: Optional[str],
+    max_candidates: int,
+    min_candidates_target: int,
+    strict_evidence: bool,
+    precedent_top_k: int,
+    outcomes_path: Optional[str | Path],
+    config_path: Optional[str | Path],
+    top_plans: int,
+) -> Dict[str, Any]:
+    normalized_action_ids = []
+    for value in action_ids or []:
+        token = str(value or "").strip()
+        if token and token not in normalized_action_ids:
+            normalized_action_ids.append(token)
+    return {
+        "runs_root": str(runs_root),
+        "snapshot_root": str(snapshot_root) if snapshot_root else None,
+        "snapshot_path": str(snapshot_path) if snapshot_path else None,
+        "entity_identifier_path": str(entity_identifier_path),
+        "action_ids": normalized_action_ids,
+        "action_type": str(action_type) if action_type else None,
+        "max_candidates": int(max_candidates),
+        "min_candidates_target": int(min_candidates_target),
+        "strict_evidence": bool(strict_evidence),
+        "precedent_top_k": int(precedent_top_k),
+        "outcomes_path": str(outcomes_path) if outcomes_path else None,
+        "config_path": str(config_path) if config_path else None,
+        "top_plans": int(top_plans),
+    }
