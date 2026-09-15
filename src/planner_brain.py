@@ -869,3 +869,21 @@ def _aggregate_weighted_objectives(weighted: Dict[str, float]) -> float:
     return positive - (2.5 * negative) + breadth_bonus - narrowness_penalty
 
 
+def _negative_utility_penalty(weighted_utility: float, weighted_components: Dict[str, float], action_ids: Sequence[str]) -> float:
+    if weighted_utility >= 0.0:
+        return 0.0
+    penalty = 0.02 + min(0.03, abs(float(weighted_utility)))
+    positive_count = sum(1 for value in weighted_components.values() if float(value) > 0.01)
+    negative_count = sum(1 for value in weighted_components.values() if float(value) < -0.01)
+    if negative_count >= positive_count:
+        penalty += 0.015
+    recurring_payout_actions = {
+        "capital_return.dividend_increase",
+        "capital_return.dividend_initiate",
+        "capital_return.dividend_cut",
+    }
+    if action_ids and all(action_id in recurring_payout_actions for action_id in action_ids):
+        penalty += 0.015
+    return round(min(0.09, penalty), 6)
+
+
