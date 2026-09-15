@@ -49,3 +49,21 @@ Then look at:
 
 Those fields show whether the analogy is actually credible.
 
+## Why This Matters
+
+Precedents are central to banking and corporate finance, but they are usually hand-picked. Axiom treats precedent selection as a model:
+
+- retrieve similar actions
+- score similarity by action family and objective
+- expose mismatch diagnostics
+- attach empirical outcome distributions
+- use confidence gates before the precedent can support a decision
+
+## Related Code
+
+- `src/pipeline/precedent_brain.py`
+- `src/pipeline/precedent_distance_v2_learning.py`
+- `src/pipeline/precedent_quality_learning.py`
+- `tests/test_precedent_brain.py`
+- `tests/test_precedent_distance_v2_learning.py`
+

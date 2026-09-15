@@ -817,3 +817,55 @@ def _robustness_score(sequence: Sequence[str], node_by_action: Dict[str, Planner
     return round(_clip(1.0 - min(0.6, penalty), 0.35, 1.0), 6)
 
 
+def _tail_risk_penalty(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode]) -> float:
+    penalties: List[float] = []
+    for action_id in sequence:
+        node = node_by_action[action_id]
+        tails = list(node.precedent_pack.get("tail_events", []) or [])
+        if not tails:
+            penalties.append(0.02 if bool((node.precedent_pack.get("mismatch_diagnostics", {}) or {}).get("out_of_sample_flag")) else 0.0)
+            continue
+        adverse = [tail for tail in tails if _is_adverse_tail(tail)]
+        if not adverse:
+            penalties.append(0.0)
+            continue
+        severities = [_tail_severity(tail) for tail in adverse]
+        penalties.append((len(adverse) / max(1, len(tails))) * (sum(severities) / len(severities)) * 0.2)
+    return round(min(0.35, sum(penalties)), 6)
+
+
+def _complexity_penalty(sequence: Sequence[str], node_by_action: Dict[str, PlannerNode]) -> float:
+    complexities = []
+    for action_id in sequence:
+        complexity = float((node_by_action[action_id].schema.get("execution_complexity_prior", {}) or {}).get("base_complexity_score", 3) or 3)
+        complexities.append((complexity - 1.0) / 4.0)
+    avg_complexity = sum(complexities) / len(complexities) if complexities else 0.0
+    penalty = (0.05 * max(0, len(sequence) - 1)) + (0.12 * avg_complexity)
+    return round(min(0.35, penalty), 6)
+
+
+def _weighted_objective_sum(impact_distribution: Dict[str, Any], run: RecommendationRun) -> float:
+    return _aggregate_weighted_objectives(_weighted_objective_components(impact_distribution, run))
+
+
+def _weighted_objective_components(impact_distribution: Dict[str, Any], run: RecommendationRun) -> Dict[str, float]:
+    objectives = dict((impact_distribution or {}).get("objectives", {}) or {})
+    return {
+        "value_creation": run.objectives.value_creation_weight * float((objectives.get("value_creation", {}) or {}).get("median", 0.0) or 0.0),
+        "risk_reduction": run.objectives.risk_reduction_weight * float((objectives.get("risk_reduction", {}) or {}).get("median", 0.0) or 0.0),
+        "growth": run.objectives.growth_weight * float((objectives.get("growth", {}) or {}).get("median", 0.0) or 0.0),
+        "rating_preservation": run.objectives.rating_preservation_weight * float((objectives.get("rating_preservation", {}) or {}).get("median", 0.0) or 0.0),
+        "optionality": run.objectives.optionality_weight * float((objectives.get("optionality", {}) or {}).get("median", 0.0) or 0.0),
+    }
+
+
+def _aggregate_weighted_objectives(weighted: Dict[str, float]) -> float:
+    positive = sum(value for value in weighted.values() if value > 0.0)
+    negative = sum(-value for value in weighted.values() if value < 0.0)
+    positive_count = sum(1 for value in weighted.values() if value > 0.01)
+    negative_count = sum(1 for value in weighted.values() if value < -0.01)
+    breadth_bonus = 0.02 * max(0, positive_count - 1)
+    narrowness_penalty = 0.015 * max(0, negative_count - positive_count)
+    return positive - (2.5 * negative) + breadth_bonus - narrowness_penalty
+
+
