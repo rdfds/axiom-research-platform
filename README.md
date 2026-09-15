@@ -80,3 +80,27 @@ Read the system map in [docs/architecture.md](docs/architecture.md).
 | Run orchestration | [`src/recommendation_run_orchestrator.py`](src/recommendation_run_orchestrator.py) | Produces reproducible end-to-end recommendation runs. |
 | Static demo | [`scripts/build_valuation_action_bridge.py`](scripts/build_valuation_action_bridge.py) | Materializes the valuation/action view from committed sample inputs. |
 
+## Start with the examples
+
+The repository includes four reviewable examples that expose the system's major layers without requiring licensed data-provider accounts.
+
+| Example | Demonstrates |
+|---|---|
+| [Market expectations](examples/hd_market_expectations/README.md) | Valuation-gap decomposition and forward driver expectations. |
+| [Company state snapshot](examples/company_state_snapshot/README.md) | As-of features with provenance, confidence, units, and fallback flags. |
+| [Precedent retrieval](examples/precedent_retrieval/README.md) | Historical action analogs, cohort outcomes, and mismatch diagnostics. |
+| [CFO decision surface](examples/cfo_decision_surface/README.md) | Sizing, risk, regret, recommendation, and monitoring layers. |
+
+Rebuild the flagship static example:
+
+```bash
+python scripts/build_hd_market_expectations_demo.py
+open examples/hd_market_expectations/build/valuation_action_bridge.html
+```
+
+Print a compact contract check for all committed examples:
+
+```bash
+python scripts/inspect_examples.py
+```
+

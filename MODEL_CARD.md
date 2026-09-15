@@ -67,3 +67,14 @@ The system supports licensed and private data sources. This repository contains 
 - the benchmark is an offline evaluation rather than a current live-system score;
 - provider-specific ingestion and large-scale backfills require credentials not included here.
 
+## Failure modes and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Look-ahead leakage | As-of timestamps, time-ordered splits, and point-in-time contract tests |
+| Sparse or mismatched precedents | Support thresholds, mismatch diagnostics, and broader-cohort fallbacks |
+| Spurious explanatory relationship | Placebo/baseline comparison and explicit separation of explanatory, predictive, and causal claims |
+| Distribution or provider drift | Schema, missingness, support-coverage, and performance gates before promotion |
+| False precision in recommendations | Confidence labels, objections, regret cases, monitoring triggers, and human review |
+| Repository/provider reproducibility gap | CI is limited to committed fixtures; provider-backed metrics are evaluated separately |
+
