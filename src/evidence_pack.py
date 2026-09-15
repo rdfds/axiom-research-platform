@@ -173,3 +173,60 @@ class ActionCard:
     objections: List[Objection]
 
 
+@dataclass
+class EvidencePack:
+    """
+    The complete grounded evidence package.
+
+    This is what the narrative layer receives - nothing else.
+    Every claim must trace back to something in here.
+    """
+    # Metadata
+    pack_id: str
+    generated_at: str
+    company_id: str
+    company_name: str
+    as_of_time: str
+
+    # Version tracking (for audit)
+    data_snapshot_version: str
+    signal_schema_version: str
+    regime_model_version: str
+    retrieval_version: str
+
+    # Core content
+    state_summary: SignalProfileV2
+    regime: RegimeContext
+    company_metrics: Dict[str, Any]  # Revenue, margins, etc.
+    peer_comparison: Dict[str, Any]
+
+    # Action analysis
+    action_cards: List[ActionCard]
+
+    # Cross-cutting
+    binding_constraints: List[Dict[str, str]]
+    timing_posture: Dict[str, str]
+
+    # Historical context
+    company_action_history: Dict[str, Any]
+
+    def to_dict(self) -> Dict:
+        """Serialize to dictionary for storage/API."""
+        # This would be a full serialization - simplified here
+        return {
+            'pack_id': self.pack_id,
+            'company_id': self.company_id,
+            'as_of_time': self.as_of_time,
+            'generated_at': self.generated_at,
+            # ... full serialization
+        }
+
+    def to_json(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict(), default=str)
+
+
+# =============================================================================
+# EVIDENCE PACK BUILDER
+# =============================================================================
+
