@@ -1266,3 +1266,38 @@ def _bounded_signal(value: float) -> float:
     return round(0.5 + (0.5 * math.tanh(float(value))), 6)
 
 
+def _feasibility_factor(pass_probability: float) -> float:
+    return round(_clip(0.55 + (0.45 * float(pass_probability)), 0.55, 1.0), 6)
+
+
+def _clip(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _parse_run_time(raw: str) -> datetime:
+    value = str(raw)
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _dedupe_keep_order(values: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for value in values:
+        token = str(value or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+__all__ = ["build_plan_set"]
