@@ -763,7 +763,7 @@ class EvidencePackBuilder:
                     'composite_score': row.get('composite_score', 0),
                 },
                 outcome_tsr_12m=row.get('tsr_12m'),
-                context_summary=f"{row.get('company_name', 'Company')} executed {row.get('action_type', 'action')} with {row.get('tsr_12m', 0):+.0f}% 12-month TSR" if pd.notna(row['tsr_12m']) else "",
+                context_summary=f"{row.get('company_name', 'Company')} executed {row.get('action_type', 'action')} with {row.get('tsr_12m', 0):+.0f}% 12-month TSR" if pd.notna(row.get('tsr_12m')) else "",
             ))
 
         return examples
