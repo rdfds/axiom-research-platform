@@ -120,3 +120,16 @@ class ExampleCase:
     context_summary: str  # 1-2 sentence description
 
 
+@dataclass
+class Cohort:
+    """A group of similar historical cases."""
+    action_type: str  # e.g., "bolt_on_mna", "buyback"
+    action_human: str  # e.g., "Bolt-on M&A"
+    filters: Dict[str, Any]  # How this cohort was defined
+    n: int
+    outcomes: Dict[str, OutcomeDistribution]  # tsr_1m, tsr_3m, tsr_12m, etc.
+    key_splits: List[KeySplit]
+    example_cases: List[ExampleCase]
+    quality_flags: List[str]  # e.g., ["small_sample", "regime_mismatch"]
+
+
