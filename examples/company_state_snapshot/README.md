@@ -59,3 +59,17 @@ Axiom's company-state layer is designed around point-in-time semantics:
 - `schemas/company_state/snapshot.json`
 - `schemas/company_state/feature_record.json`
 
+## Sample Contract
+
+The sample intentionally keeps only a small set of features:
+
+- market capitalization
+- enterprise value
+- share price
+- equity and credit window proxies
+- revenue, EBITDA, and EBITDA margin
+- free cash flow and FCF yield
+- deployable liquidity
+- net leverage
+
+That keeps the example readable while still demonstrating the technical contract.
